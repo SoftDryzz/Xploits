@@ -9,7 +9,6 @@ import com.kitbot.core.Progress;
 import com.kitbot.core.ProgressStore;
 import com.kitbot.inventory.EnderDepositor;
 import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -34,7 +33,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Adaptador: traduce eventos de Meteor a OrderMachine y ejecuta sus acciones. No decide nada (spec §3). */
+/**
+ * Adaptador: traduce eventos de Meteor a OrderMachine y ejecuta sus acciones. No decide nada (spec §3).
+ * No hace falta un handler propio de reconexión: Meteor ya llama a {@link #onDeactivate()} al salir del
+ * servidor (aquí se guarda el progreso) y a {@link #onActivate()} al volver (aquí se recargan
+ * kits-queue.txt y progress.json y se llama a {@code machine.onJoin}).
+ */
 public class KitRequester extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -108,11 +112,6 @@ public class KitRequester extends Module {
         depositor.reset();
         if (progress != null) save();
         machine = null;
-    }
-
-    @EventHandler
-    private void onGameJoined(GameJoinedEvent event) {
-        if (machine != null) run(machine.onJoin(System.currentTimeMillis()));
     }
 
     @EventHandler
@@ -198,6 +197,7 @@ public class KitRequester extends Module {
             switch (action) {
                 case Action.SendCommand command -> {
                     if (mc.player != null) ChatUtils.sendPlayerMsg(command.command(), false);
+                    else warning("No se pudo enviar %s: no hay jugador en el mundo.", command.command());
                 }
                 case Action.Deposit deposit -> {
                     if (!depositor.start(mc, System.currentTimeMillis()) && machine != null) {
