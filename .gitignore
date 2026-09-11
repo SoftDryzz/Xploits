@@ -1,0 +1,25 @@
+# Gradle / Loom
+.gradle/
+build/
+out/
+run/
+remappedSrc/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Datos locales del bot: viven en la instancia, nunca en el repo
+progress.json
+progress.json.tmp
+kits-queue.txt
+*.log
