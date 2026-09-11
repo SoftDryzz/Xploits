@@ -89,6 +89,22 @@ class OrderMachineTest {
     }
 
     @Test
+    void configClampsIntervalToMinimum() {
+        OrderMachine.Config cfg = new OrderMachine.Config(60_000, COURIERS, false, false);
+        assertEquals(OrderMachine.MIN_INTERVAL_MS, cfg.intervalMs());
+    }
+
+    @Test
+    void machineWaits300sWithClampedInterval() {
+        config = new OrderMachine.Config(60_000, COURIERS, false, false);
+        long placedAt = placeOrder();
+        machine.onChat(new ChatEvent.Tpa("StormAegis44"), placedAt + 40_000);
+        machine.onChat(new ChatEvent.Done("StormAegis44"), placedAt + 60_000);
+        assertFalse(anySent(machine.tick(placedAt + 299_999, OK)));
+        assertTrue(sent(machine.tick(placedAt + 300_000, OK), "/w SnifferBuddy !kit 6, 7"));
+    }
+
+    @Test
     void nextBatchWaitsForInterval() {
         long placedAt = placeOrder();
         machine.onChat(new ChatEvent.Tpa("StormAegis44"), placedAt + 40_000);

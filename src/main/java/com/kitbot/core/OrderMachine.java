@@ -17,8 +17,13 @@ public final class OrderMachine {
 
     public record Context(boolean inWorld, boolean kitbotOnline, int freeSlots, boolean enderInReach) {}
 
-    public record Config(long intervalMs, Set<String> knownCouriers, boolean trustUnknownCouriers, boolean autoEnder) {}
+    public record Config(long intervalMs, Set<String> knownCouriers, boolean trustUnknownCouriers, boolean autoEnder) {
+        public Config {
+            intervalMs = Math.max(intervalMs, MIN_INTERVAL_MS);
+        }
+    }
 
+    public static final long MIN_INTERVAL_MS = 300_000;
     public static final long CONFIRM_TIMEOUT_MS = 20_000;
     public static final long COURIER_TIMEOUT_MS = 180_000;
     public static final long DELIVERY_TIMEOUT_MS = 90_000;
