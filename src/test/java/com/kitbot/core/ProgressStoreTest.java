@@ -74,6 +74,32 @@ class ProgressStoreTest {
     }
 
     @Test
+    void trailingCommaInUnconfirmedIsSanitized() throws IOException {
+        Path file = dir.resolve("progress.json");
+        Files.writeString(file, "{\"unconfirmed\": [[1,2,3,4,5], ]}");
+        Progress p = new ProgressStore(file).load();
+        assertFalse(p.unconfirmed.contains(null));
+        assertEquals(Set.of(1, 2, 3, 4, 5), p.resolved());
+    }
+
+    @Test
+    void nullDeliveredBecomesEmptySet() throws IOException {
+        Path file = dir.resolve("progress.json");
+        Files.writeString(file, "{\"delivered\": null}");
+        Progress p = new ProgressStore(file).load();
+        assertTrue(p.delivered.isEmpty());
+    }
+
+    @Test
+    void activeOrderWithoutIdsThrowsAndLeavesFileUntouched() throws IOException {
+        Path file = dir.resolve("progress.json");
+        String json = "{\"activeOrder\": {\"placedAt\": 123, \"courier\": \"X\"}}";
+        Files.writeString(file, json);
+        assertThrows(IOException.class, () -> new ProgressStore(file).load());
+        assertEquals(json, Files.readString(file));
+    }
+
+    @Test
     void resolvedUnionsEveryBucketButNotFailuresOrActiveOrder() {
         Progress p = new Progress();
         p.delivered.add(1);

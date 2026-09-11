@@ -28,13 +28,19 @@ public final class ProgressStore {
     public Progress load() throws IOException {
         if (!Files.exists(file)) return new Progress();
         String json = Files.readString(file);
+        Progress progress;
         try {
-            Progress progress = GSON.fromJson(json, Progress.class);
+            progress = GSON.fromJson(json, Progress.class);
             if (progress == null) throw new IOException(file + " está vacío; no se ha modificado.");
-            return progress;
         } catch (JsonParseException e) {
             throw new IOException(file + " está corrupto; no se ha modificado: " + e.getMessage(), e);
         }
+        try {
+            progress.sanitize();
+        } catch (IOException e) {
+            throw new IOException(file + ": " + e.getMessage(), e);
+        }
+        return progress;
     }
 
     public void save(Progress progress) throws IOException {
