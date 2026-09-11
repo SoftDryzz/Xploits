@@ -326,6 +326,19 @@ class OrderMachineTest {
         assertEquals(IDLE, machine.state());
         assertNull(progress.activeOrder);
         assertTrue(progress.failures.isEmpty());
-        assertTrue(sent(machine.tick(T0 + 200_000 + OrderMachine.JOIN_GRACE_MS, OK), ORDER_1_5));
+        assertFalse(anySent(machine.tick(T0 + 200_000 + OrderMachine.JOIN_GRACE_MS, OK)));
+        assertTrue(sent(machine.tick(T0 + 300_000, OK), ORDER_1_5));
+    }
+
+    @Test
+    void kickDuringConfirmDoesNotReorderBeforeInterval() {
+        machine.onJoin(T0);
+        long t = T0 + OrderMachine.JOIN_GRACE_MS;
+        assertTrue(sent(machine.tick(t, OK), ORDER_1_5));
+
+        machine.onJoin(t + 5_000);
+        assertFalse(anySent(machine.tick(t + 5_000 + OrderMachine.JOIN_GRACE_MS, OK)));
+        assertFalse(anySent(machine.tick(t + 299_999, OK)));
+        assertTrue(sent(machine.tick(t + 300_000, OK), ORDER_1_5));
     }
 }

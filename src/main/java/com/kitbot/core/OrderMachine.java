@@ -64,6 +64,10 @@ public final class OrderMachine {
             state = State.AWAIT_COURIER;
             deadline = active.placedAt() + COURIER_TIMEOUT_MS;
         } else {
+            if (active != null) {
+                progress.nextOrderAt = Math.max(progress.nextOrderAt,
+                    active.placedAt() + config.get().intervalMs() + jitterMs.getAsLong());
+            }
             progress.activeOrder = null;
             batch = List.of();
             state = State.IDLE;
@@ -214,6 +218,8 @@ public final class OrderMachine {
         state = State.AWAIT_CONFIRM;
         deadline = now + CONFIRM_TIMEOUT_MS;
         out.add(new Action.SendCommand(ChatPatterns.orderCommand(next)));
+        progress.nextOrderAt = now + config.get().intervalMs();
+        out.add(new Action.Save());
     }
 
     private void onTpa(String requester, long now, List<Action> out) {
