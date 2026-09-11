@@ -58,6 +58,10 @@ public final class EnderDepositor {
 
     /** Llamar en cada tick mientras OrderMachine está en DEPOSIT. */
     public Optional<Boolean> tick(MinecraftClient mc, long now) {
+        if (phase != Phase.IDLE && mc.player == null) {
+            phase = Phase.IDLE;
+            return Optional.of(false);
+        }
         switch (phase) {
             case IDLE -> {
                 return Optional.of(false);
@@ -84,14 +88,18 @@ public final class EnderDepositor {
         return Optional.empty();
     }
 
+    /** Cierra la pantalla del ender chest si el depositor la abrió, y vuelve a IDLE. Seguro llamar en cualquier momento. */
     public void reset() {
+        if (phase != Phase.IDLE) {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc.player != null && mc.player.currentScreenHandler instanceof GenericContainerScreenHandler) {
+                mc.player.closeHandledScreen();
+            }
+        }
         phase = Phase.IDLE;
     }
 
     private Optional<Boolean> finish(MinecraftClient mc, boolean ok) {
-        if (mc.player != null && mc.player.currentScreenHandler instanceof GenericContainerScreenHandler) {
-            mc.player.closeHandledScreen();
-        }
         reset();
         return Optional.of(ok);
     }
