@@ -22,7 +22,9 @@ import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
+import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.item.Items;
+import net.minecraft.sound.SoundEvents;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -225,7 +227,12 @@ public class KitRequester extends Module {
         }
         warning("%s", notify.message());
         MeteorToast.Builder toast = new MeteorToast.Builder("KitBot").text(notify.message()).icon(Items.SHULKER_BOX);
-        if (!notifySound.get()) toast.sound(null);
+        // Meteor build 86's MeteorToast.update() calls mc.getSoundManager().play(customSound) without a null
+        // check, and vanilla dereferences it -> NPE on the render thread. Never pass null: mute with a
+        // zero-volume instance built the same way Meteor builds its default toast sound (same pitch, volume 0).
+        if (!notifySound.get()) {
+            toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
+        }
         mc.getToastManager().add(toast.build());
     }
 
