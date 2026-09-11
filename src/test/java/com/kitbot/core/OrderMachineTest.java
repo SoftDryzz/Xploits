@@ -263,6 +263,59 @@ class OrderMachineTest {
     }
 
     @Test
+    void unknownSenderEventsDuringAwaitCourierChangeNothing() {
+        long placedAt = placeOrder();
+
+        assertTrue(machine.onChat(new ChatEvent.NotFound("Mallory"), placedAt + 10_000).isEmpty());
+        assertEquals(AWAIT_COURIER, machine.state());
+        assertTrue(progress.notFound.isEmpty());
+
+        assertTrue(machine.onChat(new ChatEvent.TimedOut("Mallory"), placedAt + 11_000).isEmpty());
+        assertEquals(AWAIT_COURIER, machine.state());
+        assertTrue(progress.failures.isEmpty());
+
+        assertTrue(machine.onChat(new ChatEvent.Done("Mallory"), placedAt + 12_000).isEmpty());
+        assertEquals(AWAIT_COURIER, machine.state());
+        assertTrue(progress.delivered.isEmpty());
+    }
+
+    @Test
+    void knownCourierEventsInIdleChangeNothing() {
+        machine.onJoin(T0);
+        assertEquals(IDLE, machine.state());
+
+        assertTrue(machine.onChat(new ChatEvent.Done("StormAegis44"), T0).isEmpty());
+        assertEquals(IDLE, machine.state());
+        assertTrue(progress.delivered.isEmpty());
+
+        assertTrue(machine.onChat(new ChatEvent.TimedOut("StormAegis44"), T0).isEmpty());
+        assertEquals(IDLE, machine.state());
+        assertTrue(progress.failures.isEmpty());
+
+        assertTrue(machine.onChat(new ChatEvent.NotFound("StormAegis44"), T0).isEmpty());
+        assertEquals(IDLE, machine.state());
+        assertTrue(progress.notFound.isEmpty());
+    }
+
+    @Test
+    void tpaFromKnownCourierOutsideAwaitCourierSendsNothing() {
+        machine.onJoin(T0);
+        long t = T0 + OrderMachine.JOIN_GRACE_MS;
+        machine.tick(t, OK);
+        assertEquals(AWAIT_CONFIRM, machine.state());
+        assertFalse(anySent(machine.onChat(new ChatEvent.Tpa("StormAegis44"), t + 1_000)));
+
+        long placedAt = t + 1_000;
+        machine.onChat(new ChatEvent.Placed(), placedAt);
+        assertEquals(AWAIT_COURIER, machine.state());
+        assertTrue(sent(machine.onChat(new ChatEvent.Tpa("StormAegis44"), placedAt + 5_000), "/tpy StormAegis44"));
+        assertEquals(AWAIT_DELIVERY, machine.state());
+
+        assertFalse(anySent(machine.onChat(new ChatEvent.Tpa("ValorKnight27"), placedAt + 6_000)));
+        assertEquals(AWAIT_DELIVERY, machine.state());
+    }
+
+    @Test
     void eventsFromOtherCourierIgnoredOnceFixed() {
         long placedAt = placeOrder();
         machine.onChat(new ChatEvent.Tpa("StormAegis44"), placedAt + 40_000);
