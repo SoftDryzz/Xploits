@@ -232,6 +232,9 @@ public final class OrderMachine {
         if (CourierPolicy.shouldAccept(requester, ready, cfg.knownCouriers(), cfg.trustUnknownCouriers())) {
             accept(requester, now, out);
         } else if (!ready && !cfg.knownCouriers().contains(requester)) {
+            if (pendingTpa != null && !pendingTpa.equals(requester)) {
+                out.add(new Action.Notify("TPA ignorada de " + pendingTpa + ".", false));
+            }
             // Su READY puede llegar justo después de la TPA: se decide al llegar o a los 5 s.
             pendingTpa = requester;
             pendingTpaUntil = now + PENDING_TPA_MS;
@@ -268,7 +271,11 @@ public final class OrderMachine {
         deadline = now + DELIVERY_TIMEOUT_MS;
         if (progress.activeOrder != null) progress.activeOrder = progress.activeOrder.withCourier(requester);
         out.add(new Action.SendCommand(ChatPatterns.acceptCommand(requester)));
-        if (!config.get().knownCouriers().contains(requester)) out.add(new Action.LearnCourier(requester));
+        if (!config.get().knownCouriers().contains(requester)) {
+            out.add(new Action.LearnCourier(requester));
+            out.add(new Action.Notify("Courier nuevo " + requester
+                + " aceptado y añadido a known-couriers (trust-unknown-couriers activo).", true));
+        }
         out.add(new Action.Save());
     }
 

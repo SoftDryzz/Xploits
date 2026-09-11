@@ -54,7 +54,8 @@ public class KitRequester extends Module {
 
     private final Setting<Boolean> trustUnknownCouriers = sgGeneral.add(new BoolSetting.Builder()
         .name("trust-unknown-couriers")
-        .description("Aceptar un courier nuevo si envía READY y TPA mientras se espera el pedido.")
+        .description("Aceptar un courier nuevo si envía READY y TPA durante la espera del pedido. "
+            + "Riesgo: cualquiera que imite el mensaje puede teletransportarse a ti y quedar en la lista.")
         .defaultValue(false)
         .build()
     );

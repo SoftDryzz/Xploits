@@ -137,7 +137,18 @@ class OrderMachineTest {
         List<Action> out = machine.onChat(new ChatEvent.Ready("NewCourier1"), placedAt + 11_000);
         assertTrue(sent(out, "/tpy NewCourier1"));
         assertTrue(out.contains(new Action.LearnCourier("NewCourier1")));
+        assertTrue(alerts(out, "NewCourier1"));
         assertEquals(AWAIT_DELIVERY, machine.state());
+    }
+
+    @Test
+    void overwritingPendingTpaNotifiesPreviousRequester() {
+        long placedAt = placeOrder();
+        assertFalse(anySent(machine.onChat(new ChatEvent.Tpa("First1"), placedAt + 1_000)));
+        List<Action> out = machine.onChat(new ChatEvent.Tpa("Second2"), placedAt + 1_500);
+        assertFalse(anySent(out));
+        assertTrue(out.stream().anyMatch(a -> a instanceof Action.Notify n
+            && !n.alert() && n.message().equals("TPA ignorada de First1.")));
     }
 
     @Test
