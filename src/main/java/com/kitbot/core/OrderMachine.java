@@ -182,7 +182,8 @@ public final class OrderMachine {
             out.add(new Action.Notify("Shulkers guardados en el ender chest.", false));
         } else {
             state = State.PAUSED;
-            out.add(new Action.Notify(ok ? "El ender chest está lleno: pausado." : "No se pudo usar el ender chest: pausado.", true));
+            out.add(new Action.Notify(ok ? "No quedan huecos suficientes tras usar el ender chest: pausado."
+                : "No se pudo usar el ender chest: pausado.", true));
         }
         return out;
     }

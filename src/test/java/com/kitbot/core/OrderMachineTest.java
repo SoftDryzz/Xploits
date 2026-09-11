@@ -378,7 +378,7 @@ class OrderMachineTest {
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true));
-        assertTrue(alerts(machine.onDepositResult(true, 3), "lleno"));
+        assertTrue(alerts(machine.onDepositResult(true, 3), "huecos"));
         assertEquals(PAUSED, machine.state());
     }
 
