@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "kitbot",
+  "version": "${version}",
+  "name": "KitBot",
+  "description": "Pide kits a SnifferBuddy en 6b6t y acepta la TPA del courier.",
+  "authors": ["xto2002"],
+  "environment": "client",
+  "entrypoints": {
+    "meteor": ["com.kitbot.KitBotAddon"]
+  },
+  "custom": {
+    "meteor-client:color": "125,78,155"
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": ["${mc_version}"],
+    "meteor-client": "*"
+  }
+}
