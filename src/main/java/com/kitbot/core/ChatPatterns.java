@@ -56,6 +56,9 @@ public final class ChatPatterns {
     }
 
     public static String acceptCommand(String courier) {
+        if (courier == null || courier.isBlank()) {
+            throw new IllegalArgumentException("courier vacío: nunca se envía /tpy a secas.");
+        }
         return "/tpy " + courier;
     }
 

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ChatPatternsTest {
     private static ChatEvent parse(String line) {
@@ -107,5 +108,12 @@ class ChatPatternsTest {
     @Test
     void buildsNamedAcceptCommand() {
         assertEquals("/tpy StormAegis44", ChatPatterns.acceptCommand("StormAegis44"));
+    }
+
+    @Test
+    void acceptCommandRejectsBlankCourier() {
+        assertThrows(IllegalArgumentException.class, () -> ChatPatterns.acceptCommand(null));
+        assertThrows(IllegalArgumentException.class, () -> ChatPatterns.acceptCommand(""));
+        assertThrows(IllegalArgumentException.class, () -> ChatPatterns.acceptCommand("   "));
     }
 }
