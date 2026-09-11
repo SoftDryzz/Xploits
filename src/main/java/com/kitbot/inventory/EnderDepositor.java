@@ -20,11 +20,13 @@ public final class EnderDepositor {
 
     private static final int SCAN_RADIUS = 5;
     private static final long OPEN_TIMEOUT_MS = 5_000;
+    private static final long MOVE_TIMEOUT_MS = 10_000;
 
     private enum Phase { IDLE, OPENING, MOVING }
 
     private Phase phase = Phase.IDLE;
     private long openedAt;
+    private long movingSince;
 
     public static Optional<BlockPos> findInReach(MinecraftClient mc) {
         if (mc.player == null || mc.world == null) return Optional.empty();
@@ -67,11 +69,14 @@ public final class EnderDepositor {
                 return Optional.of(false);
             }
             case OPENING -> {
-                if (mc.player.currentScreenHandler instanceof GenericContainerScreenHandler) phase = Phase.MOVING;
-                else if (now - openedAt > OPEN_TIMEOUT_MS) return finish(mc, false);
+                if (mc.player.currentScreenHandler instanceof GenericContainerScreenHandler) {
+                    phase = Phase.MOVING;
+                    movingSince = now;
+                } else if (now - openedAt > OPEN_TIMEOUT_MS) return finish(mc, false);
                 return Optional.empty();
             }
             case MOVING -> {
+                if (now - movingSince > MOVE_TIMEOUT_MS) return finish(mc, false);
                 if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler handler)) return finish(mc, false);
                 int containerSlots = handler.getRows() * 9; // 27 o 54: en 6b6t el ender chest puede ser doble
                 if (!hasEmptySlot(handler, containerSlots)) return finish(mc, true);
