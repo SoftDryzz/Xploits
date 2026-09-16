@@ -15,6 +15,7 @@ public final class ChatPatterns {
     public static final String KITBOT = "SnifferBuddy";
 
     private static final Pattern ANTI_SPAM_SUFFIX = Pattern.compile(" \\(\\d{1,9}\\)$");
+    private static final Pattern HEAD_PREFIX = Pattern.compile("^\\[[^\\]]{1,40} head\\] ");
     private static final Pattern WHISPER = Pattern.compile("^([A-Za-z0-9_]{3,16}) whispers: (.+)$");
     private static final Pattern TPA = Pattern.compile("^([A-Za-z0-9_]{3,16}) wants to teleport to you\\.$");
     private static final Pattern COOLDOWN = Pattern.compile(
@@ -32,9 +33,10 @@ public final class ChatPatterns {
 
     private ChatPatterns() {}
 
-    /** Quita espacios y el sufijo " (N)" que añade el anti-spam de BetterChat. */
+    /** Quita espacios, el sufijo " (N)" del anti-spam de BetterChat y un único prefijo "[X head] " que 6b6t añade desde 2026-09-16. */
     public static String normalize(String raw) {
-        return ANTI_SPAM_SUFFIX.matcher(raw.strip()).replaceFirst("").strip();
+        String withoutSuffix = ANTI_SPAM_SUFFIX.matcher(raw.strip()).replaceFirst("").strip();
+        return HEAD_PREFIX.matcher(withoutSuffix).replaceFirst("");
     }
 
     public static Optional<ChatEvent> classify(String raw) {

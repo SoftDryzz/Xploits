@@ -116,4 +116,32 @@ class ChatPatternsTest {
         assertThrows(IllegalArgumentException.class, () -> ChatPatterns.acceptCommand(""));
         assertThrows(IllegalArgumentException.class, () -> ChatPatterns.acceptCommand("   "));
     }
+
+    @Test
+    void tpaWithUnknownHeadPrefix() {
+        assertEquals(new ChatEvent.Tpa("xto2002"), parse("[unknown player head] xto2002 wants to teleport to you."));
+    }
+
+    @Test
+    void tpaWithNamedHeadPrefixAndAntiSpamSuffix() {
+        assertEquals(new ChatEvent.Tpa("Dryzzical"), parse("[Dryzzical head] Dryzzical wants to teleport to you. (2)"));
+    }
+
+    @Test
+    void kitbotAndCourierWhispersWithHeadPrefix() {
+        assertEquals(new ChatEvent.Placed(), parse("[unknown player head] SnifferBuddy whispers: Your order has been placed successfully. Please wait for a courier to deliver it."));
+        assertEquals(new ChatEvent.Done("StormAegis44"), parse("[StormAegis44 head] StormAegis44 whispers: Order completed successfully"));
+    }
+
+    @Test
+    void headPrefixDoesNotEnablePublicChatSpoof() {
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Karloss16 » StormAegis44 wants to teleport to you."));
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Mallory » SnifferBuddy whispers: Your order has been placed successfully. Please wait for a courier to deliver it."));
+    }
+
+    @Test
+    void onlyOneLeadingHeadPrefixIsStripped() {
+        assertEquals(Optional.empty(), ChatPatterns.classify("[a head] [b head] Mallory wants to teleport to you."));
+        assertEquals(Optional.empty(), ChatPatterns.classify("hola [x head] Mallory wants to teleport to you."));
+    }
 }
