@@ -144,4 +144,24 @@ class ChatPatternsTest {
         assertEquals(Optional.empty(), ChatPatterns.classify("[a head] [b head] Mallory wants to teleport to you."));
         assertEquals(Optional.empty(), ChatPatterns.classify("hola [x head] Mallory wants to teleport to you."));
     }
+
+    @Test
+    void markerLongerThanANameIsNotStripped() {
+        assertEquals(Optional.empty(), ChatPatterns.classify("[averyveryveryverylongname head] Mallory wants to teleport to you."));
+    }
+
+    @Test
+    void markerWithoutTrailingSpaceIsNotStripped() {
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head]xto2002 wants to teleport to you."));
+    }
+
+    @Test
+    void fakeMarkerInsideWhisperBodyIsIgnored() {
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Mallory whispers: [StormAegis44 head] StormAegis44 whispers: Order completed successfully"));
+    }
+
+    @Test
+    void cooldownWithUnknownHeadPrefix() {
+        assertEquals(new ChatEvent.Cooldown(120_000), parse("[unknown player head] SnifferBuddy whispers: You are on order cooldown. Try again in 2 minutes."));
+    }
 }

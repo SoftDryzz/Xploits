@@ -15,7 +15,7 @@ public final class ChatPatterns {
     public static final String KITBOT = "SnifferBuddy";
 
     private static final Pattern ANTI_SPAM_SUFFIX = Pattern.compile(" \\(\\d{1,9}\\)$");
-    private static final Pattern HEAD_PREFIX = Pattern.compile("^\\[[^\\]]{1,40} head\\] ");
+    private static final Pattern HEAD_PREFIX = Pattern.compile("^\\[(?:unknown player|[A-Za-z0-9_]{3,16}) head\\] ");
     private static final Pattern WHISPER = Pattern.compile("^([A-Za-z0-9_]{3,16}) whispers: (.+)$");
     private static final Pattern TPA = Pattern.compile("^([A-Za-z0-9_]{3,16}) wants to teleport to you\\.$");
     private static final Pattern COOLDOWN = Pattern.compile(
