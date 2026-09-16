@@ -139,6 +139,11 @@ public class KitRequester extends Module {
         return machine == null ? "KitRequester está desactivado." : machine.status(System.currentTimeMillis());
     }
 
+    /** Couriers configurados; AutoTPY los deja en manos de este módulo mientras esté activo. */
+    public Set<String> knownCouriers() {
+        return Set.copyOf(knownCouriers.get());
+    }
+
     public String reload() {
         if (machine == null) return "KitRequester está desactivado.";
         OrderMachine.State state = machine.state();

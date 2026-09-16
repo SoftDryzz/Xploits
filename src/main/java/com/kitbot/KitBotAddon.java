@@ -1,6 +1,7 @@
 package com.kitbot;
 
 import com.kitbot.commands.KitBotCommand;
+import com.kitbot.modules.AutoTpy;
 import com.kitbot.modules.KitRequester;
 import com.mojang.logging.LogUtils;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
@@ -17,6 +18,7 @@ public class KitBotAddon extends MeteorAddon {
     public void onInitialize() {
         LOG.info("Initializing KitBot");
         Modules.get().add(new KitRequester());
+        Modules.get().add(new AutoTpy());
         Commands.add(new KitBotCommand());
     }
 
