@@ -57,15 +57,16 @@ public class AutoTpy extends Module {
             if (!(chatEvent instanceof ChatEvent.Tpa tpa)) return;
             String name = tpa.requester();
             boolean friend = Friends.get().get(name) != null;
+            long now = System.currentTimeMillis();
             AutoTpyPolicy.Decision decision = policy.decide(name, Set.copyOf(users.get()), friend,
-                includeFriends.get(), kitRequesterCouriers(), System.currentTimeMillis());
+                includeFriends.get(), kitRequesterCouriers(), now);
             switch (decision) {
                 case ACCEPT -> {
                     ChatUtils.sendPlayerMsg(ChatPatterns.acceptCommand(name), false);
                     if (notify.get()) info("TPA aceptada de %s.", name);
                 }
                 case NOT_ALLOWED -> {
-                    if (notify.get()) info("TPA ignorada de %s: no está en la lista.", name);
+                    if (notify.get() && policy.shouldReportIgnored(name, now)) info("TPA ignorada de %s: no está en la lista.", name);
                 }
                 case DUPLICATE, HANDLED_BY_KIT_REQUESTER, INVALID -> {
                     // Sin aviso: repetición, courier gestionado por KitRequester o nombre vacío.

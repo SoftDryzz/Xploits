@@ -76,4 +76,34 @@ class AutoTpyPolicyTest {
         assertEquals(AutoTpyPolicy.Decision.ACCEPT, policy.decide("a1b", users, false, true, Set.of(), 0));
         assertEquals(AutoTpyPolicy.Decision.ACCEPT, policy.decide("c2d", users, false, true, Set.of(), 100));
     }
+
+    @Test
+    void clockWentBackwardsIsNotDuplicate() {
+        AutoTpyPolicy policy = new AutoTpyPolicy();
+        Set<String> users = Set.of("xto2002");
+        assertEquals(AutoTpyPolicy.Decision.ACCEPT, policy.decide("xto2002", users, false, true, Set.of(), 5000));
+        assertEquals(AutoTpyPolicy.Decision.ACCEPT, policy.decide("xto2002", users, false, true, Set.of(), 1000));
+    }
+
+    @Test
+    void ignoredNoticeOncePerMinute() {
+        AutoTpyPolicy policy = new AutoTpyPolicy();
+        assertEquals(true, policy.shouldReportIgnored("Mallory", 0));
+        assertEquals(false, policy.shouldReportIgnored("Mallory", 59_999));
+        assertEquals(true, policy.shouldReportIgnored("Mallory", 60_000));
+    }
+
+    @Test
+    void ignoredNoticeIsPerRequester() {
+        AutoTpyPolicy policy = new AutoTpyPolicy();
+        assertEquals(true, policy.shouldReportIgnored("a1b", 0));
+        assertEquals(true, policy.shouldReportIgnored("c2d", 10));
+    }
+
+    @Test
+    void ignoredNoticeAfterClockWentBackwards() {
+        AutoTpyPolicy policy = new AutoTpyPolicy();
+        assertEquals(true, policy.shouldReportIgnored("Mallory", 100_000));
+        assertEquals(true, policy.shouldReportIgnored("Mallory", 5_000));
+    }
 }

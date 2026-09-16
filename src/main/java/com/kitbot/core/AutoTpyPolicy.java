@@ -7,10 +7,13 @@ import java.util.Set;
 /** Decide si AutoTPY acepta una TPA. Guarda la hora de la última aceptación por nombre para no responder dos veces a la misma TPA repetida. */
 public final class AutoTpyPolicy {
     public static final long DUPLICATE_WINDOW_MS = 2_000;
+    public static final long IGNORED_NOTICE_WINDOW_MS = 60_000;
+    private static final int MAX_TRACKED_IGNORED = 256;
 
     public enum Decision { ACCEPT, NOT_ALLOWED, DUPLICATE, HANDLED_BY_KIT_REQUESTER, INVALID }
 
     private final Map<String, Long> lastAccepted = new HashMap<>();
+    private final Map<String, Long> lastIgnoredNotice = new HashMap<>();
 
     /**
      * @param requester       nombre capturado de "X wants to teleport to you."
@@ -27,8 +30,19 @@ public final class AutoTpyPolicy {
         boolean allowed = users.contains(requester) || (includeFriends && isFriend);
         if (!allowed) return Decision.NOT_ALLOWED;
         Long last = lastAccepted.get(requester);
-        if (last != null && now - last < DUPLICATE_WINDOW_MS) return Decision.DUPLICATE;
+        if (last != null && now >= last && now - last < DUPLICATE_WINDOW_MS) return Decision.DUPLICATE;
         lastAccepted.put(requester, now);
         return Decision.ACCEPT;
+    }
+
+    /** true if an "ignored" notice for this requester should be shown now (at most one per name every 60 s). */
+    public boolean shouldReportIgnored(String requester, long now) {
+        Long last = lastIgnoredNotice.get(requester);
+        if (last != null && now >= last && now - last < IGNORED_NOTICE_WINDOW_MS) return false;
+        if (lastIgnoredNotice.size() >= MAX_TRACKED_IGNORED) {
+            lastIgnoredNotice.values().removeIf(t -> now < t || now - t >= IGNORED_NOTICE_WINDOW_MS);
+        }
+        lastIgnoredNotice.put(requester, now);
+        return true;
     }
 }
