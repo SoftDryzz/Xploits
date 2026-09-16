@@ -19,7 +19,12 @@ import meteordevelopment.orbit.EventPriority;
 import java.util.List;
 import java.util.Set;
 
-/** Acepta al instante las TPA de la lista users y, si se quiere, de los amigos de Meteor. Nunca acepta /tpahere. */
+/**
+ * Acepta al instante las TPA de la lista users y, si se quiere, de los amigos de Meteor. Nunca acepta /tpahere.
+ * Si KitRequester también está activo: sus couriers conocidos los gestiona solo KitRequester; y una TPA de tu
+ * lista que llegue mientras KitRequester espera courier la acepta AutoTPY aunque KitRequester avise de que la
+ * ignora (el pedido no se ve afectado).
+ */
 public class AutoTpy extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
