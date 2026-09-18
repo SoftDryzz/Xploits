@@ -1,10 +1,10 @@
-package com.kitbot.core;
+package com.kitbot.kitrequester.core;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
-import static com.kitbot.core.CourierPolicy.shouldAccept;
+import static com.kitbot.kitrequester.core.CourierPolicy.shouldAccept;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

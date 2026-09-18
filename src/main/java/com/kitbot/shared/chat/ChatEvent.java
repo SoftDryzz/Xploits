@@ -1,4 +1,4 @@
-package com.kitbot.core;
+package com.kitbot.shared.chat;
 
 /** Mensaje de chat reconocido. Lo produce {@link ChatPatterns#classify(String)}. */
 public sealed interface ChatEvent {

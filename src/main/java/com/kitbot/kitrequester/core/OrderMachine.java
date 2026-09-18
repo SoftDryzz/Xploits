@@ -1,4 +1,7 @@
-package com.kitbot.core;
+package com.kitbot.kitrequester.core;
+
+import com.kitbot.shared.chat.ChatEvent;
+import com.kitbot.shared.chat.ChatPatterns;
 
 import java.util.ArrayList;
 import java.util.HashMap;

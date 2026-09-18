@@ -1,4 +1,4 @@
-package com.kitbot.core;
+package com.kitbot.kitrequester.core;
 
 /** Lo que OrderMachine pide hacer. KitRequester las ejecuta en orden. */
 public sealed interface Action {

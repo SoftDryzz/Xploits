@@ -1,5 +1,6 @@
-package com.kitbot.core;
+package com.kitbot.kitrequester.core;
 
+import com.kitbot.shared.chat.ChatEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -7,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.kitbot.core.OrderMachine.State.*;
+import static com.kitbot.kitrequester.core.OrderMachine.State.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OrderMachineTest {

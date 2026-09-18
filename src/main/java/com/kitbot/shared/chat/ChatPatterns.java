@@ -1,4 +1,4 @@
-package com.kitbot.core;
+package com.kitbot.shared.chat;
 
 import java.util.List;
 import java.util.Optional;

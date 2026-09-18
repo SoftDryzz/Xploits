@@ -1,4 +1,4 @@
-package com.kitbot.inventory;
+package com.kitbot.kitrequester.inventory;
 
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.block.Blocks;

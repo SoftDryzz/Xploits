@@ -1,6 +1,6 @@
 package com.kitbot.commands;
 
-import com.kitbot.modules.KitRequester;
+import com.kitbot.kitrequester.KitRequester;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.systems.modules.Modules;

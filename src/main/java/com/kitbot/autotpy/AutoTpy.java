@@ -1,9 +1,10 @@
-package com.kitbot.modules;
+package com.kitbot.autotpy;
 
 import com.kitbot.KitBotAddon;
-import com.kitbot.core.AutoTpyPolicy;
-import com.kitbot.core.ChatEvent;
-import com.kitbot.core.ChatPatterns;
+import com.kitbot.autotpy.core.AutoTpyPolicy;
+import com.kitbot.kitrequester.KitRequester;
+import com.kitbot.shared.chat.ChatEvent;
+import com.kitbot.shared.chat.ChatPatterns;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.Setting;

@@ -1,13 +1,13 @@
-package com.kitbot.modules;
+package com.kitbot.kitrequester;
 
 import com.kitbot.KitBotAddon;
-import com.kitbot.core.Action;
-import com.kitbot.core.ChatPatterns;
-import com.kitbot.core.KitQueue;
-import com.kitbot.core.OrderMachine;
-import com.kitbot.core.Progress;
-import com.kitbot.core.ProgressStore;
-import com.kitbot.inventory.EnderDepositor;
+import com.kitbot.kitrequester.core.Action;
+import com.kitbot.kitrequester.core.KitQueue;
+import com.kitbot.kitrequester.core.OrderMachine;
+import com.kitbot.kitrequester.core.Progress;
+import com.kitbot.kitrequester.core.ProgressStore;
+import com.kitbot.kitrequester.inventory.EnderDepositor;
+import com.kitbot.shared.chat.ChatPatterns;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;

@@ -1,8 +1,8 @@
 package com.kitbot;
 
 import com.kitbot.commands.KitBotCommand;
-import com.kitbot.modules.AutoTpy;
-import com.kitbot.modules.KitRequester;
+import com.kitbot.autotpy.AutoTpy;
+import com.kitbot.kitrequester.KitRequester;
 import com.mojang.logging.LogUtils;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
 import meteordevelopment.meteorclient.commands.Commands;

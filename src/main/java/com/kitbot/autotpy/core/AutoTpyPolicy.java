@@ -1,4 +1,4 @@
-package com.kitbot.core;
+package com.kitbot.autotpy.core;
 
 import java.util.HashMap;
 import java.util.Map;

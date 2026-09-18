@@ -1,4 +1,4 @@
-package com.kitbot.core;
+package com.kitbot.kitrequester.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
