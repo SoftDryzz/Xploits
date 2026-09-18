@@ -231,7 +231,7 @@ public class KitRequester extends Module {
             return;
         }
         warning("%s", notify.message());
-        MeteorToast.Builder toast = new MeteorToast.Builder("KitBot").text(notify.message()).icon(Items.SHULKER_BOX);
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(notify.message()).icon(Items.SHULKER_BOX);
         // Meteor build 86's MeteorToast.update() calls mc.getSoundManager().play(customSound) without a null
         // check, and vanilla dereferences it -> NPE on the render thread. Never pass null: mute with a
         // zero-volume instance built the same way Meteor builds its default toast sound (same pitch, volume 0).
