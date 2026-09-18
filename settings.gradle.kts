@@ -9,4 +9,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "kitbot"
+rootProject.name = "xploits"

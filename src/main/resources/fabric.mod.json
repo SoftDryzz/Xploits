@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "kitbot",
+  "id": "xploits",
   "version": "${version}",
-  "name": "KitBot",
-  "description": "Pide kits a SnifferBuddy en 6b6t y acepta la TPA del courier.",
+  "name": "Xploits",
+  "description": "Addon de Meteor Client con módulos para 6b6t: kit-requester y auto-tpy.",
   "authors": ["xto2002"],
   "environment": "client",
   "entrypoints": {
-    "meteor": ["com.kitbot.KitBotAddon"]
+    "meteor": ["com.xploits.XploitsAddon"]
   },
   "custom": {
     "meteor-client:color": "125,78,155"
