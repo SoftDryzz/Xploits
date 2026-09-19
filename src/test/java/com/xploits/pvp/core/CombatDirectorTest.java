@@ -76,9 +76,28 @@ class CombatDirectorTest {
     }
 
     @Test
+    void notEnoughObsidianForSurroundSkipsItInApproach() {
+        CombatSnapshot far = new CombatSnapshot(true, 7.0, false, false, false, false, 2,
+            Map.of(Resource.OBSIDIAN, 2));
+        CombatDirector director = new CombatDirector();
+        Plan plan = settle(director, far);
+
+        assertEquals(CombatState.ACERCAMIENTO, director.state(), "la fase física sigue siendo ACERCAMIENTO");
+        assertFalse(enables(plan, ManagedModules.SURROUND));
+        assertTrue(plan.skipped().stream().anyMatch(s -> s.module().equals(ManagedModules.SURROUND)));
+    }
+
+    @Test
     void justInsideTheApproachDistanceIsSurface() {
         CombatSnapshot near = new CombatSnapshot(true, 5.0, false, false, false, false, 2, FULL);
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), near).state());
+    }
+
+    @Test
+    void atExactlyTheApproachDistanceItIsSurfaceNotApproach() {
+        CombatSnapshot atBoundary = new CombatSnapshot(true, APPROACH, false, false, false, false, 2, FULL);
+        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), atBoundary).state(),
+            "la comparación es estrictamente mayor que: igual al umbral sigue siendo SUPERFICIE");
     }
 
     @Test
@@ -86,6 +105,40 @@ class CombatDirectorTest {
         Plan plan = settle(new CombatDirector(), with(surface(), true, false, false, false));
         assertEquals(CombatState.RODEADO, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_CITY));
+    }
+
+    @Test
+    void aSurroundedTargetCallsForAutoCityAndCrystalAura() {
+        Plan plan = settle(new CombatDirector(), with(surface(), true, false, false, false));
+        assertEquals(CombatState.RODEADO, plan.state());
+        assertTrue(enables(plan, ManagedModules.AUTO_CITY));
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
+    }
+
+    @Test
+    void withoutTotemsInSurroundedTheCrystalAuraIsRefusedButAutoCityGoesUp() {
+        CombatSnapshot noTotems = new CombatSnapshot(true, 3.0, true, false, false, false, 0, FULL);
+        Plan plan = settle(new CombatDirector(), noTotems);
+
+        assertEquals(CombatState.RODEADO, plan.state());
+        assertTrue(enables(plan, ManagedModules.AUTO_CITY));
+        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA),
+            "sin tótems los cristales te matan a ti también en RODEADO");
+        assertTrue(plan.skipped().stream().anyMatch(s -> s.module().equals(ManagedModules.CRYSTAL_AURA)));
+    }
+
+    @Test
+    void withoutAPickaxeAutoCitySkipsItInSurrounded() {
+        Map<Resource, Integer> noPickaxe = Map.of(
+            Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.ANVILS, 3);
+        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, true, false, false, false, 2, noPickaxe);
+
+        Plan plan = settle(new CombatDirector(), snapshot);
+
+        assertEquals(CombatState.RODEADO, plan.state());
+        assertFalse(enables(plan, ManagedModules.AUTO_CITY));
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(plan.skipped().stream().anyMatch(s -> s.module().equals(ManagedModules.AUTO_CITY)));
     }
 
     @Test

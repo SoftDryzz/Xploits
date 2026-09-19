@@ -21,10 +21,15 @@ public final class CombatDirector {
     private int pendingTicks;
     private int ticksInState;
 
+    /**
+     * La fase física en la que está el director ahora mismo. Nunca es {@code SIN_RECURSOS}: esa
+     * fase solo aparece en el {@link Plan} que devuelve {@link #tick}, no aquí (spec §4.2).
+     */
     public CombatState state() {
         return state;
     }
 
+    /** Ticks que lleva el director en la fase actual, contando desde el último cambio. */
     public int ticksInState() {
         return ticksInState;
     }
@@ -37,6 +42,20 @@ public final class CombatDirector {
         ticksInState = 0;
     }
 
+    /**
+     * Ejecuta un ciclo completo del algoritmo (spec §4): clasifica el snapshot en una fase
+     * candidata, decide si el director debe moverse a ella -de inmediato si la candidata es
+     * {@code SIN_COMBATE}, o solo tras sostenerse {@link #CHANGE_HOLD_TICKS} ticks seguidos y con
+     * al menos {@link #MIN_DWELL_TICKS} cumplidos en la fase actual en cualquier otro caso- y
+     * devuelve qué módulos debería tener encendidos, filtrados por los recursos que llevas encima
+     * y por el suelo de seguridad de los tótems (spec §6).
+     *
+     * @param snapshot         la situación de este tick, ya traducida a valores simples (spec §5)
+     * @param approachDistance distancia a partir de la cual el objetivo se considera lejos, no cerca
+     * @return el plan de este tick: la fase con la que se informa (puede ser {@code SIN_RECURSOS}
+     *     aunque la fase física siga siendo otra), los módulos a encender y los que se omitieron
+     *     junto con el motivo
+     */
     public Plan tick(CombatSnapshot snapshot, int approachDistance) {
         CombatState candidate = classify(snapshot, approachDistance);
 
