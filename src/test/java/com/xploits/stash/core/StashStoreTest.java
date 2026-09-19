@@ -61,6 +61,17 @@ class StashStoreTest {
     }
 
     @Test
+    void aSyntacticallyValidFileWithAnUnknownContainerTypeIsReportedAndLeftUntouched(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("index.json");
+        String json = """
+            {"containers":[{"dimension":"overworld","x":0,"y":64,"z":0,"ender":false,"type":"FOO","seenAt":1,"items":{},"nested":[]}]}""";
+        Files.writeString(file, json);
+
+        assertThrows(IOException.class, () -> new StashStore(file).load());
+        assertEquals(json, Files.readString(file));
+    }
+
+    @Test
     void savingLeavesNoTempFileBehind(@TempDir Path dir) throws IOException {
         StashStore store = new StashStore(dir.resolve("index.json"));
         store.save(new StashIndex());

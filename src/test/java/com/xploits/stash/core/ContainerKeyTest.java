@@ -47,4 +47,12 @@ class ContainerKeyTest {
     void idIsStableAndParseableByEye() {
         assertEquals("overworld@-1234,63,5678", ContainerKey.block("overworld", -1234, 63, 5678).id());
     }
+
+    @Test
+    void doubleChestWithSameXOrdersByYWhicheverHalfYouOpen() {
+        assertEquals(ContainerKey.block("overworld", 4, 70, 9),
+            ContainerKey.doubleChest("overworld", 4, 70, 9, 4, 71, 9));
+        assertEquals(ContainerKey.block("overworld", 4, 70, 9),
+            ContainerKey.doubleChest("overworld", 4, 71, 9, 4, 70, 9));
+    }
 }

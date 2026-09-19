@@ -45,8 +45,12 @@ public final class StashStore {
             throw new IOException(file + " está vacío; no se ha modificado.");
         }
 
-        for (ContainerDto container : dto.containers) {
-            index.put(container.toSnapshot());
+        try {
+            for (ContainerDto container : dto.containers) {
+                index.put(container.toSnapshot());
+            }
+        } catch (RuntimeException e) {
+            throw new IOException(file + " está corrupto; no se ha modificado: " + e.getMessage(), e);
         }
         return index;
     }
