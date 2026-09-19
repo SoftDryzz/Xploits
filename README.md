@@ -1,6 +1,6 @@
 # Xploits
 
-Addon de Meteor Client (MC 1.21.11) para 6b6t con cuatro módulos independientes.
+Addon de Meteor Client (MC 1.21.11) para 6b6t con cinco módulos independientes.
 
 | Módulo | Qué hace |
 |---|---|
@@ -8,6 +8,7 @@ Addon de Meteor Client (MC 1.21.11) para 6b6t con cuatro módulos independientes
 | `auto-tpy` | Acepta al instante las TPA de tu lista y de tus amigos de Meteor. |
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
 | `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
+| `auto-pvp` | Dirige los módulos de combate de Meteor según la fase de la pelea, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. |
 
 ## Estructura de paquetes
 
@@ -26,6 +27,8 @@ com/xploits/stash/              Módulo stash-keeper (adaptador a Meteor).
 com/xploits/stash/core/         Índice de contenedores, claves y búsqueda de stash-keeper.
 com/xploits/elytra/             Módulo elytra-replace (adaptador a Meteor).
 com/xploits/elytra/core/        Política de cambio de elytra-replace.
+com/xploits/pvp/                Módulo auto-pvp (adaptador a Meteor).
+com/xploits/pvp/core/           Máquina de fases y catálogo de módulos dirigidos de auto-pvp.
 ```
 
 ## Uso
@@ -34,7 +37,7 @@ com/xploits/elytra/core/        Política de cambio de elytra-replace.
 2. Copiar `build/libs/xploits-0.1.0.jar` a `mods/`.
 3. Los datos (cola de kits y progreso) se guardan en `<instancia>/meteor-client/xploits/`. El índice de
    stash-keeper, por mundo, en `<instancia>/meteor-client/xploits/stash/<mundo>/index.json`.
-4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash` y `.xploits find <ítem>`.
+4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash`, `.xploits find <ítem>` y `.xploits pvp`.
 
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 

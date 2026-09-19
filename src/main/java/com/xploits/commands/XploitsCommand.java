@@ -3,6 +3,7 @@ package com.xploits.commands;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.xploits.kitrequester.KitRequester;
+import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
 import meteordevelopment.meteorclient.commands.Command;
@@ -42,6 +43,10 @@ public class XploitsCommand extends Command {
             find(StringArgumentType.getString(context, "item"));
             return SINGLE_SUCCESS;
         })));
+        builder.then(literal("pvp").executes(context -> {
+            pvp().ifPresent(module -> info("%s", module.status()));
+            return SINGLE_SUCCESS;
+        }));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -128,6 +133,16 @@ public class XploitsCommand extends Command {
         StashKeeper module = Modules.get().get(StashKeeper.class);
         if (module == null) {
             warning("El módulo stash-keeper no está registrado.");
+            return Optional.empty();
+        }
+        return Optional.of(module);
+    }
+
+    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    private Optional<AutoPvp> pvp() {
+        AutoPvp module = Modules.get().get(AutoPvp.class);
+        if (module == null) {
+            warning("El módulo auto-pvp no está registrado.");
             return Optional.empty();
         }
         return Optional.of(module);
