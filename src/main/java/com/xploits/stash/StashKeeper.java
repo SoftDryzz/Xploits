@@ -156,14 +156,18 @@ public class StashKeeper extends Module {
 
     /**
      * Avisa de que esta pantalla de contenedor se abrió sin un candidato válido al que atarla y
-     * por tanto no se va a indexar (típico con lag: el candidato caduca antes de que llegue la
-     * pantalla). Una sola vez por pantalla, usando el syncId para no repetir el aviso en cada tick
-     * mientras siga abierta.
+     * por tanto no se va a indexar. Puede deberse a lag (el candidato caduca antes de que llegue
+     * la pantalla, en cuyo caso reabrir sí funciona) o a que GenericContainerScreenHandler también
+     * respalda dispensadores, goteros y cofres de minecart/barca, que este módulo nunca indexa
+     * (no hay forma de distinguir un caso del otro desde aquí, así que el texto no promete nada
+     * que no se cumpla en ambos). Una sola vez por pantalla, usando el syncId para no repetir el
+     * aviso en cada tick mientras siga abierta.
      */
     private void warnUnindexed(int syncId) {
         if (unindexedWarnedSyncId != null && unindexedWarnedSyncId == syncId) return;
         unindexedWarnedSyncId = syncId;
-        warning("Este contenedor se abrió sin un candidato reconocido y no se ha indexado. Vuelve a abrirlo.");
+        warning("Este contenedor no se ha indexado. Si es un cofre o un barril, puedes volver a abrirlo; "
+            + "los dispensadores, goteros y cofres de minecart o barca no se indexan nunca.");
     }
 
     @EventHandler
