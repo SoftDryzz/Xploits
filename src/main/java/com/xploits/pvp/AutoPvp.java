@@ -5,6 +5,8 @@ import com.xploits.pvp.core.CombatDirector;
 import com.xploits.pvp.core.CombatSnapshot;
 import com.xploits.pvp.core.CombatState;
 import com.xploits.pvp.core.ManagedModule;
+import com.xploits.pvp.core.ManagedModules;
+import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
@@ -18,16 +20,22 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Dirige los módulos de combate de Meteor según la fase de la pelea (spec §1). No ejecuta ninguna
@@ -35,7 +43,13 @@ import java.util.Set;
  */
 public class AutoPvp extends Module {
     private static final int FIRST_SLOT = 0;
-    private static final int LAST_SLOT = 35;
+    /** Último slot de la hotbar (spec §6): lo que ven {@code InvUtils.findInHotbar}/{@code testInHotbar}. */
+    private static final int HOTBAR_LAST_SLOT = 8;
+    /** Último slot del inventario completo (spec §6): lo que ve {@code InvUtils.find}. */
+    private static final int INVENTORY_LAST_SLOT = 35;
+
+    /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
+    private static final List<String> ALWAYS_YOURS = List.of("auto-totem", "auto-armor", "offhand", "auto-weapon");
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -50,25 +64,35 @@ public class AutoPvp extends Module {
 
     private final Setting<Integer> approachDistance = sgGeneral.add(new IntSetting.Builder()
         .name("approach-distance")
-        .description("Más lejos de esta distancia la fase es de acercamiento; más cerca, de superficie.")
+        .description("Más lejos de esta distancia la fase es de acercamiento; más cerca, de superficie. "
+            + "Tope en 6: EntityUtils.getCityBlock() de Meteor no ve rodeado más allá de esa distancia (spec §4.2), "
+            + "y un approach-distance mayor dejaría una franja donde nunca se detecta RODEADO.")
         .defaultValue(6)
-        .range(2, 32)
-        .sliderRange(2, 32)
+        .range(2, 6)
+        .sliderRange(2, 6)
         .build()
     );
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al cambiar de fase.")
+        .description("Aviso local al cambiar de fase. SIN_RECURSOS avisa siempre, lo apagues o no (spec §4.1).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> notifySound = sgGeneral.add(new BoolSetting.Builder()
+        .name("notify-sound")
+        .description("Sonido en el aviso fuerte de SIN_RECURSOS.")
         .defaultValue(true)
         .build()
     );
 
     private final CombatDirector director = new CombatDirector();
-    private final Set<String> owned = new LinkedHashSet<>();
+    private final ModuleLedger ledger = new ModuleLedger();
 
     private Plan lastPlan;
     private String lastTargetName;
+    private Double lastTargetDistance;
     private CombatState lastReported = CombatState.SIN_COMBATE;
 
     public AutoPvp() {
@@ -78,10 +102,12 @@ public class AutoPvp extends Module {
     @Override
     public void onActivate() {
         director.reset();
-        owned.clear();
+        ledger.reset();
         lastPlan = null;
         lastTargetName = null;
+        lastTargetDistance = null;
         lastReported = CombatState.SIN_COMBATE;
+        warnAlreadyActiveManagedModules();
     }
 
     @Override
@@ -100,43 +126,72 @@ public class AutoPvp extends Module {
         lastTargetName = target == null ? null : target.getGameProfile().name();
 
         CombatSnapshot snapshot = snapshot(target);
+        lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
         Plan plan = director.tick(snapshot, approachDistance.get());
         lastPlan = plan;
 
         apply(plan);
-
-        if (notify.get() && plan.state() != lastReported) {
-            info("%s%s", plan.state(), lastTargetName == null ? "" : " · " + lastTargetName);
-        }
+        reportPhaseChange(plan);
         lastReported = plan.state();
     }
 
+    /** Avisa del cambio de fase: SIN_RECURSOS siempre y fuerte (spec §4.1, §6); el resto, si notify lo permite. */
+    private void reportPhaseChange(Plan plan) {
+        if (plan.state() == lastReported) return;
+
+        if (plan.state() == CombatState.SIN_RECURSOS) {
+            warnOutOfResources(plan);
+        } else if (notify.get()) {
+            info("%s%s", plan.state(), lastTargetName == null ? "" : " · " + lastTargetName);
+        }
+    }
+
+    @SuppressWarnings("deprecation") // Uso de AbstractBlock.AbstractBlockState#blocksMovement, igual que EntityUtils.isAboveWater en meteor-client
     private CombatSnapshot snapshot(PlayerEntity target) {
         Inventory inventory = inventory();
         if (target == null) {
             return new CombatSnapshot(false, 0, false, false, false,
                 mc.player.isGliding(), inventory.totems(), inventory.resources());
         }
-        boolean burrowed = !mc.world.getBlockState(target.getBlockPos()).isAir();
+        // "Enterrado" exige que el bloque bloquee el movimiento, no solo que no sea aire (spec
+        // §4.3): !isAir() también es verdadero con agua, hierba alta, nieve, alfombras o
+        // carteles, y sobre todo con la telaraña que pone auto-web en esta misma posición -que es
+        // exactamente el módulo que RODEADO/SUPERFICIE encienden justo antes-. blocksMovement() lo
+        // distingue: la obsidiana y el bedrock de un burrow lo cumplen, la telaraña no (verificado
+        // contra AbstractBlock.AbstractBlockState#blocksMovement en las fuentes de Yarn 1.21.11:
+        // excluye COBWEB explícitamente y en general solo es true para bloques "solid").
+        boolean burrowed = mc.world.getBlockState(target.getBlockPos()).blocksMovement();
         return new CombatSnapshot(true, mc.player.distanceTo(target),
             EntityUtils.getCityBlock(target) != null, burrowed, target.isGliding(),
             mc.player.isGliding(), inventory.totems(), inventory.resources());
     }
 
-    /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para ambas cosas. */
+    /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para todo. */
     private record Inventory(Map<Resource, Integer> resources, int totems) {}
 
     private Inventory inventory() {
         Map<Resource, Integer> counts = new EnumMap<>(Resource.class);
         int totems = mc.player.getOffHandStack().getItem() == Items.TOTEM_OF_UNDYING ? 1 : 0;
-        for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
+        for (int slot = FIRST_SLOT; slot <= INVENTORY_LAST_SLOT; slot++) {
             ItemStack stack = mc.player.getInventory().getStack(slot);
             if (stack.isEmpty()) continue;
             if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
-            if (resource != null) counts.merge(resource, stack.getCount(), Integer::sum);
+            if (resource == null) continue;
+            // CRÍTICO (spec §6): cada recurso solo cuenta en el rango donde el módulo que lo usa
+            // de verdad busca. crystal-aura, auto-trap, surround, auto-anvil y auto-web llaman a
+            // InvUtils.findInHotbar/testInHotbar, que solo miran la hotbar (slots 0-8); auto-city
+            // llama a InvUtils.find, que mira el inventario completo. Contar la mochila para los
+            // cinco primeros diría "tomados" a un módulo que en realidad no ve nada y no hace nada.
+            if (slot > lastSlotFor(resource)) continue;
+            counts.merge(resource, stack.getCount(), Integer::sum);
         }
         return new Inventory(counts, totems);
+    }
+
+    /** El último slot que cuenta para este recurso (spec §6): ver el comentario en {@link #inventory()}. */
+    private static int lastSlotFor(Resource resource) {
+        return resource == Resource.PICKAXE ? INVENTORY_LAST_SLOT : HOTBAR_LAST_SLOT;
     }
 
     private static Resource resourceOf(ItemStack stack) {
@@ -148,33 +203,58 @@ public class AutoPvp extends Module {
         return null;
     }
 
-    /** Enciende lo que pide el plan y apaga lo que tomó y ya no pide. Nunca toca lo que no es suyo. */
+    /**
+     * Enciende lo que pide el plan y apaga lo que tomó y ya no pide; nunca lo que no es suyo (spec
+     * §7). La decisión de propiedad es de {@link ModuleLedger}, lógica pura y con tests propios
+     * (spec §12): aquí solo se reúnen los nombres reales y se ejecuta lo que decide.
+     */
     private void apply(Plan plan) {
         Set<String> wanted = new LinkedHashSet<>();
         for (ManagedModule module : plan.enable()) wanted.add(module.name());
 
-        for (String name : new ArrayList<>(owned)) {
-            Module module = byName(name);
-            if (module == null) { owned.remove(name); continue; }
-            // Si el jugador lo apagó a mano, deja de ser nuestro: manda él (spec §7).
-            if (!module.isActive()) { owned.remove(name); continue; }
-            if (!wanted.contains(name)) { module.disable(); owned.remove(name); }
+        Set<String> active = new LinkedHashSet<>();
+        for (ManagedModule module : ManagedModules.ALL) {
+            Module m = byName(module.name());
+            if (m != null && m.isActive()) active.add(module.name());
         }
 
-        for (String name : wanted) {
+        ModuleLedger.Result result = ledger.apply(director.state(), wanted, active);
+
+        for (String name : result.toDisable()) {
             Module module = byName(name);
-            if (module == null || module.isActive()) continue;
-            module.enable();
-            owned.add(name);
+            if (module != null) module.disable();
+        }
+        for (String name : result.toEnable()) {
+            Module module = byName(name);
+            if (module != null) module.enable();
+        }
+        if (notify.get()) {
+            for (String name : result.newlyReleased()) {
+                info("%s ya no es mío: lo apagaste tú y no lo vuelvo a tomar en esta fase.", name);
+            }
+        }
+    }
+
+    /** I1: si algo que dirige ya estaba encendido al activar auto-pvp, es del jugador y hay que decirlo. */
+    private void warnAlreadyActiveManagedModules() {
+        for (ManagedModule managed : ManagedModules.ALL) {
+            Module module = byName(managed.name());
+            if (module == null || !module.isActive()) continue;
+
+            if (managed.equals(ManagedModules.CRYSTAL_AURA)) {
+                warning("crystal-aura ya estaba encendido: es tuyo, no lo apagaré ni contra un enterrado.");
+            } else {
+                warning("%s ya estaba encendido: es tuyo, no lo tocaré mientras no lo sueltes tú.", managed.name());
+            }
         }
     }
 
     private void releaseAll() {
-        for (String name : new ArrayList<>(owned)) {
+        for (String name : ledger.owned()) {
             Module module = byName(name);
             if (module != null && module.isActive()) module.disable();
         }
-        owned.clear();
+        ledger.reset();
         director.reset();
         lastPlan = null;
         lastReported = CombatState.SIN_COMBATE;
@@ -184,18 +264,63 @@ public class AutoPvp extends Module {
         return Modules.get().get(name);
     }
 
+    /** I5: SIN_RECURSOS es el único aviso fuerte (spec §4.1, §6): chat en warning() y toast con sonido. */
+    private void warnOutOfResources(Plan plan) {
+        String message = outOfResourcesMessage(plan);
+        warning("%s", message);
+
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(message).icon(Items.BARRIER);
+        // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
+        // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que ElytraReplace.
+        if (!notifySound.get()) {
+            toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
+        }
+        mc.getToastManager().add(toast.build());
+    }
+
+    private static String outOfResourcesMessage(Plan plan) {
+        String reasons = plan.skipped().stream()
+            .map(skipped -> skipped.module().name() + " (" + skipped.reason() + ")")
+            .collect(Collectors.joining(", "));
+        if (reasons.isEmpty()) return "Sin recursos: no hay ningún módulo de esta fase que puedas sostener.";
+        return "Sin recursos para pelear: " + reasons + ".";
+    }
+
     public String status() {
         if (!isActive()) return "auto-pvp está apagado.";
         if (lastPlan == null) return "auto-pvp encendido, todavía sin leer la situación.";
 
+        Set<String> owned = ledger.owned();
+
         StringBuilder sb = new StringBuilder();
-        sb.append(lastPlan.state());
-        if (lastTargetName != null) sb.append(" · objetivo ").append(lastTargetName);
+        sb.append(lastPlan.state()).append(" desde hace ").append(director.ticksInState() / 20L).append(" s");
+        if (lastTargetName != null) {
+            sb.append(" · objetivo ").append(lastTargetName);
+            if (lastTargetDistance != null) {
+                sb.append(" a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", lastTargetDistance)).append(" bloques");
+            }
+        }
         sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
         for (Skipped skipped : lastPlan.skipped()) {
             sb.append("\n  no encendido: ").append(skipped.module().name()).append(" — ").append(skipped.reason());
         }
-        sb.append("\n  tuyos:        auto-totem, auto-armor, offhand, auto-weapon (no los toco)");
+        List<String> yours = yourActiveModules(owned);
+        sb.append("\n  tuyos:        ").append(yours.isEmpty() ? "ninguno" : String.join(", ", yours)).append(" (no los toco)");
         return sb.toString();
+    }
+
+    /** I6: qué módulos de combate llevas activos que el director no controla, no una lista fija. */
+    private List<String> yourActiveModules(Set<String> owned) {
+        List<String> result = new ArrayList<>();
+        for (ManagedModule managed : ManagedModules.ALL) {
+            if (owned.contains(managed.name())) continue;
+            Module module = byName(managed.name());
+            if (module != null && module.isActive()) result.add(managed.name());
+        }
+        for (String name : ALWAYS_YOURS) {
+            Module module = byName(name);
+            if (module != null && module.isActive()) result.add(name);
+        }
+        return result;
     }
 }
