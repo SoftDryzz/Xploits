@@ -1,12 +1,13 @@
 # Xploits
 
-Addon de Meteor Client (MC 1.21.11) para 6b6t con tres módulos independientes.
+Addon de Meteor Client (MC 1.21.11) para 6b6t con cuatro módulos independientes.
 
 | Módulo | Qué hace |
 |---|---|
 | `kit-requester` | Pide kits a SnifferBuddy en lotes de hasta 5 y acepta la TPA del courier que los entrega. |
 | `auto-tpy` | Acepta al instante las TPA de tu lista y de tus amigos de Meteor. |
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
+| `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
 
 ## Estructura de paquetes
 
@@ -23,6 +24,8 @@ com/xploits/autotpy/            Módulo auto-tpy (adaptador a Meteor).
 com/xploits/autotpy/core/       Política de aceptación de TPA de auto-tpy.
 com/xploits/stash/              Módulo stash-keeper (adaptador a Meteor).
 com/xploits/stash/core/         Índice de contenedores, claves y búsqueda de stash-keeper.
+com/xploits/elytra/             Módulo elytra-replace (adaptador a Meteor).
+com/xploits/elytra/core/        Política de cambio de elytra-replace.
 ```
 
 ## Uso

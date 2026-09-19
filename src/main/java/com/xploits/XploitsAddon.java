@@ -3,6 +3,7 @@ package com.xploits;
 import com.mojang.logging.LogUtils;
 import com.xploits.autotpy.AutoTpy;
 import com.xploits.commands.XploitsCommand;
+import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.stash.StashKeeper;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
@@ -21,6 +22,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new KitRequester());
         Modules.get().add(new AutoTpy());
         Modules.get().add(new StashKeeper());
+        Modules.get().add(new ElytraReplace());
         Commands.add(new XploitsCommand());
     }
 
