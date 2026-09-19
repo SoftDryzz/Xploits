@@ -21,6 +21,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.ChestBlock;
+import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.ItemStack;
@@ -46,12 +47,14 @@ public class StashKeeper extends Module {
     private static final int MIN_OBSERVE_TICKS = 20;
     /** Ticks que un candidato puede esperar sin pantalla antes de caducar (spec: un segundo de margen). */
     private static final int CANDIDATE_TIMEOUT_TICKS = 20;
+    /** Fallos de guardado seguidos antes de dejar de intentarlo y avisar una sola vez. */
+    private static final int MAX_SAVE_FAILURES = 3;
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local cuando se indexa un contenedor nuevo.")
+        .description("Aviso local cada vez que se vuelca al índice el contenido de un contenedor, sea nuevo o ya conocido.")
         .defaultValue(false)
         .build()
     );
@@ -72,8 +75,13 @@ public class StashKeeper extends Module {
     private int observedTicks;
     private boolean sawContent;
 
+    /** syncId de la última pantalla de contenedor que se abrió sin candidato y ya se avisó. */
+    private Integer unindexedWarnedSyncId;
+
     private boolean dirty;
     private int ticks;
+    private int saveFailures;
+    private boolean saveDisabled;
 
     public StashKeeper() {
         super(XploitsAddon.CATEGORY, "stash-keeper", "Apunta qué hay en tus contenedores. Nunca mueve nada.");
@@ -85,20 +93,29 @@ public class StashKeeper extends Module {
 
     @Override
     public void onActivate() {
+        saveFailures = 0;
+        saveDisabled = false;
         store = new StashStore(storeFile());
         try {
             index = store.load();
         } catch (IOException e) {
-            index = new StashIndex();
+            // No seguir con un índice vacío: eso es lo que borraría el archivo corrupto en el
+            // próximo guardado. Se avisa, se deja el módulo sin store (saveNow() no hace nada sin
+            // uno) y se apaga solo, igual que KitRequester.onActivate() ante el mismo problema.
             error("No se pudo leer el índice: %s", e.getMessage());
+            index = new StashIndex();
+            store = null;
+            toggle();
+            return;
         }
+        dirty = false;
         clearOpen();
     }
 
     @Override
     public void onDeactivate() {
         flushOpen();
-        saveNow();
+        if (dirty) saveNow();
     }
 
     @EventHandler
@@ -108,6 +125,9 @@ public class StashKeeper extends Module {
         if (typeOf(mc.world.getBlockState(pos).getBlock()) != null) {
             candidate = pos.toImmutable();
             candidateTicks = 0;
+        } else {
+            // No es un contenedor: el candidato que hubiera pendiente ya no tiene sentido.
+            candidate = null;
         }
     }
 
@@ -134,6 +154,18 @@ public class StashKeeper extends Module {
         if (++candidateTicks >= CANDIDATE_TIMEOUT_TICKS) candidate = null;
     }
 
+    /**
+     * Avisa de que esta pantalla de contenedor se abrió sin un candidato válido al que atarla y
+     * por tanto no se va a indexar (típico con lag: el candidato caduca antes de que llegue la
+     * pantalla). Una sola vez por pantalla, usando el syncId para no repetir el aviso en cada tick
+     * mientras siga abierta.
+     */
+    private void warnUnindexed(int syncId) {
+        if (unindexedWarnedSyncId != null && unindexedWarnedSyncId == syncId) return;
+        unindexedWarnedSyncId = syncId;
+        warning("Este contenedor se abrió sin un candidato reconocido y no se ha indexado. Vuelve a abrirlo.");
+    }
+
     @EventHandler
     private void onOpenScreen(OpenScreenEvent event) {
         // Al cambiar de pantalla, lo que hubiera en curso ya es definitivo.
@@ -149,11 +181,15 @@ public class StashKeeper extends Module {
             // Pantalla distinta de la foto en curso: solo empieza una nueva si hay un candidato
             // pendiente de un InteractBlockEvent reconocido. Si no, esta pantalla no se toca:
             // evita heredar la clave de otro contenedor (dispensador, gotero, cofre de bote/minecart...).
-            if (candidate == null || mc.world == null) return;
+            if (candidate == null || mc.world == null) {
+                warnUnindexed(handler.syncId);
+                return;
+            }
 
             ContainerType type = typeOf(mc.world.getBlockState(candidate).getBlock());
             if (type == null) {
                 candidate = null;
+                warnUnindexed(handler.syncId);
                 return;
             }
 
@@ -245,12 +281,21 @@ public class StashKeeper extends Module {
     }
 
     private void saveNow() {
-        if (store == null) return;
+        if (store == null || saveDisabled) return;
         try {
             store.save(index);
             dirty = false;
+            saveFailures = 0;
         } catch (IOException e) {
-            error("No se pudo guardar el índice: %s", e.getMessage());
+            saveFailures++;
+            if (saveFailures >= MAX_SAVE_FAILURES) {
+                // Sin esto, un fallo persistente (disco lleno, permisos...) imprimiría una línea
+                // nueva cada SAVE_EVERY_TICKS para siempre. Un solo aviso y se deja de intentar
+                // hasta la próxima activación.
+                saveDisabled = true;
+                error("No se pudo guardar el índice tras %d intentos seguidos (%s). Dejo de intentarlo hasta que reactives stash-keeper.",
+                    saveFailures, e.getMessage());
+            }
         }
     }
 
@@ -258,7 +303,7 @@ public class StashKeeper extends Module {
     private ContainerKey keyFor(BlockPos pos, ContainerType type) {
         if (type == ContainerType.ENDER_CHEST) return ContainerKey.ENDER;
 
-        String dimension = mc.world.getRegistryKey().getValue().getPath();
+        String dimension = mc.world.getRegistryKey().getValue().toString();
         if (mc.world.getBlockEntity(pos) instanceof ChestBlockEntity) {
             BlockPos other = otherHalf(pos);
             if (other != null) {
@@ -274,7 +319,7 @@ public class StashKeeper extends Module {
         var state = mc.world.getBlockState(pos);
         if (!(state.getBlock() instanceof ChestBlock)) return null;
         var chestType = state.get(ChestBlock.CHEST_TYPE);
-        if (chestType == net.minecraft.block.enums.ChestType.SINGLE) return null;
+        if (chestType == ChestType.SINGLE) return null;
         return pos.offset(ChestBlock.getFacing(state));
     }
 
@@ -293,8 +338,7 @@ public class StashKeeper extends Module {
     }
 
     public String status() {
-        long shulkers = index.all().stream().mapToLong(s -> s.nested().size()).sum();
         return String.format("%d contenedores indexados, %d shulkers dentro. Recuerda: los cofres solo entran al abrirlos; los shulkers, con verlos.",
-            index.size(), shulkers);
+            index.size(), index.totalShulkers());
     }
 }
