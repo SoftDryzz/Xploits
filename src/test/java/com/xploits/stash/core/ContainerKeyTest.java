@@ -39,7 +39,6 @@ class ContainerKeyTest {
 
     @Test
     void enderIsOneSingleKey() {
-        assertEquals(ContainerKey.ENDER, ContainerKey.ENDER);
         assertEquals("ender", ContainerKey.ENDER.id());
     }
 
