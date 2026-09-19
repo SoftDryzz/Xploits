@@ -41,4 +41,6 @@ com/xploits/pvp/core/           Máquina de fases y catálogo de módulos dirigi
 
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 
+**Tras un cierre anormal del cliente** (cuelgue, kill del proceso, corte de luz), Meteor persiste el estado de sus módulos tal como quedó. Si `auto-pvp` tenía algo tomado en ese momento, conviene mirar la ClickGUI al volver a entrar: puede haber quedado un módulo encendido que `auto-pvp` creía suyo pero que no va a soltar hasta que vuelva a decidir hacerlo.
+
 - Diseño: [docs/superpowers/specs/2026-09-11-kitrequester-design.md](docs/superpowers/specs/2026-09-11-kitrequester-design.md)
