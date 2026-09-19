@@ -155,4 +155,41 @@ class ElytraPolicyTest {
         policy.reset();
         assertEquals(Decision.SWAP, policy.decide(8, spares, SWAP_BELOW, MIN_SPARE, 1100L).decision());
     }
+
+    @Test
+    void gettingABetterElytraWithoutASwapStillRearmsTheWarning() {
+        // Elytra A al 8 %, sin repuesto: avisa y queda registrado el 8.
+        ElytraPolicy policy = new ElytraPolicy();
+        assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 1000L).decision());
+        assertTrue(policy.shouldWarnNoSpare(8));
+
+        // El jugador se pone una elytra B nueva al 95 %, sin repuestos que cumplan: decide() ve
+        // subir el porcentaje aunque la decisión sea OK, y debe rearmar el aviso.
+        assertEquals(Decision.OK, policy.decide(95, List.of(), SWAP_BELOW, MIN_SPARE, 2000L).decision());
+
+        // B se desgasta hasta el mismo 8 % sin repuestos: es otra elytra, así que debe avisar otra vez.
+        assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 3000L).decision());
+        assertTrue(policy.shouldWarnNoSpare(8));
+    }
+
+    @Test
+    void droppingFurtherWithoutRisingFirstDoesNotWarnAgain() {
+        ElytraPolicy policy = new ElytraPolicy();
+        assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 1000L).decision());
+        assertTrue(policy.shouldWarnNoSpare(8));
+
+        assertEquals(Decision.NO_SPARE, policy.decide(5, List.of(), SWAP_BELOW, MIN_SPARE, 2000L).decision());
+        assertFalse(policy.shouldWarnNoSpare(5));
+    }
+
+    @Test
+    void theThresholdIncludesTheWornPercentageItself() {
+        // swapBelow = 10 y la puesta también al 10 %: la frontera es inclusiva, no es OK.
+        assertEquals(Decision.SWAP, decide(10, List.of(new ElytraCandidate(3, 90)), 1000L).decision());
+    }
+
+    @Test
+    void percentOfRoundsDownOnAnInexactDivision() {
+        assertEquals(66, ElytraPolicy.percentOf(1, 3));
+    }
 }

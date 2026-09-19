@@ -8,6 +8,7 @@ import java.util.List;
  * se avisó de que no hay repuesto, para no avisar veinte veces por segundo.
  */
 public final class ElytraPolicy {
+    /** Ventana tras un SWAP durante la que no se repite el cambio, en milisegundos. */
     public static final long SWAP_COOLDOWN_MS = 2_000;
 
     private static final long NEVER = Long.MIN_VALUE;
@@ -31,13 +32,20 @@ public final class ElytraPolicy {
     /**
      * @param wornPercent durabilidad de la elytra puesta, o null si no lleva ninguna
      * @param candidates  elytras sueltas del inventario
-     * @param swapBelow   cambiar cuando la puesta baje de este porcentaje
+     * @param swapBelow   cambiar cuando la durabilidad de la puesta sea igual o menor que este porcentaje
      * @param minSpare    solo considerar repuestos con al menos este porcentaje
      * @param now         System.currentTimeMillis()
      */
     public Result decide(Integer wornPercent, List<ElytraCandidate> candidates,
                          int swapBelow, int minSpare, long now) {
         if (wornPercent == null) return new Result(Decision.NOT_WEARING, -1, 0);
+
+        // Ver subir el porcentaje de la puesta significa que es otra elytra: rearma el aviso de
+        // "no hay repuesto". Esto se comprueba en cada decide(), no solo cuando se avisa, porque
+        // decide() se llama en cada tick y es lo único que ve el cambio de elytra a tiempo (spec §4.5).
+        if (warnedAtPercent != null && wornPercent > warnedAtPercent) {
+            warnedAtPercent = null;
+        }
 
         // Tras un cambio el slot de pechera tarda algún tick en reflejarlo (spec §4.4).
         // El centinela se comprueba aparte a propósito: "now - Long.MIN_VALUE" desborda a un número
@@ -74,7 +82,12 @@ public final class ElytraPolicy {
         return true;
     }
 
-    /** Rearma el aviso y olvida el último cambio. Se llama al encender el módulo y tras un cambio. */
+    /**
+     * Rearma el aviso y olvida el último cambio. Se llama <strong>solo</strong> al encender el
+     * módulo. No debe llamarse después de un SWAP: eso borraría el {@code lastSwapAt} que
+     * {@code decide()} acaba de fijar y anularía la ventana anti-repetición de
+     * {@link #SWAP_COOLDOWN_MS}, haciendo que el módulo repita el mismo cambio en cada tick.
+     */
     public void reset() {
         lastSwapAt = NEVER;
         warnedAtPercent = null;
