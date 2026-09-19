@@ -101,13 +101,6 @@ class CombatDirectorTest {
     }
 
     @Test
-    void aSurroundedTargetCallsForAutoCity() {
-        Plan plan = settle(new CombatDirector(), with(surface(), true, false, false, false));
-        assertEquals(CombatState.RODEADO, plan.state());
-        assertTrue(enables(plan, ManagedModules.AUTO_CITY));
-    }
-
-    @Test
     void aSurroundedTargetCallsForAutoCityAndCrystalAura() {
         Plan plan = settle(new CombatDirector(), with(surface(), true, false, false, false));
         assertEquals(CombatState.RODEADO, plan.state());
@@ -316,33 +309,73 @@ class CombatDirectorTest {
     }
 
     @Test
-    void obsidianJustBelowMinimumButAboveHalfKeepsAutoTrapEnabledIfItWasOnBefore() {
+    void obsidianBelowMinimumBrieflyKeepsAutoTrapEnabledIfItWasOnBefore() {
         CombatDirector director = new CombatDirector();
         Plan settled = settle(director, withObsidian(64));
         assertTrue(enables(settled, ManagedModules.AUTO_TRAP), "precondición: ya estaba encendido");
 
-        // Mínimo 8, mitad 4: 7 está por debajo del mínimo pero por encima de la mitad.
-        Plan plan = director.tick(withObsidian(7), APPROACH);
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "la histéresis lo mantiene encendido");
+        // Un solo tick por debajo del mínimo (8): la permanencia lo mantiene encendido.
+        Plan plan = director.tick(withObsidian(2), APPROACH);
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "un tick por debajo del mínimo no lo suelta");
     }
 
     @Test
-    void obsidianJustBelowMinimumButAboveHalfDoesNotEnableAutoTrapIfItWasNeverOn() {
+    void obsidianBelowMinimumDoesNotEnableAutoTrapIfItWasNeverOn() {
         // Constante en 7 desde el principio: nunca llegó a encenderse, así que nunca hay historial
-        // que le rebaje el umbral a la mitad.
+        // que le dé permanencia. Sin ella exige el mínimo completo, sin ninguna gracia.
         Plan plan = settle(new CombatDirector(), withObsidian(7));
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "sin historial exige el mínimo completo, no la mitad");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "sin historial exige el mínimo completo");
     }
 
     @Test
-    void belowHalfOfTheMinimumDropsAutoTrapEvenIfItWasOnBefore() {
+    void sustainedShortageDoesNotDropAutoTrapBeforeTheReleaseDwellWindow() {
         CombatDirector director = new CombatDirector();
         Plan settled = settle(director, withObsidian(64));
         assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
 
-        // Mitad de 8 es 4: 3 está por debajo incluso de la mitad.
-        Plan plan = director.tick(withObsidian(3), APPROACH);
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "por debajo de la mitad se suelta");
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS - 1; i++) {
+            plan = director.tick(withObsidian(0), APPROACH);
+        }
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP),
+            "todavía no lleva " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks seguidos por debajo del mínimo");
+    }
+
+    @Test
+    void sustainedShortageDropsAutoTrapAfterTheReleaseDwellWindow() {
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
+
+        // M2: nada fijaba hasta ahora que la permanencia SÍ se abandona pasados los 20 ticks.
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS; i++) {
+            plan = director.tick(withObsidian(0), APPROACH);
+        }
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP),
+            "cumplidos los " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks por debajo del mínimo, se suelta");
+    }
+
+    @Test
+    void aModuleWithAMinimumOfOneAlsoGetsTheReleaseDwellWindow() {
+        // I2: con minimum() == 1, "la mitad" redondeaba al mismo mínimo y no daba ninguna gracia.
+        // auto-web (mínimo 1) es uno de los cuatro módulos a los que esto afectaba.
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, surface());
+        assertTrue(enables(settled, ManagedModules.AUTO_WEB), "precondición: ya estaba encendido");
+
+        Map<Resource, Integer> noWebs = Map.of(
+            Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.ANVILS, 3, Resource.PICKAXE, 1);
+        CombatSnapshot noWebsSnapshot = new CombatSnapshot(true, 3.0, false, false, false, false, 2, noWebs);
+
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS - 1; i++) {
+            plan = director.tick(noWebsSnapshot, APPROACH);
+        }
+        assertTrue(enables(plan, ManagedModules.AUTO_WEB), "todavía dentro de la ventana de gracia");
+
+        plan = director.tick(noWebsSnapshot, APPROACH);
+        assertFalse(enables(plan, ManagedModules.AUTO_WEB), "cumplida la ventana, se suelta aunque el mínimo sea 1");
     }
 
     @Test
@@ -351,8 +384,9 @@ class CombatDirectorTest {
         Plan settled = settle(director, withObsidian(64));
         assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
 
-        // 6 está por debajo del mínimo (8) pero por encima de la mitad (4); 10 está por encima del
-        // mínimo. Sin histéresis, alternar entre los dos apagaría y encendería el módulo en cada tick.
+        // 6 está por debajo del mínimo (8); 10 está por encima. Cada vez que sube al menos al
+        // mínimo, la cuenta de ticks por debajo se reinicia a cero, así que oscilar así nunca
+        // acumula los RESOURCE_RELEASE_DWELL_TICKS seguidos que hacen falta para soltarlo.
         for (int i = 0; i < 20; i++) {
             Plan plan = director.tick(withObsidian(i % 2 == 0 ? 6 : 10), APPROACH);
             assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "tick " + i + ": no debe parpadear");
@@ -367,9 +401,37 @@ class CombatDirectorTest {
 
         director.reset();
 
-        // Si reset() no hubiera olvidado el historial, 7 (por encima de la mitad) seguiría
-        // encendiendo auto-trap aunque el director acabe de arrancar de cero.
+        // Si reset() no hubiera olvidado el historial, 7 (por debajo del mínimo) seguiría
+        // encendiendo auto-trap por la ventana de gracia aunque el director acabe de arrancar de cero.
         Plan plan = settle(director, withObsidian(7));
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "reset() olvida qué estaba encendido");
+    }
+
+    @Test
+    void aOneTickBlipWithoutATargetDoesNotEraseTheResourceMemory() {
+        // I3: previouslyEnabled se sobrescribía con el conjunto vacío al pasar por SIN_COMBATE, que
+        // se entra sin esperar. Un objetivo que sale un tick de rango y vuelve no debe borrar la
+        // memoria de recursos de toda la pelea.
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
+
+        // Ya lleva unos ticks por debajo del mínimo, dentro de la ventana de gracia.
+        for (int i = 0; i < 5; i++) director.tick(withObsidian(2), APPROACH);
+        assertEquals(CombatState.SUPERFICIE, director.state());
+
+        // El objetivo desaparece un instante: la fase física pasa a SIN_COMBATE sin esperar.
+        director.tick(CombatSnapshot.none(), APPROACH);
+        assertEquals(CombatState.SIN_COMBATE, director.state());
+
+        // Vuelve a verse y se sostiene lo bastante para reenganchar SUPERFICIE.
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.CHANGE_HOLD_TICKS; i++) {
+            plan = director.tick(withObsidian(2), APPROACH);
+        }
+        assertEquals(CombatState.SUPERFICIE, director.state());
+
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP),
+            "la memoria de recursos debía seguir viva tras el blip, no exigir el mínimo completo de golpe");
     }
 }

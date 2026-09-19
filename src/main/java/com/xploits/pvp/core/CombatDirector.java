@@ -1,7 +1,9 @@
 package com.xploits.pvp.core;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -16,6 +18,12 @@ public final class CombatDirector {
     public static final int CHANGE_HOLD_TICKS = 10;
     /** Ticks mínimos dentro de una fase antes de poder abandonarla. */
     public static final int MIN_DWELL_TICKS = 20;
+    /**
+     * Ticks seguidos por debajo del mínimo que un módulo ya encendido aguanta antes de soltarse
+     * (spec §6.2). Es una permanencia distinta de {@link #MIN_DWELL_TICKS}: esa es de la fase
+     * entera, esta es del recurso de un módulo concreto.
+     */
+    public static final int RESOURCE_RELEASE_DWELL_TICKS = 20;
 
     private CombatState state = CombatState.SIN_COMBATE;
     private CombatState pending;
@@ -26,8 +34,20 @@ public final class CombatDirector {
      * Los módulos que el {@link Plan} del tick anterior devolvió en {@code enable()}. Es la
      * memoria que hace falta para la histéresis del filtro de recursos (spec §6.2): sin ella,
      * {@code planFor} no podría saber si un módulo ya estaba encendido.
+     *
+     * <p>Solo se olvida en {@link #reset()}. Antes se sobrescribía también al entrar en
+     * {@code SIN_COMBATE}, que se entra sin esperar (spec §4.4): un objetivo que sale un tick de
+     * rango y vuelve borraba toda la memoria de recursos de la pelea entera. Ahora {@link #tick}
+     * deja este campo intacto mientras la fase física es {@code SIN_COMBATE}.
      */
     private Set<ManagedModule> previouslyEnabled = Set.of();
+
+    /**
+     * Ticks seguidos que cada módulo lleva por debajo de su mínimo mientras sigue encendido por
+     * histéresis (spec §6.2). Solo tiene entrada mientras el módulo está en su ventana de gracia;
+     * se borra en cuanto vuelve a tener suficiente o se le acaba la permanencia.
+     */
+    private final Map<ManagedModule, Integer> belowMinimumTicks = new HashMap<>();
 
     /**
      * La fase física en la que está el director ahora mismo. Nunca es {@code SIN_RECURSOS}: esa
@@ -49,6 +69,7 @@ public final class CombatDirector {
         pendingTicks = 0;
         ticksInState = 0;
         previouslyEnabled = Set.of();
+        belowMinimumTicks.clear();
     }
 
     /**
@@ -57,7 +78,7 @@ public final class CombatDirector {
      * {@code SIN_COMBATE}, o solo tras sostenerse {@link #CHANGE_HOLD_TICKS} ticks seguidos y con
      * al menos {@link #MIN_DWELL_TICKS} cumplidos en la fase actual en cualquier otro caso- y
      * devuelve qué módulos debería tener encendidos, filtrados por los recursos que llevas encima
-     * (con histéresis: ver {@link #thresholdFor}) y por el suelo de seguridad de los tótems (spec §6).
+     * (con histéresis: ver {@link #planFor}) y por el suelo de seguridad de los tótems (spec §6).
      *
      * @param snapshot         la situación de este tick, ya traducida a valores simples (spec §5)
      * @param approachDistance distancia a partir de la cual el objetivo se considera lejos, no cerca
@@ -86,8 +107,12 @@ public final class CombatDirector {
         ticksInState++;
         Plan plan = planFor(state, snapshot);
         // Se guarda DESPUÉS de calcular el plan: planFor() necesita ver lo que estaba encendido
-        // en el tick anterior, no lo que acaba de decidir este.
-        previouslyEnabled = Set.copyOf(plan.enable());
+        // en el tick anterior, no lo que acaba de decidir este. Mientras la fase física sea
+        // SIN_COMBATE no se toca: un blip de un solo tick sin objetivo no debe borrar la memoria
+        // de recursos de la pelea que sigue (spec §6.2, corrige el borrado de §4.4).
+        if (state != CombatState.SIN_COMBATE) {
+            previouslyEnabled = Set.copyOf(plan.enable());
+        }
         return plan;
     }
 
@@ -136,12 +161,8 @@ public final class CombatDirector {
                 skipped.add(new Skipped(module, "no llevas tótems"));
                 continue;
             }
-            int have = snapshot.amountOf(module.needs());
-            if (have < thresholdFor(module)) {
-                skipped.add(new Skipped(module, "tienes " + have + ", necesita " + module.minimum()));
-                continue;
-            }
-            enable.add(module);
+            if (hasEnough(module, snapshot, enable)) continue;
+            skipped.add(new Skipped(module, "tienes " + snapshot.amountOf(module.needs()) + ", necesita " + module.minimum()));
         }
 
         // SIN_RECURSOS es cómo se informa, no un sitio donde se vive (spec §4.2).
@@ -152,12 +173,35 @@ public final class CombatDirector {
     /**
      * La histéresis del filtro de recursos (spec §6.2): sin ella, un recurso que se va gastando
      * durante la pelea (la obsidiana de auto-trap, por ejemplo) cruza el mínimo una y otra vez y el
-     * módulo se enciende y se apaga en cada tick. Un módulo que ya estaba encendido el tick anterior
-     * se mantiene con la mitad de su mínimo, redondeando hacia abajo y con un suelo de 1; uno que no
-     * lo estaba necesita el mínimo completo para encenderse.
+     * módulo se enciende y se apaga en cada tick.
+     *
+     * <p>Un módulo que no estaba encendido el tick anterior necesita el mínimo completo, sin
+     * gracia. Uno que sí lo estaba se mantiene encendido mientras lleve menos de
+     * {@link #RESOURCE_RELEASE_DWELL_TICKS} ticks seguidos por debajo del mínimo; al cumplirlos, se
+     * suelta. Es una permanencia en el tiempo, no un umbral partido: con {@code minimum() == 1}
+     * -cuatro de los seis módulos dirigidos- un umbral a la mitad redondeaba al mismo mínimo y no
+     * daba ninguna gracia; contar ticks sirve igual para los seis.
      */
-    private int thresholdFor(ManagedModule module) {
-        if (!previouslyEnabled.contains(module)) return module.minimum();
-        return Math.max(1, module.minimum() / 2);
+    private boolean hasEnough(ManagedModule module, CombatSnapshot snapshot, List<ManagedModule> enable) {
+        int have = snapshot.amountOf(module.needs());
+        if (have >= module.minimum()) {
+            belowMinimumTicks.remove(module);
+            enable.add(module);
+            return true;
+        }
+
+        if (!previouslyEnabled.contains(module)) {
+            belowMinimumTicks.remove(module);
+            return false;
+        }
+
+        int ticksBelow = belowMinimumTicks.merge(module, 1, Integer::sum);
+        if (ticksBelow < RESOURCE_RELEASE_DWELL_TICKS) {
+            enable.add(module);
+            return true;
+        }
+
+        belowMinimumTicks.remove(module);
+        return false;
     }
 }
