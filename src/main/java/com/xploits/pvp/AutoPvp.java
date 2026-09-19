@@ -112,25 +112,31 @@ public class AutoPvp extends Module {
     }
 
     private CombatSnapshot snapshot(PlayerEntity target) {
+        Inventory inventory = inventory();
         if (target == null) {
             return new CombatSnapshot(false, 0, false, false, false,
-                mc.player.isGliding(), totems(), resources());
+                mc.player.isGliding(), inventory.totems(), inventory.resources());
         }
         boolean burrowed = !mc.world.getBlockState(target.getBlockPos()).isAir();
         return new CombatSnapshot(true, mc.player.distanceTo(target),
             EntityUtils.getCityBlock(target) != null, burrowed, target.isGliding(),
-            mc.player.isGliding(), totems(), resources());
+            mc.player.isGliding(), inventory.totems(), inventory.resources());
     }
 
-    private Map<Resource, Integer> resources() {
+    /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para ambas cosas. */
+    private record Inventory(Map<Resource, Integer> resources, int totems) {}
+
+    private Inventory inventory() {
         Map<Resource, Integer> counts = new EnumMap<>(Resource.class);
+        int totems = mc.player.getOffHandStack().getItem() == Items.TOTEM_OF_UNDYING ? 1 : 0;
         for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
             ItemStack stack = mc.player.getInventory().getStack(slot);
             if (stack.isEmpty()) continue;
+            if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
             if (resource != null) counts.merge(resource, stack.getCount(), Integer::sum);
         }
-        return counts;
+        return new Inventory(counts, totems);
     }
 
     private static Resource resourceOf(ItemStack stack) {
@@ -140,15 +146,6 @@ public class AutoPvp extends Module {
         if (stack.getItem() == Items.ANVIL) return Resource.ANVILS;
         if (stack.getItem() == Items.NETHERITE_PICKAXE || stack.getItem() == Items.DIAMOND_PICKAXE) return Resource.PICKAXE;
         return null;
-    }
-
-    private int totems() {
-        int total = 0;
-        if (mc.player.getOffHandStack().getItem() == Items.TOTEM_OF_UNDYING) total++;
-        for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
-            if (mc.player.getInventory().getStack(slot).getItem() == Items.TOTEM_OF_UNDYING) total++;
-        }
-        return total;
     }
 
     /** Enciende lo que pide el plan y apaga lo que tomó y ya no pide. Nunca toca lo que no es suyo. */
