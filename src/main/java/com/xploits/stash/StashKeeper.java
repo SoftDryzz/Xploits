@@ -44,6 +44,8 @@ public class StashKeeper extends Module {
     private static final int SAVE_EVERY_TICKS = 100;
     /** Ticks mínimos observando una pantalla antes de aceptar como buena una lectura vacía. */
     private static final int MIN_OBSERVE_TICKS = 20;
+    /** Ticks que un candidato puede esperar sin pantalla antes de caducar (spec: un segundo de margen). */
+    private static final int CANDIDATE_TIMEOUT_TICKS = 20;
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -58,6 +60,8 @@ public class StashKeeper extends Module {
     private StashStore store;
 
     private BlockPos candidate;
+    /** Ticks que lleva `candidate` pendiente de una pantalla que lo consuma. */
+    private int candidateTicks;
 
     /** syncId del ScreenHandler al que está atada la foto en curso, o null si no hay ninguna. */
     private Integer openSyncId;
@@ -101,17 +105,33 @@ public class StashKeeper extends Module {
     private void onInteractBlock(InteractBlockEvent event) {
         if (mc.world == null) return;
         BlockPos pos = event.result.getBlockPos();
-        if (typeOf(mc.world.getBlockState(pos).getBlock()) != null) candidate = pos.toImmutable();
+        if (typeOf(mc.world.getBlockState(pos).getBlock()) != null) {
+            candidate = pos.toImmutable();
+            candidateTicks = 0;
+        }
     }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
         readOpenScreen();
+        expireCandidate();
 
         if (++ticks >= SAVE_EVERY_TICKS) {
             ticks = 0;
             if (dirty) saveNow();
         }
+    }
+
+    /**
+     * Sin garantía de que el servidor abra la pantalla (denegada, paquete perdido, clic que no
+     * prospera...), un candidato sin consumir se quedaría pendiente para siempre y lo heredaría
+     * la próxima pantalla ajena que se abra (p. ej. un minecart o un bote con cofre, que son
+     * entidades y nunca disparan InteractBlockEvent). Caduca solo, con el mismo margen que ya usa
+     * MIN_OBSERVE_TICKS para las fotos prematuras.
+     */
+    private void expireCandidate() {
+        if (candidate == null) return;
+        if (++candidateTicks >= CANDIDATE_TIMEOUT_TICKS) candidate = null;
     }
 
     @EventHandler
