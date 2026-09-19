@@ -44,6 +44,11 @@ public class XploitsCommand extends Command {
     }
 
     private void find(String query) {
+        if (query.strip().length() < 2) {
+            warning("Hace falta al menos un par de letras para buscar, por ejemplo \"obsi\".");
+            return;
+        }
+
         Set<String> ids = resolve(query);
         if (ids.isEmpty()) {
             warning("No conozco ningún ítem que se parezca a \"%s\".", query);
@@ -56,7 +61,7 @@ public class XploitsCommand extends Command {
             return;
         }
 
-        info("%d sitios con \"%s\":", hits.size(), query);
+        info("%d %s con \"%s\":", hits.size(), hits.size() == 1 ? "sitio" : "sitios", query);
         for (StashIndex.Hit hit : hits.subList(0, Math.min(MAX_HITS, hits.size()))) {
             String where = hit.insideShulker() == null ? "" : " · en shulker \"" + hit.insideShulker() + "\"";
             info("  %s x%d · %s%s · visto %s",
@@ -86,7 +91,8 @@ public class XploitsCommand extends Command {
         if (d.toMinutes() < 1) return "hace un momento";
         if (d.toHours() < 1) return "hace " + d.toMinutes() + " min";
         if (d.toDays() < 1) return "hace " + d.toHours() + " h";
-        return "hace " + d.toDays() + " días";
+        long days = d.toDays();
+        return "hace " + days + (days == 1 ? " día" : " días");
     }
 
     private static KitRequester kitRequester() {
