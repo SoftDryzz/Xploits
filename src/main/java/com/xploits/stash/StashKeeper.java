@@ -42,6 +42,8 @@ import java.util.Map;
  */
 public class StashKeeper extends Module {
     private static final int SAVE_EVERY_TICKS = 100;
+    /** Ticks mínimos observando una pantalla antes de aceptar como buena una lectura vacía. */
+    private static final int MIN_OBSERVE_TICKS = 20;
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -56,10 +58,15 @@ public class StashKeeper extends Module {
     private StashStore store;
 
     private BlockPos candidate;
+
+    /** syncId del ScreenHandler al que está atada la foto en curso, o null si no hay ninguna. */
+    private Integer openSyncId;
     private ContainerKey openKey;
     private ContainerType openType;
     private Map<String, Integer> openItems = new LinkedHashMap<>();
     private List<NestedShulker> openNested = new ArrayList<>();
+    private int observedTicks;
+    private boolean sawContent;
 
     private boolean dirty;
     private int ticks;
@@ -81,7 +88,6 @@ public class StashKeeper extends Module {
             index = new StashIndex();
             error("No se pudo leer el índice: %s", e.getMessage());
         }
-        candidate = null;
         clearOpen();
     }
 
@@ -118,13 +124,27 @@ public class StashKeeper extends Module {
     private void readOpenScreen() {
         if (mc.player == null) return;
         if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler handler)) return;
-        if (candidate == null || mc.world == null) return;
 
-        ContainerType type = typeOf(mc.world.getBlockState(candidate).getBlock());
-        if (type == null) return;
+        if (openSyncId == null || openSyncId != handler.syncId) {
+            // Pantalla distinta de la foto en curso: solo empieza una nueva si hay un candidato
+            // pendiente de un InteractBlockEvent reconocido. Si no, esta pantalla no se toca:
+            // evita heredar la clave de otro contenedor (dispensador, gotero, cofre de bote/minecart...).
+            if (candidate == null || mc.world == null) return;
 
-        openKey = keyFor(candidate, type);
-        openType = type;
+            ContainerType type = typeOf(mc.world.getBlockState(candidate).getBlock());
+            if (type == null) {
+                candidate = null;
+                return;
+            }
+
+            openKey = keyFor(candidate, type);
+            openType = type;
+            openSyncId = handler.syncId;
+            observedTicks = 0;
+            sawContent = false;
+            candidate = null; // el candidato se consume una sola vez
+        }
+
         openItems = new LinkedHashMap<>();
         openNested = new ArrayList<>();
 
@@ -141,6 +161,9 @@ public class StashKeeper extends Module {
                 openItems.merge(id, stack.getCount(), Integer::sum);
             }
         }
+
+        observedTicks++;
+        if (!openItems.isEmpty() || !openNested.isEmpty()) sawContent = true;
     }
 
     /** Lee el contenido de un shulker desde el propio ítem, sin abrirlo (spec §2). */
@@ -158,27 +181,47 @@ public class StashKeeper extends Module {
             ? stack.getName().getString()
             : null;
 
-        return new NestedShulker(slot, name, shulkerId, items);
+        return new NestedShulker(slot, name, colorOf(shulkerId), items);
     }
 
-    /** Vuelca al índice la foto en curso, si hay alguna. */
+    /** Deriva el color del id del ítem (p. ej. "minecraft:purple_shulker_box" -> "purple"). */
+    private static String colorOf(String shulkerId) {
+        String path = shulkerId.startsWith("minecraft:") ? shulkerId.substring("minecraft:".length()) : shulkerId;
+        if (path.equals("shulker_box")) return null; // sin teñir
+        String suffix = "_shulker_box";
+        String color = path.endsWith(suffix) ? path.substring(0, path.length() - suffix.length()) : path;
+        return color.isEmpty() ? null : color;
+    }
+
+    /**
+     * Vuelca al índice la foto en curso, si hay alguna y es fiable: o bien se leyó contenido no
+     * vacío en algún momento, o bien se observó la pantalla el tiempo suficiente para confiar en
+     * que un vacío es real y no una lectura prematura (los paquetes con el contenido llegan
+     * después de abrirse la pantalla, spec §2).
+     */
     private void flushOpen() {
         if (openKey == null) return;
 
-        index.put(new ContainerSnapshot(openKey, openType, System.currentTimeMillis(), openItems, openNested));
-        dirty = true;
-        if (notify.get()) {
-            ChatUtils.info("Xploits", "Indexado %s (%d tipos, %d shulkers).",
-                openKey.id(), openItems.size(), openNested.size());
+        if (sawContent || observedTicks >= MIN_OBSERVE_TICKS) {
+            index.put(new ContainerSnapshot(openKey, openType, System.currentTimeMillis(), openItems, openNested));
+            dirty = true;
+            if (notify.get()) {
+                ChatUtils.info("Xploits", "Indexado %s (%d tipos, %d shulkers).",
+                    openKey.id(), openItems.size(), openNested.size());
+            }
         }
         clearOpen();
     }
 
     private void clearOpen() {
+        candidate = null;
+        openSyncId = null;
         openKey = null;
         openType = null;
         openItems = new LinkedHashMap<>();
         openNested = new ArrayList<>();
+        observedTicks = 0;
+        sawContent = false;
     }
 
     private void saveNow() {
