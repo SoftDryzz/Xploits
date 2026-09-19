@@ -75,4 +75,28 @@ class StashIndexTest {
 
         assertEquals(List.of(), index.find(Set.of("minecraft:diamond")));
     }
+
+    @Test
+    void totalShulkersOfAnEmptyIndexIsZero() {
+        assertEquals(0, new StashIndex().totalShulkers());
+    }
+
+    @Test
+    void totalShulkersOfAContainerWithNoShulkersIsZero() {
+        StashIndex index = new StashIndex();
+        index.put(chest(A, 1000L, Map.of("minecraft:obsidian", 64)));
+
+        assertEquals(0, index.totalShulkers());
+    }
+
+    @Test
+    void totalShulkersSumsAcrossSeveralContainers() {
+        StashIndex index = new StashIndex();
+        index.put(new ContainerSnapshot(A, ContainerType.CHEST, 1000L, Map.of(),
+            List.of(new NestedShulker(0, "one", "purple", Map.of()))));
+        index.put(new ContainerSnapshot(B, ContainerType.CHEST, 1000L, Map.of(),
+            List.of(new NestedShulker(0, "two", "blue", Map.of()), new NestedShulker(1, "three", "red", Map.of()))));
+
+        assertEquals(3, index.totalShulkers());
+    }
 }

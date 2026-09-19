@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Todo lo que el addon ha visto dentro de contenedores (spec §4). Nunca borra: una foto nueva
@@ -40,19 +42,33 @@ public final class StashIndex {
         return byKey.size();
     }
 
-    /** Dónde hay alguno de esos ítems, de más cantidad a menos. Los shulkers se miran por dentro. */
+    /** Total de shulkers vistos, sumando los de todos los contenedores indexados. */
+    public int totalShulkers() {
+        int total = 0;
+        for (ContainerSnapshot snapshot : byKey.values()) total += snapshot.nested().size();
+        return total;
+    }
+
+    /**
+     * Dónde hay alguno de esos ítems, de más cantidad a menos. Los shulkers se miran por dentro.
+     * Recorre los ítems de cada contenedor una vez (coste snapshots × ítems) en vez de recorrer
+     * itemIds por cada snapshot (coste snapshots × ids × shulkers, mucho peor cuando la consulta
+     * resuelve a muchos ids).
+     */
     public List<Hit> find(Collection<String> itemIds) {
+        Set<String> wanted = itemIds instanceof Set<String> set ? set : new HashSet<>(itemIds);
+
         List<Hit> hits = new ArrayList<>();
         for (ContainerSnapshot snapshot : byKey.values()) {
-            for (String itemId : itemIds) {
-                int loose = snapshot.items().getOrDefault(itemId, 0);
-                if (loose > 0) {
-                    hits.add(new Hit(snapshot.key(), snapshot.type(), itemId, loose, snapshot.seenAt(), null));
+            for (Map.Entry<String, Integer> entry : snapshot.items().entrySet()) {
+                if (entry.getValue() > 0 && wanted.contains(entry.getKey())) {
+                    hits.add(new Hit(snapshot.key(), snapshot.type(), entry.getKey(), entry.getValue(), snapshot.seenAt(), null));
                 }
-                for (NestedShulker shulker : snapshot.nested()) {
-                    int inside = shulker.totalOf(itemId);
-                    if (inside > 0) {
-                        hits.add(new Hit(snapshot.key(), snapshot.type(), itemId, inside, snapshot.seenAt(), shulker.identity()));
+            }
+            for (NestedShulker shulker : snapshot.nested()) {
+                for (Map.Entry<String, Integer> entry : shulker.items().entrySet()) {
+                    if (entry.getValue() > 0 && wanted.contains(entry.getKey())) {
+                        hits.add(new Hit(snapshot.key(), snapshot.type(), entry.getKey(), entry.getValue(), snapshot.seenAt(), shulker.identity()));
                     }
                 }
             }
