@@ -2,6 +2,7 @@ package com.xploits.pvp.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * La máquina de estados del combate (spec §4). Decide la fase a partir del snapshot y devuelve qué
@@ -22,6 +23,13 @@ public final class CombatDirector {
     private int ticksInState;
 
     /**
+     * Los módulos que el {@link Plan} del tick anterior devolvió en {@code enable()}. Es la
+     * memoria que hace falta para la histéresis del filtro de recursos (spec §6.2): sin ella,
+     * {@code planFor} no podría saber si un módulo ya estaba encendido.
+     */
+    private Set<ManagedModule> previouslyEnabled = Set.of();
+
+    /**
      * La fase física en la que está el director ahora mismo. Nunca es {@code SIN_RECURSOS}: esa
      * fase solo aparece en el {@link Plan} que devuelve {@link #tick}, no aquí (spec §4.2).
      */
@@ -34,12 +42,13 @@ public final class CombatDirector {
         return ticksInState;
     }
 
-    /** Olvida la fase y los contadores. Se llama al encender el módulo. */
+    /** Olvida la fase, los contadores y qué módulos tenía encendidos. Se llama al encender el módulo. */
     public void reset() {
         state = CombatState.SIN_COMBATE;
         pending = null;
         pendingTicks = 0;
         ticksInState = 0;
+        previouslyEnabled = Set.of();
     }
 
     /**
@@ -48,7 +57,7 @@ public final class CombatDirector {
      * {@code SIN_COMBATE}, o solo tras sostenerse {@link #CHANGE_HOLD_TICKS} ticks seguidos y con
      * al menos {@link #MIN_DWELL_TICKS} cumplidos en la fase actual en cualquier otro caso- y
      * devuelve qué módulos debería tener encendidos, filtrados por los recursos que llevas encima
-     * y por el suelo de seguridad de los tótems (spec §6).
+     * (con histéresis: ver {@link #thresholdFor}) y por el suelo de seguridad de los tótems (spec §6).
      *
      * @param snapshot         la situación de este tick, ya traducida a valores simples (spec §5)
      * @param approachDistance distancia a partir de la cual el objetivo se considera lejos, no cerca
@@ -75,7 +84,11 @@ public final class CombatDirector {
         }
 
         ticksInState++;
-        return planFor(state, snapshot);
+        Plan plan = planFor(state, snapshot);
+        // Se guarda DESPUÉS de calcular el plan: planFor() necesita ver lo que estaba encendido
+        // en el tick anterior, no lo que acaba de decidir este.
+        previouslyEnabled = Set.copyOf(plan.enable());
+        return plan;
     }
 
     private void enter(CombatState next) {
@@ -108,7 +121,7 @@ public final class CombatDirector {
         };
     }
 
-    private static Plan planFor(CombatState state, CombatSnapshot snapshot) {
+    private Plan planFor(CombatState state, CombatSnapshot snapshot) {
         List<ManagedModule> wanted = modulesFor(state);
         if (wanted.isEmpty()) return new Plan(state, List.of(), List.of());
 
@@ -116,13 +129,15 @@ public final class CombatDirector {
         List<Skipped> skipped = new ArrayList<>();
 
         for (ManagedModule module : wanted) {
-            // El suelo de seguridad: una aura de cristales sin tótem te mata a ti (spec §6.1).
+            // El suelo de seguridad: una aura de cristales sin tótem te mata a ti (spec §6.1). Es
+            // binario a propósito, sin histéresis: la cuenta de tótems no oscila sola, baja cuando
+            // te salva uno, y ahí apagar los cristales es lo correcto (spec §6.2).
             if (module.equals(ManagedModules.CRYSTAL_AURA) && snapshot.selfTotems() <= 0) {
                 skipped.add(new Skipped(module, "no llevas tótems"));
                 continue;
             }
             int have = snapshot.amountOf(module.needs());
-            if (have < module.minimum()) {
+            if (have < thresholdFor(module)) {
                 skipped.add(new Skipped(module, "tienes " + have + ", necesita " + module.minimum()));
                 continue;
             }
@@ -132,5 +147,17 @@ public final class CombatDirector {
         // SIN_RECURSOS es cómo se informa, no un sitio donde se vive (spec §4.2).
         CombatState reported = enable.isEmpty() ? CombatState.SIN_RECURSOS : state;
         return new Plan(reported, enable, skipped);
+    }
+
+    /**
+     * La histéresis del filtro de recursos (spec §6.2): sin ella, un recurso que se va gastando
+     * durante la pelea (la obsidiana de auto-trap, por ejemplo) cruza el mínimo una y otra vez y el
+     * módulo se enciende y se apaga en cada tick. Un módulo que ya estaba encendido el tick anterior
+     * se mantiene con la mitad de su mínimo, redondeando hacia abajo y con un suelo de 1; uno que no
+     * lo estaba necesita el mínimo completo para encenderse.
+     */
+    private int thresholdFor(ManagedModule module) {
+        if (!previouslyEnabled.contains(module)) return module.minimum();
+        return Math.max(1, module.minimum() / 2);
     }
 }

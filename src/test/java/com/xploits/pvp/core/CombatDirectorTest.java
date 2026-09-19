@@ -306,4 +306,70 @@ class CombatDirectorTest {
         assertEquals(CombatState.SIN_COMBATE, director.state());
         assertEquals(0, director.ticksInState());
     }
+
+    /** SUPERFICIE con la obsidiana de auto-trap a un valor concreto, el resto del equipo completo. */
+    private static CombatSnapshot withObsidian(int amount) {
+        Map<Resource, Integer> resources = Map.of(
+            Resource.CRYSTALS, 12, Resource.OBSIDIAN, amount,
+            Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
+        return new CombatSnapshot(true, 3.0, false, false, false, false, 2, resources);
+    }
+
+    @Test
+    void obsidianJustBelowMinimumButAboveHalfKeepsAutoTrapEnabledIfItWasOnBefore() {
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP), "precondición: ya estaba encendido");
+
+        // Mínimo 8, mitad 4: 7 está por debajo del mínimo pero por encima de la mitad.
+        Plan plan = director.tick(withObsidian(7), APPROACH);
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "la histéresis lo mantiene encendido");
+    }
+
+    @Test
+    void obsidianJustBelowMinimumButAboveHalfDoesNotEnableAutoTrapIfItWasNeverOn() {
+        // Constante en 7 desde el principio: nunca llegó a encenderse, así que nunca hay historial
+        // que le rebaje el umbral a la mitad.
+        Plan plan = settle(new CombatDirector(), withObsidian(7));
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "sin historial exige el mínimo completo, no la mitad");
+    }
+
+    @Test
+    void belowHalfOfTheMinimumDropsAutoTrapEvenIfItWasOnBefore() {
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
+
+        // Mitad de 8 es 4: 3 está por debajo incluso de la mitad.
+        Plan plan = director.tick(withObsidian(3), APPROACH);
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "por debajo de la mitad se suelta");
+    }
+
+    @Test
+    void obsidianOscillatingAroundTheMinimumDoesNotFlickerAutoTrap() {
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
+
+        // 6 está por debajo del mínimo (8) pero por encima de la mitad (4); 10 está por encima del
+        // mínimo. Sin histéresis, alternar entre los dos apagaría y encendería el módulo en cada tick.
+        for (int i = 0; i < 20; i++) {
+            Plan plan = director.tick(withObsidian(i % 2 == 0 ? 6 : 10), APPROACH);
+            assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "tick " + i + ": no debe parpadear");
+        }
+    }
+
+    @Test
+    void resetForgetsThePreviouslyEnabledModules() {
+        CombatDirector director = new CombatDirector();
+        Plan settled = settle(director, withObsidian(64));
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
+
+        director.reset();
+
+        // Si reset() no hubiera olvidado el historial, 7 (por encima de la mitad) seguiría
+        // encendiendo auto-trap aunque el director acabe de arrancar de cero.
+        Plan plan = settle(director, withObsidian(7));
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "reset() olvida qué estaba encendido");
+    }
 }
