@@ -1,0 +1,72 @@
+package com.xploits.stash.core;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class StashStoreTest {
+    private static final ContainerKey KEY = ContainerKey.block("overworld", -1234, 63, 5678);
+
+    @Test
+    void missingFileLoadsAnEmptyIndex(@TempDir Path dir) throws IOException {
+        assertEquals(0, new StashStore(dir.resolve("index.json")).load().size());
+    }
+
+    @Test
+    void theIndexSurvivesARestart(@TempDir Path dir) throws IOException {
+        StashStore store = new StashStore(dir.resolve("index.json"));
+        StashIndex index = new StashIndex();
+        index.put(new ContainerSnapshot(KEY, ContainerType.CHEST, 1700000000000L,
+            Map.of("minecraft:obsidian", 64),
+            List.of(new NestedShulker(3, "obby", "purple", Map.of("minecraft:obsidian", 1728)))));
+        store.save(index);
+
+        StashIndex loaded = new StashStore(dir.resolve("index.json")).load();
+
+        assertEquals(1, loaded.size());
+        ContainerSnapshot snapshot = loaded.get(KEY).orElseThrow();
+        assertEquals(1792, snapshot.totalOf("minecraft:obsidian"));
+        assertEquals(1700000000000L, snapshot.seenAt());
+        assertEquals("obby", snapshot.nested().get(0).identity());
+        assertEquals(ContainerType.CHEST, snapshot.type());
+    }
+
+    @Test
+    void theEnderChestSurvivesToo(@TempDir Path dir) throws IOException {
+        StashStore store = new StashStore(dir.resolve("index.json"));
+        StashIndex index = new StashIndex();
+        index.put(new ContainerSnapshot(ContainerKey.ENDER, ContainerType.ENDER_CHEST, 1L,
+            Map.of("minecraft:diamond", 5), List.of()));
+        store.save(index);
+
+        assertTrue(new StashStore(dir.resolve("index.json")).load().get(ContainerKey.ENDER).isPresent());
+    }
+
+    @Test
+    void aCorruptFileIsReportedAndLeftUntouched(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("index.json");
+        Files.writeString(file, "{ esto no es json");
+
+        assertThrows(IOException.class, () -> new StashStore(file).load());
+        assertEquals("{ esto no es json", Files.readString(file));
+    }
+
+    @Test
+    void savingLeavesNoTempFileBehind(@TempDir Path dir) throws IOException {
+        StashStore store = new StashStore(dir.resolve("index.json"));
+        store.save(new StashIndex());
+
+        try (var entries = Files.list(dir)) {
+            assertEquals(List.of("index.json"), entries.map(p -> p.getFileName().toString()).sorted().toList());
+        }
+    }
+}
