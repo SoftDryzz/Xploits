@@ -8,6 +8,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CombatSnapshotTest {
     @Test
@@ -44,9 +45,17 @@ class CombatSnapshotTest {
 
     @Test
     void everyManagedModuleDeclaresWhatItNeeds() {
+        // La tabla de la spec §6: qué recurso necesita cada módulo dirigido.
+        assertEquals(Resource.CRYSTALS, ManagedModules.CRYSTAL_AURA.needs());
+        assertEquals(Resource.OBSIDIAN, ManagedModules.AUTO_TRAP.needs());
+        assertEquals(Resource.OBSIDIAN, ManagedModules.SURROUND.needs());
+        assertEquals(Resource.WEBS, ManagedModules.AUTO_WEB.needs());
+        assertEquals(Resource.ANVILS, ManagedModules.AUTO_ANVIL.needs());
+        assertEquals(Resource.PICKAXE, ManagedModules.AUTO_CITY.needs());
+
         for (ManagedModule module : ManagedModules.ALL) {
             assertFalse(module.name().isBlank(), "el módulo debe tener nombre");
-            assertEquals(true, module.minimum() >= 1, module.name() + " debe pedir al menos 1");
+            assertTrue(module.minimum() >= 1, module.name() + " debe pedir al menos 1");
         }
         assertEquals(6, ManagedModules.ALL.size());
     }
