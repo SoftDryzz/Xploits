@@ -14,6 +14,7 @@ import net.minecraft.registry.Registries;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public class XploitsCommand extends Command {
@@ -26,15 +27,15 @@ public class XploitsCommand extends Command {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            info("%s", kitRequester().status());
+            kitRequester().ifPresent(kr -> info("%s", kr.status()));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            info("%s", kitRequester().reload());
+            kitRequester().ifPresent(kr -> info("%s", kr.reload()));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
-            info("%s", keeper().status());
+            keeper().ifPresent(this::stashStatus);
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("find").then(argument("item", StringArgumentType.greedyString()).executes(context -> {
@@ -43,9 +44,25 @@ public class XploitsCommand extends Command {
         })));
     }
 
+    private void stashStatus(StashKeeper stashKeeper) {
+        if (!stashKeeper.isActive()) {
+            warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para consultarlo.");
+            return;
+        }
+        info("%s", stashKeeper.status());
+    }
+
     private void find(String query) {
         if (query.strip().length() < 2) {
             warning("Hace falta al menos un par de letras para buscar, por ejemplo \"obsi\".");
+            return;
+        }
+
+        Optional<StashKeeper> maybeKeeper = keeper();
+        if (maybeKeeper.isEmpty()) return;
+        StashKeeper stashKeeper = maybeKeeper.get();
+        if (!stashKeeper.isActive()) {
+            warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para poder buscar.");
             return;
         }
 
@@ -55,9 +72,10 @@ public class XploitsCommand extends Command {
             return;
         }
 
-        List<StashIndex.Hit> hits = keeper().index().find(ids);
+        List<StashIndex.Hit> hits = stashKeeper.index().find(ids);
         if (hits.isEmpty()) {
-            warning("No he visto \"%s\" en ningún contenedor. Recuerda que un cofre solo entra en el índice cuando lo abres.", query);
+            warning("No he visto \"%s\" en ningún contenedor. Recuerda que un cofre solo entra en el índice cuando lo abres, "
+                + "y que los shulkers que llevas encima tampoco están indexados.", query);
             return;
         }
 
@@ -95,11 +113,23 @@ public class XploitsCommand extends Command {
         return "hace " + days + (days == 1 ? " día" : " días");
     }
 
-    private static KitRequester kitRequester() {
-        return Modules.get().get(KitRequester.class);
+    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    private Optional<KitRequester> kitRequester() {
+        KitRequester module = Modules.get().get(KitRequester.class);
+        if (module == null) {
+            warning("El módulo kit-requester no está registrado.");
+            return Optional.empty();
+        }
+        return Optional.of(module);
     }
 
-    private static StashKeeper keeper() {
-        return Modules.get().get(StashKeeper.class);
+    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    private Optional<StashKeeper> keeper() {
+        StashKeeper module = Modules.get().get(StashKeeper.class);
+        if (module == null) {
+            warning("El módulo stash-keeper no está registrado.");
+            return Optional.empty();
+        }
+        return Optional.of(module);
     }
 }
