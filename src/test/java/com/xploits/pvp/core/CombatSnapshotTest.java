@@ -53,6 +53,16 @@ class CombatSnapshotTest {
         assertEquals(Resource.ANVILS, ManagedModules.AUTO_ANVIL.needs());
         assertEquals(Resource.PICKAXE, ManagedModules.AUTO_CITY.needs());
 
+        // La marca turnsItselfOff() (spec §7): crystal-aura y auto-web solo se apagan porque el
+        // jugador los apaga a mano; los otros cuatro se apagan solos con los ajustes de fábrica de
+        // Meteor. Sin esto, cambiar la marca de cualquiera de los seis no lo detecta ningún test.
+        assertFalse(ManagedModules.CRYSTAL_AURA.turnsItselfOff());
+        assertTrue(ManagedModules.AUTO_TRAP.turnsItselfOff());
+        assertFalse(ManagedModules.AUTO_WEB.turnsItselfOff());
+        assertTrue(ManagedModules.SURROUND.turnsItselfOff());
+        assertTrue(ManagedModules.AUTO_ANVIL.turnsItselfOff());
+        assertTrue(ManagedModules.AUTO_CITY.turnsItselfOff());
+
         for (ManagedModule module : ManagedModules.ALL) {
             assertFalse(module.name().isBlank(), "el módulo debe tener nombre");
             assertTrue(module.minimum() >= 1, module.name() + " debe pedir al menos 1");
