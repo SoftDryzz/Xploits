@@ -18,7 +18,7 @@ import java.util.function.Supplier;
 public final class OrderMachine {
     public enum State { IDLE, AWAIT_CONFIRM, AWAIT_COURIER, AWAIT_DELIVERY, DEPOSIT, PAUSED, FINISHED, ERROR }
 
-    public record Context(boolean inWorld, boolean kitbotOnline, int freeSlots, boolean enderInReach) {}
+    public record Context(boolean inWorld, boolean kitbotOnline, int freeSlots, boolean enderInReach, boolean screenOpen) {}
 
     public record Config(long intervalMs, Set<String> knownCouriers, boolean trustUnknownCouriers, boolean autoEnder) {
         public Config {
@@ -213,7 +213,14 @@ public final class OrderMachine {
         if (now < progress.nextOrderAt || !ctx.kitbotOnline()) return;
 
         if (ctx.freeSlots() < next.size()) {
-            if (config.get().autoEnder() && ctx.enderInReach()) {
+            boolean canAutoDeposit = config.get().autoEnder() && ctx.enderInReach();
+            if (canAutoDeposit && ctx.screenOpen()) {
+                // Hay una pantalla abierta a mano: pedir el depósito ahora es lo que vacía shulkers
+                // en el contenedor equivocado (spec §6). No se avisa ni se pausa, solo se reintenta
+                // en un tick posterior, cuando el jugador haya cerrado lo que tuviera abierto.
+                return;
+            }
+            if (canAutoDeposit) {
                 state = State.DEPOSIT;
                 out.add(new Action.Deposit());
             } else {

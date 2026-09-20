@@ -9,6 +9,7 @@ import com.xploits.kitrequester.core.ProgressStore;
 import com.xploits.kitrequester.inventory.EnderDepositor;
 import com.xploits.shared.chat.ChatPatterns;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -23,6 +24,7 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.item.Items;
+import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.sound.SoundEvents;
 
 import java.io.IOException;
@@ -127,6 +129,18 @@ public class KitRequester extends Module {
         run(machine.tick(now, context()));
     }
 
+    /**
+     * Alimenta a {@link EnderDepositor} con cada interacción de bloque, sea propia (el interact que
+     * {@code start()} manda al ender chest) o del jugador (abrir otro contenedor a mano mientras se
+     * espera respuesta del servidor). Es la única señal para atar la operación a un contenedor
+     * concreto (spec §6); sin ella, EnderDepositor no puede distinguir su ender chest de cualquier
+     * otro que se abra en la misma ventana de tiempo.
+     */
+    @EventHandler
+    private void onInteractBlock(InteractBlockEvent event) {
+        depositor.onInteractBlock(event.result.getBlockPos());
+    }
+
     /** Prioridad máxima para ver el mensaje antes de que BetterChat u otros lo modifiquen (spec §2.3). */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onMessage(ReceiveMessageEvent event) {
@@ -179,13 +193,16 @@ public class KitRequester extends Module {
 
     private OrderMachine.Context context() {
         if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) {
-            return new OrderMachine.Context(false, false, 0, false);
+            return new OrderMachine.Context(false, false, 0, false, false);
         }
         boolean kitbotOnline = mc.getNetworkHandler().getPlayerListEntry(ChatPatterns.KITBOT) != null;
         int free = freeSlots();
         // Solo se busca el ender chest cuando hace falta: son ~1300 bloques por consulta.
         boolean enderInReach = autoEnder.get() && free < KitQueue.MAX_BATCH && EnderDepositor.findInReach(mc).isPresent();
-        return new OrderMachine.Context(true, kitbotOnline, free, enderInReach);
+        // Si ya hay una pantalla abierta a mano, pedir el depósito ahora es justo lo que vacía
+        // shulkers en el contenedor equivocado (spec §6): OrderMachine no debe ni intentarlo.
+        boolean screenOpen = !(mc.player.currentScreenHandler instanceof PlayerScreenHandler);
+        return new OrderMachine.Context(true, kitbotOnline, free, enderInReach, screenOpen);
     }
 
     private int freeSlots() {

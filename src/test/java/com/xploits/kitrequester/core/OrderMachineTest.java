@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OrderMachineTest {
     private static final Set<String> COURIERS = Set.of("StormAegis44", "ValorKnight27", "IronSentri08");
-    private static final OrderMachine.Context OK = new OrderMachine.Context(true, true, 36, false);
+    private static final OrderMachine.Context OK = new OrderMachine.Context(true, true, 36, false, false);
     private static final String ORDER_1_5 = "/w SnifferBuddy !kit 1, 2, 3, 4, 5";
     private static final long T0 = 1_000_000L;
 
@@ -61,13 +61,13 @@ class OrderMachineTest {
     @Test
     void doesNothingOutsideWorld() {
         machine.onJoin(T0);
-        assertTrue(machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(false, false, 0, false)).isEmpty());
+        assertTrue(machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(false, false, 0, false, false)).isEmpty());
     }
 
     @Test
     void waitsWhileKitbotOffline() {
         machine.onJoin(T0);
-        assertFalse(anySent(machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, false, 36, false))));
+        assertFalse(anySent(machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, false, 36, false, false))));
         assertEquals(IDLE, machine.state());
     }
 
@@ -354,7 +354,7 @@ class OrderMachineTest {
     void pausesWhenInventoryFullAndResumes() {
         machine.onJoin(T0);
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
-        List<Action> out = machine.tick(t, new OrderMachine.Context(true, true, 4, false));
+        List<Action> out = machine.tick(t, new OrderMachine.Context(true, true, 4, false, false));
         assertFalse(anySent(out));
         assertTrue(alerts(out, "huecos"));
         assertEquals(PAUSED, machine.state());
@@ -368,17 +368,35 @@ class OrderMachineTest {
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
-        assertTrue(machine.tick(t, new OrderMachine.Context(true, true, 2, true)).contains(new Action.Deposit()));
+        assertTrue(machine.tick(t, new OrderMachine.Context(true, true, 2, true, false)).contains(new Action.Deposit()));
         assertEquals(DEPOSIT, machine.state());
         machine.onDepositResult(true, 36);
         assertEquals(IDLE, machine.state());
     }
 
     @Test
+    void doesNotDepositWhenAScreenIsAlreadyOpen() {
+        // Crítico: pedir el depósito con una pantalla abierta a mano es lo que vacía shulkers en
+        // el contenedor equivocado (spec §6 de kitrequester). OrderMachine debe quedarse quieto,
+        // sin pausar ni avisar, y reintentarlo en un tick posterior.
+        config = new OrderMachine.Config(300_000, COURIERS, false, true);
+        machine.onJoin(T0);
+        long t = T0 + OrderMachine.JOIN_GRACE_MS;
+        List<Action> out = machine.tick(t, new OrderMachine.Context(true, true, 2, true, true));
+        assertTrue(out.isEmpty());
+        assertEquals(IDLE, machine.state());
+
+        // En cuanto se cierra la pantalla, el mismo tick vuelve a intentarlo con normalidad.
+        assertTrue(machine.tick(t + 1_000, new OrderMachine.Context(true, true, 2, true, false))
+            .contains(new Action.Deposit()));
+        assertEquals(DEPOSIT, machine.state());
+    }
+
+    @Test
     void depositThatLeavesNoRoomPauses() {
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
-        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true));
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true, false));
         assertTrue(alerts(machine.onDepositResult(true, 3), "huecos"));
         assertEquals(PAUSED, machine.state());
     }
