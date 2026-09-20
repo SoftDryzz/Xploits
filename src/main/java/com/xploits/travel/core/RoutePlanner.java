@@ -14,6 +14,13 @@ import java.util.List;
  * se acota la amplitud, en ESPIRAL se acota el radio, y SENUELO -que perdería su razón de ser si
  * se acotara, un señuelo que no puede apuntar fuera del eje no es nada- se rechaza en vez de
  * degradarse. Se acota lo que sigue funcionando acotado; se rechaza lo que no.
+ *
+ * <p>La otra cara de esa misma doctrina: una acotación que deja el patrón sin patrón ya no es una
+ * acotación. Si el paso no cabe ni una sola vez en el viaje, o si la amplitud -o el radio- efectiva
+ * cae a cero, la ruta sale recta pese a haberse pedido evasión. Eso se rechaza con motivo en vez de
+ * entregarse en silencio: el jugador que cree ondular y vuela recto dibuja exactamente la línea que
+ * delata su base. Y el motivo dice siempre los números concretos y por dónde se sale del atasco,
+ * porque un rechazo que no dice cómo salir es casi tan malo como el silencio.
  */
 public final class RoutePlanner {
     /**
@@ -71,15 +78,24 @@ public final class RoutePlanner {
             case RECTO -> Route.of(List.of(destinationPoint));
             case ZIGZAG -> {
                 double amplitude = effectiveAmplitude(params.amplitude(), destination, highwayMaxAmplitude);
-                yield Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.period(), amplitude));
+                String rejection = lateralRejection(pattern, distance, params.period(),
+                    params.amplitude(), amplitude, destination.highway());
+                yield rejection != null ? Route.rejected(rejection)
+                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.period(), amplitude));
             }
             case QUIEBRO -> {
                 double amplitude = effectiveAmplitude(params.lateralOffset(), destination, highwayMaxAmplitude);
-                yield Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.legLength(), amplitude));
+                String rejection = lateralRejection(pattern, distance, params.legLength(),
+                    params.lateralOffset(), amplitude, destination.highway());
+                yield rejection != null ? Route.rejected(rejection)
+                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.legLength(), amplitude));
             }
             case ESPIRAL -> {
                 double radiusCap = destination.highway() ? highwayMaxAmplitude : Double.POSITIVE_INFINITY;
-                yield Route.of(spiral(destinationPoint, ux, uz, nx, nz, distance, params, radiusCap));
+                double radius = Math.min(Math.min(params.spiralRadius(), distance / 2.0), radiusCap);
+                yield radius <= 0
+                    ? Route.rejected(flatSpiralRejection(params.spiralRadius(), radius, destination.highway()))
+                    : Route.of(spiral(destinationPoint, ux, uz, nx, nz, radius, params));
             }
             case SENUELO -> Route.of(decoy(origin, destinationPoint, ux, uz, distance, params));
         };
@@ -91,6 +107,94 @@ public final class RoutePlanner {
     }
 
     /**
+     * Las dos maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5- se
+     * queda sin patrón, las dos sin hacer ruido:
+     *
+     * <ul>
+     *   <li><b>No cabe ni un tramo.</b> {@code floor(distancia/paso)} vale 0 en cuanto la distancia
+     *       es menor que el paso, así que no se genera ni un solo punto de patrón. Con el tramo de
+     *       fábrica del QUIEBRO (5000) eso es todo viaje de menos de 5000 bloques.</li>
+     *   <li><b>La amplitud efectiva es cero.</b> Los puntos se generan, pero todos colineales con
+     *       el eje: una recta con waypoints decorativos. No hace falta ningún parámetro absurdo
+     *       para llegar aquí, basta un destino de autopista con el ancho del corredor a 0.</li>
+     * </ul>
+     *
+     * <p>En los dos casos la ruta sale recta pese a haberse pedido evasión, así que se rechaza con
+     * motivo, igual que el señuelo en autopista. Una amplitud acotada a cero ya no "funciona
+     * acotada".
+     *
+     * <p>Un paso de cero o negativo NO entra aquí: {@link #zigzag} lo trata como RECTO para no
+     * explotar a miles de millones de iteraciones, que es una decisión aparte y con su propio test.
+     *
+     * @return el motivo del rechazo, o {@code null} si el patrón se puede dibujar de verdad
+     */
+    private static String lateralRejection(FlightPattern pattern, double distance, double step,
+                                            double configuredAmplitude, double effectiveAmplitude,
+                                            boolean highway) {
+        if (step <= 0) return null;
+        if (distance < step) {
+            return pattern + " con " + stepName(pattern) + " en " + blocks(step) + " bloques no cabe ni una vez"
+                + " en un viaje de " + blocks(distance) + " bloques: no se dibujaría ni una ondulación y la ruta"
+                + " saldría recta sin avisar. Baja " + stepName(pattern) + " por debajo de " + blocks(distance)
+                + " bloques o elige RECTO.";
+        }
+        if (effectiveAmplitude <= 0) {
+            return pattern + " con " + effectiveSideName(pattern) + " en " + blocks(effectiveAmplitude)
+                + " bloques no se aparta del eje: los waypoints saldrían todos sobre la recta, un patrón"
+                + " decorativo. " + howToWiden(sideName(pattern), configuredAmplitude, highway);
+        }
+        return null;
+    }
+
+    /**
+     * La espiral tiene el mismo agujero que ZIGZAG y QUIEBRO, y por coherencia recibe el mismo
+     * trato: con el radio acotado a cero -un destino de autopista con el ancho del corredor a 0-
+     * todos sus pasos caen exactamente sobre el destino, porque {@code stepRadius = radius *
+     * (1 - fraction)} es cero para cualquier {@code fraction}. No es una espiral pequeña: son 37
+     * copias del destino, ni una vuelta, ni un bloque de separación del eje. Una espiral de radio
+     * cero es una recta, así que se rechaza en vez de entregarse.
+     *
+     * @return el motivo del rechazo
+     */
+    private static String flatSpiralRejection(double configuredRadius, double effectiveRadius, boolean highway) {
+        return FlightPattern.ESPIRAL + " con el radio efectivo en " + blocks(effectiveRadius)
+            + " bloques no da ninguna vuelta: todos sus pasos caerían sobre el destino, así que la"
+            + " aproximación sería recta. " + howToWiden("el radio", configuredRadius, highway);
+    }
+
+    /** La salida del atasco, que cambia según de dónde venga el cero: del corredor o del ajuste. */
+    private static String howToWiden(String settingName, double configured, boolean highway) {
+        if (highway && configured > 0) {
+            return "El ajuste vale " + blocks(configured) + " bloques, pero el ancho máximo del corredor de la"
+                + " autopista lo acota a 0: sube ese ancho por encima de 0 o elige RECTO.";
+        }
+        return "Sube " + settingName + " por encima de 0 bloques o elige RECTO.";
+    }
+
+    /** Cómo se llama el paso de cada patrón lateral en los ajustes, para que el motivo sea accionable. */
+    private static String stepName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? "el tramo" : "el periodo";
+    }
+
+    /** Cómo se llama el desvío de cada patrón lateral en los ajustes. */
+    private static String sideName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? "el desvío lateral" : "la amplitud";
+    }
+
+    /** El mismo nombre con el adjetivo concordado, que en español no sale de concatenar. */
+    private static String effectiveSideName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? "el desvío lateral efectivo" : "la amplitud efectiva";
+    }
+
+    /** Sin decimales cuando el valor es entero, para que un motivo no diga "5000.0 bloques". */
+    private static String blocks(double value) {
+        if (!Double.isInfinite(value) && !Double.isNaN(value) && value == Math.rint(value)) {
+            return Long.toString((long) value);
+        }
+        return Double.toString(value);
+    }
+
+    /**
      * ZIGZAG y QUIEBRO comparten esta función; solo cambian el paso y la amplitud que reciben. Para
      * {@code i} de 1 a {@code floor(distance/period)}, el waypoint es {@code origen + u*(i*period) +
      * n*(amplitude * (i impar ? +1 : -1))}. Al final, siempre el destino exacto.
@@ -98,6 +202,10 @@ public final class RoutePlanner {
      * <p>Un paso de cero o negativo no tiene sentido -{@code floor(distancia/paso)} explotaría a
      * miles de millones de iteraciones- así que se trata como RECTO. Un paso positivo pero minúsculo
      * frente a la distancia se acota a {@link #MAX_PATTERN_WAYPOINTS}.
+     *
+     * <p>Los dos casos en que el patrón saldría recto sin avisar -que no quepa ni un tramo, o que la
+     * amplitud efectiva sea cero- se rechazan antes de llegar aquí, en {@link #lateralRejection}, así
+     * que esta función siempre genera al menos un punto de patrón con desvío real.
      */
     private static List<Waypoint> zigzag(Waypoint origin, Waypoint destination, double ux, double uz,
                                           double nx, double nz, double distance, double period, double amplitude) {
@@ -120,6 +228,13 @@ public final class RoutePlanner {
         // significaría haberse pasado del destino, no estar cerca de él, y con floor() bien
         // calculado nunca ocurre; solo aparecería si algo más arriba estuviera roto.
         //
+        // Ese "remaining >= 0" es una afirmación sobre el invariante, no una rama viva: con floor()
+        // el resto cae siempre en [0, paso), y con el tope de MAX_PATTERN_WAYPOINTS solo crece. Así
+        // que quitarlo A SOLAS no cambia ni un waypoint y ningún test puede ponerse en rojo por
+        // ello; lo que sí se nota es quitarlo JUNTO con cambiar floor por ceil, y de eso se ocupa
+        // theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision. No se busque
+        // un test que cubra la guarda por separado: no existe mientras floor() esté bien.
+        //
         // Nunca se omite si eso deja la ruta sin ningún punto de patrón: con un solo tramo, omitirlo
         // dejaría una ruta completamente recta pese a haber pedido un patrón -la misma degradación
         // silenciosa que rechazamos con el señuelo en autopista. Más vale un rodeo entero que un
@@ -136,11 +251,12 @@ public final class RoutePlanner {
     }
 
     /**
-     * El radio se acota a {@code distance/2} si el viaje es más corto -así la espiral nunca
-     * retrocede detrás del origen- y, en autopista, también a {@code radiusCap}
-     * ({@code highwayMaxAmplitude}): el punto más alejado del eje de cualquier paso está a lo sumo a
-     * {@code stepRadius} del destino, y {@code stepRadius <= radius} siempre, así que acotar el
-     * radio de partida basta para que ningún paso de la espiral se salga del corredor.
+     * El radio llega ya acotado desde {@link #plan}: a {@code distance/2} si el viaje es más corto
+     * -así la espiral nunca retrocede detrás del origen- y, en autopista, también al ancho del
+     * corredor ({@code highwayMaxAmplitude}), porque el punto más alejado del eje de cualquier paso
+     * está a lo sumo a {@code stepRadius} del destino, y {@code stepRadius <= radius} siempre, así
+     * que acotar el radio de partida basta para que ningún paso se salga del corredor. Se acota
+     * allí y no aquí para que el rechazo por radio cero y la geometría hablen del mismo número.
      *
      * <p>Se va recto hasta {@code destino - u*radius} -que es exactamente el primer punto de la
      * espiral, con {@code j=0}- y desde ahí se dan {@code spiralTurns} vueltas cerrándose sobre el
@@ -150,8 +266,7 @@ public final class RoutePlanner {
      * mismo punto una radio PASADO el destino.
      */
     private static List<Waypoint> spiral(Waypoint destination, double ux, double uz, double nx, double nz,
-                                          double distance, PatternParams params, double radiusCap) {
-        double radius = Math.min(Math.min(params.spiralRadius(), distance / 2.0), radiusCap);
+                                          double radius, PatternParams params) {
         int steps = spiralSteps(params.spiralTurns());
 
         List<Waypoint> points = new ArrayList<>();

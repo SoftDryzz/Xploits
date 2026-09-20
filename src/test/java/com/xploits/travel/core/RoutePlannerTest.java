@@ -68,13 +68,72 @@ class RoutePlannerTest {
     }
 
     @Test
-    void aPeriodLongerThanTheTripDoesNotProduceAnAbsurdRoute() {
+    void aTripShorterThanASingleLegIsRefusedInsteadOfSilentlyFlyingStraight() {
+        // Antes este test consagraba el fallo: daba por buena una ruta recta y no rechazada.
+        // floor(500/2000)=0, así que no se genera NI UN punto de patrón y la ruta sale recta pese a
+        // haber pedido ZIGZAG. Con el tramo de fábrica del QUIEBRO (5000) eso es todo viaje de menos
+        // de 5000 bloques: el jugador pide evasión, vuela recto y se cree ondulando.
         Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(500, 0), FlightPattern.ZIGZAG,
             PatternParams.defaults(), HIGHWAY_MAX);
 
-        assertFalse(route.isRejected());
-        assertFalse(route.waypoints().isEmpty());
-        assertEquals(500, last(route).x(), TOLERANCE);
+        assertTrue(route.isRejected(), "un viaje más corto que un tramo debe rechazarse, no salir recto");
+        assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+
+        // El motivo tiene que nombrar los dos números y la salida: un rechazo que no dice cómo
+        // desatascarse es casi tan malo como el silencio.
+        String reason = route.rejection();
+        assertTrue(reason.contains("2000"), "el motivo debe decir el periodo configurado: " + reason);
+        assertTrue(reason.contains("500"), "el motivo debe decir la distancia del viaje: " + reason);
+        assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+    }
+
+    @Test
+    void aShortTripWithQuiebroNamesItsOwnSettingNotTheZigzagOne() {
+        // El motivo se lee en el chat y tiene que apuntar al ajuste que el jugador puede tocar: el
+        // QUIEBRO se configura con "tramo", no con "periodo".
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(4_000, 0), FlightPattern.QUIEBRO,
+            PatternParams.defaults(), HIGHWAY_MAX);
+
+        assertTrue(route.isRejected());
+        String reason = route.rejection();
+        assertTrue(reason.contains("tramo"), "el motivo del quiebro debe hablar de su tramo: " + reason);
+        assertTrue(reason.contains("5000"), "el motivo debe decir el tramo configurado: " + reason);
+        assertTrue(reason.contains("4000"), "el motivo debe decir la distancia del viaje: " + reason);
+    }
+
+    @Test
+    void aLateralPatternWithItsAmplitudeCappedToZeroIsRefusedNotDrawnFlat() {
+        // Se llega aquí sin ningún parámetro absurdo: un destino de autopista con el ancho del
+        // corredor a 0 acota la amplitud efectiva a 0. Los puntos se generan -así que la guarda de
+        // "points.size() > 1" no protege de esto- pero caen todos sobre el eje: una recta con
+        // waypoints decorativos.
+        for (FlightPattern pattern : List.of(FlightPattern.ZIGZAG, FlightPattern.QUIEBRO)) {
+            Route route = RoutePlanner.plan(ORIGIN, Destination.highway(Axis.X_PLUS, 50_000), pattern,
+                PatternParams.defaults(), 0);
+
+            assertTrue(route.isRejected(), pattern + " con amplitud efectiva 0 debe rechazarse");
+            assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+            String reason = route.rejection();
+            assertTrue(reason.contains("0"), "el motivo debe decir la amplitud efectiva: " + reason);
+            assertTrue(reason.toLowerCase().contains("corredor"),
+                "el motivo debe señalar de dónde viene el cero: " + reason);
+            assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+        }
+    }
+
+    @Test
+    void aSpiralWithItsRadiusCappedToZeroIsRefusedLikeAFlatZigzag() {
+        // Mismo agujero que el lateral y, por coherencia con la doctrina, mismo trato: con radio 0
+        // los 37 pasos caen exactamente sobre el destino. No es una espiral pequeña, es una recta
+        // con waypoints repetidos.
+        Route route = RoutePlanner.plan(ORIGIN, Destination.highway(Axis.X_PLUS, 50_000), FlightPattern.ESPIRAL,
+            PatternParams.defaults(), 0);
+
+        assertTrue(route.isRejected(), "una espiral de radio 0 es una recta y debe rechazarse");
+        assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+        String reason = route.rejection();
+        assertTrue(reason.contains("1500"), "el motivo debe decir el radio configurado: " + reason);
+        assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
     }
 
     @Test
@@ -262,18 +321,22 @@ class RoutePlannerTest {
 
     @Test
     void theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision() {
-        // Fija las coordenadas exactas, no solo la cuenta: con floor(10500/2000)=5, el resto es 500,
-        // que no dispara la omisión del último punto (500 >= amplitud 200), así que la omisión no
-        // puede enmascarar el operador. Con ceil(10500/2000)=6 el resto sería 10500-12000=-1500 -un
-        // resto negativo, que ya no dispara la omisión tras el fix de más abajo-, así que ceil deja
-        // un séptimo waypoint que floor no tiene: el test cambia de tamaño Y de coordenadas.
-        // Verificado a mano cambiando floor por ceil en el código: este test se pone en rojo (ver
-        // "Ronda de arreglo" en el informe).
-        Route route = plan(Destination.coordinates(10_500, 0), FlightPattern.ZIGZAG);
+        // Fija las coordenadas exactas, no solo la cuenta. La distancia está elegida para que este
+        // test no dependa de la guarda hermana (el "remaining >= 0" de la omisión): con d=10500 el
+        // resto de floor era 500 >= amplitud 200, así que ceil + quitar la guarda daba exactamente
+        // la misma lista que floor y el test se quedaba verde por caridad del vecino.
+        //
+        // Con d=10100 las dos ramas difieren haya guarda o no:
+        //   floor(10100/2000)=5 -> resto 100 < amplitud 200 -> se omite el 5º punto: 4 + destino.
+        //   ceil(10100/2000)=6  -> resto 10100-12000 = -1500, negativo:
+        //       con guarda -> no se omite nada: 6 puntos de patrón + destino = 7.
+        //       sin guarda -> se omite el 6º: 5 puntos de patrón + destino = 6.
+        // Ninguna de las dos coincide con las 5 de floor, ni en tamaño ni en coordenadas.
+        Route route = plan(Destination.coordinates(10_100, 0), FlightPattern.ZIGZAG);
         List<Waypoint> points = route.waypoints();
 
         double[][] expected = {
-            {2_000, 200}, {4_000, -200}, {6_000, 200}, {8_000, -200}, {10_000, 200}, {10_500, 0},
+            {2_000, 200}, {4_000, -200}, {6_000, 200}, {8_000, -200}, {10_100, 0},
         };
         assertEquals(expected.length, points.size(), "número de waypoints");
         for (int i = 0; i < expected.length; i++) {
@@ -303,6 +366,24 @@ class RoutePlannerTest {
 
         assertEquals(2, points.size(), "el único punto lateral debe conservarse, no degradar a línea recta");
         assertEquals(800, Math.abs(points.get(0).z()), TOLERANCE);
+    }
+
+    @Test
+    void aDestinationAtAnExactMultipleOfTheLegPaysTheFullOutAndBackOnPurpose() {
+        // El peaje consciente de la decisión anterior, clavado para que nadie lo "arregle" sin
+        // saberlo: legLength=5000 y d=5000 dan un solo punto de patrón (i=1) que cae a la altura
+        // EXACTA del destino, resto 0. Son 800 bloques de ida y 800 de vuelta sin ningún avance ni
+        // ondulación. La omisión no actúa porque dejaría la ruta sin un solo punto de patrón, y
+        // más vale un rodeo entero que un viaje recto que el jugador cree ondulado.
+        Route route = plan(Destination.coordinates(5_000, 0), FlightPattern.QUIEBRO);
+        List<Waypoint> points = route.waypoints();
+
+        assertFalse(route.isRejected(), "el tramo cabe justo una vez: hay patrón, no hay nada que rechazar");
+        assertEquals(2, points.size());
+        assertEquals(5_000, points.get(0).x(), TOLERANCE, "el desvío cae a la altura exacta del destino");
+        assertEquals(800, points.get(0).z(), TOLERANCE);
+        assertEquals(5_000, points.get(1).x(), TOLERANCE);
+        assertEquals(0, points.get(1).z(), TOLERANCE);
     }
 
     @Test
