@@ -261,12 +261,25 @@ class RoutePlannerTest {
     }
 
     @Test
-    void theWaypointCountMatchesFloorOfDistanceOverPeriodForANonExactDivision() {
-        // Cambiar Math.floor por Math.ceil deja todos los demás tests en verde: ninguno fija la
-        // cuenta exacta con una división no exacta. floor(10500/2000) = 5 puntos de patrón, más el
-        // destino = 6. Con ceil serían 7, y la ruta se pasaría del destino antes de corregir.
+    void theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision() {
+        // Fija las coordenadas exactas, no solo la cuenta: con floor(10500/2000)=5, el resto es 500,
+        // que no dispara la omisión del último punto (500 >= amplitud 200), así que la omisión no
+        // puede enmascarar el operador. Con ceil(10500/2000)=6 el resto sería 10500-12000=-1500 -un
+        // resto negativo, que ya no dispara la omisión tras el fix de más abajo-, así que ceil deja
+        // un séptimo waypoint que floor no tiene: el test cambia de tamaño Y de coordenadas.
+        // Verificado a mano cambiando floor por ceil en el código: este test se pone en rojo (ver
+        // "Ronda de arreglo" en el informe).
         Route route = plan(Destination.coordinates(10_500, 0), FlightPattern.ZIGZAG);
-        assertEquals(6, route.waypoints().size());
+        List<Waypoint> points = route.waypoints();
+
+        double[][] expected = {
+            {2_000, 200}, {4_000, -200}, {6_000, 200}, {8_000, -200}, {10_000, 200}, {10_500, 0},
+        };
+        assertEquals(expected.length, points.size(), "número de waypoints");
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i][0], points.get(i).x(), TOLERANCE, "waypoint " + i + " (x)");
+            assertEquals(expected[i][1], points.get(i).z(), TOLERANCE, "waypoint " + i + " (z)");
+        }
     }
 
     @Test
@@ -276,6 +289,20 @@ class RoutePlannerTest {
         // habría 6 puntos (5 de patrón + destino); con ella, 5.
         Route route = plan(Destination.coordinates(10_000, 0), FlightPattern.ZIGZAG);
         assertEquals(5, route.waypoints().size(), "el último rodeo, pegado al destino, debe omitirse");
+    }
+
+    @Test
+    void aShortQuiebroTripKeepsItsOnlyLateralPointInsteadOfDegradingToAStraightLine() {
+        // legLength=5000, lateralOffset=800 (fábrica), viaje de 5200: el único punto de patrón
+        // (i=1) cae con un resto de 200, dentro de la ventana de omisión (200 < 800). Omitirlo
+        // dejaría una ruta completamente recta pese a haber pedido QUIEBRO -degradación silenciosa,
+        // la misma que rechazamos con el señuelo en autopista. La ventana es del 16% del tramo, no
+        // un residuo insignificante: el punto debe conservarse.
+        Route route = plan(Destination.coordinates(5_200, 0), FlightPattern.QUIEBRO);
+        List<Waypoint> points = route.waypoints();
+
+        assertEquals(2, points.size(), "el único punto lateral debe conservarse, no degradar a línea recta");
+        assertEquals(800, Math.abs(points.get(0).z()), TOLERANCE);
     }
 
     @Test

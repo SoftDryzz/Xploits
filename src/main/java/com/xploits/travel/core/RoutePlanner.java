@@ -116,9 +116,19 @@ public final class RoutePlanner {
         // El último punto lateral es un desvío en balde si ya cae a la altura del destino: te
         // aparta la amplitud entera sin ganar ningún avance, justo al final del viaje, que es donde
         // menos fuegos artificiales quedan. Se omite cuando lo que falta por recorrer en línea recta
-        // es menor que la propia amplitud del desvío.
-        if (!points.isEmpty() && distance - steps * period < amplitude) {
-            points.remove(points.size() - 1);
+        // es menor que la propia amplitud del desvío -nunca cuando ese resto es negativo: eso
+        // significaría haberse pasado del destino, no estar cerca de él, y con floor() bien
+        // calculado nunca ocurre; solo aparecería si algo más arriba estuviera roto.
+        //
+        // Nunca se omite si eso deja la ruta sin ningún punto de patrón: con un solo tramo, omitirlo
+        // dejaría una ruta completamente recta pese a haber pedido un patrón -la misma degradación
+        // silenciosa que rechazamos con el señuelo en autopista. Más vale un rodeo entero que un
+        // viaje recto que el jugador cree ondulado.
+        if (points.size() > 1) {
+            double remaining = distance - steps * period;
+            if (remaining >= 0 && remaining < amplitude) {
+                points.remove(points.size() - 1);
+            }
         }
 
         points.add(destination);
