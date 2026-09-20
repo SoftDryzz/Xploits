@@ -68,6 +68,38 @@ class BorrowedModuleTest {
         assertEquals(Action.NADA, module.release(false, true));
     }
 
+    /**
+     * Los dos tests de arriba NO protegen la regla del movimiento a mano, aunque lo parezca: en
+     * ambos el jugador devuelve el módulo a su estado de despegue, así que la comprobación
+     * siguiente -"ya está donde estaba"- devuelve NADA por su cuenta y el test pasa igual con la
+     * regla que sin ella. Se comprobó borrando la línea: la suite entera seguía en verde.
+     *
+     * Los dos de aquí abajo son los únicos casos que las distinguen: el módulo se queda en el
+     * estado que la preparación NO tocó, y el jugador lo mueve al contrario. Sin la regla, el
+     * aterrizaje deshace el cambio del jugador y encima informa de que restauró el entorno.
+     */
+    @Test
+    void aManualMoveWinsEvenWhenThePreparationNeverTouchedTheModule() {
+        BorrowedModule module = elytraFly();
+        assertEquals(Action.NADA, module.take(false), "ya estaba apagado: la preparación no lo toca");
+
+        // El jugador enciende elytra-fly a mano a mitad de vuelo. Al aterrizar es suyo, no nuestro:
+        // sin la regla se apagaría, porque la anotación dice "estaba apagado".
+        assertEquals(Action.NADA, module.release(true, true));
+        assertFalse(module.hasPending(), "no hay nada que devolver: el módulo es del jugador");
+    }
+
+    @Test
+    void aManualMoveWinsEvenWhenThePreparationNeverTouchedTheModuleTheOtherWayRound() {
+        BorrowedModule module = elytraReplace();
+        assertEquals(Action.NADA, module.take(true), "ya estaba encendido: la preparación no lo toca");
+
+        // El jugador apaga elytra-replace a mano durante el vuelo. Sin la regla se volvería a
+        // encender al aterrizar, porque la anotación dice "estaba encendido".
+        assertEquals(Action.NADA, module.release(false, true));
+        assertFalse(module.hasPending());
+    }
+
     @Test
     void releasingWithoutHavingTakenDoesNothing() {
         BorrowedModule module = elytraFly();
