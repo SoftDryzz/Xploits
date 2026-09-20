@@ -43,9 +43,16 @@ import java.util.stream.Collectors;
  */
 public class AutoPvp extends Module {
     private static final int FIRST_SLOT = 0;
-    /** Último slot de la hotbar (spec §6): lo que ven {@code InvUtils.findInHotbar}/{@code testInHotbar}. */
+    /**
+     * Último slot de la hotbar (spec §6): lo que ven {@code InvUtils.findInHotbar}/{@code
+     * testInHotbar}, y también el único rango que cuenta para {@code PICKAXE} — {@code AutoCity}
+     * busca el pico con {@code InvUtils.find} sobre todo el inventario, pero rechaza el resultado
+     * si {@code !isHotbar()} y se apaga solo con un error (spec §6). Contar la mochila para el pico
+     * era sobreestimar exactamente el mismo fallo silencioso que este rango corrige para los otros
+     * cinco.
+     */
     private static final int HOTBAR_LAST_SLOT = 8;
-    /** Último slot del inventario completo (spec §6): lo que ve {@code InvUtils.find}. */
+    /** Último slot del inventario completo: hasta dónde llega el barrido único de {@link #inventory()}. */
     private static final int INVENTORY_LAST_SLOT = 35;
 
     /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
@@ -178,20 +185,16 @@ public class AutoPvp extends Module {
             if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
             if (resource == null) continue;
-            // CRÍTICO (spec §6): cada recurso solo cuenta en el rango donde el módulo que lo usa
-            // de verdad busca. crystal-aura, auto-trap, surround, auto-anvil y auto-web llaman a
-            // InvUtils.findInHotbar/testInHotbar, que solo miran la hotbar (slots 0-8); auto-city
-            // llama a InvUtils.find, que mira el inventario completo. Contar la mochila para los
-            // cinco primeros diría "tomados" a un módulo que en realidad no ve nada y no hace nada.
-            if (slot > lastSlotFor(resource)) continue;
+            // CRÍTICO (spec §6): ningún recurso cuenta fuera de la hotbar. Los cinco módulos que
+            // buscan con InvUtils.findInHotbar/testInHotbar ya lo exigen porque no miran más lejos;
+            // auto-city busca el pico con InvUtils.find sobre todo el inventario, pero rechaza el
+            // resultado si no está en la hotbar (FindItemResult.isHotbar()) y se apaga solo con un
+            // error. Contar la mochila para el pico diría "tomados" a un módulo que se apaga solo
+            // en su propio onActivate/onTick.
+            if (slot > HOTBAR_LAST_SLOT) continue;
             counts.merge(resource, stack.getCount(), Integer::sum);
         }
         return new Inventory(counts, totems);
-    }
-
-    /** El último slot que cuenta para este recurso (spec §6): ver el comentario en {@link #inventory()}. */
-    private static int lastSlotFor(Resource resource) {
-        return resource == Resource.PICKAXE ? INVENTORY_LAST_SLOT : HOTBAR_LAST_SLOT;
     }
 
     private static Resource resourceOf(ItemStack stack) {
