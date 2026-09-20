@@ -30,6 +30,7 @@ public final class BaritoneScript {
      * está vacía.
      */
     public static List<String> preparation(String prefix, FlightSettings settings) {
+        requirePrefix(prefix);
         List<String> commands = new ArrayList<>();
         commands.add(set(prefix, "elytraAutoSwap", "false"));
         commands.add(set(prefix, "elytraTermsAccepted", "true"));
@@ -48,8 +49,22 @@ public final class BaritoneScript {
      * Los comandos que devuelven el vuelo al reposo: {@code elytraAutoSwap true} -deshace el cambio
      * propio de Baritone- y los cuatro ajustes del jugador a sus valores de reposo. La semilla no se
      * restaura: nunca fue un cambio nuestro, solo un dato que le pasamos a Baritone si lo teníamos.
+     *
+     * <p>Dos cosas que parecen olvidos y no lo son:
+     *
+     * <ul>
+     *   <li>{@code elytraAutoSwap} se restaura siempre a {@code true}, fijo, sin leerlo de {@code
+     *       resting}: el cambio a {@code false} fue nuestro, no del jugador, así que no hay un
+     *       "valor de reposo suyo" que consultar -siempre fue {@code true} antes de que {@link
+     *       #preparation} lo tocara.</li>
+     *   <li>{@code elytraPredictTerrain} no se restaura aquí porque {@link #preparation} tampoco lo
+     *       trata como un ajuste del jugador: lo apaga por nuestra cuenta (spec §8.1) y no forma
+     *       parte de {@link FlightSettings}, así que este método no tiene ningún valor que
+     *       devolverle.</li>
+     * </ul>
      */
     public static List<String> restoration(String prefix, FlightSettings resting) {
+        requirePrefix(prefix);
         List<String> commands = new ArrayList<>();
         commands.add(set(prefix, "elytraAutoSwap", "true"));
         commands.add(set(prefix, "elytraAutoJump", bool(resting.autoJump())));
@@ -61,17 +76,34 @@ public final class BaritoneScript {
 
     /** El comando que fija el siguiente objetivo, con las coordenadas redondeadas al bloque. */
     public static String goTo(String prefix, Waypoint point) {
+        requirePrefix(prefix);
         return prefix + "goal " + Math.round(point.x()) + " " + Math.round(point.z());
     }
 
     /** El comando que lanza el vuelo hacia el objetivo ya fijado. */
     public static String launch(String prefix) {
+        requirePrefix(prefix);
         return prefix + "elytra";
     }
 
     /** El comando que corta cualquier cosa que Baritone estuviera haciendo. */
     public static String cancel(String prefix) {
+        requirePrefix(prefix);
         return prefix + "cancel";
+    }
+
+    /**
+     * El núcleo es el único embudo por el que pasan todos los comandos antes de llegar al chat, así
+     * que la validación del prefijo va aquí: un prefijo vacío convertiría cada comando en chat
+     * plano -{@code "set elytraAutoJump true"} en vez de {@code "#set elytraAutoJump true"}-, que se
+     * publicaría en el servidor tal cual, y la red de seguridad que cancela los paquetes con el
+     * prefijo de Baritone no lo reconocería como suyo y dejaría pasar el chat entero.
+     */
+    private static void requirePrefix(String prefix) {
+        if (prefix == null || prefix.isEmpty()) {
+            throw new IllegalArgumentException(
+                "el prefijo de Baritone no puede estar vacío: los comandos saldrían como chat plano al servidor");
+        }
     }
 
     private static String set(String prefix, String name, String value) {
