@@ -81,6 +81,15 @@ public class AutoTpy extends Module {
         });
     }
 
+    /**
+     * La lista users, para quien necesite saber quiénes son de los nuestros. La lee auto-pvp para
+     * no atacarles, y por eso se devuelve esté este módulo encendido o apagado: la lista dice de
+     * quién te fías, no qué módulo está funcionando.
+     */
+    public Set<String> users() {
+        return Set.copyOf(users.get());
+    }
+
     private Set<String> kitRequesterCouriers() {
         KitRequester kitRequester = Modules.get().get(KitRequester.class);
         return kitRequester != null && kitRequester.isActive() ? kitRequester.knownCouriers() : Set.of();

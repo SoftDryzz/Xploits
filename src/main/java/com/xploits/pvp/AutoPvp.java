@@ -1,9 +1,13 @@
 package com.xploits.pvp;
 
 import com.xploits.XploitsAddon;
+import com.xploits.autotpy.AutoTpy;
+import com.xploits.kitrequester.KitRequester;
+import com.xploits.pvp.core.AllyPolicy;
 import com.xploits.pvp.core.CombatDirector;
 import com.xploits.pvp.core.CombatSnapshot;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.FriendLedger;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.ModuleLedger;
@@ -15,20 +19,25 @@ import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
+import meteordevelopment.meteorclient.systems.friends.Friend;
+import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -57,6 +66,9 @@ public class AutoPvp extends Module {
     /** Último slot del inventario completo: hasta dónde llega el barrido único de {@link #inventory()}. */
     private static final int INVENTORY_LAST_SLOT = 35;
 
+    /** Tope de nombres recordados para no repetir el aviso de "no ataco a"; al llenarse se vacía. */
+    private static final int MAX_ANNOUNCED_ALLIES = 64;
+
     /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
     private static final List<String> ALWAYS_YOURS = List.of("auto-totem", "auto-armor", "offhand", "auto-weapon");
 
@@ -82,9 +94,29 @@ public class AutoPvp extends Module {
         .build()
     );
 
+    /**
+     * CUIDADO: este ajuste escribe en configuración de Meteor que no es del addon. Su descripción lo
+     * dice con todas las letras porque el jugador tiene que enterarse desde la ClickGUI, sin leer
+     * ningún README (spec §14.3).
+     */
+    private final Setting<Boolean> syncFriends = sgGeneral.add(new BoolSetting.Builder()
+        .name("sync-friends")
+        .description("ESCRIBE EN TU LISTA DE AMIGOS DE METEOR (.friends), que no es del addon: "
+            + "mientras auto-pvp esté encendido añade ahí a los couriers de kit-requester y a la lista users "
+            + "de auto-tpy, y los quita al apagarlo. Es la única forma de que crystal-aura, auto-trap, "
+            + "auto-web, auto-anvil y auto-city -que eligen su propio objetivo, y solo miran esa lista- "
+            + "tampoco les ataquen. Solo quita lo que añadió él: a un amigo que ya tuvieras no lo toca nunca, "
+            + "y si le quitas uno de los suyos a mano no lo vuelve a poner. Con trust-unknown-couriers "
+            + "encendido NO sincroniza ningún courier, porque entonces cualquiera que imite un READY entra "
+            + "solo en esa lista (spec §14.2).")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al cambiar de fase. SIN_RECURSOS avisa siempre, lo apagues o no (spec §4.1).")
+        .description("Aviso local al cambiar de fase, al no atacar a uno de los nuestros y al tocar tu lista "
+            + "de amigos de Meteor. SIN_RECURSOS avisa siempre, lo apagues o no (spec §4.1).")
         .defaultValue(true)
         .build()
     );
@@ -98,11 +130,22 @@ public class AutoPvp extends Module {
 
     private final CombatDirector director = new CombatDirector();
     private final ModuleLedger ledger = new ModuleLedger();
+    private final FriendLedger friendLedger = new FriendLedger();
+
+    /**
+     * Lo último que se sincronizó con la lista de amigos, o {@code null} si todavía no se ha
+     * reconciliado en esta activación. Mientras no cambie no se lee la lista de amigos ni se escribe
+     * un solo byte en disco (spec §14.1).
+     */
+    private Set<String> lastSynced;
 
     private Plan lastPlan;
     private String lastTargetName;
     private Double lastTargetDistance;
     private CombatState lastReported = CombatState.SIN_COMBATE;
+    private SkippedAlly skippedAlly;
+    /** Nombres de los nuestros ya anunciados en esta activación: cada uno se dice una sola vez. */
+    private final Set<String> announcedAllies = new LinkedHashSet<>();
 
     public AutoPvp() {
         super(XploitsAddon.CATEGORY, "auto-pvp", "Dirige los módulos de combate según la fase de la pelea.");
@@ -116,12 +159,23 @@ public class AutoPvp extends Module {
         lastTargetName = null;
         lastTargetDistance = null;
         lastReported = CombatState.SIN_COMBATE;
+        skippedAlly = null;
+        announcedAllies.clear();
+        // La lista de amigos no se toca aquí: la primera reconciliación es la del primer tick, que
+        // ya exige estar en el mundo. Encender el módulo desde la ClickGUI en el menú principal no
+        // escribe nada en el disco del jugador.
+        friendLedger.reset();
+        lastSynced = null;
         warnAlreadyActiveManagedModules();
     }
 
     @Override
     public void onDeactivate() {
         releaseAll();
+        // Lo que pusimos en la lista de amigos sale con nosotros, y solo lo que pusimos nosotros.
+        applyFriendChanges(friendLedger.release(meteorFriendNames()));
+        friendLedger.reset();
+        lastSynced = null;
     }
 
     @EventHandler
@@ -131,8 +185,14 @@ public class AutoPvp extends Module {
             return;
         }
 
-        PlayerEntity target = TargetUtils.getPlayerTarget(targetRange.get(), SortPriority.LowestDistance);
-        lastTargetName = target == null ? null : target.getGameProfile().name();
+        // Las dos listas de origen, recortadas una sola vez por tick: las usan el filtro de objetivo
+        // -una vez por jugador a la vista- y la sincronización con los amigos de Meteor.
+        Set<String> couriers = AllyPolicy.names(kitRequesterCouriers());
+        Set<String> tpyUsers = AllyPolicy.names(autoTpyUsers());
+        syncMeteorFriends(couriers, tpyUsers);
+
+        PlayerEntity target = findTarget(couriers, tpyUsers);
+        lastTargetName = target == null ? null : nameOf(target);
 
         CombatSnapshot snapshot = snapshot(target);
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
@@ -141,7 +201,164 @@ public class AutoPvp extends Module {
 
         apply(plan);
         reportPhaseChange(plan);
+        reportSkippedAlly();
         lastReported = plan.state();
+    }
+
+    /** Uno de los nuestros que estaba a tiro y no se atacó: quién, por qué y a qué distancia. */
+    private record SkippedAlly(String name, AllyPolicy.Allegiance allegiance, double distance) {}
+
+    /**
+     * El objetivo, con los nuestros descartados <b>dentro</b> del predicado de selección (spec §13).
+     *
+     * <p>Es el mismo predicado que {@code TargetUtils.getPlayerTarget(range, priority)} —verificado
+     * contra las fuentes de meteor-client 1.21.11—, con dos cambios: {@code Friends.shouldAttack}
+     * pasa a estar dentro de {@link AllyPolicy} (AMIGO es exactamente su negación, así que el filtro
+     * de Meteor se sigue aplicando igual) y se añaden los couriers de kit-requester y la lista
+     * users de auto-tpy.
+     *
+     * <p>CRÍTICO: la exclusión tiene que ir en el predicado, no después. Seleccionar el más cercano
+     * y descartarlo si resulta ser nuestro devolvería {@code null} con un courier pegado a ti,
+     * aunque hubiera un enemigo de verdad diez bloques detrás; dentro del predicado el courier ni
+     * siquiera entra en la lista que se ordena, y el enemigo sigue siendo el objetivo.
+     *
+     * <p>Esto decide a quién elige <b>este</b> módulo, y solo eso. Los cinco que enciende eligen su
+     * propio objetivo y no saben de estas listas: de que a ellos tampoco se les cruce un courier se
+     * encarga {@link #syncMeteorFriends} (spec §14).
+     */
+    private PlayerEntity findTarget(Set<String> couriers, Set<String> tpyUsers) {
+        double range = targetRange.get();
+        skippedAlly = null;
+
+        Entity found = TargetUtils.get(entity -> {
+            if (!(entity instanceof PlayerEntity player) || entity == mc.player) return false;
+            if (player.isDead() || player.getHealth() <= 0) return false;
+            if (!PlayerUtils.isWithin(entity, range)) return false;
+
+            AllyPolicy.Allegiance allegiance =
+                AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers);
+            if (allegiance.isOurs()) {
+                noteSkippedAlly(player, allegiance);
+                return false;
+            }
+
+            if (entity instanceof FakePlayerEntity fakePlayer) return !fakePlayer.noHit;
+            return EntityUtils.getGameMode(player) == GameMode.SURVIVAL;
+        }, SortPriority.LowestDistance);
+
+        return found instanceof PlayerEntity player ? player : null;
+    }
+
+    /** Se queda con el más cercano de los nuestros descartados en este tick. */
+    private void noteSkippedAlly(PlayerEntity player, AllyPolicy.Allegiance allegiance) {
+        double distance = mc.player.distanceTo(player);
+        if (skippedAlly == null || distance < skippedAlly.distance()) {
+            skippedAlly = new SkippedAlly(nameOf(player), allegiance, distance);
+        }
+    }
+
+    /** Que se vea, pero sin llenar el chat: cada nombre se dice una sola vez por activación. */
+    private void reportSkippedAlly() {
+        if (skippedAlly == null || !notify.get()) return;
+        // Cota: con la lista llena se empieza de cero y se vuelve a avisar, preferible a crecer sin
+        // fin en una sesión larga. El vaciado va ANTES del add: vaciar después de apuntar el nombre
+        // lo borraba en el mismo momento de anunciarlo, y el aliado que tocase el tope se anunciaba
+        // dos veces, la segunda en cuanto volviera a estar a tiro.
+        if (announcedAllies.size() >= MAX_ANNOUNCED_ALLIES) announcedAllies.clear();
+        if (!announcedAllies.add(skippedAlly.name())) return;
+        info("No ataco a %s: %s.", skippedAlly.name(), skippedAlly.allegiance().reason());
+    }
+
+    private static String nameOf(PlayerEntity player) {
+        return player.getGameProfile().name();
+    }
+
+    /**
+     * Los couriers de kit-requester y la lista users de auto-tpy, <b>estén esos módulos encendidos
+     * o apagados</b>. Es a propósito distinto de {@code AutoTpy.kitRequesterCouriers()}, que sí
+     * exige {@code isActive()}: allí la pregunta es de reparto —quién responde a esta TPA—, y si
+     * kit-requester está apagado nadie más va a responderla; aquí la pregunta es de identidad —de
+     * quién eres—, y el courier que llegó con un pedido anterior sigue pegado a ti después de que
+     * kit-requester se apague. Condicionarlo al módulo devolvería el ataque en silencio, que es
+     * exactamente el fallo que esto arregla.
+     */
+    private static Set<String> kitRequesterCouriers() {
+        KitRequester module = Modules.get().get(KitRequester.class);
+        return module == null ? Set.of() : module.knownCouriers();
+    }
+
+    private static Set<String> autoTpyUsers() {
+        AutoTpy module = Modules.get().get(AutoTpy.class);
+        return module == null ? Set.of() : module.users();
+    }
+
+    /** Si kit-requester acepta couriers desconocidos, que es lo que hace su lista poco fiable (spec §14.2). */
+    private static boolean kitRequesterTrustsUnknownCouriers() {
+        KitRequester module = Modules.get().get(KitRequester.class);
+        return module != null && module.trustsUnknownCouriers();
+    }
+
+    /**
+     * Mantiene a los nuestros en la lista de amigos de Meteor (spec §14). Es lo que hace que los
+     * cinco módulos dirigidos —que eligen su propio objetivo y solo respetan esa lista— tampoco
+     * ataquen a un courier o a alguien de la lista users.
+     *
+     * <p><b>Se reconcilia por cambio, no por tick.</b> {@code Friends.add} y {@code Friends.remove}
+     * guardan {@code friends.nbt} en cada llamada (verificado en las fuentes: las dos llaman a
+     * {@code save()}), así que reconciliar a ciegas veinte veces por segundo sería escribir en el
+     * disco del jugador veinte veces por segundo. Mientras el conjunto que hay que sincronizar sea
+     * el mismo que la última vez no se hace nada: ni se recorre la lista de amigos, ni se escribe.
+     * Cambia cuando el jugador edita {@code known-couriers} o {@code users}, cuando kit-requester
+     * aprende un courier, cuando se toca {@code trust-unknown-couriers} o {@code sync-friends}, y en
+     * el primer tick de cada activación.
+     */
+    private void syncMeteorFriends(Set<String> couriers, Set<String> tpyUsers) {
+        Set<String> wanted = syncFriends.get()
+            ? FriendLedger.syncable(couriers, kitRequesterTrustsUnknownCouriers(), tpyUsers)
+            : Set.of();
+        if (wanted.equals(lastSynced)) return;
+        lastSynced = wanted;
+        applyFriendChanges(friendLedger.reconcile(wanted, meteorFriendNames()));
+    }
+
+    /** Los nombres que hay ahora mismo en la lista de amigos, tal y como los guarda Meteor. */
+    private static Set<String> meteorFriendNames() {
+        Set<String> names = new LinkedHashSet<>();
+        for (Friend friend : Friends.get()) names.add(friend.getName());
+        return names;
+    }
+
+    /**
+     * Ejecuta lo que decidió {@link FriendLedger}. Un añadido que Meteor rechaza deja de contar como
+     * nuestro en el acto; y antes de quitar nada se comprueba que el amigo que devuelve
+     * {@code Friends.get(String)} —que compara con {@code equalsIgnoreCase}— es exactamente el
+     * nombre que pusimos nosotros. De lo contrario bastaría que el jugador tuviera un
+     * "stormaegis44" suyo para que le borrásemos su entrada al soltar la nuestra.
+     */
+    private void applyFriendChanges(FriendLedger.Result result) {
+        if (result.isEmpty()) return;
+
+        Friends friends = Friends.get();
+        List<String> added = new ArrayList<>();
+        for (String name : result.toAdd()) {
+            if (friends.add(new Friend(name))) added.add(name);
+            else friendLedger.disown(name);
+        }
+
+        List<String> removed = new ArrayList<>();
+        for (String name : result.toRemove()) {
+            Friend friend = friends.get(name);
+            if (friend != null && name.equals(friend.getName()) && friends.remove(friend)) removed.add(name);
+        }
+
+        if (!notify.get()) return;
+        if (!added.isEmpty()) {
+            info("Añado a tus amigos de Meteor: %s. Así los otros cinco módulos de combate tampoco les atacan.",
+                String.join(", ", added));
+        }
+        if (!removed.isEmpty()) {
+            info("Quito de tus amigos de Meteor: %s. Los había puesto yo.", String.join(", ", removed));
+        }
     }
 
     /** Avisa del cambio de fase: SIN_RECURSOS siempre y fuerte (spec §4.1, §6); el resto, si notify lo permite. */
@@ -270,6 +487,8 @@ public class AutoPvp extends Module {
         director.reset();
         lastPlan = null;
         lastReported = CombatState.SIN_COMBATE;
+        skippedAlly = null;
+        announcedAllies.clear();
     }
 
     private static Module byName(String name) {
@@ -312,6 +531,13 @@ public class AutoPvp extends Module {
                 sb.append(" a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", lastTargetDistance)).append(" bloques");
             }
         }
+        if (skippedAlly != null) {
+            sb.append("\n  no ataco:     ").append(skippedAlly.name())
+                .append(" — ").append(skippedAlly.allegiance().reason())
+                .append(", a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", skippedAlly.distance()))
+                .append(" bloques");
+        }
+        sb.append("\n  en amigos:    ").append(syncedFriendsLine());
         sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
         for (Skipped skipped : lastPlan.skipped()) {
             sb.append("\n  no encendido: ").append(skipped.module().name()).append(" — ").append(skipped.reason());
@@ -319,6 +545,24 @@ public class AutoPvp extends Module {
         List<String> yours = yourActiveModules(owned);
         sb.append("\n  tuyos:        ").append(yours.isEmpty() ? "ninguno" : String.join(", ", yours)).append(" (no los toco)");
         return sb.toString();
+    }
+
+    /**
+     * Qué está tocando ahora mismo de la lista de amigos de Meteor, y si no toca nada, por qué: el
+     * jugador tiene que poder ver en una línea que su configuración global está intervenida —o que
+     * no lo está, y entonces los otros cinco módulos sí pueden atacar a los nuestros (spec §14.3).
+     */
+    private String syncedFriendsLine() {
+        if (!syncFriends.get()) {
+            return "sincronización apagada — los otros cinco módulos de combate sí pueden atacarles";
+        }
+        Set<String> synced = friendLedger.added();
+        if (synced.isEmpty()) {
+            return kitRequesterTrustsUnknownCouriers()
+                ? "ninguno (con trust-unknown-couriers encendido no se sincroniza ningún courier)"
+                : "ninguno";
+        }
+        return String.join(", ", synced) + " (los puse yo en tu lista de Meteor y los quitaré al apagarme)";
     }
 
     /** I6: qué módulos de combate llevas activos que el director no controla, no una lista fija. */
