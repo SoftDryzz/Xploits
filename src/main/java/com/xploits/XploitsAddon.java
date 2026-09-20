@@ -7,6 +7,7 @@ import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
+import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
 import meteordevelopment.meteorclient.commands.Commands;
 import meteordevelopment.meteorclient.systems.modules.Category;
@@ -25,6 +26,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new StashKeeper());
         Modules.get().add(new ElytraReplace());
         Modules.get().add(new AutoPvp());
+        Modules.get().add(new AutoTravel());
         Commands.add(new XploitsCommand());
     }
 

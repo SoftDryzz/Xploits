@@ -6,6 +6,7 @@ import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
+import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.command.CommandSource;
@@ -47,6 +48,47 @@ public class XploitsCommand extends Command {
             pvp().ifPresent(module -> info("%s", module.status()));
             return SINGLE_SUCCESS;
         }));
+        builder.then(literal("travel")
+            .executes(context -> {
+                travel().ifPresent(module -> info("%s", module.status()));
+                return SINGLE_SUCCESS;
+            })
+            .then(literal("go").executes(context -> {
+                travel().ifPresent(this::travelGo);
+                return SINGLE_SUCCESS;
+            }))
+            .then(literal("stop").executes(context -> {
+                travel().ifPresent(this::travelStop);
+                return SINGLE_SUCCESS;
+            })));
+    }
+
+    /**
+     * Lanza el viaje y enseña lo que el módulo conteste: el mensaje del lanzamiento, o el motivo por
+     * el que no se vuela.
+     *
+     * <p>El motivo de un rechazo de ruta es lo más valioso que sale por aquí -nombra el ajuste que
+     * hay que tocar, su valor actual y la salida concreta-, así que llega al chat de una pieza: una
+     * sola llamada, sin recortar, sin partir en líneas y sin resumir. Y el texto va como
+     * <b>argumento</b> de un {@code "%s"}, nunca como cadena de formato: {@code ChatUtils} se lo pasa
+     * tal cual a {@code String.format}, así que un motivo que llevara un porcentaje reventaría la
+     * llamada y el jugador se quedaría sin ver justo el mensaje que tenía que leer. El mismo motivo
+     * por el que el resto de subcomandos de este archivo escriben {@code info("%s", ...)}.
+     *
+     * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
+     */
+    private void travelGo(AutoTravel autoTravel) {
+        String message = autoTravel.start();
+        if (autoTravel.isTravelling()) info("%s", message);
+        else warning("%s", message);
+    }
+
+    /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
+    private void travelStop(AutoTravel autoTravel) {
+        boolean travelling = autoTravel.isTravelling();
+        String message = autoTravel.stop();
+        if (travelling) info("%s", message);
+        else warning("%s", message);
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -143,6 +185,16 @@ public class XploitsCommand extends Command {
         AutoPvp module = Modules.get().get(AutoPvp.class);
         if (module == null) {
             warning("El módulo auto-pvp no está registrado.");
+            return Optional.empty();
+        }
+        return Optional.of(module);
+    }
+
+    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    private Optional<AutoTravel> travel() {
+        AutoTravel module = Modules.get().get(AutoTravel.class);
+        if (module == null) {
+            warning("El módulo auto-travel no está registrado.");
             return Optional.empty();
         }
         return Optional.of(module);

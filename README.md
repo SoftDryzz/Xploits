@@ -1,6 +1,6 @@
 # Xploits
 
-Addon de Meteor Client (MC 1.21.11) para 6b6t con cinco módulos independientes.
+Addon de Meteor Client (MC 1.21.11) para 6b6t con seis módulos independientes.
 
 | Módulo | Qué hace |
 |---|---|
@@ -9,6 +9,7 @@ Addon de Meteor Client (MC 1.21.11) para 6b6t con cinco módulos independientes.
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
 | `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
 | `auto-pvp` | Dirige los módulos de combate de Meteor según la fase de la pelea, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. |
+| `auto-travel` | Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste (zigzag, quiebro, espiral o señuelo) y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con `.xploits travel go`. **Requiere Baritone**, y es el único módulo del addon que lo usa. |
 
 ## Estructura de paquetes
 
@@ -29,6 +30,8 @@ com/xploits/elytra/             Módulo elytra-replace (adaptador a Meteor).
 com/xploits/elytra/core/        Política de cambio de elytra-replace.
 com/xploits/pvp/                Módulo auto-pvp (adaptador a Meteor).
 com/xploits/pvp/core/           Máquina de fases y catálogo de módulos dirigidos de auto-pvp.
+com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
+com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
 ```
 
 ## Uso
@@ -37,7 +40,13 @@ com/xploits/pvp/core/           Máquina de fases y catálogo de módulos dirigi
 2. Copiar `build/libs/xploits-0.1.0.jar` a `mods/`.
 3. Los datos (cola de kits y progreso) se guardan en `<instancia>/meteor-client/xploits/`. El índice de
    stash-keeper, por mundo, en `<instancia>/meteor-client/xploits/stash/<mundo>/index.json`.
-4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash`, `.xploits find <ítem>` y `.xploits pvp`.
+4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash`, `.xploits find <ítem>`, `.xploits pvp` y
+   `.xploits travel` (sin más, el estado del viaje; `go` lo lanza, `stop` lo corta y restaura).
+
+**`auto-travel` requiere Baritone** instalado junto a Meteor: es el único módulo del addon que lo usa, y los otros
+cinco funcionan igual sin él. El módulo dirige el vuelo con elytra de Baritone por sus comandos de chat, así que sin
+Baritone cargado se niega a lanzar nada y lo dice. Si has cambiado el prefijo de Baritone, cámbialo también en el
+ajuste `baritone-prefix` del módulo.
 
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 
