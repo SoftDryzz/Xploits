@@ -1,6 +1,9 @@
 package com.xploits.pvp;
 
 import com.xploits.XploitsAddon;
+import com.xploits.autotpy.AutoTpy;
+import com.xploits.kitrequester.KitRequester;
+import com.xploits.pvp.core.AllyPolicy;
 import com.xploits.pvp.core.CombatDirector;
 import com.xploits.pvp.core.CombatSnapshot;
 import com.xploits.pvp.core.CombatState;
@@ -15,20 +18,24 @@ import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
+import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -56,6 +63,9 @@ public class AutoPvp extends Module {
     private static final int HOTBAR_LAST_SLOT = 8;
     /** Último slot del inventario completo: hasta dónde llega el barrido único de {@link #inventory()}. */
     private static final int INVENTORY_LAST_SLOT = 35;
+
+    /** Tope de nombres recordados para no repetir el aviso de "no ataco a"; al llenarse se vacía. */
+    private static final int MAX_ANNOUNCED_ALLIES = 64;
 
     /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
     private static final List<String> ALWAYS_YOURS = List.of("auto-totem", "auto-armor", "offhand", "auto-weapon");
@@ -103,6 +113,9 @@ public class AutoPvp extends Module {
     private String lastTargetName;
     private Double lastTargetDistance;
     private CombatState lastReported = CombatState.SIN_COMBATE;
+    private SkippedAlly skippedAlly;
+    /** Nombres de los nuestros ya anunciados en esta activación: cada uno se dice una sola vez. */
+    private final Set<String> announcedAllies = new LinkedHashSet<>();
 
     public AutoPvp() {
         super(XploitsAddon.CATEGORY, "auto-pvp", "Dirige los módulos de combate según la fase de la pelea.");
@@ -116,6 +129,8 @@ public class AutoPvp extends Module {
         lastTargetName = null;
         lastTargetDistance = null;
         lastReported = CombatState.SIN_COMBATE;
+        skippedAlly = null;
+        announcedAllies.clear();
         warnAlreadyActiveManagedModules();
     }
 
@@ -131,8 +146,8 @@ public class AutoPvp extends Module {
             return;
         }
 
-        PlayerEntity target = TargetUtils.getPlayerTarget(targetRange.get(), SortPriority.LowestDistance);
-        lastTargetName = target == null ? null : target.getGameProfile().name();
+        PlayerEntity target = findTarget();
+        lastTargetName = target == null ? null : nameOf(target);
 
         CombatSnapshot snapshot = snapshot(target);
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
@@ -141,7 +156,91 @@ public class AutoPvp extends Module {
 
         apply(plan);
         reportPhaseChange(plan);
+        reportSkippedAlly();
         lastReported = plan.state();
+    }
+
+    /** Uno de los nuestros que estaba a tiro y no se atacó: quién, por qué y a qué distancia. */
+    private record SkippedAlly(String name, AllyPolicy.Allegiance allegiance, double distance) {}
+
+    /**
+     * El objetivo, con los nuestros descartados <b>dentro</b> del predicado de selección (spec §13).
+     *
+     * <p>Es el mismo predicado que {@code TargetUtils.getPlayerTarget(range, priority)} —verificado
+     * contra las fuentes de meteor-client 1.21.11—, con dos cambios: {@code Friends.shouldAttack}
+     * pasa a estar dentro de {@link AllyPolicy} (AMIGO es exactamente su negación, así que el filtro
+     * de Meteor se sigue aplicando igual) y se añaden los couriers de kit-requester y la lista
+     * users de auto-tpy.
+     *
+     * <p>CRÍTICO: la exclusión tiene que ir en el predicado, no después. Seleccionar el más cercano
+     * y descartarlo si resulta ser nuestro devolvería {@code null} con un courier pegado a ti,
+     * aunque hubiera un enemigo de verdad diez bloques detrás; dentro del predicado el courier ni
+     * siquiera entra en la lista que se ordena, y el enemigo sigue siendo el objetivo.
+     */
+    private PlayerEntity findTarget() {
+        double range = targetRange.get();
+        Set<String> couriers = kitRequesterCouriers();
+        Set<String> tpyUsers = autoTpyUsers();
+        skippedAlly = null;
+
+        Entity found = TargetUtils.get(entity -> {
+            if (!(entity instanceof PlayerEntity player) || entity == mc.player) return false;
+            if (player.isDead() || player.getHealth() <= 0) return false;
+            if (!PlayerUtils.isWithin(entity, range)) return false;
+
+            AllyPolicy.Allegiance allegiance =
+                AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers);
+            if (allegiance.isOurs()) {
+                noteSkippedAlly(player, allegiance);
+                return false;
+            }
+
+            if (entity instanceof FakePlayerEntity fakePlayer) return !fakePlayer.noHit;
+            return EntityUtils.getGameMode(player) == GameMode.SURVIVAL;
+        }, SortPriority.LowestDistance);
+
+        return found instanceof PlayerEntity player ? player : null;
+    }
+
+    /** Se queda con el más cercano de los nuestros descartados en este tick. */
+    private void noteSkippedAlly(PlayerEntity player, AllyPolicy.Allegiance allegiance) {
+        double distance = mc.player.distanceTo(player);
+        if (skippedAlly == null || distance < skippedAlly.distance()) {
+            skippedAlly = new SkippedAlly(nameOf(player), allegiance, distance);
+        }
+    }
+
+    /** Que se vea, pero sin llenar el chat: cada nombre se dice una sola vez por activación. */
+    private void reportSkippedAlly() {
+        if (skippedAlly == null || !notify.get()) return;
+        if (!announcedAllies.add(skippedAlly.name())) return;
+        // Cota: con la lista llena se empieza de cero y se vuelve a avisar, preferible a crecer
+        // sin fin en una sesión larga.
+        if (announcedAllies.size() > MAX_ANNOUNCED_ALLIES) announcedAllies.clear();
+        info("No ataco a %s: %s.", skippedAlly.name(), skippedAlly.allegiance().reason());
+    }
+
+    private static String nameOf(PlayerEntity player) {
+        return player.getGameProfile().name();
+    }
+
+    /**
+     * Los couriers de kit-requester y la lista users de auto-tpy, <b>estén esos módulos encendidos
+     * o apagados</b>. Es a propósito distinto de {@code AutoTpy.kitRequesterCouriers()}, que sí
+     * exige {@code isActive()}: allí la pregunta es de reparto —quién responde a esta TPA—, y si
+     * kit-requester está apagado nadie más va a responderla; aquí la pregunta es de identidad —de
+     * quién eres—, y el courier que llegó con un pedido anterior sigue pegado a ti después de que
+     * kit-requester se apague. Condicionarlo al módulo devolvería el ataque en silencio, que es
+     * exactamente el fallo que esto arregla.
+     */
+    private static Set<String> kitRequesterCouriers() {
+        KitRequester module = Modules.get().get(KitRequester.class);
+        return module == null ? Set.of() : module.knownCouriers();
+    }
+
+    private static Set<String> autoTpyUsers() {
+        AutoTpy module = Modules.get().get(AutoTpy.class);
+        return module == null ? Set.of() : module.users();
     }
 
     /** Avisa del cambio de fase: SIN_RECURSOS siempre y fuerte (spec §4.1, §6); el resto, si notify lo permite. */
@@ -270,6 +369,8 @@ public class AutoPvp extends Module {
         director.reset();
         lastPlan = null;
         lastReported = CombatState.SIN_COMBATE;
+        skippedAlly = null;
+        announcedAllies.clear();
     }
 
     private static Module byName(String name) {
@@ -311,6 +412,12 @@ public class AutoPvp extends Module {
             if (lastTargetDistance != null) {
                 sb.append(" a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", lastTargetDistance)).append(" bloques");
             }
+        }
+        if (skippedAlly != null) {
+            sb.append("\n  no ataco:     ").append(skippedAlly.name())
+                .append(" — ").append(skippedAlly.allegiance().reason())
+                .append(", a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", skippedAlly.distance()))
+                .append(" bloques");
         }
         sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
         for (Skipped skipped : lastPlan.skipped()) {
