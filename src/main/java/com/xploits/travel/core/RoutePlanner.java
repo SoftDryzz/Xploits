@@ -84,19 +84,18 @@ public final class RoutePlanner {
     }
 
     /**
-     * El tramo final mide {@code 2*radius}, acotado a {@code distance/2} si el viaje es más corto:
-     * así la espiral nunca retrocede detrás del origen. Se va recto hasta {@code destino -
-     * u*(2*radius)} y desde ahí se dan {@code spiralTurns} vueltas cerrándose sobre el destino, en
-     * {@link #SPIRAL_STEPS} pasos, con el ángulo medido desde la dirección {@code -u} hacia {@code
-     * n}.
+     * El radio se acota a {@code distance/2} si el viaje es más corto: así la espiral nunca
+     * retrocede detrás del origen. Se va recto hasta {@code destino - u*radius} -que es exactamente
+     * el primer punto de la espiral, con {@code j=0}- y desde ahí se dan {@code spiralTurns} vueltas
+     * cerrándose sobre el destino, en {@link #SPIRAL_STEPS} pasos, con el ángulo medido desde la
+     * dirección {@code -u} hacia {@code n}. No hace falta un waypoint aparte para el tramo recto:
+     * el propio punto {@code j=0} ya es su final, así que añadir uno solo duplicaría el punto.
      */
     private static List<Waypoint> spiral(Waypoint destination, double ux, double uz, double nx, double nz,
                                           double distance, PatternParams params) {
         double radius = Math.min(params.spiralRadius(), distance / 2.0);
 
         List<Waypoint> points = new ArrayList<>();
-        points.add(new Waypoint(destination.x() - ux * 2 * radius, destination.z() - uz * 2 * radius));
-
         for (int j = 0; j <= SPIRAL_STEPS; j++) {
             double fraction = (double) j / SPIRAL_STEPS;
             double angle = 2 * Math.PI * params.spiralTurns() * fraction;

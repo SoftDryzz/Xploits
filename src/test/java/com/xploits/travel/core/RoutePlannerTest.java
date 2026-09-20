@@ -106,6 +106,19 @@ class RoutePlannerTest {
     }
 
     @Test
+    void theSpiralsFirstWaypointIsExactlyWhereTheStraightLegEnds() {
+        // El tramo recto va hasta destino - u*radio: ese punto ES el primero de la espiral (j=0,
+        // radio=radio). No debe sobrar un segundo waypoint a 2*radio del destino: eso dejaría un
+        // salto de una "radio" entera sin ningún propósito antes de empezar a girar de verdad.
+        Route route = plan(Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL);
+        Waypoint destination = new Waypoint(30_000, 0);
+        Waypoint first = route.waypoints().get(0);
+
+        assertEquals(PatternParams.defaults().spiralRadius(), first.distanceTo(destination), TOLERANCE,
+            "el primer waypoint de la espiral debe estar a una radio del destino, no a dos");
+    }
+
+    @Test
     void theDecoyAimsAwayFirstAndCorrectsLater() {
         Route route = plan(Destination.coordinates(20_000, 0), FlightPattern.SENUELO);
         Waypoint correction = route.waypoints().get(0);
