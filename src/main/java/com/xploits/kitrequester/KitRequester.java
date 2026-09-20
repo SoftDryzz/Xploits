@@ -10,6 +10,7 @@ import com.xploits.kitrequester.inventory.EnderDepositor;
 import com.xploits.shared.chat.ChatPatterns;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
+import meteordevelopment.meteorclient.events.entity.player.InteractEntityEvent;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -139,6 +140,16 @@ public class KitRequester extends Module {
     @EventHandler
     private void onInteractBlock(InteractBlockEvent event) {
         depositor.onInteractBlock(mc, event.result.getBlockPos(), System.currentTimeMillis());
+    }
+
+    /**
+     * Los cofres de vagoneta y de barca son entidades: {@code InteractBlockEvent} nunca se dispara
+     * para ellos, así que sin este gancho un clic ahí pasaba desapercibido para
+     * {@link EnderDepositor#start} (spec §6.1, tercera corrección).
+     */
+    @EventHandler
+    private void onInteractEntity(InteractEntityEvent event) {
+        depositor.onInteractEntity(System.currentTimeMillis());
     }
 
     /** Prioridad máxima para ver el mensaje antes de que BetterChat u otros lo modifiquen (spec §2.3). */
