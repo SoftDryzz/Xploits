@@ -25,6 +25,20 @@ public final class CombatDirector {
      */
     public static final int RESOURCE_RELEASE_DWELL_TICKS = 20;
 
+    /**
+     * Distancia máxima al objetivo para clasificar {@code RODEADO}. Verificado contra las fuentes
+     * de {@code meteor-client:1.21.11-SNAPSHOT} (`AutoCity.java`): el módulo se apaga solo -dentro
+     * de su propio {@code onActivate()}/{@code onTick()}, con un error en el chat- si el objetivo
+     * está a más de {@code target-range} (por defecto 5.5) o si el bloque de rodeado está a más de
+     * {@code break-range} (por defecto 4.5) de ti. El snapshot solo lleva la distancia al objetivo,
+     * no al bloque -que linda con él, a un bloque de distancia como mucho-, así que se usa la más
+     * estricta de las dos cotas de Meteor: si el objetivo ya no está a este alcance, el bloque
+     * -pegado a sus pies- tampoco lo está con certeza, y de las dos formas de equivocarse aquí
+     * (perderse un RODEADO real o declarar uno que auto-city no puede trabajar) esta es la que no
+     * cuesta nada, frente a los 20 encendidos y apagados por segundo de la otra (spec §4.2).
+     */
+    public static final double AUTO_CITY_MAX_TARGET_DISTANCE = 4.5;
+
     private CombatState state = CombatState.SIN_COMBATE;
     private CombatState pending;
     private int pendingTicks;
@@ -130,7 +144,7 @@ public final class CombatDirector {
         if (!s.hasTarget()) return CombatState.SIN_COMBATE;
         if (s.selfGliding() || s.targetGliding()) return CombatState.PERSECUCION;
         if (s.targetBurrowed()) return CombatState.ENTERRADO;
-        if (s.targetSurrounded()) return CombatState.RODEADO;
+        if (s.targetSurrounded() && s.targetDistance() <= AUTO_CITY_MAX_TARGET_DISTANCE) return CombatState.RODEADO;
         if (s.targetDistance() > approachDistance) return CombatState.ACERCAMIENTO;
         return CombatState.SUPERFICIE;
     }

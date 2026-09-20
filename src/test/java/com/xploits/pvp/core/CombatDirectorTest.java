@@ -108,6 +108,46 @@ class CombatDirectorTest {
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
+    /** Rodeado según Meteor (`getCityBlock() != null`) pero fuera del alcance real de auto-city. */
+    private static CombatSnapshot surroundedAt(double targetDistance) {
+        return new CombatSnapshot(true, targetDistance, true, false, false, false, 2, FULL);
+    }
+
+    @Test
+    void surroundedButBeyondAutoCityRangeIsNotRodeado() {
+        // CRÍTICO: getCityBlock() ve hasta 6 bloques, pero auto-city se apaga solo -con error en
+        // el chat- más allá de su break-range (4.5 de fábrica). En esa franja intermedia el
+        // director no debe pedir RODEADO: encendería y apagaría auto-city sin parar (spec §4.2).
+        CombatSnapshot beyond = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE + 1.0);
+        Plan plan = settle(new CombatDirector(), beyond);
+
+        assertEquals(CombatState.SUPERFICIE, plan.state(), "dentro de approach-distance, cae a SUPERFICIE");
+        assertFalse(enables(plan, ManagedModules.AUTO_CITY));
+    }
+
+    @Test
+    void surroundedAndWithinAutoCityRangeIsRodeado() {
+        CombatSnapshot within = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE - 1.0);
+        Plan plan = settle(new CombatDirector(), within);
+
+        assertEquals(CombatState.RODEADO, plan.state());
+        assertTrue(enables(plan, ManagedModules.AUTO_CITY));
+    }
+
+    @Test
+    void atExactlyTheAutoCityRangeItIsStillRodeado() {
+        CombatSnapshot atBoundary = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE);
+        assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atBoundary).state(),
+            "la comparación es menor-o-igual-que: igual al umbral sigue siendo RODEADO");
+    }
+
+    @Test
+    void justBeyondTheAutoCityRangeItIsNoLongerRodeado() {
+        CombatSnapshot justBeyond = surroundedAt(Math.nextUp(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE));
+        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
+            "un paso por encima del umbral ya no es RODEADO");
+    }
+
     @Test
     void withoutTotemsInSurroundedTheCrystalAuraIsRefusedButAutoCityGoesUp() {
         CombatSnapshot noTotems = new CombatSnapshot(true, 3.0, true, false, false, false, 0, FULL);
