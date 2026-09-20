@@ -10,8 +10,10 @@ import com.xploits.travel.core.FlightPattern;
 import com.xploits.travel.core.PatternParams;
 import com.xploits.travel.core.Route;
 import com.xploits.travel.core.RoutePlanner;
+import com.xploits.travel.core.SafetyNet;
 import com.xploits.travel.core.StallWatch;
 import com.xploits.travel.core.Waypoint;
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -33,7 +35,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.ChatCommandSignedC2SPacket;
 import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
 import net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket;
@@ -60,6 +61,11 @@ import java.util.List;
  * confianza no basta: mientras el módulo dirige, cancela él mismo todo paquete de chat saliente
  * cuyo texto empiece por el prefijo de Baritone. En un servidor anarchy, un {@code #elytra} que se
  * escape es anunciarle al servidor entero que vas volando y hacia dónde.
+ *
+ * <p>Esa red vive en {@link ChatNet}, <b>suscrito al bus por su cuenta</b> y no como parte del
+ * módulo, porque Meteor desuscribe el módulo justo antes de {@code onDeactivate()} -que es cuando la
+ * restauración emite sus seis comandos-. Y la decisión de qué texto es comando nuestro está en
+ * {@link SafetyNet}, en el núcleo y con tests.
  */
 public class AutoTravel extends Module {
     /** El id con el que Baritone se registra en el cargador de mods. */
@@ -376,13 +382,42 @@ public class AutoTravel extends Module {
     private boolean travelling;
 
     /**
-     * Si la red de seguridad está armada. Los {@code @EventHandler} de un módulo solo reciben
-     * eventos mientras el módulo está activo, pero eso no basta: el módulo puede estar encendido sin
-     * viaje en marcha, y entonces no tiene por qué comerse los comandos que el jugador escriba a
-     * mano. La red se arma antes de emitir el primer comando y se desarma cuando ya no queda
-     * ninguno por emitir.
+     * El oyente de la red de seguridad (spec §7), <b>suscrito al bus por su cuenta</b> y no como
+     * parte del módulo. Esto no es un capricho de diseño: es el arreglo de un agujero verificado en
+     * las fuentes de Meteor.
+     *
+     * <p>{@code Module.toggle()} desuscribe el módulo del bus <b>antes</b> de llamar a {@code
+     * onDeactivate()}, y {@code Modules.onGameLeft} hace exactamente lo mismo. Si la red viviera en
+     * un {@code @EventHandler} del módulo, la restauración -seis comandos con prefijo, {@code
+     * cancel} incluido- se emitiría con el módulo ya desuscrito: la red no correría, nada se
+     * cancelaría, y las seis líneas saldrían al chat público justo en las dos salidas en las que el
+     * jugador sigue conectado y los paquetes salen de verdad. Apagar el módulo es la reacción de
+     * pánico natural, y es lo que hace un bind.
+     *
+     * <p>Un objeto suelto no depende de nada de eso: se suscribe al armar y se desuscribe en {@link
+     * #disarmNet()}, después del último comando. Verificado contra las fuentes de orbit 0.2.4:
+     * {@code EventBus.subscribe(Object)} reflexiona sobre los métodos anotados de la clase del
+     * objeto y construye el oyente con la fábrica de lambdas del paquete del addon -{@code
+     * com.xploits}, que {@code MeteorClient} registra por {@code MeteorAddon.getPackage()}-, así que
+     * una clase nuestra cualquiera sirve. Y es la <b>misma instancia</b> siempre, porque
+     * {@code EventBus} cachea los oyentes por identidad del objeto y {@code unsubscribe} necesita
+     * encontrar ahí los mismos.
+     */
+    private final ChatNet net = new ChatNet();
+
+    /**
+     * Si la red de seguridad está armada, que ahora es exactamente lo mismo que decir si {@link
+     * #net} está suscrito al bus. El módulo puede estar encendido sin viaje en marcha, y entonces no
+     * tiene por qué comerse los comandos que el jugador escriba a mano: la red se arma antes de
+     * emitir el primer comando y se desarma cuando ya no queda ninguno por emitir.
      */
     private boolean netArmed;
+
+    /** Si el comando que {@link #send(String)} está emitiendo ahora mismo es nuestro. */
+    private boolean emitting;
+
+    /** Si la red mató el último comando nuestro: puesto por el oyente, leído por {@link #send(String)}. */
+    private boolean sendCaught;
 
     /** Si ya se avisó de que la red ha tenido que cancelar algo en este viaje (spec §7: una sola vez). */
     private boolean netCaughtWarned;
@@ -430,6 +465,10 @@ public class AutoTravel extends Module {
         // verdad se recorre al desconectar. El handler de GameLeftEvent está igualmente, porque el
         // orden entre los dos no está garantizado; finish() es idempotente y el segundo no hace nada.
         finish("auto-travel se ha apagado", false);
+        // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin viaje en marcha
+        // se comería en silencio todo comando con prefijo que el jugador escribiera a mano, y con el
+        // módulo apagado no habría ni quién lo desarmara ni quién lo dijera. Es idempotente.
+        disarmNet();
     }
 
     /** Salida 4: desconexión o cambio de mundo. */
@@ -439,33 +478,46 @@ public class AutoTravel extends Module {
     }
 
     /**
-     * La red de seguridad (spec §7). {@code ClientConnectionMixin} de Meteor publica este evento al
-     * entrar en {@code ClientConnection.send} y cancela el envío si el evento se cancela, así que
-     * esto no es una advertencia: el paquete muere dentro del cliente.
+     * La mitad de la red de seguridad (spec §7) que necesita a Minecraft: sacar del paquete saliente
+     * por qué canal va y qué texto lleva. Decidir si ese texto es un comando de Baritone de los que
+     * dirigimos es de {@link SafetyNet}, que se prueba sin arrancar el juego.
+     *
+     * <p>{@code ClientConnectionMixin} de Meteor publica este evento al entrar en {@code
+     * ClientConnection.send} y cancela el envío si el evento se cancela, así que esto no es una
+     * advertencia: el paquete muere dentro del cliente.
+     *
+     * <p>Se cancelan también <b>nuestros propios comandos</b>, y eso es deliberado: si la red tiene
+     * que actuar es porque Baritone no está interceptando, y entonces nuestro comando tampoco tiene
+     * a quién llegar. Lo que no se puede hacer es dar la restauración por buena después, y para eso
+     * está {@link #sendCaught}.
      */
-    @EventHandler
-    private void onPacketSend(PacketEvent.Send event) {
-        if (!netArmed) return;
+    private final class ChatNet {
+        @EventHandler
+        private void onPacketSend(PacketEvent.Send event) {
+            if (!netArmed) return;
 
-        String text = chatTextOf(event.packet);
-        if (text == null || !text.startsWith(activePrefix)) return;
+            SafetyNet.Channel channel;
+            String payload;
+            if (event.packet instanceof ChatMessageC2SPacket chat) {
+                channel = SafetyNet.Channel.CHAT;
+                payload = chat.chatMessage();
+            }
+            else if (event.packet instanceof CommandExecutionC2SPacket command) {
+                channel = SafetyNet.Channel.COMANDO;
+                payload = command.command();
+            }
+            else if (event.packet instanceof ChatCommandSignedC2SPacket command) {
+                channel = SafetyNet.Channel.COMANDO;
+                payload = command.command();
+            }
+            else return;
 
-        event.cancel();
-        warnNetCaught(text);
-    }
+            if (!SafetyNet.directs(activePrefix, channel, payload)) return;
 
-    /**
-     * El texto que un paquete saliente llevaría al chat del servidor, o {@code null} si no es un
-     * paquete de chat. Los comandos de Baritone viajan como chat plano -no empiezan por barra-, pero
-     * se miran también los dos caminos de comando por si alguien configura un prefijo que empiece por
-     * {@code /}: ahí el texto viaja sin la barra, y se le devuelve para compararlo con el prefijo tal
-     * y como el jugador lo escribiría.
-     */
-    private static String chatTextOf(Packet<?> packet) {
-        if (packet instanceof ChatMessageC2SPacket chat) return chat.chatMessage();
-        if (packet instanceof CommandExecutionC2SPacket command) return "/" + command.command();
-        if (packet instanceof ChatCommandSignedC2SPacket command) return "/" + command.command();
-        return null;
+            event.cancel();
+            if (emitting) sendCaught = true;
+            warnNetCaught(SafetyNet.typedText(channel, payload));
+        }
     }
 
     /**
@@ -563,18 +615,32 @@ public class AutoTravel extends Module {
         if (!isActive()) return "auto-travel está apagado: enciéndelo antes de lanzar un viaje.";
         if (travelling) return "Ya hay un viaje en marcha: córtalo antes de lanzar otro.";
         if (mc.player == null || mc.world == null) return "No hay mundo cargado: no se lanza nada.";
+        if (!mc.player.isAlive()) {
+            // Sin esto, desde la pantalla de muerte pasan todas las demás guardas: se arma la red, se
+            // emiten los diez comandos de la preparación, y al tick siguiente onTick ve al muerto y
+            // emite los seis de la restauración. Catorce comandos y un "Viaje lanzado" para nada.
+            return "Estás muerto: reaparece antes de lanzar un viaje, que desde la pantalla de muerte no se vuela.";
+        }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
             // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
             // Class.forName("baritone.api.BaritoneAPI") sobre una clase que el jar ofuscado no
             // expone, así que ahí vale false aunque Baritone esté perfectamente instalado (spec §2).
             return "Baritone no está cargado: este módulo vuela con sus comandos y sin él no hay nada que dirigir.";
         }
+        if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) {
+            // Y además es lo que hace honesto al aviso de checkFireworks(): despegando siempre con
+            // alguno, "te has quedado SIN fuegos a mitad de vuelo" solo puede decirse cuando de
+            // verdad se han acabado a mitad de vuelo.
+            return "No llevas ningún fuego artificial: Baritone se impulsa con ellos y sin ninguno no despega. "
+                + "No se lanza nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.";
+        }
 
         String launchPrefix = prefix.get();
-        if (launchPrefix == null || launchPrefix.isEmpty()) {
-            // El núcleo también lo rechaza, pero ahí ya sería a mitad de secuencia y con la red
-            // armada sobre un prefijo vacío, que no reconocería nada como suyo.
-            return "El prefijo de Baritone está vacío: los comandos saldrían como chat plano al servidor. No se lanza nada.";
+        String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
+        if (prefixRejection != null) {
+            // Se comprueba aquí, antes de armar la red y antes del primer comando: armarla sobre un
+            // prefijo inservible es tener red sin saber qué vigila.
+            return "No se vuela: " + prefixRejection + ".";
         }
 
         Waypoint origin = new Waypoint(mc.player.getX(), mc.player.getZ());
@@ -603,15 +669,22 @@ public class AutoTravel extends Module {
     /** Salida 2: cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
     public String stop() {
         if (!travelling) return "No hay ningún viaje en marcha.";
-        finish("lo has cancelado", false);
-        return "Viaje cortado y entorno restaurado.";
+        // Lo que conteste el comando no puede afirmar más que lo que acaba de pasar: si la
+        // restauración no llegó, finish() ya lo ha dicho entero y aquí solo se remata sin repetirlo.
+        if (finish("lo has cancelado", false).arrived()) return "Viaje cortado y entorno restaurado.";
+        return "Viaje cortado, pero el entorno NO ha quedado restaurado: lee el aviso de arriba.";
     }
 
     public boolean isTravelling() {
         return travelling;
     }
 
-    /** Preparación de spec §6.2, pasos 3 a 6: los dos módulos y la secuencia de ajustes de Baritone. */
+    /**
+     * Preparación de spec §6.2, pasos 4 a 6: los dos módulos y, de una pieza, la secuencia de
+     * ajustes de Baritone. Los siete {@code #set} salen juntos a propósito -{@code elytraAutoSwap}
+     * incluido-: es la secuencia que el núcleo construye y prueba como una sola cosa, y partirla
+     * para meter el encendido de un módulo nuestro en medio no cambia nada observable.
+     */
     private void prepare() {
         switchModule(Modules.get().get(ElytraFly.class), false);
         switchModule(Modules.get().get(ElytraReplace.class), true);
@@ -628,33 +701,70 @@ public class AutoTravel extends Module {
      * El único final de los seis caminos de salida (spec §6.3). Es idempotente: quien llegue segundo
      * no hace nada, que es justo lo que hace falta cuando el apagado del módulo y la salida del mundo
      * se solapan.
+     *
+     * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después.
+     *         Quien llega segundo no restaura nada y contesta {@code ENTREGADA}: el primero ya dijo
+     *         lo que hubiera que decir, y repetirlo sería sacar dos veces el mismo aviso.
      */
-    private void finish(String reason, boolean warn) {
-        if (!travelling) return;
+    private SafetyNet.Restoration finish(String reason, boolean warn) {
+        if (!travelling) return SafetyNet.Restoration.ENTREGADA;
         travelling = false;
 
-        restore();
+        SafetyNet.Restoration restoration = restore();
+        String pending = restoration.warning(activePrefix);
 
-        String message = "Viaje terminado: " + reason + ". Entorno restaurado.";
-        if (warn) warning("%s", message);
-        else if (notify.get()) info("%s", message);
+        if (pending == null) {
+            String message = "Viaje terminado: " + reason + ". Entorno restaurado.";
+            if (warn) warning("%s", message);
+            else if (notify.get()) info("%s", message);
+            return restoration;
+        }
+
+        // Emitir no es llegar, y decir "entorno restaurado" sin que haya llegado nada es la mentira
+        // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando. Sale
+        // siempre, se hayan pedido avisos o no, y fuerte: es el peor estado en que este módulo te
+        // puede dejar.
+        warning("%s", "Viaje terminado: " + reason + ", pero el entorno NO ha quedado restaurado: " + pending + ".");
+        loudToast("El viaje ha terminado pero la restauración no ha llegado a Baritone: puede seguir volando y "
+            + "sus ajustes se han quedado en valores de vuelo. Lee el chat.", Items.BARRIER);
+        return restoration;
     }
 
     /**
-     * Devuelve los cinco puntos que se tocaron a su estado de reposo (spec §6.3). La red se desarma
-     * la última, cuando ya no queda ni un comando por emitir: desarmarla antes dejaría el {@code
-     * cancel} y la restauración sin cubrir, que es exactamente cuando más comandos se mandan de
-     * golpe.
+     * Devuelve los cinco puntos que se tocaron a su estado de reposo (spec §6.3) y dice si de verdad
+     * llegaron. La red se desarma la última, cuando ya no queda ni un comando por emitir: desarmarla
+     * antes dejaría el {@code cancel} y la restauración sin cubrir, que es exactamente cuando más
+     * comandos se mandan de golpe. Y va en un {@code finally} porque una red armada que sobreviviera
+     * a una excepción se comería en silencio todo comando que el jugador escribiera a mano.
      */
-    private void restore() {
-        send(BaritoneScript.cancel(activePrefix));
-        for (String command : BaritoneScript.restoration(activePrefix, restingSettings())) send(command);
+    private SafetyNet.Restoration restore() {
+        try {
+            SafetyNet.Restoration outcome;
+            if (mc.player == null) {
+                outcome = SafetyNet.Restoration.SIN_JUGADOR;
+            }
+            else {
+                // El && va detrás a propósito: primero se manda, siempre, y luego se acumula. Con la
+                // condición delante, el primer comando cancelado se llevaría por delante los cinco
+                // siguientes.
+                boolean delivered = send(BaritoneScript.cancel(activePrefix));
+                for (String command : BaritoneScript.restoration(activePrefix, restingSettings())) {
+                    delivered = send(command) && delivered;
+                }
+                outcome = delivered ? SafetyNet.Restoration.ENTREGADA : SafetyNet.Restoration.CANCELADA;
+            }
 
-        switchModule(Modules.get().get(ElytraFly.class), elytraFlyResting.get());
-        switchModule(Modules.get().get(ElytraReplace.class), elytraReplaceResting.get());
+            // Los dos módulos son nuestros y no viajan por el chat: se restauran haya jugador o no,
+            // y lo que les pase no cambia el veredicto de los comandos.
+            switchModule(Modules.get().get(ElytraFly.class), elytraFlyResting.get());
+            switchModule(Modules.get().get(ElytraReplace.class), elytraReplaceResting.get());
 
-        disarmNet();
-        resetTrip();
+            return outcome;
+        }
+        finally {
+            disarmNet();
+            resetTrip();
+        }
     }
 
     private void resetTrip() {
@@ -665,13 +775,19 @@ public class AutoTravel extends Module {
         fireworkWatch.reset();
     }
 
+    /** Suscribe el oyente de la red al bus. Idempotente: armar dos veces no duplica la suscripción. */
     private void armNet() {
-        netArmed = true;
         netCaughtWarned = false;
+        if (netArmed) return;
+        netArmed = true;
+        MeteorClient.EVENT_BUS.subscribe(net);
     }
 
+    /** Desuscribe el oyente. Idempotente, que es lo que hace segura la llamada de {@code onDeactivate}. */
     private void disarmNet() {
+        if (!netArmed) return;
         netArmed = false;
+        MeteorClient.EVENT_BUS.unsubscribe(net);
     }
 
     private static void switchModule(Module module, boolean wanted) {
@@ -688,10 +804,26 @@ public class AutoTravel extends Module {
      * donde la tecla arriba los dejaría a un intro de publicarse.
      *
      * <p>Sin jugador no se manda nada: {@code sendPlayerMsg} lo dereferencia sin comprobarlo.
+     *
+     * @return si el comando salió del cliente hacia Baritone. {@code false} significa que la red
+     *         tuvo que cancelarlo -Baritone no lo interceptó, así que no tenía a quién llegar- o que
+     *         no había jugador. Todo el camino es síncrono: {@code sendPlayerMsg} acaba en {@code
+     *         ClientConnection.send}, donde el mixin publica el evento y nuestro oyente contesta
+     *         antes de que esta llamada vuelva, así que {@link #sendCaught} ya está decidido aquí.
      */
-    private void send(String command) {
-        if (mc.player == null) return;
-        ChatUtils.sendPlayerMsg(command, false);
+    private boolean send(String command) {
+        if (mc.player == null) return false;
+
+        boolean outer = emitting;
+        emitting = true;
+        sendCaught = false;
+        try {
+            ChatUtils.sendPlayerMsg(command, false);
+        }
+        finally {
+            emitting = outer;
+        }
+        return !sendCaught;
     }
 
     private Destination destination() {

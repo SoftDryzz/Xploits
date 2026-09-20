@@ -46,7 +46,9 @@ com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y co
 **`auto-travel` requiere Baritone** instalado junto a Meteor: es el único módulo del addon que lo usa, y los otros
 cinco funcionan igual sin él. El módulo dirige el vuelo con elytra de Baritone por sus comandos de chat, así que sin
 Baritone cargado se niega a lanzar nada y lo dice. Si has cambiado el prefijo de Baritone, cámbialo también en el
-ajuste `baritone-prefix` del módulo.
+ajuste `baritone-prefix` del módulo. Ese prefijo **no puede empezar por `/`**: con barra el comando iría por el
+camino de comando del servidor, que Baritone no escucha, y la red de seguridad del módulo se comería de paso todos
+los demás comandos con barra mientras durase el viaje. El módulo lo rechaza al lanzar y explica por qué.
 
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 
