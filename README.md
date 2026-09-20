@@ -8,7 +8,7 @@ Addon de Meteor Client (MC 1.21.11) para 6b6t con seis módulos independientes.
 | `auto-tpy` | Acepta al instante las TPA de tu lista y de tus amigos de Meteor. |
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
 | `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
-| `auto-pvp` | Dirige los módulos de combate de Meteor según la fase de la pelea, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. Nunca elige como objetivo a los tuyos. |
+| `auto-pvp` | Dirige los módulos de combate de Meteor según la fase de la pelea, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. Nunca elige como objetivo a los tuyos, y mientras está encendido los mete en tu lista de amigos de Meteor para que los otros cinco módulos de combate tampoco les ataquen. |
 | `auto-travel` | Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste (zigzag, quiebro, espiral o señuelo) y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con `.xploits travel go`. **Requiere Baritone**, y es el único módulo del addon que lo usa. |
 
 ## Estructura de paquetes
@@ -29,7 +29,8 @@ com/xploits/stash/core/         Índice de contenedores, claves y búsqueda de s
 com/xploits/elytra/             Módulo elytra-replace (adaptador a Meteor).
 com/xploits/elytra/core/        Política de cambio de elytra-replace.
 com/xploits/pvp/                Módulo auto-pvp (adaptador a Meteor).
-com/xploits/pvp/core/           Máquina de fases, catálogo de módulos dirigidos y quién es de los nuestros, de auto-pvp.
+com/xploits/pvp/core/           Máquina de fases, catálogo de módulos dirigidos, quién es de los nuestros
+                                y qué se escribe en la lista de amigos de Meteor, de auto-pvp.
 com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
 com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
 ```
@@ -78,6 +79,26 @@ Tener uno de los tuyos a tiro **no deja a `auto-pvp` sin objetivo**: se descarta
 que un enemigo de verdad diez bloques detrás del courier sigue siendo el objetivo. Cuando descarta a
 alguien lo dice una vez en el chat (con `notify` puesto) y lo muestra siempre en `.xploits pvp`.
 
-**Tras un cierre anormal del cliente** (cuelgue, kill del proceso, corte de luz), Meteor persiste el estado de sus módulos tal como quedó. Si `auto-pvp` tenía algo tomado en ese momento, conviene mirar la ClickGUI al volver a entrar: puede haber quedado un módulo encendido que `auto-pvp` creía suyo pero que no va a soltar hasta que vuelva a decidir hacerlo.
+**Y para que los otros cinco módulos tampoco les ataquen, `auto-pvp` escribe en tu lista de amigos de
+Meteor.** `auto-pvp` no ataca: enciende módulos, y los cinco que dirige —`crystal-aura`, `auto-trap`,
+`auto-web`, `auto-anvil` y `auto-city`— eligen **su propio** objetivo, y el único filtro social que
+conocen es la lista de amigos de Meteor. Con un courier pegado a ti, `auto-pvp` elegía bien al
+enemigo, encendía `auto-web`, y `auto-web` elegía por su cuenta al más cercano —el courier— y lo
+entelaba. Así que mientras `auto-pvp` está encendido añade a `.friends` a los couriers y a la lista
+`users`, y los quita al apagarse. Lo gobierna el ajuste `sync-friends` (encendido de fábrica):
+
+- **Solo quita lo que puso él.** A un amigo que ya tuvieras no lo toca nunca, ni al poner ni al
+  quitar. Si le borras a mano uno de los suyos, se da por enterado y no lo vuelve a poner.
+- **Solo escribe cuando algo cambia** —editas las listas, `kit-requester` aprende un courier,
+  enciendes o apagas el módulo—, porque cada alta o baja de amigo guarda `friends.nbt` en el disco.
+- **Con `trust-unknown-couriers` encendido no sincroniza ningún courier.** Ese ajuste deja que
+  cualquiera que imite el mensaje READY entre solo en `known-couriers`; sin esta excepción, una línea
+  de chat metería a un desconocido en tu lista de amigos y los cinco módulos dejarían de tocarle. Si
+  lo enciendes, aprendes a alguien y lo vuelves a apagar, ese nombre ya no se distingue de los tuyos:
+  repasa `known-couriers` antes.
+- Con la sincronización apagada, `auto-pvp` sigue sin atacar a los tuyos, pero los otros cinco
+  módulos sí pueden. `.xploits pvp` te dice en qué situación estás.
+
+**Tras un cierre anormal del cliente** (cuelgue, kill del proceso, corte de luz), Meteor persiste el estado de sus módulos tal como quedó. Si `auto-pvp` tenía algo tomado en ese momento, conviene mirar la ClickGUI al volver a entrar: puede haber quedado un módulo encendido que `auto-pvp` creía suyo pero que no va a soltar hasta que vuelva a decidir hacerlo. Y si estaba sincronizando amigos, los que hubiera puesto se quedan en tu lista: el addon no los borrará en la siguiente sesión porque no puede demostrar que fueran suyos, así que repásala con `.friends list`.
 
 - Diseño: [docs/superpowers/specs/2026-09-11-kitrequester-design.md](docs/superpowers/specs/2026-09-11-kitrequester-design.md)

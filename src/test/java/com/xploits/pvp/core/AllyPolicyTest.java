@@ -70,15 +70,15 @@ class AllyPolicyTest {
     @Test
     void losEspaciosSobrantesDeLaListaNoDesprotegen() {
         assertEquals(Allegiance.COURIER,
-            AllyPolicy.of("StormAegis44", false, Set.of("  StormAegis44 "), SIN_USUARIOS));
+            AllyPolicy.of("StormAegis44", false, AllyPolicy.names(List.of("  StormAegis44 ")), SIN_USUARIOS));
         assertEquals(Allegiance.USUARIO_TPY,
-            AllyPolicy.of("Dryzzical", false, SIN_COURIERS, Set.of("Dryzzical\t")));
+            AllyPolicy.of("Dryzzical", false, SIN_COURIERS, AllyPolicy.names(List.of("Dryzzical\t"))));
     }
 
     @Test
     void lasEntradasEnBlancoNoEmparejanConNadie() {
-        assertEquals(Allegiance.AJENO,
-            AllyPolicy.of("Mallory", false, Set.of("", "   "), Set.of("\t")));
+        assertEquals(Allegiance.AJENO, AllyPolicy.of("Mallory", false,
+            AllyPolicy.names(List.of("", "   ")), AllyPolicy.names(List.of("\t"))));
     }
 
     @Test
@@ -89,16 +89,29 @@ class AllyPolicyTest {
     }
 
     @Test
-    void unaEntradaNulaEnLaListaNoRevienta() {
-        List<String> conNulo = Arrays.asList(null, "StormAegis44");
-        assertEquals(Allegiance.COURIER, AllyPolicy.of("StormAegis44", false, conNulo, SIN_USUARIOS));
-        assertEquals(Allegiance.AJENO, AllyPolicy.of("Mallory", false, conNulo, SIN_USUARIOS));
-    }
-
-    @Test
     void listasNulasSeTratanComoVacias() {
         assertEquals(Allegiance.AJENO, AllyPolicy.of("StormAegis44", false, null, null));
         assertEquals(Allegiance.AMIGO, AllyPolicy.of("Dryzzical", true, null, null));
+    }
+
+    // --- names(): el recorte se hace una vez por lista y por tick, no una vez por jugador mirado ---
+
+    @Test
+    void namesRecortaLosEspaciosYTiraLasEntradasEnBlanco() {
+        assertEquals(Set.of("StormAegis44", "Dryzzical"),
+            AllyPolicy.names(List.of("  StormAegis44 ", "Dryzzical\t", "", "   ")));
+    }
+
+    @Test
+    void namesTrataLasEntradasNulasYLaListaNulaSinFallar() {
+        assertEquals(Set.of("StormAegis44"), AllyPolicy.names(Arrays.asList(null, "StormAegis44")));
+        assertTrue(AllyPolicy.names(null).isEmpty());
+    }
+
+    @Test
+    void namesNoJuntaNombresQueSoloSeParecenEnMinusculas() {
+        assertEquals(Set.of("StormAegis44", "stormaegis44"),
+            AllyPolicy.names(List.of("StormAegis44", " stormaegis44")));
     }
 
     /** El nombre del jugador también se recorta: lo que decide es quién es, no cómo llegó escrito. */

@@ -64,7 +64,11 @@ public class KitRequester extends Module {
     private final Setting<Boolean> trustUnknownCouriers = sgGeneral.add(new BoolSetting.Builder()
         .name("trust-unknown-couriers")
         .description("Aceptar un courier nuevo si envía READY y TPA durante la espera del pedido. "
-            + "Riesgo: cualquiera que imite el mensaje puede teletransportarse a ti y quedar en la lista.")
+            + "Riesgo: cualquiera que imite el mensaje puede teletransportarse a ti y quedar en la lista. "
+            + "Mientras esté encendido, auto-pvp no sincroniza ningún courier con tu lista de amigos de "
+            + "Meteor, justo para que ese impostor no se cuele ahí. Si lo apagas después de haber aprendido "
+            + "a alguien, ese nombre ya es indistinguible de los que escribiste tú: repasa known-couriers "
+            + "antes de apagarlo.")
         .defaultValue(false)
         .build()
     );
@@ -167,6 +171,15 @@ public class KitRequester extends Module {
     /** Couriers configurados; AutoTPY los deja en manos de este módulo mientras esté activo. */
     public Set<String> knownCouriers() {
         return Set.copyOf(knownCouriers.get());
+    }
+
+    /**
+     * Si ahora mismo un desconocido puede meterse solo en {@link #knownCouriers()} con un READY y
+     * una TPA. Lo pregunta auto-pvp: con esto encendido la lista deja de ser fiable y no se escribe
+     * nada de ella en la lista de amigos de Meteor (spec §14.2 de auto-pvp).
+     */
+    public boolean trustsUnknownCouriers() {
+        return trustUnknownCouriers.get();
     }
 
     public String reload() {
