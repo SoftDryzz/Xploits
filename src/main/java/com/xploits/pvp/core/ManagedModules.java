@@ -9,8 +9,9 @@ import java.util.List;
  */
 public final class ManagedModules {
     // El último parámetro es turnsItselfOff (spec §7): crystal-aura y auto-web solo se apagan
-    // porque el jugador los apaga a mano; los otros cuatro se apagan solos con los ajustes de
-    // fábrica, y ModuleLedger necesita saberlo para no confundir ese apagado con uno a mano.
+    // porque el jugador los apaga a mano; los otros cuatro pueden apagarse solos sin que el
+    // jugador los toque -no los cuatro por el mismo motivo, ni todos de fábrica: ver la tabla
+    // de la spec §7-, y ModuleLedger necesita saberlo para no confundir ese apagado con uno a mano.
     public static final ManagedModule CRYSTAL_AURA = new ManagedModule("crystal-aura", Resource.CRYSTALS, 1, false);
     public static final ManagedModule AUTO_TRAP = new ManagedModule("auto-trap", Resource.OBSIDIAN, 8, true);
     public static final ManagedModule AUTO_WEB = new ManagedModule("auto-web", Resource.WEBS, 1, false);

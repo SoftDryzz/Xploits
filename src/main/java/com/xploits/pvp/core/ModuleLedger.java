@@ -18,10 +18,12 @@ import java.util.Set;
  * lógica pura y se puede probar sin arrancar el juego.
  *
  * <p><b>Un apagado observado no siempre es un soltado a mano (spec §7).</b> Cuatro de los seis
- * módulos dirigidos se apagan solos con los ajustes de fábrica de Meteor -{@code auto-trap} tras
- * colocar el trap, {@code surround} con sus {@code toggle-on-*}, {@code auto-city} si no encuentra
- * objetivo, bloque o pico, y {@code auto-anvil} con la cabeza vacía-, así que tratar ese apagado
- * como un soltado a mano bloqueaba la fase entera y avisaba de un "lo apagaste tú" falso. La
+ * módulos dirigidos pueden apagarse solos sin que el jugador los toque -no los cuatro por el mismo
+ * motivo, ni todos de fábrica: {@code auto-trap} tras colocar el trap y {@code surround} con sus
+ * ajustes {@code toggle-on-*}, los dos de fábrica; {@code auto-city} de fábrica si no encuentra
+ * objetivo, bloque o pico, o tras minar con éxito; y {@code auto-anvil} solo si el jugador activa
+ * {@code toggle-on-break}, que es {@code false} de fábrica-, así que tratar ese apagado como un
+ * soltado a mano bloqueaba la fase entera y avisaba de un "lo apagaste tú" falso. La
  * distinción es por módulo ({@link ManagedModule#turnsItselfOff()}), no por tiempo: no hay ventana
  * de ticks que sirva para los seis a la vez, porque {@code auto-trap} se apaga muchos ticks después
  * de tomarlo y {@code auto-city} puede apagarse dentro del mismo {@code onActivate()} que dispara
@@ -90,10 +92,11 @@ public final class ModuleLedger {
         for (String name : new ArrayList<>(owned)) {
             if (!active.contains(name)) {
                 // Ya no está encendido: deja de ser nuestro en cualquier caso. Pero cuatro de los
-                // seis módulos dirigidos se apagan solos con los ajustes de fábrica de Meteor
-                // (spec §7) -auto-trap al colocar el trap, surround con sus toggle-on-*, auto-city
-                // si no encuentra objetivo/bloque/pico, auto-anvil con la cabeza vacía-, y ese
-                // apagado no es que el jugador lo soltara a mano. Solo para los módulos que NO
+                // seis módulos dirigidos pueden apagarse solos sin que el jugador los toque (spec
+                // §7) -auto-trap al colocar el trap y surround con sus toggle-on-*, de fábrica;
+                // auto-city de fábrica si no encuentra objetivo/bloque/pico o tras minar con éxito;
+                // auto-anvil solo si el jugador activa toggle-on-break-, y ese apagado no es que
+                // el jugador lo soltara a mano. Solo para los módulos que NO
                 // pueden apagarse solos (turnsItselfOff() == false) un apagado observado cuenta
                 // como soltado: bloquea la fase y avisa. Para los demás, el director puede
                 // volver a tomarlo en la segunda pasada de este mismo tick.
