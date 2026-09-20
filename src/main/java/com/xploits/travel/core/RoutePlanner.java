@@ -16,11 +16,12 @@ import java.util.List;
  * degradarse. Se acota lo que sigue funcionando acotado; se rechaza lo que no.
  *
  * <p>La otra cara de esa misma doctrina: una acotación que deja el patrón sin patrón ya no es una
- * acotación. Si el paso no cabe ni una sola vez en el viaje, o si la amplitud -o el radio- efectiva
- * cae a cero, la ruta sale recta pese a haberse pedido evasión. Eso se rechaza con motivo en vez de
- * entregarse en silencio: el jugador que cree ondular y vuela recto dibuja exactamente la línea que
- * delata su base. Y el motivo dice siempre los números concretos y por dónde se sale del atasco,
- * porque un rechazo que no dice cómo salir es casi tan malo como el silencio.
+ * acotación. Si el paso no cabe ni una sola vez en el viaje, si es cero o negativo, o si la amplitud
+ * -o el radio, o las vueltas, o el ángulo del señuelo- deja los waypoints sobre el eje, la ruta sale
+ * recta pese a haberse pedido evasión. Eso se rechaza con motivo en vez de entregarse en silencio:
+ * el jugador que cree ondular y vuela recto dibuja exactamente la línea que delata su base. Y el
+ * motivo dice siempre los números concretos y por dónde se sale del atasco, porque un rechazo que no
+ * dice cómo salir es casi tan malo como el silencio.
  */
 public final class RoutePlanner {
     /**
@@ -93,11 +94,16 @@ public final class RoutePlanner {
             case ESPIRAL -> {
                 double radiusCap = destination.highway() ? highwayMaxAmplitude : Double.POSITIVE_INFINITY;
                 double radius = Math.min(Math.min(params.spiralRadius(), distance / 2.0), radiusCap);
-                yield radius <= 0
-                    ? Route.rejected(flatSpiralRejection(params.spiralRadius(), radius, destination.highway()))
+                String rejection = spiralRejection(params.spiralRadius(), radius, params.spiralTurns(),
+                    destination.highway());
+                yield rejection != null ? Route.rejected(rejection)
                     : Route.of(spiral(destinationPoint, ux, uz, nx, nz, radius, params));
             }
-            case SENUELO -> Route.of(decoy(origin, destinationPoint, ux, uz, distance, params));
+            case SENUELO -> {
+                String rejection = decoyRejection(params.decoyAngleDegrees(), params.decoyFraction());
+                yield rejection != null ? Route.rejected(rejection)
+                    : Route.of(decoy(origin, destinationPoint, ux, uz, distance, params));
+            }
         };
     }
 
@@ -107,10 +113,16 @@ public final class RoutePlanner {
     }
 
     /**
-     * Las dos maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5- se
-     * queda sin patrón, las dos sin hacer ruido:
+     * Las tres maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5- se
+     * queda sin patrón, las tres sin hacer ruido:
      *
      * <ul>
+     *   <li><b>El paso es cero o negativo.</b> No hay ningún avance entre cambios de lado, así que
+     *       no hay ondulación que dibujar. Antes esto se degradaba a RECTO en silencio para no
+     *       explotar a miles de millones de iteraciones -{@code (int) floor(distancia/0.0)} es
+     *       {@code Integer.MAX_VALUE}-, pero un rechazo evita el cuelgue igual de bien y además se
+     *       oye: se devuelve antes de entrar en ningún bucle. Un paso de cero no "funciona
+     *       acotado", no funciona.</li>
      *   <li><b>No cabe ni un tramo.</b> {@code floor(distancia/paso)} vale 0 en cuanto la distancia
      *       es menor que el paso, así que no se genera ni un solo punto de patrón. Con el tramo de
      *       fábrica del QUIEBRO (5000) eso es todo viaje de menos de 5000 bloques.</li>
@@ -119,27 +131,29 @@ public final class RoutePlanner {
      *       para llegar aquí, basta un destino de autopista con el ancho del corredor a 0.</li>
      * </ul>
      *
-     * <p>En los dos casos la ruta sale recta pese a haberse pedido evasión, así que se rechaza con
+     * <p>En los tres casos la ruta sale recta pese a haberse pedido evasión, así que se rechaza con
      * motivo, igual que el señuelo en autopista. Una amplitud acotada a cero ya no "funciona
      * acotada".
-     *
-     * <p>Un paso de cero o negativo NO entra aquí: {@link #zigzag} lo trata como RECTO para no
-     * explotar a miles de millones de iteraciones, que es una decisión aparte y con su propio test.
      *
      * @return el motivo del rechazo, o {@code null} si el patrón se puede dibujar de verdad
      */
     private static String lateralRejection(FlightPattern pattern, double distance, double step,
                                             double configuredAmplitude, double effectiveAmplitude,
                                             boolean highway) {
-        if (step <= 0) return null;
+        if (step <= 0) {
+            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques no deja ningún"
+                + " avance entre cambios de lado: no se dibujaría ni una ondulación y la ruta saldría recta"
+                + " hasta el destino sin avisar. Sube " + stepName(pattern) + " por encima de 0 bloques o"
+                + " elige RECTO.";
+        }
         if (distance < step) {
-            return pattern + " con " + stepName(pattern) + " en " + blocks(step) + " bloques no cabe ni una vez"
-                + " en un viaje de " + blocks(distance) + " bloques: no se dibujaría ni una ondulación y la ruta"
-                + " saldría recta sin avisar. Baja " + stepName(pattern) + " por debajo de " + blocks(distance)
+            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques no cabe ni una vez"
+                + " en un viaje de " + number(distance) + " bloques: no se dibujaría ni una ondulación y la ruta"
+                + " saldría recta sin avisar. Baja " + stepName(pattern) + " por debajo de " + number(distance)
                 + " bloques o elige RECTO.";
         }
         if (effectiveAmplitude <= 0) {
-            return pattern + " con " + effectiveSideName(pattern) + " en " + blocks(effectiveAmplitude)
+            return pattern + " con " + effectiveSideName(pattern) + " en " + number(effectiveAmplitude)
                 + " bloques no se aparta del eje: los waypoints saldrían todos sobre la recta, un patrón"
                 + " decorativo. " + howToWiden(sideName(pattern), configuredAmplitude, highway);
         }
@@ -147,25 +161,81 @@ public final class RoutePlanner {
     }
 
     /**
-     * La espiral tiene el mismo agujero que ZIGZAG y QUIEBRO, y por coherencia recibe el mismo
-     * trato: con el radio acotado a cero -un destino de autopista con el ancho del corredor a 0-
-     * todos sus pasos caen exactamente sobre el destino, porque {@code stepRadius = radius *
-     * (1 - fraction)} es cero para cualquier {@code fraction}. No es una espiral pequeña: son 37
-     * copias del destino, ni una vuelta, ni un bloque de separación del eje. Una espiral de radio
-     * cero es una recta, así que se rechaza en vez de entregarse.
+     * La espiral tiene el mismo agujero que ZIGZAG y QUIEBRO por sus dos ajustes, y por coherencia
+     * recibe el mismo trato:
      *
-     * @return el motivo del rechazo
+     * <ul>
+     *   <li><b>Radio efectivo cero.</b> Con el radio acotado a cero -un destino de autopista con el
+     *       ancho del corredor a 0- todos sus pasos caen exactamente sobre el destino, porque
+     *       {@code stepRadius = radius * (1 - fraction)} es cero para cualquier {@code fraction}. No
+     *       es una espiral pequeña: son 37 copias del destino, ni una vuelta, ni un bloque de
+     *       separación del eje.</li>
+     *   <li><b>Vueltas a cero.</b> El radio sí decrece, pero el ángulo es {@code 2π * 0 * fraction},
+     *       o sea cero en todos los pasos: los puntos se reparten sobre el propio eje, entre el
+     *       destino y el punto a una radio antes. Es exactamente la aproximación recta que ya haría
+     *       RECTO, con 9 waypoints decorativos encima.</li>
+     * </ul>
+     *
+     * <p>Unas vueltas negativas NO entran aquí: {@link #spiralSteps} toma el valor absoluto para los
+     * pasos y el ángulo sale negativo, así que la espiral gira al otro lado. Gira, que es lo único
+     * que se le pide; eso sigue funcionando y no se rechaza.
+     *
+     * @return el motivo del rechazo, o {@code null} si la espiral se puede dibujar de verdad
      */
-    private static String flatSpiralRejection(double configuredRadius, double effectiveRadius, boolean highway) {
-        return FlightPattern.ESPIRAL + " con el radio efectivo en " + blocks(effectiveRadius)
-            + " bloques no da ninguna vuelta: todos sus pasos caerían sobre el destino, así que la"
-            + " aproximación sería recta. " + howToWiden("el radio", configuredRadius, highway);
+    private static String spiralRejection(double configuredRadius, double effectiveRadius, double turns,
+                                           boolean highway) {
+        if (effectiveRadius <= 0) {
+            return FlightPattern.ESPIRAL + " con el radio efectivo en " + number(effectiveRadius)
+                + " bloques no da ninguna vuelta: todos sus pasos caerían sobre el destino, así que la"
+                + " aproximación sería recta. " + howToWiden("el radio", configuredRadius, highway);
+        }
+        if (turns == 0) {
+            return FlightPattern.ESPIRAL + " con las vueltas en " + number(turns) + " no gira: sus pasos"
+                + " caerían todos sobre el eje, entre el destino y el punto a una radio antes, así que la"
+                + " aproximación sería recta. Sube las vueltas por encima de 0 o elige RECTO.";
+        }
+        return null;
+    }
+
+    /**
+     * El señuelo se queda sin señuelo cuando su punto de corrección -su único waypoint intermedio-
+     * cae sobre la recta origen-destino, y entonces la ruta es la recta con una parada de más:
+     *
+     * <ul>
+     *   <li><b>Fracción cero.</b> El punto de corrección es {@code origen + dirección*distancia*0},
+     *       o sea el propio origen. Se "corrige" sin haberse apartado.</li>
+     *   <li><b>Ángulo múltiplo de 180 grados.</b> La dirección del señuelo es la del rumbo real (0)
+     *       o la contraria (180), así que el punto de corrección queda sobre el mismo eje: no hay
+     *       nada que despistar. Se mira el múltiplo y no {@code sin(ángulo) == 0} porque
+     *       {@code Math.sin(Math.toRadians(180))} vale 1,2e-16, no cero.</li>
+     * </ul>
+     *
+     * <p>Una fracción negativa NO entra aquí: el punto de corrección queda fuera del eje, detrás del
+     * origen. Es un rodeo caro, pero aparta del rumbo real de verdad, que es para lo que existe el
+     * señuelo; se acota lo que sigue funcionando. Un ángulo negativo tampoco: despista hacia el otro
+     * lado y ya está.
+     *
+     * @return el motivo del rechazo, o {@code null} si el señuelo despista de verdad
+     */
+    private static String decoyRejection(double angleDegrees, double fraction) {
+        if (fraction == 0) {
+            return FlightPattern.SENUELO + " con la fracción en " + number(fraction) + " no recorre nada"
+                + " hacia el señuelo: el punto de corrección caería sobre el propio origen y la ruta sería la"
+                + " recta al destino. Sube la fracción por encima de 0 o elige RECTO.";
+        }
+        if (angleDegrees % 180 == 0) {
+            return FlightPattern.SENUELO + " con el ángulo en " + number(angleDegrees) + " grados no apunta"
+                + " fuera del eje: el punto de corrección caería sobre la propia recta origen-destino y la"
+                + " ruta sería recta, sin despistar a nadie. Dale al ángulo un valor que no sea múltiplo de"
+                + " 180 grados o elige RECTO.";
+        }
+        return null;
     }
 
     /** La salida del atasco, que cambia según de dónde venga el cero: del corredor o del ajuste. */
     private static String howToWiden(String settingName, double configured, boolean highway) {
         if (highway && configured > 0) {
-            return "El ajuste vale " + blocks(configured) + " bloques, pero el ancho máximo del corredor de la"
+            return "El ajuste vale " + number(configured) + " bloques, pero el ancho máximo del corredor de la"
                 + " autopista lo acota a 0: sube ese ancho por encima de 0 o elige RECTO.";
         }
         return "Sube " + settingName + " por encima de 0 bloques o elige RECTO.";
@@ -187,7 +257,7 @@ public final class RoutePlanner {
     }
 
     /** Sin decimales cuando el valor es entero, para que un motivo no diga "5000.0 bloques". */
-    private static String blocks(double value) {
+    private static String number(double value) {
         if (!Double.isInfinite(value) && !Double.isNaN(value) && value == Math.rint(value)) {
             return Long.toString((long) value);
         }
@@ -199,18 +269,20 @@ public final class RoutePlanner {
      * {@code i} de 1 a {@code floor(distance/period)}, el waypoint es {@code origen + u*(i*period) +
      * n*(amplitude * (i impar ? +1 : -1))}. Al final, siempre el destino exacto.
      *
-     * <p>Un paso de cero o negativo no tiene sentido -{@code floor(distancia/paso)} explotaría a
-     * miles de millones de iteraciones- así que se trata como RECTO. Un paso positivo pero minúsculo
-     * frente a la distancia se acota a {@link #MAX_PATTERN_WAYPOINTS}.
+     * <p>Un paso positivo pero minúsculo frente a la distancia se acota a
+     * {@link #MAX_PATTERN_WAYPOINTS}.
      *
-     * <p>Los dos casos en que el patrón saldría recto sin avisar -que no quepa ni un tramo, o que la
-     * amplitud efectiva sea cero- se rechazan antes de llegar aquí, en {@link #lateralRejection}, así
-     * que esta función siempre genera al menos un punto de patrón con desvío real.
+     * <p>Los tres casos en que el patrón saldría recto sin avisar -que el paso sea cero o negativo,
+     * que no quepa ni un tramo, o que la amplitud efectiva sea cero- se rechazan antes de llegar
+     * aquí, en {@link #lateralRejection}, así que esta función siempre genera al menos un punto de
+     * patrón con desvío real y no necesita guardarse del paso cero. Aunque alguien se saltara ese
+     * rechazo tampoco habría cuelgue: {@code floor(distancia/0.0)} es infinito, pero el
+     * {@code Math.min} con {@link #MAX_PATTERN_WAYPOINTS} lo deja en 500 iteraciones, y con paso
+     * negativo el conteo sale negativo y el bucle no se ejecuta. Lo que habría es una ruta absurda y
+     * callada, que es justo lo que el rechazo impide.
      */
     private static List<Waypoint> zigzag(Waypoint origin, Waypoint destination, double ux, double uz,
                                           double nx, double nz, double distance, double period, double amplitude) {
-        if (period <= 0) return List.of(destination);
-
         List<Waypoint> points = new ArrayList<>();
         int steps = (int) Math.min(Math.floor(distance / period), MAX_PATTERN_WAYPOINTS);
         for (int i = 1; i <= steps; i++) {

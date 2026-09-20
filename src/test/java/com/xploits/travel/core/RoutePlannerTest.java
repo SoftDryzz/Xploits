@@ -2,11 +2,13 @@ package com.xploits.travel.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RoutePlannerTest {
@@ -291,21 +293,122 @@ class RoutePlannerTest {
     }
 
     @Test
-    void aZeroOrNegativePeriodFallsBackToTheStraightRouteInsteadOfHanging() {
-        // (int) Math.floor(distancia / 0.0) es Integer.MAX_VALUE: sin este caso especial, dos mil
-        // millones de iteraciones llenando una lista cuelgan el cliente o lo dejan sin memoria.
-        PatternParams zeroPeriod = new PatternParams(200, 0, 5000, 800, 1500, 1.5, 30, 0.6);
-        Route zigzagRoute = RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), FlightPattern.ZIGZAG,
-            zeroPeriod, HIGHWAY_MAX);
-        assertFalse(zigzagRoute.isRejected());
-        assertEquals(1, zigzagRoute.waypoints().size());
-        assertEquals(10_000, last(zigzagRoute).x(), TOLERANCE);
+    void aZeroOrNegativeStepIsRefusedInsteadOfSilentlyFlyingStraight() {
+        // Antes este test consagraba el fallo: con el paso a 0 la ruta salía recta y NO rechazada,
+        // la misma degradación silenciosa que las otras puertas ya rechazan. El jugador pone el
+        // periodo a 0, vuela recto y se cree ondulando. Un paso de cero no funciona acotado: no
+        // funciona, así que se rechaza con motivo.
+        //
+        // Lo que sí valía de la versión anterior se conserva: el motivo de aquella rama recta era no
+        // colgar el cliente -(int) Math.floor(d/0.0) es Integer.MAX_VALUE-, y un rechazo tiene que
+        // evitar el cuelgue igual de bien. El plazo lo comprueba: el rechazo sale sin entrar en
+        // ningún bucle, muchísimo antes de dos segundos.
+        record Caso(FlightPattern pattern, PatternParams params, String ajuste, String valor) {}
+        List<Caso> casos = List.of(
+            new Caso(FlightPattern.ZIGZAG, new PatternParams(200, 0, 5000, 800, 1500, 1.5, 30, 0.6),
+                "periodo", "0"),
+            new Caso(FlightPattern.ZIGZAG, new PatternParams(200, -2000, 5000, 800, 1500, 1.5, 30, 0.6),
+                "periodo", "-2000"),
+            new Caso(FlightPattern.QUIEBRO, new PatternParams(200, 2000, 0, 800, 1500, 1.5, 30, 0.6),
+                "tramo", "0"),
+            new Caso(FlightPattern.QUIEBRO, new PatternParams(200, 2000, -5, 800, 1500, 1.5, 30, 0.6),
+                "tramo", "-5"));
 
-        PatternParams negativeLegLength = new PatternParams(200, 2000, -5, 800, 1500, 1.5, 30, 0.6);
-        Route quiebroRoute = RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), FlightPattern.QUIEBRO,
-            negativeLegLength, HIGHWAY_MAX);
-        assertFalse(quiebroRoute.isRejected());
-        assertEquals(1, quiebroRoute.waypoints().size());
+        for (Caso caso : casos) {
+            String quien = caso.pattern() + " con " + caso.ajuste() + " a " + caso.valor();
+            Route route = assertTimeoutPreemptively(Duration.ofSeconds(2),
+                () -> RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), caso.pattern(),
+                    caso.params(), HIGHWAY_MAX),
+                quien + " debe rechazarse de inmediato, sin entrar en ningún bucle");
+
+            assertTrue(route.isRejected(), quien + " debe rechazarse, no salir recto en silencio");
+            assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+
+            String reason = route.rejection();
+            assertTrue(reason.contains(caso.ajuste()),
+                "el motivo debe nombrar el ajuste propio del patrón: " + reason);
+            assertTrue(reason.contains(caso.valor()), "el motivo debe decir el valor que tiene: " + reason);
+            assertTrue(reason.contains("recta"), "el motivo debe decir la salida concreta: " + reason);
+            assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+        }
+    }
+
+    @Test
+    void aQuiebroWithItsStepAtZeroNamesItsTramoNotTheZigzagPeriodo() {
+        // El motivo se lee en el chat: tiene que apuntar al ajuste que el jugador puede tocar. Sin
+        // esto, un motivo genérico ("el paso") pasaría el test de arriba por la vía del QUIEBRO.
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), FlightPattern.QUIEBRO,
+            new PatternParams(200, 2000, 0, 800, 1500, 1.5, 30, 0.6), HIGHWAY_MAX);
+
+        assertTrue(route.isRejected());
+        assertFalse(route.rejection().contains("periodo"),
+            "el quiebro no se configura con periodo: " + route.rejection());
+    }
+
+    @Test
+    void aSpiralWithZeroTurnsIsRefusedBecauseItNeverLeavesTheAxis() {
+        // Mismo agujero que el paso a cero, por el otro ajuste de la espiral: el ángulo es
+        // 2*PI*0*fraction, o sea 0 en todos los pasos, y los 9 puntos se reparten sobre el propio
+        // eje entre el destino y el punto a una radio antes. Es la aproximación recta de RECTO con
+        // waypoints decorativos encima.
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL,
+            new PatternParams(200, 2000, 5000, 800, 1500, 0, 30, 0.6), HIGHWAY_MAX);
+
+        assertTrue(route.isRejected(), "una espiral que no gira es una recta y debe rechazarse");
+        assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+        String reason = route.rejection();
+        assertTrue(reason.contains("vueltas"), "el motivo debe nombrar el ajuste de la espiral: " + reason);
+        assertTrue(reason.contains("0"), "el motivo debe decir el valor que tiene: " + reason);
+        assertTrue(reason.contains("recta"), "el motivo debe decir la salida concreta: " + reason);
+        assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+    }
+
+    @Test
+    void aDecoyWhoseCorrectionPointLandsOnTheAxisIsRefusedInsteadOfFlyingStraight() {
+        // El señuelo tiene el mismo agujero por sus dos ajustes: con la fracción a 0 el punto de
+        // corrección ES el origen, y con el ángulo a 0 (o a 180) cae sobre la propia recta
+        // origen-destino. En los dos casos el "señuelo" no despista a nadie y la ruta es la recta.
+        PatternParams zeroFraction = new PatternParams(200, 2000, 5000, 800, 1500, 1.5, 30, 0);
+        Route byFraction = RoutePlanner.plan(ORIGIN, Destination.coordinates(20_000, 0), FlightPattern.SENUELO,
+            zeroFraction, HIGHWAY_MAX);
+        assertTrue(byFraction.isRejected(), "una fracción de 0 deja el señuelo en el origen");
+        assertTrue(byFraction.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+        assertTrue(byFraction.rejection().contains("fracción"),
+            "el motivo debe nombrar el ajuste: " + byFraction.rejection());
+        assertTrue(byFraction.rejection().contains("recta"),
+            "el motivo debe decir la salida concreta: " + byFraction.rejection());
+
+        for (double degrees : new double[] {0, 180}) {
+            PatternParams flatAngle = new PatternParams(200, 2000, 5000, 800, 1500, 1.5, degrees, 0.6);
+            Route byAngle = RoutePlanner.plan(ORIGIN, Destination.coordinates(20_000, 0), FlightPattern.SENUELO,
+                flatAngle, HIGHWAY_MAX);
+
+            assertTrue(byAngle.isRejected(), "un ángulo de " + degrees + " grados no aparta del eje");
+            String reason = byAngle.rejection();
+            assertTrue(reason.contains("ángulo"), "el motivo debe nombrar el ajuste: " + reason);
+            assertTrue(reason.contains(String.valueOf((long) degrees)),
+                "el motivo debe decir el valor que tiene: " + reason);
+            assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+        }
+    }
+
+    @Test
+    void negativeTurnsAndANegativeDecoyFractionStillDrawARealDetourSoTheyAreNotRefused() {
+        // El rechazo es para lo que sale recto, no para todo número raro: con vueltas negativas la
+        // espiral gira al otro lado -gira, que es lo único que se le pide- y con fracción negativa
+        // el punto de corrección queda fuera del eje, detrás del origen. Caro, pero despista. Que
+        // nadie convierta estos rechazos en un "<= 0" de brocha gorda.
+        Route spiral = RoutePlanner.plan(ORIGIN, Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL,
+            new PatternParams(200, 2000, 5000, 800, 1500, -1.5, 30, 0.6), HIGHWAY_MAX);
+        assertFalse(spiral.isRejected(), "una espiral al revés sigue siendo una espiral");
+        assertTrue(spiral.waypoints().stream().anyMatch(point -> Math.abs(point.z()) > 1),
+            "la espiral al revés debe apartarse del eje de verdad");
+
+        Route decoy = RoutePlanner.plan(ORIGIN, Destination.coordinates(20_000, 0), FlightPattern.SENUELO,
+            new PatternParams(200, 2000, 5000, 800, 1500, 1.5, 30, -0.6), HIGHWAY_MAX);
+        assertFalse(decoy.isRejected(), "una fracción negativa apunta hacia atrás, pero apunta fuera del eje");
+        assertTrue(Math.abs(decoy.waypoints().get(0).z()) > 1_000,
+            "el punto de corrección debe quedar claramente fuera del rumbo real");
     }
 
     @Test
