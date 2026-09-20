@@ -22,6 +22,13 @@ import java.util.List;
  * el jugador que cree ondular y vuela recto dibuja exactamente la línea que delata su base. Y el
  * motivo dice siempre los números concretos y por dónde se sale del atasco, porque un rechazo que no
  * dice cómo salir es casi tan malo como el silencio.
+ *
+ * <p>El tope de waypoints se rige por lo mismo. Acota la CUENTA de puntos, no el alcance del patrón:
+ * recortar la cuenta ondularía el principio del viaje y dejaría el final -el tramo que llega a casa-
+ * en línea recta, que es la peor mitad donde dejarla. Así que un patrón que no cabe entero bajo el
+ * tope se rechaza, y no se estira su paso para que quepa: un zigzag de periodo 200 cuando se pidió
+ * 100 cubre el trayecto, sí, pero no es el patrón que se pidió, y callarlo es la misma degradación
+ * silenciosa con otro disfraz.
  */
 public final class RoutePlanner {
     /**
@@ -31,6 +38,10 @@ public final class RoutePlanner {
      * un número tan grande es en la práctica un cuelgue del cliente, no una ruta utilizable. 500
      * waypoints ya son muchísimos más de los que cualquier configuración razonable produce (con los
      * valores de fábrica, un viaje de 100 000 bloques genera 50).
+     *
+     * <p>Este tope NO recorta la ruta: pedir más de 500 cambios de lado se rechaza en
+     * {@link #lateralRejection}. Truncar la cuenta dejaría el patrón a medias y el resto del viaje
+     * recto, que es justo la degradación silenciosa que esta clase no entrega.
      */
     public static final int MAX_PATTERN_WAYPOINTS = 500;
 
@@ -113,8 +124,8 @@ public final class RoutePlanner {
     }
 
     /**
-     * Las tres maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5- se
-     * queda sin patrón, las tres sin hacer ruido:
+     * Las cuatro maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5-
+     * se queda sin patrón, las cuatro sin hacer ruido:
      *
      * <ul>
      *   <li><b>El paso es cero o negativo.</b> No hay ningún avance entre cambios de lado, así que
@@ -129,11 +140,27 @@ public final class RoutePlanner {
      *   <li><b>La amplitud efectiva es cero.</b> Los puntos se generan, pero todos colineales con
      *       el eje: una recta con waypoints decorativos. No hace falta ningún parámetro absurdo
      *       para llegar aquí, basta un destino de autopista con el ancho del corredor a 0.</li>
+     *   <li><b>El patrón no cabe entero bajo el tope de waypoints.</b> {@code floor(distancia/paso)}
+     *       pasa de {@link #MAX_PATTERN_WAYPOINTS}. Este es el único de los cuatro en que la ruta no
+     *       sale recta del todo: sale recta EL FINAL, que es peor. El periodo mínimo del deslizador
+     *       (100) con un destino a 100 000 bloques pide 1000 cambios de lado; truncar la cuenta a
+     *       500 ondula los primeros 50 000 bloques y deja los otros 50 000 en una línea perfecta
+     *       apuntando a la base, justo el tramo que llega a casa. La spec §5 promete lo contrario
+     *       ("el patrón se aplica en todo el trayecto"), así que el jugador cree que ondula entero.</li>
      * </ul>
      *
-     * <p>En los tres casos la ruta sale recta pese a haberse pedido evasión, así que se rechaza con
-     * motivo, igual que el señuelo en autopista. Una amplitud acotada a cero ya no "funciona
-     * acotada".
+     * <p>En los cuatro casos la ruta sale recta -entera o en su tramo final- pese a haberse pedido
+     * evasión, así que se rechaza con motivo, igual que el señuelo en autopista. Una amplitud
+     * acotada a cero ya no "funciona acotada".
+     *
+     * <p>El cuarto tiene una salida tentadora que NO se toma: estirar el paso hasta
+     * {@code distancia/500} cubriría el viaje entero respetando el tope, sin rechazar nada y dejando
+     * volar al jugador. Pero eso es entregarle un patrón que no pidió -un zigzag de periodo 200
+     * cuando puso 100- y callárselo, que es la misma degradación silenciosa con otro disfraz: se
+     * cambia la forma en vez de la longitud, y el jugador sigue creyendo que vuela lo que configuró.
+     * Acotar el paso no es acotar: es sustituirlo. Entre engañarlo y pararlo con un motivo que dice
+     * exactamente a cuánto subir el paso, se le para; el número que necesita va en el motivo y lo
+     * sube él, sabiendo lo que vuela.
      *
      * @return el motivo del rechazo, o {@code null} si el patrón se puede dibujar de verdad
      */
@@ -156,6 +183,21 @@ public final class RoutePlanner {
             return pattern + " con " + effectiveSideName(pattern) + " en " + number(effectiveAmplitude)
                 + " bloques no se aparta del eje: los waypoints saldrían todos sobre la recta, un patrón"
                 + " decorativo. " + howToWiden(sideName(pattern), configuredAmplitude, highway);
+        }
+        double neededSteps = Math.floor(distance / step);
+        if (neededSteps > MAX_PATTERN_WAYPOINTS) {
+            // El paso mínimo que cubre el viaje entero, redondeado hacia arriba para que sea un número
+            // de bloques redondo y para que floor(distancia/paso) quede en el tope o por debajo, nunca
+            // justo encima por un decimal.
+            double minimumStep = Math.ceil(distance / MAX_PATTERN_WAYPOINTS);
+            double covered = MAX_PATTERN_WAYPOINTS * step;
+            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques necesitaría "
+                + number(neededSteps) + " cambios de lado para ondular un viaje de " + number(distance)
+                + " bloques, y una ruta no admite más de " + MAX_PATTERN_WAYPOINTS + ": el patrón cubriría"
+                + " solo los primeros " + number(covered) + " bloques y los últimos "
+                + number(distance - covered) + " saldrían en línea recta hasta el destino sin avisar, justo"
+                + " el tramo que llega a casa. Sube " + stepName(pattern) + " a " + number(minimumStep)
+                + " bloques o más, que es donde el patrón vuelve a caber entero, o elige RECTO.";
         }
         return null;
     }
@@ -269,17 +311,21 @@ public final class RoutePlanner {
      * {@code i} de 1 a {@code floor(distance/period)}, el waypoint es {@code origen + u*(i*period) +
      * n*(amplitude * (i impar ? +1 : -1))}. Al final, siempre el destino exacto.
      *
-     * <p>Un paso positivo pero minúsculo frente a la distancia se acota a
-     * {@link #MAX_PATTERN_WAYPOINTS}.
+     * <p>Los cuatro casos en que el patrón saldría recto sin avisar -que el paso sea cero o
+     * negativo, que no quepa ni un tramo, que la amplitud efectiva sea cero, o que el patrón no
+     * quepa entero bajo el tope de waypoints- se rechazan antes de llegar aquí, en
+     * {@link #lateralRejection}, así que esta función siempre genera al menos un punto de patrón con
+     * desvío real y la ondulación llega siempre hasta el destino: de aquí no sale ningún viaje
+     * ondulado a medias.
      *
-     * <p>Los tres casos en que el patrón saldría recto sin avisar -que el paso sea cero o negativo,
-     * que no quepa ni un tramo, o que la amplitud efectiva sea cero- se rechazan antes de llegar
-     * aquí, en {@link #lateralRejection}, así que esta función siempre genera al menos un punto de
-     * patrón con desvío real y no necesita guardarse del paso cero. Aunque alguien se saltara ese
-     * rechazo tampoco habría cuelgue: {@code floor(distancia/0.0)} es infinito, pero el
-     * {@code Math.min} con {@link #MAX_PATTERN_WAYPOINTS} lo deja en 500 iteraciones, y con paso
-     * negativo el conteo sale negativo y el bucle no se ejecuta. Lo que habría es una ruta absurda y
-     * callada, que es justo lo que el rechazo impide.
+     * <p>El {@code Math.min} con {@link #MAX_PATTERN_WAYPOINTS} ya no decide nada -el rechazo
+     * garantiza que el conteo cabe bajo el tope-, y se queda como cinturón contra el cuelgue por si
+     * alguien se saltara ese rechazo: {@code floor(distancia/0.0)} es infinito y el {@code (int)} de
+     * infinito es {@code Integer.MAX_VALUE}, dos mil millones de waypoints que el adaptador iría
+     * emitiendo uno a uno al chat; con el min son 500, y con paso negativo el conteo sale negativo y
+     * el bucle no se ejecuta. Por eso ningún test lo pone en rojo a solas: solo se nota si antes se
+     * rompe el rechazo, y de eso se ocupan los tests del rechazo. Lo que quedaría en ambos casos es
+     * una ruta absurda y callada, que es justo lo que el rechazo impide.
      */
     private static List<Waypoint> zigzag(Waypoint origin, Waypoint destination, double ux, double uz,
                                           double nx, double nz, double distance, double period, double amplitude) {
@@ -301,7 +347,8 @@ public final class RoutePlanner {
         // calculado nunca ocurre; solo aparecería si algo más arriba estuviera roto.
         //
         // Ese "remaining >= 0" es una afirmación sobre el invariante, no una rama viva: con floor()
-        // el resto cae siempre en [0, paso), y con el tope de MAX_PATTERN_WAYPOINTS solo crece. Así
+        // el resto cae siempre en [0, paso), y el tope de MAX_PATTERN_WAYPOINTS ya no lo estira
+        // porque un conteo que no cabe bajo el tope se rechaza en vez de truncarse. Así
         // que quitarlo A SOLAS no cambia ni un waypoint y ningún test puede ponerse en rojo por
         // ello; lo que sí se nota es quitarlo JUNTO con cambiar floor por ceil, y de eso se ocupa
         // theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision. No se busque

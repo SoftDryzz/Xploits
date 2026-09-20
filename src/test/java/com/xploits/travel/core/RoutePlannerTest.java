@@ -412,14 +412,76 @@ class RoutePlannerTest {
     }
 
     @Test
-    void aTinyPeriodOverALongTripIsCappedInsteadOfExplodingTheWaypointCount() {
-        PatternParams tinyPeriod = new PatternParams(200, 1, 5000, 800, 1500, 1.5, 30, 0.6);
+    void aPatternThatDoesNotFitUnderTheWaypointCapIsRefusedInsteadOfOndulatingOnlyTheFirstHalf() {
+        // Antes este test consagraba el fallo: daba por buena la ruta y solo miraba que la CUENTA de
+        // waypoints estuviera acotada, sin mirar la forma que salía. Y el tope acota la cuenta, no el
+        // alcance del patrón: con el periodo mínimo del deslizador (100) y un destino a 100 000
+        // bloques hacen falta 1000 cambios de lado, se truncaban a 500, y el zigzag ondulaba los
+        // primeros 50 000 mientras los otros 50 000 salían en una línea recta perfecta apuntando a la
+        // base -el tramo que llega a casa, la peor mitad donde dejar una recta. Sin rechazo y sin
+        // aviso, mientras la spec §5 promete "el patrón se aplica en todo el trayecto".
+        PatternParams shortPeriod = new PatternParams(200, 100, 5000, 800, 1500, 1.5, 30, 0.6);
         Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(100_000, 0), FlightPattern.ZIGZAG,
-            tinyPeriod, HIGHWAY_MAX);
+            shortPeriod, HIGHWAY_MAX);
 
-        assertFalse(route.isRejected());
-        assertTrue(route.waypoints().size() <= RoutePlanner.MAX_PATTERN_WAYPOINTS + 1,
-            "el número de waypoints debe estar acotado: " + route.waypoints().size());
+        assertTrue(route.isRejected(), "un patrón que solo cubriría media ruta debe rechazarse");
+        assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
+
+        // El motivo, con el mismo listón que los otros tres: el ajuste que el jugador puede tocar, su
+        // valor actual, y el número concreto al que subirlo para desatascarse.
+        String reason = route.rejection();
+        assertTrue(reason.contains("periodo"), "el motivo debe nombrar el ajuste: " + reason);
+        assertTrue(reason.contains("100 bloques"), "el motivo debe decir el periodo que tiene: " + reason);
+        assertTrue(reason.contains("100000"), "el motivo debe decir la distancia del viaje: " + reason);
+        assertTrue(reason.contains("200 bloques"), "el motivo debe decir a cuánto subirlo: " + reason);
+        assertTrue(reason.contains("recta"), "el motivo debe decir qué saldría mal: " + reason);
+        assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
+    }
+
+    @Test
+    void aQuiebroThatOverflowsTheCapNamesItsTramoAndTheLegItWouldNeed() {
+        // El motivo se lee en el chat: el QUIEBRO se configura con "tramo", no con "periodo", y el
+        // número que le hace falta es el suyo -ceil(5 000 000/500) = 10 000-, no el del zigzag.
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(5_000_000, 0), FlightPattern.QUIEBRO,
+            PatternParams.defaults(), HIGHWAY_MAX);
+
+        assertTrue(route.isRejected(), "1000 tramos no caben bajo el tope");
+        String reason = route.rejection();
+        assertTrue(reason.contains("tramo"), "el motivo del quiebro debe hablar de su tramo: " + reason);
+        assertFalse(reason.contains("periodo"), "el quiebro no se configura con periodo: " + reason);
+        assertTrue(reason.contains("10000 bloques"), "el motivo debe decir a cuánto subir el tramo: " + reason);
+    }
+
+    @Test
+    void aLateralPatternThatFitsUnderTheCapKeepsOndulatingRightUpToTheDestination() {
+        // La otra cara del rechazo, y el test que mira la FORMA y no la cuenta: con el periodo justo
+        // en el límite (500 cambios de lado exactos en 100 000 bloques) la ruta se acepta, y entonces
+        // tiene que ondular hasta el final. Si alguien vuelve a truncar la cuenta en vez de rechazar,
+        // el salto entre dos waypoints consecutivos delata la recta que aparece al final.
+        PatternParams borderline = new PatternParams(200, 200, 5000, 800, 1500, 1.5, 30, 0.6);
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(100_000, 0), FlightPattern.ZIGZAG,
+            borderline, HIGHWAY_MAX);
+
+        assertFalse(route.isRejected(), "500 cambios de lado justos sí caben: " + route.rejection());
+        List<Waypoint> points = route.waypoints();
+        assertTrue(points.size() <= RoutePlanner.MAX_PATTERN_WAYPOINTS + 1,
+            "el tope sigue vigente, el rechazo no lo deroga: " + points.size());
+
+        // Ningún tramo recto puede pasar de dos periodos: uno por el avance normal y otro por el
+        // último punto omitido cuando cae pegado al destino. 50 000 bloques de recta no pasan de ahí.
+        double previousX = ORIGIN.x();
+        for (Waypoint point : points) {
+            assertTrue(point.x() - previousX <= 2 * borderline.period() + TOLERANCE,
+                "hueco recto entre waypoints: de " + previousX + " a " + point.x());
+            previousX = point.x();
+        }
+
+        // Y el desvío sigue vivo en el último tercio, no solo al principio del viaje.
+        List<Waypoint> lastThird = points.subList(points.size() * 2 / 3, points.size() - 1);
+        for (Waypoint point : lastThird) {
+            assertEquals(borderline.amplitude(), Math.abs(point.z()), TOLERANCE,
+                "el último tercio debe seguir desviándose la amplitud entera: " + point.z());
+        }
     }
 
     @Test
