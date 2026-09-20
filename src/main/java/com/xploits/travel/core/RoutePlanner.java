@@ -29,6 +29,29 @@ import java.util.List;
  * tope se rechaza, y no se estira su paso para que quepa: un zigzag de periodo 200 cuando se pidió
  * 100 cubre el trayecto, sí, pero no es el patrón que se pidió, y callarlo es la misma degradación
  * silenciosa con otro disfraz.
+ *
+ * <p><b>Y la geometría tiene que ser volable, no solo dibujable.</b> Baritone da la ruta por
+ * terminada y empieza a buscar sitio donde posarse en cuanto el jugador entra en los 48 bloques de
+ * su objetivo ({@link #BARITONE_LANDING_DISTANCE}), así que el adaptador le cambia el objetivo
+ * bastante antes de llegar. Eso obliga a que dos waypoints seguidos estén separados lo suficiente
+ * para que ese adelanto quepa entre ellos: si no, se consumen en bloque sin volarse y el patrón se
+ * degrada solo. La separación mínima vive aquí ({@link #minimumSpacing(double)}) y se aplica a los
+ * cuatro patrones.
+ *
+ * <p>Los dos remedios posibles no valen lo mismo, y por eso no se aplica el mismo a todos:
+ *
+ * <ul>
+ *   <li><b>ZIGZAG y QUIEBRO son periódicos.</b> Quitarles puntos intermedios es estirarles el paso
+ *       a sus espaldas -un zigzag de periodo 6000 cuando se pidió 2000-, exactamente la sustitución
+ *       que el párrafo anterior rechaza. Así que si su paso y su amplitud dejan los waypoints
+ *       demasiado juntos <b>se rechaza</b>, con el número al que subirlos.</li>
+ *   <li><b>ESPIRAL es el muestreo de una curva continua</b> que se cierra sobre el destino, y su
+ *       último tramo es <b>invariablemente</b> involable: por definición termina en radio cero, y
+ *       ningún ajuste lo arregla. Ahí sí se recorta -se dejan de emitir los pasos del núcleo, que
+ *       es la misma acotación que ya le aplica el corredor de la autopista al radio-, y la curva
+ *       que queda es la misma curva, no otra. Solo si de ese recorte no sobrevive ni un waypoint
+ *       fuera del eje se rechaza: entonces la ruta sería recta.</li>
+ * </ul>
  */
 public final class RoutePlanner {
     /**
@@ -59,7 +82,139 @@ public final class RoutePlanner {
     /** Por debajo de esta distancia, origen y destino se consideran el mismo punto. */
     private static final double SAME_POINT_TOLERANCE = 1e-9;
 
+    /** Por debajo de esta separación del eje, un waypoint se considera puesto sobre la recta. */
+    private static final double AXIS_TOLERANCE = 1e-6;
+
+    /**
+     * A cuántos bloques de su objetivo da Baritone la ruta por terminada y <b>empieza a aterrizar</b>.
+     *
+     * <p>Leído del bytecode del jar instalado ({@code baritone-standalone-fabric-1.17.0.jar}, clase
+     * {@code baritone/ju.class}, con {@code javap -p -c}): justo antes del {@code ldc} de la cadena
+     * {@code "Path complete, searching for safe landing spot..."} compara la distancia <b>al
+     * cuadrado</b> del jugador al destino de la ruta contra la constante {@code 2304.0d}, y
+     * {@code sqrt(2304) = 48}.
+     *
+     * <p><b>No hay ajuste de Baritone que lo desactive.</b> Revisados sus 29 ajustes {@code elytra*}:
+     * {@code elytraAllowEmergencyLand} y {@code elytraMinFireworksBeforeLanding} son para quedarse
+     * sin fuegos, no para esto. {@code #elytra} significa "vuela hasta el objetivo <b>y pósate</b>",
+     * y eso no se negocia; lo único que se puede hacer es quitarle el objetivo antes de que llegue.
+     */
+    public static final double BARITONE_LANDING_DISTANCE = 48;
+
+    /**
+     * Cuántos bloques antes de un waypoint intermedio el adaptador le cambia el objetivo a Baritone.
+     *
+     * <p>De dónde sale el número, sumando lo que tiene que caber dentro:
+     *
+     * <ul>
+     *   <li><b>48 bloques</b> de {@link #BARITONE_LANDING_DISTANCE}: por debajo de eso Baritone ya
+     *       está aterrizando y el daño está hecho.</li>
+     *   <li><b>~2 bloques</b> de granularidad: el adaptador mira la distancia una vez por tick (20
+     *       Hz) y una elytra con cohetes va a unos 33 bloques por segundo, así que entre cruzar el
+     *       margen y enterarnos puede pasar algo menos de un tick de vuelo.</li>
+     *   <li><b>~70 bloques</b> de reacción: entre que el {@code goal} y el {@code elytra} salen por
+     *       el chat y Baritone deja de perseguir el objetivo viejo hay un recálculo de ruta que no
+     *       es instantáneo y que desde aquí no se puede medir. Se presupuestan dos segundos de
+     *       vuelo, el doble de lo que se le ve tardar en el log, porque quedarse corto reintroduce
+     *       el fallo entero y pasarse solo redondea un poco más las esquinas.</li>
+     * </ul>
+     *
+     * <p>48 + 2 + 70 = 120, redondeado a <b>150</b> para dejar un segundo largo de holgura. Por
+     * debajo de {@link #MIN_WAYPOINT_MARGIN} el presupuesto de reacción se queda en nada y el
+     * aterrizaje vuelve, así que ahí está el suelo del ajuste.
+     *
+     * <p><b>Lo que cuesta:</b> cambiar de objetivo 150 bloques antes redondea las esquinas del
+     * patrón, porque el jugador nunca llega a tocar el vértice. Cuánto redondea depende de lo
+     * tumbado que venga el tramo: con el ZIGZAG de fábrica (periodo 2000, amplitud 200) el tramo es
+     * casi paralelo al eje y el vértice se queda a unos 29 bloques de su amplitud -el 15 %-; con el
+     * QUIEBRO de fábrica (tramo 5000, desvío 800), a unos 46 de 800 -el 6 %-. Es el precio de no
+     * aterrizar 73 veces, y es barato.
+     */
+    public static final double DEFAULT_WAYPOINT_MARGIN = 150;
+
+    /**
+     * El margen más bajo que se admite. Con 48 bloques de aterrizaje y un tick de granularidad, 100
+     * deja unos 50 bloques -metro y medio de segundo- para que Baritone suelte el objetivo viejo.
+     * Menos que eso ya no es un margen, es una apuesta.
+     *
+     * <p>El margen de fábrica de antes de este arreglo eran <b>30 bloques</b>, por debajo de los 48
+     * de Baritone: el objetivo se cambiaba cuando ya llevaba un rato aterrizando. Este suelo también
+     * arregla a quien tenga ese 30 guardado en su configuración: {@code Setting.set} de Meteor
+     * devuelve {@code false} sin escribir nada cuando el valor no pasa {@code isValueValid}, y
+     * {@code DoubleSetting.load} carga por ahí, así que un 30 persistido se descarta al cargar y el
+     * ajuste se queda en su valor de fábrica.
+     */
+    public static final double MIN_WAYPOINT_MARGIN = 100;
+
+    /**
+     * El suelo físico de la separación entre dos waypoints seguidos, en bloques, independientemente
+     * del margen configurado.
+     *
+     * <p>De dónde sale: una elytra empujada por cohetes va a unos 33 bloques por segundo y no gira
+     * en seco -para dar media vuelta necesita un par de segundos y del orden de 70 u 80 bloques de
+     * radio-. Dos waypoints separados por menos que unos cuantos radios de giro no son dos tramos:
+     * son un bamboleo, y Baritone se los pasa de largo y vuelve a por ellos. 300 bloques son unos 9
+     * segundos de crucero y unos cuatro radios de giro: el tramo más corto que todavía se vuela como
+     * tramo.
+     *
+     * <p>Coincide con el doble del margen de fábrica, y no es casualidad: son los dos suelos del
+     * mismo problema por caminos distintos -uno la física de la elytra, el otro la contabilidad de
+     * Baritone- y se han cuadrado a propósito para que el ajuste de fábrica no dependa de cuál de
+     * los dos mande.
+     */
+    public static final double MIN_WAYPOINT_SPACING = 300;
+
+    /**
+     * A cuántos bloques del <b>último</b> waypoint se da el viaje por llegado.
+     *
+     * <p>No es un ajuste, y es a propósito: el último waypoint es el destino real y ahí aterrizar es
+     * justo lo que se quiere, así que aquí no hay nada que adelantar ni ningún número que afinar. Los
+     * 30 bloques son los que el módulo ha usado siempre. El número que sí depende del jugador -cuánto
+     * antes soltar los waypoints intermedios- es {@code waypoint-margin}, y dos deslizadores parecidos
+     * con significados tan distintos solo invitan a tocar el que no es.
+     */
+    public static final double ARRIVAL_MARGIN = 30;
+
     private RoutePlanner() {
+    }
+
+    /**
+     * A qué distancia del waypoint {@code index} de una ruta de {@code waypointCount} puntos se da
+     * por alcanzado. <b>No es el mismo número para todos</b>, y ahí está el arreglo.
+     *
+     * <p>{@code #elytra} significa "vuela hasta el objetivo <b>y pósate</b>": Baritone da la ruta por
+     * terminada y se pone a buscar sitio donde aterrizar en cuanto entra en los
+     * {@link #BARITONE_LANDING_DISTANCE} bloques de su objetivo, y no tiene ningún ajuste que lo
+     * desactive. Con el margen de 30 bloques de antes de este arreglo, el cambio de objetivo llegaba
+     * <b>después</b> de que hubiera empezado a bajar: un patrón de 74 waypoints eran 73 aterrizajes y
+     * 73 despegues repartidos por el trayecto -y con {@code elytraAutoJump}, 73 saltos desde el suelo-
+     * en un módulo cuya razón de ser es no dejar rastro. Así que a los waypoints intermedios se les
+     * cambia el objetivo {@code waypointMargin} bloques antes de llegar.
+     *
+     * <p>El <b>último</b> no: ese es el destino real, el único sitio donde aterrizar es lo que se
+     * pidió. Adelantarse 150 bloques ahí sería mandarle {@code cancel} a Baritone en mitad del
+     * descenso y soltar al jugador en el aire, así que se usa {@link #ARRIVAL_MARGIN}.
+     */
+    public static double reachedMargin(int index, int waypointCount, double waypointMargin) {
+        return index == waypointCount - 1 ? ARRIVAL_MARGIN : waypointMargin;
+    }
+
+    /**
+     * La separación mínima que se le exige a dos waypoints seguidos con el margen {@code
+     * waypointMargin} configurado.
+     *
+     * <p>El <b>doble</b> del margen, y no el margen a secas, porque el margen se gasta dos veces:
+     * cuando el adaptador suelta el waypoint N ya está a {@code margen} bloques de él, y si el
+     * waypoint N+1 no está a más de otro {@code margen} por delante, el mismo tick que suelta N
+     * suelta también N+1. Los puntos se consumirían en ráfaga sin haberse volado -una ráfaga de
+     * {@code goal} al chat y un patrón que se recorta solo-, que es la degradación silenciosa de
+     * siempre con otro disfraz.
+     *
+     * <p>Y nunca por debajo de {@link #MIN_WAYPOINT_SPACING}, que es lo que la elytra puede volar
+     * como tramo aunque el margen baje.
+     */
+    public static double minimumSpacing(double waypointMargin) {
+        return Math.max(MIN_WAYPOINT_SPACING, 2 * waypointMargin);
     }
 
     /**
@@ -67,10 +222,13 @@ public final class RoutePlanner {
      *
      * @param highwayMaxAmplitude el ancho máximo del corredor permitido cuando el destino es de
      *                            autopista; fuera de autopista no se usa
+     * @param waypointMargin      cuántos bloques antes de cada waypoint intermedio le cambia el
+     *                            adaptador el objetivo a Baritone; de él sale la separación mínima
+     *                            que se le exige a la geometría ({@link #minimumSpacing(double)})
      * @return la ruta, o un rechazo si el patrón no es compatible con el destino pedido
      */
     public static Route plan(Waypoint origin, Destination destination, FlightPattern pattern,
-                              PatternParams params, double highwayMaxAmplitude) {
+                              PatternParams params, double highwayMaxAmplitude, double waypointMargin) {
         if (pattern == FlightPattern.SENUELO && destination.highway()) {
             return Route.rejected("el señuelo se saldría del corredor de la autopista, se rechaza en vez de degradarse");
         }
@@ -85,35 +243,50 @@ public final class RoutePlanner {
         double uz = (destinationPoint.z() - origin.z()) / distance;
         double nx = -uz;
         double nz = ux;
+        double spacing = minimumSpacing(waypointMargin);
 
         return switch (pattern) {
             case RECTO -> Route.of(List.of(destinationPoint));
             case ZIGZAG -> {
                 double amplitude = effectiveAmplitude(params.amplitude(), destination, highwayMaxAmplitude);
                 String rejection = lateralRejection(pattern, distance, params.period(),
-                    params.amplitude(), amplitude, destination.highway());
+                    params.amplitude(), amplitude, destination.highway(), spacing, waypointMargin);
                 yield rejection != null ? Route.rejected(rejection)
-                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.period(), amplitude));
+                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.period(),
+                        amplitude, spacing));
             }
             case QUIEBRO -> {
                 double amplitude = effectiveAmplitude(params.lateralOffset(), destination, highwayMaxAmplitude);
                 String rejection = lateralRejection(pattern, distance, params.legLength(),
-                    params.lateralOffset(), amplitude, destination.highway());
+                    params.lateralOffset(), amplitude, destination.highway(), spacing, waypointMargin);
                 yield rejection != null ? Route.rejected(rejection)
-                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.legLength(), amplitude));
+                    : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.legLength(),
+                        amplitude, spacing));
             }
             case ESPIRAL -> {
                 double radiusCap = destination.highway() ? highwayMaxAmplitude : Double.POSITIVE_INFINITY;
                 double radius = Math.min(Math.min(params.spiralRadius(), distance / 2.0), radiusCap);
                 String rejection = spiralRejection(params.spiralRadius(), radius, params.spiralTurns(),
                     destination.highway());
-                yield rejection != null ? Route.rejected(rejection)
-                    : Route.of(spiral(destinationPoint, ux, uz, nx, nz, radius, params));
+                if (rejection != null) yield Route.rejected(rejection);
+
+                List<Waypoint> points = spaceOut(origin,
+                    spiral(destinationPoint, ux, uz, nx, nz, radius, params), spacing);
+                yield leavesTheAxis(points, origin, nx, nz)
+                    ? Route.of(points)
+                    : Route.rejected(spiralSpacingRejection(origin, destinationPoint, ux, uz, nx, nz, distance,
+                        params, radius, destination.highway(), highwayMaxAmplitude, spacing, waypointMargin));
             }
             case SENUELO -> {
                 String rejection = decoyRejection(params.decoyAngleDegrees(), params.decoyFraction());
-                yield rejection != null ? Route.rejected(rejection)
-                    : Route.of(decoy(origin, destinationPoint, ux, uz, distance, params));
+                if (rejection != null) yield Route.rejected(rejection);
+
+                List<Waypoint> points = decoy(origin, destinationPoint, ux, uz, distance, params);
+                double shortest = Math.min(origin.distanceTo(points.get(0)),
+                    points.get(0).distanceTo(destinationPoint));
+                yield shortest >= spacing
+                    ? Route.of(points)
+                    : Route.rejected(decoySpacingRejection(distance, params, shortest, spacing, waypointMargin));
             }
         };
     }
@@ -125,7 +298,8 @@ public final class RoutePlanner {
 
     /**
      * Las cuatro maneras en que un patrón lateral -ZIGZAG y QUIEBRO son la misma familia, spec §5-
-     * se queda sin patrón, las cuatro sin hacer ruido:
+     * se queda sin patrón, las cuatro sin hacer ruido (y una quinta, la de abajo, en que el patrón
+     * sale entero pero no se puede volar):
      *
      * <ul>
      *   <li><b>El paso es cero o negativo.</b> No hay ningún avance entre cambios de lado, así que
@@ -153,6 +327,21 @@ public final class RoutePlanner {
      * evasión, así que se rechaza con motivo, igual que el señuelo en autopista. Una amplitud
      * acotada a cero ya no "funciona acotada".
      *
+     * <p>Y una quinta, que no es que el patrón no se dibuje sino que no se pueda volar: <b>los
+     * waypoints quedan demasiado juntos</b>. Dos puntos seguidos de un patrón lateral están a
+     * {@code hypot(paso, 2*amplitud)} uno de otro, y el primero está a {@code hypot(paso, amplitud)}
+     * del origen -el más corto de los dos, así que es el que manda-. Si ese hueco no llega a
+     * {@link #minimumSpacing(double)}, el adaptador suelta un waypoint y el siguiente en el mismo
+     * tick y el patrón se consume en ráfaga. Aquí <b>no</b> se quitan puntos para arreglarlo: en un
+     * patrón periódico quitar uno de cada dos es estirar el paso a espaldas del jugador, la misma
+     * sustitución silenciosa del párrafo de abajo. Se rechaza, y el motivo lleva los dos números a
+     * los que subir -paso o amplitud- para que elija él cuál mueve.
+     *
+     * <p>Va la última de las cinco a propósito: las cuatro de arriba dicen "no habría patrón" y esta
+     * dice "habría patrón pero la elytra no puede volarlo". Un periodo de 100 bloques en un viaje de
+     * 100 000 incumple las dos, y el motivo útil es el del tope, que nombra el tramo que se quedaría
+     * recto.
+     *
      * <p>El cuarto tiene una salida tentadora que NO se toma: estirar el paso hasta
      * {@code distancia/500} cubriría el viaje entero respetando el tope, sin rechazar nada y dejando
      * volar al jugador. Pero eso es entregarle un patrón que no pidió -un zigzag de periodo 200
@@ -166,7 +355,7 @@ public final class RoutePlanner {
      */
     private static String lateralRejection(FlightPattern pattern, double distance, double step,
                                             double configuredAmplitude, double effectiveAmplitude,
-                                            boolean highway) {
+                                            boolean highway, double minSpacing, double waypointMargin) {
         if (step <= 0) {
             return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques no deja ningún"
                 + " avance entre cambios de lado: no se dibujaría ni una ondulación y la ruta saldría recta"
@@ -199,7 +388,70 @@ public final class RoutePlanner {
                 + " el tramo que llega a casa. Sube " + stepName(pattern) + " a " + number(minimumStep)
                 + " bloques o más, que es donde el patrón vuelve a caber entero, o elige RECTO.";
         }
+        double firstGap = Math.hypot(step, effectiveAmplitude);
+        if (firstGap < minSpacing) {
+            // Qué subir para llegar a la separación, manteniendo el otro valor. Los dos radicandos
+            // son positivos justo por haber entrado aquí: hypot(paso, amplitud) < separación implica
+            // que el paso y la amplitud son los dos menores que la separación.
+            double neededStep = Math.ceil(Math.sqrt(minSpacing * minSpacing - effectiveAmplitude * effectiveAmplitude));
+            double neededAmplitude = Math.ceil(Math.sqrt(minSpacing * minSpacing - step * step));
+            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques y "
+                + effectiveSideName(pattern) + " en " + number(effectiveAmplitude) + " deja sus waypoints a "
+                + number(Math.floor(firstGap)) + " bloques unos de otros, y hacen falta " + number(minSpacing)
+                + ": " + whyThatSpacing(minSpacing, waypointMargin) + " Con huecos más cortos el módulo suelta"
+                + " un waypoint y el siguiente en el mismo tick, el patrón se consume sin volarse y la ruta"
+                + " sale recta sin avisar. Sube " + stepName(pattern) + " a " + number(neededStep)
+                + " bloques, o " + sideName(pattern) + " a " + number(neededAmplitude)
+                + cappedBySide(configuredAmplitude, effectiveAmplitude, highway) + ", o elige RECTO.";
+        }
+        if (omitsLastLateralPoint(distance, step, effectiveAmplitude, minSpacing)
+            && Math.floor(distance / step) <= 1) {
+            // El único punto de patrón cae tan pegado al destino que Baritone aterrizaría en él antes
+            // de llegar a casa; y omitirlo dejaría la ruta completamente recta. No hay nada que
+            // acotar: se rechaza.
+            double lastGap = Math.hypot(distance - Math.floor(distance / step) * step, effectiveAmplitude);
+            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques solo cabe una vez"
+                + " en un viaje de " + number(distance) + ", y su único desvío queda a " + number(Math.floor(lastGap))
+                + " bloques del destino, menos de los " + number(minSpacing) + " que hacen falta: "
+                + whyThatSpacing(minSpacing, waypointMargin) + " Omitirlo dejaría la ruta recta y conservarlo"
+                + " haría aterrizar a Baritone dos veces. Sube " + sideName(pattern) + " a "
+                + number(Math.ceil(minSpacing)) + " bloques o más, aleja el destino, o elige RECTO.";
+        }
         return null;
+    }
+
+    /**
+     * De dónde sale la separación exigida. Nombra siempre {@code waypoint-margin} con su valor, aunque
+     * el que esté mandando sea el suelo físico: es el ajuste que el jugador puede mover para pedir
+     * menos sitio, y un motivo que no lo nombra le deja sin esa salida.
+     */
+    private static String whyThatSpacing(double minSpacing, double waypointMargin) {
+        String head = "es el doble de waypoint-margin, que está en " + number(waypointMargin) + " bloques,"
+            + " porque Baritone empieza a aterrizar a " + number(BARITONE_LANDING_DISTANCE) + " bloques de su"
+            + " objetivo y hay que cambiárselo antes de que llegue";
+        if (minSpacing > MIN_WAYPOINT_SPACING) return head + ".";
+        return head + ", y nunca menos de " + number(MIN_WAYPOINT_SPACING) + ", que es lo más corto que una"
+            + " elytra con cohetes vuela como tramo en vez de como bamboleo.";
+    }
+
+    /**
+     * Si el último punto de un patrón lateral cae tan cerca del destino que no se emite.
+     *
+     * <p>Es un desvío en balde: te aparta la amplitud entera sin ganar avance, justo al final del
+     * viaje -donde menos fuegos quedan- y, peor desde este arreglo, deja a Baritone con dos objetivos
+     * pegados y un aterrizaje de más entre ellos. El umbral es la separación mínima, el mismo criterio
+     * que gobierna a todos los demás huecos de la ruta: antes era la amplitud, que no tenía nada que
+     * ver con lo que Baritone puede volar.
+     *
+     * <p>Se usa {@code hypot} y no el resto a secas porque lo que importa es la distancia real entre
+     * el último waypoint y el destino, que incluye el desvío lateral. De paso hace irrelevante el
+     * signo del resto: con {@code ceil} en vez de {@code floor} el resto sale negativo, y un hueco
+     * negativo no es un hueco corto.
+     */
+    private static boolean omitsLastLateralPoint(double distance, double step, double amplitude,
+                                                  double minSpacing) {
+        double remaining = distance - Math.floor(distance / step) * step;
+        return Math.hypot(remaining, amplitude) < minSpacing;
     }
 
     /**
@@ -240,6 +492,65 @@ public final class RoutePlanner {
     }
 
     /**
+     * El motivo de la espiral que se queda sin espiral al espaciarla: sus pasos están tan juntos que,
+     * quitando los que no se pueden volar, no sobrevive ninguno fuera del eje y la ruta sale recta.
+     *
+     * <p>El número que hace falta es <b>el radio más pequeño con el que esta espiral vuelve a
+     * dibujarse</b>, y se busca probando radios de bloque en bloque hasta el máximo geométrico
+     * ({@code distancia/2}, que es donde la espiral empezaría por detrás del origen). Se busca en vez
+     * de despejarlo porque el espaciado no tiene forma cerrada -depende de qué pasos sobreviven, que
+     * depende de los que sobrevivieron antes-, y probar 37 puntos unos miles de veces es gratis en un
+     * camino que solo se recorre para redactar un rechazo. La búsqueda vale porque la alternativa es
+     * un motivo que dice "sube el radio" sin decir a cuánto, y ese es justo el rechazo que esta clase
+     * no entrega.
+     *
+     * <p>Quién tiene la culpa del radio pequeño cambia la salida: si el destino es de autopista y el
+     * ancho del corredor es lo que lo está acotando, el ajuste que hay que mover es ese ancho y no el
+     * radio. Con los valores de fábrica -radio 1500, 1.5 vueltas, corredor 300- esta es exactamente
+     * la combinación que se rechaza: una espiral que solo puede apartarse 300 bloques del eje deja
+     * pasos de 8 bloques, y hacen falta 338 de radio para que vuelva a haber espiral.
+     */
+    private static String spiralSpacingRejection(Waypoint origin, Waypoint destination, double ux, double uz,
+                                                  double nx, double nz, double distance, PatternParams params,
+                                                  double effectiveRadius, boolean highway,
+                                                  double highwayMaxAmplitude, double minSpacing,
+                                                  double waypointMargin) {
+        double neededRadius = 0;
+        for (double radius = Math.ceil(effectiveRadius) + 1; radius <= distance / 2.0; radius++) {
+            List<Waypoint> candidate = spaceOut(origin,
+                spiral(destination, ux, uz, nx, nz, radius, params), minSpacing);
+            if (leavesTheAxis(candidate, origin, nx, nz)) {
+                neededRadius = radius;
+                break;
+            }
+        }
+
+        List<Waypoint> raw = spiral(destination, ux, uz, nx, nz, effectiveRadius, params);
+        double shortestStep = Double.MAX_VALUE;
+        for (int i = 0; i < raw.size() - 1; i++) {
+            shortestStep = Math.min(shortestStep, raw.get(i).distanceTo(raw.get(i + 1)));
+        }
+
+        String head = FlightPattern.ESPIRAL + " con el radio efectivo en " + number(effectiveRadius)
+            + " bloques y " + number(params.spiralTurns()) + " vueltas llega a dejar pasos de "
+            + number(Math.floor(shortestStep)) + " bloques, y hacen falta " + number(minSpacing) + ": "
+            + whyThatSpacing(minSpacing, waypointMargin) + " Quitando los pasos que no se pueden volar no"
+            + " queda ni uno fuera de la recta al destino, así que la ruta saldría recta sin avisar.";
+
+        if (neededRadius == 0) {
+            return head + " Un viaje de " + number(distance) + " bloques no da para ninguna espiral volable"
+                + " -el radio no puede pasar de la mitad del viaje-: aleja el destino, baja las vueltas, o"
+                + " elige otro patrón.";
+        }
+        if (highway && params.spiralRadius() > highwayMaxAmplitude) {
+            return head + " El radio vale " + number(params.spiralRadius()) + " bloques, pero el ancho"
+                + " máximo del corredor de la autopista lo acota a " + number(highwayMaxAmplitude)
+                + ": sube ese ancho a " + number(neededRadius) + " bloques o más, o elige otro patrón.";
+        }
+        return head + " Sube el radio a " + number(neededRadius) + " bloques o más, o elige otro patrón.";
+    }
+
+    /**
      * El señuelo se queda sin señuelo cuando su punto de corrección -su único waypoint intermedio-
      * cae sobre la recta origen-destino, y entonces la ruta es la recta con una parada de más:
      *
@@ -272,6 +583,41 @@ public final class RoutePlanner {
                 + " 180 grados o elige RECTO.";
         }
         return null;
+    }
+
+    /**
+     * El motivo del señuelo cuyos dos tramos -origen a punto de corrección, y punto de corrección a
+     * destino- son demasiado cortos para volarse como tramos.
+     *
+     * <p>Aquí no hay nada que recortar: el señuelo tiene un solo waypoint intermedio, así que o cabe
+     * o no cabe. Y el número exacto que hace falta sale sin buscar nada, porque <b>los dos tramos son
+     * proporcionales a la distancia del viaje</b>: el primero mide {@code fracción*distancia} y el
+     * segundo {@code distancia*|fracción*dirección_señuelo - u|}, así que basta escalar. Por eso el
+     * motivo habla de alejar el destino y no de tocar el ángulo: con el ángulo y la fracción de
+     * fábrica el señuelo necesita un viaje de unos 530 bloques, y quien se lo encuentra es quien pide
+     * un señuelo para ir a la vuelta de la esquina.
+     */
+    private static String decoySpacingRejection(double distance, PatternParams params, double shortestGap,
+                                                 double minSpacing, double waypointMargin) {
+        double neededDistance = Math.ceil(distance * minSpacing / shortestGap);
+        return FlightPattern.SENUELO + " con el ángulo en " + number(params.decoyAngleDegrees())
+            + " grados y la fracción en " + number(params.decoyFraction()) + " deja un tramo de "
+            + number(Math.floor(shortestGap)) + " bloques en un viaje de " + number(distance)
+            + ", y hacen falta " + number(minSpacing) + ": " + whyThatSpacing(minSpacing, waypointMargin)
+            + " Con un tramo más corto Baritone aterrizaría en el punto de corrección en vez de pasar por"
+            + " él. Aleja el destino a " + number(neededDistance) + " bloques o más, sube la fracción, o"
+            + " elige RECTO.";
+    }
+
+    /**
+     * La coletilla que avisa de que subir el desvío no va a servir de nada por sí solo porque el
+     * corredor de la autopista lo está acotando. Sin ella, el motivo manda al jugador a mover un
+     * deslizador que no cambia la ruta, que es peor que no decirle nada.
+     */
+    private static String cappedBySide(double configuredAmplitude, double effectiveAmplitude, boolean highway) {
+        if (!highway || configuredAmplitude <= effectiveAmplitude) return "";
+        return " -que además pide subir el ancho del corredor de la autopista, que ahora la acota a "
+            + number(effectiveAmplitude) + "-";
     }
 
     /** La salida del atasco, que cambia según de dónde venga el cero: del corredor o del ajuste. */
@@ -311,11 +657,12 @@ public final class RoutePlanner {
      * {@code i} de 1 a {@code floor(distance/period)}, el waypoint es {@code origen + u*(i*period) +
      * n*(amplitude * (i impar ? +1 : -1))}. Al final, siempre el destino exacto.
      *
-     * <p>Los cuatro casos en que el patrón saldría recto sin avisar -que el paso sea cero o
-     * negativo, que no quepa ni un tramo, que la amplitud efectiva sea cero, o que el patrón no
-     * quepa entero bajo el tope de waypoints- se rechazan antes de llegar aquí, en
-     * {@link #lateralRejection}, así que esta función siempre genera al menos un punto de patrón con
-     * desvío real y la ondulación llega siempre hasta el destino: de aquí no sale ningún viaje
+     * <p>Los cinco casos en que el patrón no se volaría como se pidió -que el paso sea cero o
+     * negativo, que no quepa ni un tramo, que la amplitud efectiva sea cero, que el patrón no quepa
+     * entero bajo el tope de waypoints, o que sus waypoints queden más juntos que la separación
+     * mínima- se rechazan antes de llegar aquí, en {@link #lateralRejection}, así que esta función
+     * siempre genera al menos un punto de patrón con desvío real, separado lo suficiente del
+     * anterior, y la ondulación llega siempre hasta el destino: de aquí no sale ningún viaje
      * ondulado a medias.
      *
      * <p>El {@code Math.min} con {@link #MAX_PATTERN_WAYPOINTS} ya no decide nada -el rechazo
@@ -328,7 +675,8 @@ public final class RoutePlanner {
      * una ruta absurda y callada, que es justo lo que el rechazo impide.
      */
     private static List<Waypoint> zigzag(Waypoint origin, Waypoint destination, double ux, double uz,
-                                          double nx, double nz, double distance, double period, double amplitude) {
+                                          double nx, double nz, double distance, double period, double amplitude,
+                                          double minSpacing) {
         List<Waypoint> points = new ArrayList<>();
         int steps = (int) Math.min(Math.floor(distance / period), MAX_PATTERN_WAYPOINTS);
         for (int i = 1; i <= steps; i++) {
@@ -339,34 +687,72 @@ public final class RoutePlanner {
             points.add(new Waypoint(x, z));
         }
 
-        // El último punto lateral es un desvío en balde si ya cae a la altura del destino: te
-        // aparta la amplitud entera sin ganar ningún avance, justo al final del viaje, que es donde
-        // menos fuegos artificiales quedan. Se omite cuando lo que falta por recorrer en línea recta
-        // es menor que la propia amplitud del desvío -nunca cuando ese resto es negativo: eso
-        // significaría haberse pasado del destino, no estar cerca de él, y con floor() bien
-        // calculado nunca ocurre; solo aparecería si algo más arriba estuviera roto.
+        // El último punto lateral se omite cuando queda pegado al destino: ver
+        // omitsLastLateralPoint, que es donde vive el criterio y su porqué.
         //
-        // Ese "remaining >= 0" es una afirmación sobre el invariante, no una rama viva: con floor()
-        // el resto cae siempre en [0, paso), y el tope de MAX_PATTERN_WAYPOINTS ya no lo estira
-        // porque un conteo que no cabe bajo el tope se rechaza en vez de truncarse. Así
-        // que quitarlo A SOLAS no cambia ni un waypoint y ningún test puede ponerse en rojo por
-        // ello; lo que sí se nota es quitarlo JUNTO con cambiar floor por ceil, y de eso se ocupa
-        // theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision. No se busque
-        // un test que cubra la guarda por separado: no existe mientras floor() esté bien.
+        // La guarda "points.size() > 1" ya no decide nada: si el patrón solo tiene un punto y cae
+        // dentro de la ventana de omisión, lateralRejection lo ha rechazado antes de llegar aquí
+        // -conservarlo haría aterrizar a Baritone dos veces y quitarlo dejaría la ruta recta, y
+        // ninguna de las dos es aceptable-. Se queda como cinturón: sin ella, romper ese rechazo
+        // devolvería una ruta recta y callada en vez de una ruta con un rodeo de más, que es el
+        // fallo peor de los dos. Por eso ningún test la pone en rojo a solas.
         //
-        // Nunca se omite si eso deja la ruta sin ningún punto de patrón: con un solo tramo, omitirlo
-        // dejaría una ruta completamente recta pese a haber pedido un patrón -la misma degradación
-        // silenciosa que rechazamos con el señuelo en autopista. Más vale un rodeo entero que un
-        // viaje recto que el jugador cree ondulado.
-        if (points.size() > 1) {
-            double remaining = distance - steps * period;
-            if (remaining >= 0 && remaining < amplitude) {
-                points.remove(points.size() - 1);
-            }
+        // Quitar la omisión entera SÍ se nota, y de eso se ocupan
+        // aZigzagDoesNotWasteAFinalOutAndBackRightAtTheDestination y
+        // theWaypointCoordinatesMatchFloorOfDistanceOverPeriodForANonExactDivision.
+        if (points.size() > 1 && omitsLastLateralPoint(distance, period, amplitude, minSpacing)) {
+            points.remove(points.size() - 1);
         }
 
         points.add(destination);
         return points;
+    }
+
+    /**
+     * Quita de {@code raw} los waypoints que caen a menos de {@code minSpacing} del anterior que sí
+     * se conserva, empezando a medir desde el propio {@code origin} -el primer waypoint también
+     * tiene que estar lo bastante lejos del punto de partida, o se soltaría nada más despegar-. El
+     * último punto de {@code raw}, que es el destino, se conserva siempre; los que queden pegados a
+     * él por detrás se van, uno detrás de otro, hasta que el tramo final mida lo que tiene que medir.
+     *
+     * <p><b>Esto no se le aplica a ZIGZAG ni a QUIEBRO</b>, y no por olvido: en un patrón periódico
+     * quitar uno de cada dos puntos es multiplicar el paso por dos sin decírselo al jugador. Ahí se
+     * rechaza. Aquí se usa solo para la espiral, cuyos pasos son el muestreo de una curva continua:
+     * quedarse con menos muestras del mismo trazo no cambia el trazo, y el núcleo que se deja fuera
+     * -los últimos grados, con el radio ya casi a cero- no es volable con una elytra por mucho que
+     * se configure, porque por definición termina en radio cero.
+     */
+    private static List<Waypoint> spaceOut(Waypoint origin, List<Waypoint> raw, double minSpacing) {
+        Waypoint destination = raw.get(raw.size() - 1);
+        List<Waypoint> kept = new ArrayList<>();
+        Waypoint anchor = origin;
+        for (int i = 0; i < raw.size() - 1; i++) {
+            if (anchor.distanceTo(raw.get(i)) < minSpacing) continue;
+            kept.add(raw.get(i));
+            anchor = raw.get(i);
+        }
+        while (!kept.isEmpty() && kept.get(kept.size() - 1).distanceTo(destination) < minSpacing) {
+            kept.remove(kept.size() - 1);
+        }
+        kept.add(destination);
+        return kept;
+    }
+
+    /**
+     * Si de {@code points} sobrevive algún waypoint intermedio fuera de la recta origen-destino.
+     *
+     * <p>Es la condición que separa "la espiral se ha recortado" de "la espiral ha desaparecido".
+     * No basta con mirar cuántos puntos quedan: con el radio acotado al ancho de un corredor
+     * estrecho, el único paso que sobrevive al espaciado es el primero, que está exactamente sobre
+     * el eje -a una radio del destino, en línea recta-. La ruta sería la recta con un waypoint
+     * decorativo, y eso se rechaza, no se entrega.
+     */
+    private static boolean leavesTheAxis(List<Waypoint> points, Waypoint origin, double nx, double nz) {
+        for (int i = 0; i < points.size() - 1; i++) {
+            double offset = (points.get(i).x() - origin.x()) * nx + (points.get(i).z() - origin.z()) * nz;
+            if (Math.abs(offset) > AXIS_TOLERANCE) return true;
+        }
+        return false;
     }
 
     /**
