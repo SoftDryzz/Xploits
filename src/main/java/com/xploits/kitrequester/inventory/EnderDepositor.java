@@ -1,6 +1,7 @@
 package com.xploits.kitrequester.inventory;
 
 import meteordevelopment.meteorclient.utils.Utils;
+import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.screen.GenericContainerScreenHandler;
@@ -22,6 +23,14 @@ public final class EnderDepositor {
     private static final int SCAN_RADIUS = 5;
     private static final long OPEN_TIMEOUT_MS = 5_000;
     private static final long MOVE_TIMEOUT_MS = 10_000;
+    /**
+     * Ventana en la que un candidato -propio o ajeno- se considera vigente, en milisegundos (20
+     * ticks a 20 tps, spec §6.1). Cumple dos papeles: {@link #start} se niega a empezar si el
+     * último candidato registrado es más reciente que esto y no es suyo, y {@link #tick} trata
+     * como inexistente (caducado) un candidato más viejo que esto, igual que
+     * {@code StashKeeper.expireCandidate()}.
+     */
+    private static final long CANDIDATE_TIMEOUT_MS = 1_000;
 
     private enum Phase { IDLE, OPENING, MOVING }
 
@@ -36,8 +45,15 @@ public final class EnderDepositor {
      * {@link #onInteractBlock}. Mismo mecanismo que {@code StashKeeper.candidate}: el problema es
      * el mismo (una pantalla que se abre no dice por sí sola qué bloque la respalda) y esta es la
      * única señal disponible para atarla a una interacción concreta.
+     *
+     * <p>Solo se anota si el bloque interactuado es de un tipo que de verdad puede respaldar la
+     * pantalla que estamos esperando -un contenedor, no una puerta o un bloque recién colocado por
+     * {@code surround}/{@code auto-trap}- y caduca sola pasado {@link #CANDIDATE_TIMEOUT_MS} (spec
+     * §6.1, punto 2 y 3).
      */
     private BlockPos candidate;
+    /** Instante (ms) en el que se anotó {@link #candidate}. Con qué caducarlo. */
+    private long candidateAt;
     /** syncId del handler ya aceptado como el ender chest de esta operación. Null hasta OPENING→MOVING. */
     private Integer syncId;
 
@@ -60,14 +76,23 @@ public final class EnderDepositor {
     }
 
     /**
-     * Abre el ender chest al alcance más cercano. Devuelve false sin mandar nada si no hay ninguno
-     * o si el jugador ya tiene una pantalla abierta: mandar el interact ahí no sirve de nada -el
-     * servidor ya tiene una ventana abierta para él- y es exactamente el primer paso del fallo que
-     * vacía shulkers en cualquier contenedor que el jugador tuviera abierto a mano.
+     * Abre el ender chest al alcance más cercano. Devuelve false sin mandar nada si no hay ninguno,
+     * si el jugador ya tiene una pantalla abierta, o si hay una interacción ajena reciente sin
+     * resolver -un clic que el jugador acaba de mandar y cuya pantalla todavía no ha llegado
+     * ({@link #CANDIDATE_TIMEOUT_MS})-: mandar el interact en cualquiera de los dos casos es
+     * exactamente el primer paso del fallo que vacía shulkers en cualquier contenedor que el
+     * jugador tuviera abierto o a punto de abrirse (spec §6.1).
      */
     public boolean start(MinecraftClient mc, long now) {
         if (mc.player == null) return false;
         if (!(mc.player.currentScreenHandler instanceof PlayerScreenHandler)) return false;
+        expireCandidate(now);
+        // Mientras la fase es IDLE, candidate solo puede venir de onInteractBlock -esta misma
+        // llamada nunca lo deja puesto en IDLE-, así que si sigue aquí es una interacción del
+        // jugador cuya pantalla todavía no ha llegado del servidor. Empezar ahora es la carrera
+        // exacta del fallo: la pantalla ajena llega después, con el candidato ya reescrito al
+        // ender chest, y OPENING la acepta como si fuera la suya.
+        if (candidate != null) return false;
         Optional<BlockPos> target = findInReach(mc);
         if (target.isEmpty()) return false;
         BlockPos pos = target.get();
@@ -75,6 +100,7 @@ public final class EnderDepositor {
             new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false));
         targetPos = pos;
         candidate = pos;
+        candidateAt = now;
         syncId = null;
         phase = Phase.OPENING;
         openedAt = now;
@@ -87,9 +113,30 @@ public final class EnderDepositor {
      * (spec: ventana de {@link #OPEN_TIMEOUT_MS}). Es la única manera de saber, cuando una pantalla
      * aparece, si el bloque que la respalda es el ender chest que se pidió o algo que el jugador
      * abrió por su cuenta.
+     *
+     * <p>Se ignora si el bloque no es de un tipo que pueda respaldar una
+     * {@code GenericContainerScreenHandler} -colocar un bloque, abrir una puerta, o los
+     * {@code BlockUtils.place} de {@code surround}/{@code auto-trap} no deben poder abortar un
+     * depósito en curso ni bloquear el siguiente (spec §6.1, punto 2)-.
      */
-    public void onInteractBlock(BlockPos pos) {
-        candidate = pos;
+    public void onInteractBlock(MinecraftClient mc, BlockPos pos, long now) {
+        if (mc.world == null || !opensContainerScreen(mc.world.getBlockState(pos).getBlock())) return;
+        candidate = pos.toImmutable();
+        candidateAt = now;
+    }
+
+    /** Bloques que respaldan una {@code GenericContainerScreenHandler}, igual que {@code StashKeeper.typeOf}. */
+    private static boolean opensContainerScreen(Block block) {
+        return block == Blocks.CHEST || block == Blocks.TRAPPED_CHEST || block == Blocks.BARREL
+            || block == Blocks.ENDER_CHEST
+            || (block.asItem() != null && Utils.isShulker(block.asItem()));
+    }
+
+    /** Caduca {@link #candidate} pasado {@link #CANDIDATE_TIMEOUT_MS}, igual que {@code StashKeeper.expireCandidate}. */
+    private void expireCandidate(long now) {
+        if (candidate != null && now - candidateAt > CANDIDATE_TIMEOUT_MS) {
+            candidate = null;
+        }
     }
 
     /** Llamar en cada tick mientras OrderMachine está en DEPOSIT. */

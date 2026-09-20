@@ -50,6 +50,13 @@ public final class OrderMachine {
     private final Map<String, Long> readySeen = new HashMap<>();
     private String pendingTpa;
     private long pendingTpaUntil;
+    /**
+     * Si ya se avisó de que hay una pantalla abierta bloqueando el depósito (spec §6.1). Sin esto,
+     * {@link #idle} calla cada tick mientras dure la pantalla abierta: {@code status()} sigue
+     * diciendo {@code IDLE} y no hay ninguna línea que explique por qué no se piden kits. Se avisa
+     * una sola vez y se olvida en cuanto la situación deja de bloquear.
+     */
+    private boolean screenOpenBlockNotified;
 
     public OrderMachine(KitQueue queue, Progress progress, Supplier<Config> config, LongSupplier jitterMs) {
         this.queue = queue;
@@ -66,6 +73,7 @@ public final class OrderMachine {
     public List<Action> onJoin(long now) {
         resumeAt = now + JOIN_GRACE_MS;
         clearWindow();
+        screenOpenBlockNotified = false;
         Progress.ActiveOrder active = progress.activeOrder;
         if (active != null && now - active.placedAt() < COURIER_TIMEOUT_MS) {
             batch = active.ids();
@@ -183,10 +191,20 @@ public final class OrderMachine {
         if (ok && freeSlots >= nextBatch().size()) {
             state = State.IDLE;
             out.add(new Action.Notify("Shulkers guardados en el ender chest.", false));
-        } else {
+        } else if (ok) {
+            // Se usó el ender chest de verdad y aun así no hay huecos: reintentarlo no cambiaría
+            // nada, así que aquí sí es un PAUSED de verdad (spec §6.1).
             state = State.PAUSED;
-            out.add(new Action.Notify(ok ? "No quedan huecos suficientes tras usar el ender chest: pausado."
-                : "No se pudo usar el ender chest: pausado.", true));
+            out.add(new Action.Notify("No quedan huecos suficientes tras usar el ender chest: pausado.", true));
+        } else {
+            // Un aborto (interacción ajena descartada por EnderDepositor, timeout, syncId que ya no
+            // coincide...) no significa que sea imposible depositar, solo que este intento concreto
+            // no pudo. Se vuelve a IDLE para reintentar, en vez de pausar como antes: con el aborto
+            // pausando, un clic derecho ajeno cualquiera dejaba el módulo parado hasta vaciar el
+            // inventario a mano, justo lo que el depósito iba a conseguir (spec §6.1). Si de verdad
+            // ya no hay forma de depositar -el ender ya no está al alcance, autoEnder se apagó-,
+            // idle() lo pausará él mismo con el aviso de huecos, esta vez de verdad sin salida.
+            state = State.IDLE;
         }
         return out;
     }
@@ -216,10 +234,17 @@ public final class OrderMachine {
             boolean canAutoDeposit = config.get().autoEnder() && ctx.enderInReach();
             if (canAutoDeposit && ctx.screenOpen()) {
                 // Hay una pantalla abierta a mano: pedir el depósito ahora es lo que vacía shulkers
-                // en el contenedor equivocado (spec §6). No se avisa ni se pausa, solo se reintenta
-                // en un tick posterior, cuando el jugador haya cerrado lo que tuviera abierto.
+                // en el contenedor equivocado (spec §6.1). No se pausa, solo se reintenta en un tick
+                // posterior, cuando el jugador haya cerrado lo que tuviera abierto. Se avisa una sola
+                // vez de que se está esperando, para que status() no calle en silencio (spec §6.1).
+                if (!screenOpenBlockNotified) {
+                    screenOpenBlockNotified = true;
+                    out.add(new Action.Notify(
+                        "Inventario lleno y hay una pantalla abierta: espero a que la cierres para depositar.", false));
+                }
                 return;
             }
+            screenOpenBlockNotified = false;
             if (canAutoDeposit) {
                 state = State.DEPOSIT;
                 out.add(new Action.Deposit());
@@ -230,6 +255,7 @@ public final class OrderMachine {
             return;
         }
 
+        screenOpenBlockNotified = false;
         batch = next;
         state = State.AWAIT_CONFIRM;
         deadline = now + CONFIRM_TIMEOUT_MS;

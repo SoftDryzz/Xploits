@@ -138,7 +138,7 @@ public class KitRequester extends Module {
      */
     @EventHandler
     private void onInteractBlock(InteractBlockEvent event) {
-        depositor.onInteractBlock(event.result.getBlockPos());
+        depositor.onInteractBlock(mc, event.result.getBlockPos(), System.currentTimeMillis());
     }
 
     /** Prioridad máxima para ver el mensaje antes de que BetterChat u otros lo modifiquen (spec §2.3). */
