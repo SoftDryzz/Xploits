@@ -35,6 +35,19 @@ public final class OrderMachine {
     public static final long COOLDOWN_MARGIN_MS = 20_000;
     public static final long CONFIRM_RETRY_MS = 60_000;
     public static final int MAX_FAILURES = 3;
+    /**
+     * Abortos seguidos de {@link com.xploits.kitrequester.inventory.EnderDepositor} antes de pasar a
+     * {@code PAUSED} con aviso fuerte, en vez de reintentar en silencio para siempre (spec §6.1,
+     * corregido: el reintento sin tope convirtió un fallo ruidoso en uno mudo). Un ender chest
+     * tapado por un bloque sólido encima nunca abre pantalla -verificado en el bytecode de
+     * {@code EnderChestBlock.onUse}-, así que con {@code findInReach} sin filtrar eso el ciclo era
+     * pedir depósito, esperar 5 s, abortar, reintentar, para siempre, con el estado diciendo
+     * {@code IDLE} y sin ningún toast, sonido ni línea en el chat. Un clic ajeno suelto -la razón
+     * original para que un aborto reintente en vez de pausar- sigue reintentando sin este aviso: el
+     * contador se olvida con cualquier depósito correcto, así que solo una causa persistente lo
+     * agota.
+     */
+    public static final int MAX_DEPOSIT_ABORTS = 3;
 
     private final KitQueue queue;
     private final Progress progress;
@@ -57,6 +70,8 @@ public final class OrderMachine {
      * una sola vez y se olvida en cuanto la situación deja de bloquear.
      */
     private boolean screenOpenBlockNotified;
+    /** Abortos seguidos de EnderDepositor. Se olvida con cualquier depósito correcto (spec §6.1). */
+    private int consecutiveDepositAborts;
 
     public OrderMachine(KitQueue queue, Progress progress, Supplier<Config> config, LongSupplier jitterMs) {
         this.queue = queue;
@@ -74,6 +89,7 @@ public final class OrderMachine {
         resumeAt = now + JOIN_GRACE_MS;
         clearWindow();
         screenOpenBlockNotified = false;
+        consecutiveDepositAborts = 0;
         Progress.ActiveOrder active = progress.activeOrder;
         if (active != null && now - active.placedAt() < COURIER_TIMEOUT_MS) {
             batch = active.ids();
@@ -190,21 +206,36 @@ public final class OrderMachine {
         if (state != State.DEPOSIT) return out;
         if (ok && freeSlots >= nextBatch().size()) {
             state = State.IDLE;
+            consecutiveDepositAborts = 0;
             out.add(new Action.Notify("Shulkers guardados en el ender chest.", false));
         } else if (ok) {
             // Se usó el ender chest de verdad y aun así no hay huecos: reintentarlo no cambiaría
             // nada, así que aquí sí es un PAUSED de verdad (spec §6.1).
             state = State.PAUSED;
+            consecutiveDepositAborts = 0;
             out.add(new Action.Notify("No quedan huecos suficientes tras usar el ender chest: pausado.", true));
         } else {
             // Un aborto (interacción ajena descartada por EnderDepositor, timeout, syncId que ya no
             // coincide...) no significa que sea imposible depositar, solo que este intento concreto
-            // no pudo. Se vuelve a IDLE para reintentar, en vez de pausar como antes: con el aborto
+            // no pudo. Se vuelve a IDLE para reintentar, en vez de pausar sin más: con todo aborto
             // pausando, un clic derecho ajeno cualquiera dejaba el módulo parado hasta vaciar el
-            // inventario a mano, justo lo que el depósito iba a conseguir (spec §6.1). Si de verdad
-            // ya no hay forma de depositar -el ender ya no está al alcance, autoEnder se apagó-,
-            // idle() lo pausará él mismo con el aviso de huecos, esta vez de verdad sin salida.
-            state = State.IDLE;
+            // inventario a mano, justo lo que el depósito iba a conseguir (spec §6.1).
+            //
+            // Pero un reintento sin tope es mudo ante una causa persistente -un ender chest tapado
+            // por un bloque sólido encima nunca abre pantalla, así que sería pedir, esperar 5 s,
+            // abortar, y repetir para siempre sin ningún aviso (spec §6.1, corregido)-. Tras
+            // MAX_DEPOSIT_ABORTS seguidos sí se pausa, con el mismo aviso fuerte que había antes de
+            // que el aborto reintentara; el contador se olvida con cualquier depósito correcto, así
+            // que un clic ajeno suelto -la razón original para reintentar- nunca lo agota.
+            consecutiveDepositAborts++;
+            if (consecutiveDepositAborts >= MAX_DEPOSIT_ABORTS) {
+                consecutiveDepositAborts = 0;
+                state = State.PAUSED;
+                out.add(new Action.Notify("El depósito automático falló " + MAX_DEPOSIT_ABORTS
+                    + " veces seguidas (ender chest bloqueado o una interacción ajena constante): pausado.", true));
+            } else {
+                state = State.IDLE;
+            }
         }
         return out;
     }

@@ -455,6 +455,57 @@ class OrderMachineTest {
     }
 
     @Test
+    void depositAbortPausesWithStrongNoticeAfterThreeConsecutiveAborts() {
+        // CRÍTICO, corregido: un reintento sin tope es mudo ante una causa persistente (un ender
+        // chest tapado nunca abre pantalla). Al tercer aborto seguido, PAUSED con aviso fuerte -el
+        // mismo que había antes de que el aborto reintentara- en vez de un bucle silencioso.
+        config = new OrderMachine.Config(300_000, COURIERS, false, true);
+        machine.onJoin(T0);
+        OrderMachine.Context reach = new OrderMachine.Context(true, true, 2, true, false);
+
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, reach);
+        assertEquals(DEPOSIT, machine.state());
+        assertFalse(alerts(machine.onDepositResult(false, 2), "veces seguidas"), "primer aborto: sin aviso");
+        assertEquals(IDLE, machine.state());
+
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 10, reach);
+        assertEquals(DEPOSIT, machine.state());
+        assertFalse(alerts(machine.onDepositResult(false, 2), "veces seguidas"), "segundo aborto: sin aviso");
+        assertEquals(IDLE, machine.state());
+
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 20, reach);
+        assertEquals(DEPOSIT, machine.state());
+        List<Action> third = machine.onDepositResult(false, 2);
+        assertTrue(alerts(third, "veces seguidas"), "tercer aborto seguido: aviso fuerte");
+        assertEquals(PAUSED, machine.state());
+    }
+
+    @Test
+    void aSuccessfulDepositResetsTheConsecutiveAbortCounter() {
+        config = new OrderMachine.Config(300_000, COURIERS, false, true);
+        machine.onJoin(T0);
+        OrderMachine.Context reach = new OrderMachine.Context(true, true, 2, true, false);
+
+        // Dos abortos, luego un depósito correcto: el contador se olvida.
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, reach);
+        machine.onDepositResult(false, 2);
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 10, reach);
+        machine.onDepositResult(false, 2);
+
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 20, reach);
+        machine.onDepositResult(true, 36);
+        assertEquals(IDLE, machine.state());
+
+        // Dos abortos más tras el éxito no deberían bastar para pausar (el contador reinició en 0).
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 30, reach);
+        machine.onDepositResult(false, 2);
+        machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 40, reach);
+        List<Action> out = machine.onDepositResult(false, 2);
+        assertFalse(alerts(out, "veces seguidas"));
+        assertEquals(IDLE, machine.state(), "el contador reinició tras el éxito, así que sigue reintentando");
+    }
+
+    @Test
     void depositAbortPausesWhenTheEnderIsNoLongerReachable() {
         // Si de verdad ya no hay forma de depositar -el ender salió de alcance, o alguien lo rompió-
         // idle() es quien pausa, con el mismo aviso de siempre de huecos insuficientes.
