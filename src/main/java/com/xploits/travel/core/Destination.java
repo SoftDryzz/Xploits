@@ -14,6 +14,12 @@ package com.xploits.travel.core;
  * rechaza en vez de degradarse, porque sacaría al jugador del corredor de la autopista.
  */
 public record Destination(boolean highway, double x, double z, Axis axis, double distance) {
+    public Destination {
+        if (highway && axis == null) {
+            throw new IllegalArgumentException("un destino de autopista necesita un eje: axis no puede ser null");
+        }
+    }
+
     /** Un punto absoluto del mundo. */
     public static Destination coordinates(double x, double z) {
         return new Destination(false, x, z, null, 0);

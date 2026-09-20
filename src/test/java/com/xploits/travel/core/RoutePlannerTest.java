@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RoutePlannerTest {
@@ -119,6 +120,35 @@ class RoutePlannerTest {
     }
 
     @Test
+    void theSpiralsFirstWaypointIsExactlyDestinationMinusUTimesRadius() {
+        // No basta con fijar la distancia (radio): medir el ángulo desde +u en vez de -u también
+        // da un primer punto a una radio de distancia, pero PASADO el destino, no antes. Solo
+        // comprobar las componentes descarta esa alternativa.
+        Route route = plan(Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL);
+        Waypoint first = route.waypoints().get(0);
+        double radius = PatternParams.defaults().spiralRadius();
+
+        // u = (1,0): el destino está directamente en +X desde el origen.
+        assertEquals(30_000 - radius, first.x(), TOLERANCE,
+            "el ángulo se mide desde -u: el primer punto debe quedar ANTES del destino");
+        assertEquals(0, first.z(), TOLERANCE);
+    }
+
+    @Test
+    void theSpiralStepCountScalesWithTheConfiguredTurns() {
+        // Con 36 pasos fijos y más vueltas, el paso angular crece y la espiral se convierte en un
+        // polígono estrellado. Duplicar las vueltas debe traducirse en más pasos, no en el mismo
+        // número con más grados cada uno.
+        Route defaultTurns = plan(Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL);
+        PatternParams manyTurns = new PatternParams(200, 2000, 5000, 800, 1500, 3.0, 30, 0.6);
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(30_000, 0), FlightPattern.ESPIRAL,
+            manyTurns, HIGHWAY_MAX);
+
+        assertTrue(route.waypoints().size() > defaultTurns.waypoints().size(),
+            "el doble de vueltas debe traducirse en más pasos");
+    }
+
+    @Test
     void theDecoyAimsAwayFirstAndCorrectsLater() {
         Route route = plan(Destination.coordinates(20_000, 0), FlightPattern.SENUELO);
         Waypoint correction = route.waypoints().get(0);
@@ -126,6 +156,23 @@ class RoutePlannerTest {
         assertTrue(Math.abs(correction.z()) > 1_000,
             "el primer tramo debe apuntar claramente fuera del rumbo real, z=" + correction.z());
         assertEquals(20_000, last(route).x(), TOLERANCE);
+    }
+
+    @Test
+    void theDecoysCorrectionPointIsExactlyComputed() {
+        // No basta con "se aparta más de 1000": con 60° en vez de 30°, o fracción 0.4 en vez de
+        // 0.6, ese umbral se sigue cumpliendo. Fija el punto exacto.
+        Route route = plan(Destination.coordinates(20_000, 0), FlightPattern.SENUELO);
+        Waypoint correction = route.waypoints().get(0);
+
+        double angle = Math.toRadians(PatternParams.defaults().decoyAngleDegrees());
+        double fraction = PatternParams.defaults().decoyFraction();
+        // u = (1,0): rotar u por el ángulo del señuelo dentro del plano XZ.
+        double expectedX = Math.cos(angle) * 20_000 * fraction;
+        double expectedZ = Math.sin(angle) * 20_000 * fraction;
+
+        assertEquals(expectedX, correction.x(), TOLERANCE);
+        assertEquals(expectedZ, correction.z(), TOLERANCE);
     }
 
     @Test
@@ -144,13 +191,91 @@ class RoutePlannerTest {
     }
 
     @Test
-    void onAHighwayNoWaypointLeavesTheAllowedCorridor() {
-        Route route = plan(Destination.highway(Axis.X_PLUS, 50_000), FlightPattern.ZIGZAG);
+    void onAHighwayNoWaypointLeavesTheAllowedCorridorForAnyPattern() {
+        // Crítico: mi brief solo mandó acotar ZIGZAG y QUIEBRO, pero ningún patrón debe sacar del
+        // corredor (spec §4.2). Sin acotar también el radio de ESPIRAL, con los valores de fábrica
+        // y highwayMaxAmplitude=300, el paso 6 (ángulo 90°) se va 1250 bloques fuera del eje.
+        for (FlightPattern pattern : FlightPattern.values()) {
+            Route route = plan(Destination.highway(Axis.X_PLUS, 50_000), pattern);
 
-        for (Waypoint point : route.waypoints()) {
-            assertTrue(Math.abs(point.z()) <= HIGHWAY_MAX + TOLERANCE,
-                "se salió del corredor: " + point.z());
+            if (pattern == FlightPattern.SENUELO) {
+                assertTrue(route.isRejected(), "el señuelo debe rechazarse en autopista, no acotarse");
+                continue;
+            }
+
+            assertFalse(route.isRejected(), pattern + " no debería rechazarse en autopista");
+            for (Waypoint point : route.waypoints()) {
+                assertTrue(Math.abs(point.z()) <= HIGHWAY_MAX + TOLERANCE,
+                    pattern + " se salió del corredor: " + point.z());
+            }
         }
+    }
+
+    @Test
+    void quiebroUsesLegLengthAndLateralOffsetNotAmplitudeAndPeriod() {
+        // Sin este test, intercambiar los parámetros del quiebro (usar amplitude/period en vez de
+        // lateralOffset/legLength) pasaba todos los tests igual. Distancia elegida (13 000) para que
+        // el último tramo no quede tan cerca del destino como para omitirse (ver
+        // aZigzagDoesNotWasteAFinalOutAndBackRightAtTheDestination).
+        Route route = plan(Destination.coordinates(13_000, 0), FlightPattern.QUIEBRO);
+        List<Waypoint> points = route.waypoints();
+
+        double legLength = PatternParams.defaults().legLength(); // 5000
+        double lateralOffset = PatternParams.defaults().lateralOffset(); // 800
+        int expectedLegs = (int) Math.floor(13_000 / legLength); // 2
+
+        assertEquals(expectedLegs + 1, points.size(), "quiebro debe usar legLength como paso, no period");
+        for (int i = 0; i < points.size() - 1; i++) {
+            assertEquals(lateralOffset, Math.abs(points.get(i).z()), TOLERANCE,
+                "quiebro debe usar lateralOffset como amplitud, no amplitude");
+        }
+    }
+
+    @Test
+    void aZeroOrNegativePeriodFallsBackToTheStraightRouteInsteadOfHanging() {
+        // (int) Math.floor(distancia / 0.0) es Integer.MAX_VALUE: sin este caso especial, dos mil
+        // millones de iteraciones llenando una lista cuelgan el cliente o lo dejan sin memoria.
+        PatternParams zeroPeriod = new PatternParams(200, 0, 5000, 800, 1500, 1.5, 30, 0.6);
+        Route zigzagRoute = RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), FlightPattern.ZIGZAG,
+            zeroPeriod, HIGHWAY_MAX);
+        assertFalse(zigzagRoute.isRejected());
+        assertEquals(1, zigzagRoute.waypoints().size());
+        assertEquals(10_000, last(zigzagRoute).x(), TOLERANCE);
+
+        PatternParams negativeLegLength = new PatternParams(200, 2000, -5, 800, 1500, 1.5, 30, 0.6);
+        Route quiebroRoute = RoutePlanner.plan(ORIGIN, Destination.coordinates(10_000, 0), FlightPattern.QUIEBRO,
+            negativeLegLength, HIGHWAY_MAX);
+        assertFalse(quiebroRoute.isRejected());
+        assertEquals(1, quiebroRoute.waypoints().size());
+    }
+
+    @Test
+    void aTinyPeriodOverALongTripIsCappedInsteadOfExplodingTheWaypointCount() {
+        PatternParams tinyPeriod = new PatternParams(200, 1, 5000, 800, 1500, 1.5, 30, 0.6);
+        Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(100_000, 0), FlightPattern.ZIGZAG,
+            tinyPeriod, HIGHWAY_MAX);
+
+        assertFalse(route.isRejected());
+        assertTrue(route.waypoints().size() <= RoutePlanner.MAX_PATTERN_WAYPOINTS + 1,
+            "el número de waypoints debe estar acotado: " + route.waypoints().size());
+    }
+
+    @Test
+    void theWaypointCountMatchesFloorOfDistanceOverPeriodForANonExactDivision() {
+        // Cambiar Math.floor por Math.ceil deja todos los demás tests en verde: ninguno fija la
+        // cuenta exacta con una división no exacta. floor(10500/2000) = 5 puntos de patrón, más el
+        // destino = 6. Con ceil serían 7, y la ruta se pasaría del destino antes de corregir.
+        Route route = plan(Destination.coordinates(10_500, 0), FlightPattern.ZIGZAG);
+        assertEquals(6, route.waypoints().size());
+    }
+
+    @Test
+    void aZigzagDoesNotWasteAFinalOutAndBackRightAtTheDestination() {
+        // distancia=10000, periodo=2000: el paso 5 (el último) cae exactamente a la altura del
+        // destino y desviaría los 200 bloques de amplitud sin ganar ningún avance. Sin la omisión
+        // habría 6 puntos (5 de patrón + destino); con ella, 5.
+        Route route = plan(Destination.coordinates(10_000, 0), FlightPattern.ZIGZAG);
+        assertEquals(5, route.waypoints().size(), "el último rodeo, pegado al destino, debe omitirse");
     }
 
     @Test
@@ -170,5 +295,18 @@ class RoutePlannerTest {
                 PatternParams.defaults(), HIGHWAY_MAX);
             assertFalse(route.isRejected(), pattern + " no debería rechazar un destino nulo");
         }
+    }
+
+    @Test
+    void aHighwayDestinationWithoutAnAxisIsRejectedEagerly() {
+        // Antes: new Destination(true, 0, 0, null, 5).resolve(...) reventaba con un NullPointerException
+        // confuso dentro del switch. Ahora falla al construirse, con un mensaje claro.
+        assertThrows(IllegalArgumentException.class, () -> new Destination(true, 0, 0, null, 5));
+    }
+
+    @Test
+    void anAcceptedRouteWithNoWaypointsIsRejectedAtConstruction() {
+        // Route.of(List.of()) producía una ruta aceptada y vacía que nadie sabría interpretar.
+        assertThrows(IllegalArgumentException.class, () -> Route.of(List.of()));
     }
 }

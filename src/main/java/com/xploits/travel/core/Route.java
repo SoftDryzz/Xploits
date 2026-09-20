@@ -12,6 +12,10 @@ import java.util.List;
 public record Route(List<Waypoint> waypoints, String rejection) {
     public Route {
         waypoints = List.copyOf(waypoints);
+        if (rejection == null && waypoints.isEmpty()) {
+            throw new IllegalArgumentException(
+                "una ruta aceptada no puede tener la lista de waypoints vacía: nadie sabría interpretarla");
+        }
     }
 
     /** Una ruta aceptada, con sus waypoints. */
