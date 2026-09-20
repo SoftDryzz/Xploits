@@ -26,16 +26,31 @@ public final class CombatDirector {
     public static final int RESOURCE_RELEASE_DWELL_TICKS = 20;
 
     /**
-     * Distancia máxima al objetivo para clasificar {@code RODEADO}. Verificado contra las fuentes
-     * de {@code meteor-client:1.21.11-SNAPSHOT} (`AutoCity.java`): el módulo se apaga solo -dentro
-     * de su propio {@code onActivate()}/{@code onTick()}, con un error en el chat- si el objetivo
-     * está a más de {@code target-range} (por defecto 5.5) o si el bloque de rodeado está a más de
-     * {@code break-range} (por defecto 4.5) de ti. El snapshot solo lleva la distancia al objetivo,
-     * no al bloque -que linda con él, a un bloque de distancia como mucho-, así que se usa la más
-     * estricta de las dos cotas de Meteor: si el objetivo ya no está a este alcance, el bloque
-     * -pegado a sus pies- tampoco lo está con certeza, y de las dos formas de equivocarse aquí
-     * (perderse un RODEADO real o declarar uno que auto-city no puede trabajar) esta es la que no
-     * cuesta nada, frente a los 20 encendidos y apagados por segundo de la otra (spec §4.2).
+     * Distancia máxima real al bloque de rodeado para clasificar {@code RODEADO} (spec §4.2.1,
+     * corregido). Verificado contra las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}
+     * (`AutoCity.java`): el módulo se apaga solo -dentro de su propio
+     * {@code onActivate()}/{@code onTick()}, con un error en el chat- si el objetivo está a más de
+     * {@code target-range} (por defecto 5.5) o si el bloque de rodeado está a más de
+     * {@code break-range} (por defecto **4.5**, el valor de fábrica que fija esta constante) de ti,
+     * comprobado con {@code PlayerUtils.squaredDistanceTo(targetPos)}.
+     *
+     * <p><b>4.5 es el ajuste de fábrica de {@code break-range}; el usuario puede cambiarlo en
+     * Meteor.</b> Esta constante no lo lee en vivo -el núcleo no importa nada de
+     * {@code meteordevelopment}-, así que si alguien sube o baja su {@code break-range} el director
+     * sigue comparando contra 4.5, no contra el valor real configurado. Es el mismo trato que ya
+     * recibe {@code target-range} en otras condiciones de esta clase.
+     *
+     * <p><b>La comparación es contra la distancia real al bloque, no al objetivo</b>
+     * ({@link CombatSnapshot#cityBlockDistance()}). Usar la distancia al objetivo como proxy -lo
+     * que hacía la versión anterior- es incorrecto: el bloque de rodeado es un vecino horizontal
+     * del objetivo (`EntityUtils.getCityBlock()`) y puede caer al lado contrario de donde estás tú,
+     * así que un objetivo cerca no garantiza un bloque cerca. Contraejemplo real: jugador en
+     * (0.5, 0, 0.5), objetivo en (4.5, 0, 0.5) -distancia 4.0, dentro del antiguo límite-, bloque de
+     * rodeado en (5, 0, 0) -distancia al cuadrado 20.5, por encima de 4.5² = 20.25-: la versión
+     * anterior declaraba RODEADO y auto-city se apagaba solo, con error, cada tick. Además
+     * {@code PlayerUtils.squaredDistanceTo(BlockPos)} mide a la esquina mínima del bloque, no a su
+     * centro, así que ni siquiera una cota "conservadora" basada en el objetivo puede acotar bien la
+     * distancia real al bloque.
      */
     public static final double AUTO_CITY_MAX_TARGET_DISTANCE = 4.5;
 
@@ -144,7 +159,7 @@ public final class CombatDirector {
         if (!s.hasTarget()) return CombatState.SIN_COMBATE;
         if (s.selfGliding() || s.targetGliding()) return CombatState.PERSECUCION;
         if (s.targetBurrowed()) return CombatState.ENTERRADO;
-        if (s.targetSurrounded() && s.targetDistance() <= AUTO_CITY_MAX_TARGET_DISTANCE) return CombatState.RODEADO;
+        if (s.targetSurrounded() && s.cityBlockDistance() <= AUTO_CITY_MAX_TARGET_DISTANCE) return CombatState.RODEADO;
         if (s.targetDistance() > approachDistance) return CombatState.ACERCAMIENTO;
         return CombatState.SUPERFICIE;
     }

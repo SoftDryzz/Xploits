@@ -20,6 +20,7 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.sound.PositionedSoundInstance;
@@ -27,6 +28,7 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -157,7 +159,7 @@ public class AutoPvp extends Module {
     private CombatSnapshot snapshot(PlayerEntity target) {
         Inventory inventory = inventory();
         if (target == null) {
-            return new CombatSnapshot(false, 0, false, false, false,
+            return new CombatSnapshot(false, 0, false, 0, false, false,
                 mc.player.isGliding(), inventory.totems(), inventory.resources());
         }
         // "Enterrado" exige que el bloque bloquee el movimiento, no solo que no sea aire (spec
@@ -168,8 +170,15 @@ public class AutoPvp extends Module {
         // contra AbstractBlock.AbstractBlockState#blocksMovement en las fuentes de Yarn 1.21.11:
         // excluye COBWEB explícitamente y en general solo es true para bloques "solid").
         boolean burrowed = mc.world.getBlockState(target.getBlockPos()).blocksMovement();
+        // RODEADO exige el alcance real de auto-city al bloque, no al objetivo (spec §4.2.1,
+        // corregido): el bloque es un vecino horizontal del objetivo y puede caer al lado contrario
+        // de donde estás tú. Se mide exactamente como lo hace AutoCity.java de Meteor
+        // (PlayerUtils.squaredDistanceTo contra la BlockPos, a la esquina mínima del bloque, no al
+        // centro) para que la comparación en el núcleo sea la misma que auto-city aplicará después.
+        BlockPos cityBlock = EntityUtils.getCityBlock(target);
+        double cityBlockDistance = cityBlock != null ? Math.sqrt(PlayerUtils.squaredDistanceTo(cityBlock)) : 0;
         return new CombatSnapshot(true, mc.player.distanceTo(target),
-            EntityUtils.getCityBlock(target) != null, burrowed, target.isGliding(),
+            cityBlock != null, cityBlockDistance, burrowed, target.isGliding(),
             mc.player.isGliding(), inventory.totems(), inventory.resources());
     }
 

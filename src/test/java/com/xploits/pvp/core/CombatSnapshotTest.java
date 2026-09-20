@@ -18,7 +18,7 @@ class CombatSnapshotTest {
 
     @Test
     void itReportsTheResourcesItWasGiven() {
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, false, false, false, 2,
+        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2,
             Map.of(Resource.CRYSTALS, 12, Resource.OBSIDIAN, 5));
 
         assertEquals(12, snapshot.amountOf(Resource.CRYSTALS));
@@ -30,7 +30,7 @@ class CombatSnapshotTest {
     void theSnapshotCopiesItsResourcesSoLaterChangesDoNotLeakIn() {
         Map<Resource, Integer> resources = new HashMap<>();
         resources.put(Resource.CRYSTALS, 12);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, false, false, false, 2, resources);
+        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, resources);
 
         resources.put(Resource.CRYSTALS, 999);
 
