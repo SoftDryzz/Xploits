@@ -4,6 +4,7 @@ import com.xploits.XploitsAddon;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.travel.core.Axis;
 import com.xploits.travel.core.BaritoneScript;
+import com.xploits.travel.core.BorrowedModule;
 import com.xploits.travel.core.Destination;
 import com.xploits.travel.core.FireworkWatch;
 import com.xploits.travel.core.FlightPattern;
@@ -31,8 +32,10 @@ import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
+import meteordevelopment.orbit.EventPriority;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ChatCommandSignedC2SPacket;
@@ -254,7 +257,16 @@ public class AutoTravel extends Module {
         .build()
     );
 
-    // Vuelo: el prefijo, los cuatro ajustes con su valor de reposo, y el reposo de los dos módulos
+    // Vuelo: el prefijo y los cuatro ajustes de Baritone, cada uno con su valor de vuelo y su valor
+    // de reposo. Los dos módulos de Meteor NO tienen ajuste de reposo: su estado se lee y se anota al
+    // despegar (ver BorrowedModule).
+    //
+    // Los cuatro valores de reposo vienen de fábrica con el default REAL de Baritone 1.17.0, leído
+    // del bytecode de su clase Settings (baritone/e.class, javap -p -c) en el jar instalado:
+    // elytraAutoJump FALSE, elytraAllowEmergencyLand TRUE, elytraConserveFireworks FALSE y
+    // elytraFireworkSpeed 1.2. Poner otro valor aquí no es "dejarlo como estaba": Baritone persiste
+    // sus ajustes a disco, así que el primer viaje reconfiguraría para siempre todos los #elytra que
+    // el jugador haga a mano.
 
     private final Setting<String> prefix = sgFlight.add(new StringSetting.Builder()
         .name("baritone-prefix")
@@ -273,8 +285,8 @@ public class AutoTravel extends Module {
     private final Setting<Boolean> autoJumpResting = sgFlight.add(new BoolSetting.Builder()
         .name("auto-jump-resting")
         .description("A qué valor se devuelve elytraAutoJump al aterrizar. Hay que declararlo: los ajustes de "
-            + "Baritone se pueden escribir pero no leer (spec §6.1).")
-        .defaultValue(false)
+            + "Baritone se pueden escribir pero no leer (spec §6.1). De fábrica Baritone lo trae en false.")
+        .defaultValue(BaritoneScript.baritoneDefaults().autoJump())
         .build()
     );
 
@@ -287,8 +299,9 @@ public class AutoTravel extends Module {
 
     private final Setting<Boolean> allowEmergencyLandResting = sgFlight.add(new BoolSetting.Builder()
         .name("emergency-land-resting")
-        .description("A qué valor se devuelve elytraAllowEmergencyLand al aterrizar.")
-        .defaultValue(true)
+        .description("A qué valor se devuelve elytraAllowEmergencyLand al aterrizar. De fábrica Baritone lo "
+            + "trae en true.")
+        .defaultValue(BaritoneScript.baritoneDefaults().allowEmergencyLand())
         .build()
     );
 
@@ -301,8 +314,10 @@ public class AutoTravel extends Module {
 
     private final Setting<Boolean> conserveFireworksResting = sgFlight.add(new BoolSetting.Builder()
         .name("conserve-fireworks-resting")
-        .description("A qué valor se devuelve elytraConserveFireworks al aterrizar.")
-        .defaultValue(true)
+        .description("A qué valor se devuelve elytraConserveFireworks al aterrizar. De fábrica Baritone lo trae "
+            + "en false: ponlo en true solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
+            + "vuelos a mano con #elytra irían más lentos a partir del primer viaje.")
+        .defaultValue(BaritoneScript.baritoneDefaults().conserveFireworks())
         .build()
     );
 
@@ -318,8 +333,10 @@ public class AutoTravel extends Module {
 
     private final Setting<Double> fireworkSpeedResting = sgFlight.add(new DoubleSetting.Builder()
         .name("firework-speed-resting")
-        .description("A qué valor se devuelve elytraFireworkSpeed al aterrizar.")
-        .defaultValue(1)
+        .description("A qué valor se devuelve elytraFireworkSpeed al aterrizar. De fábrica Baritone lo trae en "
+            + "1.2: ponlo en otra cosa solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
+            + "vuelos a mano con #elytra se quedarían con ese valor a partir del primer viaje.")
+        .defaultValue(BaritoneScript.baritoneDefaults().fireworkSpeed())
         .min(0)
         .sliderRange(0.5, 3)
         .decimalPlaces(2)
@@ -331,23 +348,6 @@ public class AutoTravel extends Module {
         .description("La semilla del Nether, si se conoce. Vacía se deja en paz: sin semilla Baritone apaga la "
             + "predicción de terreno él solo, que es lo correcto (spec §8.1).")
         .defaultValue("")
-        .build()
-    );
-
-    private final Setting<Boolean> elytraFlyResting = sgFlight.add(new BoolSetting.Builder()
-        .name("elytra-fly-resting")
-        .description("Si ElytraFly de Meteor debe quedar encendido al aterrizar. Durante el vuelo se apaga siempre: "
-            + "Baritone declara que su vuelo no funciona con impulso no vanilla (spec §2). Aterrizar con él apagado "
-            + "sin saberlo es tan malo como el problema original, así que aquí se declara a qué se devuelve.")
-        .defaultValue(true)
-        .build()
-    );
-
-    private final Setting<Boolean> elytraReplaceResting = sgFlight.add(new BoolSetting.Builder()
-        .name("elytra-replace-resting")
-        .description("Si elytra-replace debe quedar encendido al aterrizar. Durante el vuelo se enciende siempre: "
-            + "el cambio de elytra lo manda el nuestro, no el de Baritone (spec §6.2).")
-        .defaultValue(true)
         .build()
     );
 
@@ -380,6 +380,35 @@ public class AutoTravel extends Module {
 
     /** Si hay un viaje en marcha: lo único que distingue "encendido" de "dirigiendo". */
     private boolean travelling;
+
+    /**
+     * Si lo que está pasando ahora mismo es el desmontaje de salida del mundo, en el que <b>no se
+     * puede encender ni apagar un módulo de Meteor</b> (spec §6.4).
+     *
+     * <p>Lo pone {@link #onGameLeft(GameLeftEvent)} y lo quita {@link #onActivate()}, que es por
+     * donde vuelve el módulo al entrar: {@code Modules.onGameJoined} suscribe cada módulo activo y le
+     * llama a {@code onActivate()}.
+     *
+     * <p><b>Por qué se puede confiar en que el handler llega antes.</b> Verificado en las fuentes de
+     * orbit 0.2.4: {@code EventBus.insert()} recorre los oyentes ya suscritos y mete el nuevo delante
+     * del primero cuya prioridad sea <b>estrictamente menor</b>. El handler de {@code Modules} -el
+     * que desmonta- no declara prioridad, así que es {@code EventPriority.MEDIUM} (0); el nuestro es
+     * {@code HIGHEST} (200), así que queda siempre por delante, se suscriba quien se suscriba
+     * primero. Y {@code EventBus.post()} recorre esa lista en orden.
+     */
+    private boolean leavingWorld;
+
+    /**
+     * Los dos módulos de Meteor que el viaje toma prestados (spec §6.2, paso 5). La decisión de
+     * qué hacerles al despegar y al aterrizar está en {@link BorrowedModule}, en el núcleo y con
+     * tests: aquí solo se leen los {@code isActive()} y se ejecuta lo que conteste.
+     *
+     * <p>No hay ajuste de reposo para ninguno de los dos, y esa es la diferencia con los cuatro
+     * ajustes de Baritone: el argumento de spec §6.1 -no se pueden leer, así que hay que declarar a
+     * qué se vuelve- vale para Baritone y no vale aquí, porque {@code Module.isActive()} se lee.
+     */
+    private final BorrowedModule elytraFly = new BorrowedModule("elytra-fly", false);
+    private final BorrowedModule elytraReplace = new BorrowedModule("elytra-replace", true);
 
     /**
      * El oyente de la red de seguridad (spec §7), <b>suscrito al bus por su cuenta</b> y no como
@@ -455,15 +484,23 @@ public class AutoTravel extends Module {
     @Override
     public void onActivate() {
         // Encender no vuela: se espera al comando del jugador.
+        //
+        // Aquí se vuelve también al entrar al mundo -Modules.onGameJoined suscribe cada módulo activo
+        // y le llama a onActivate()-, así que es el sitio donde se olvida que estábamos saliendo. Lo
+        // que quedó pendiente de devolver NO se aplica aquí: estamos dentro del reparto de
+        // GameJoinedEvent, que es justo cuando Modules está suscribiendo módulos, y encender uno en
+        // mitad de eso es el mismo agujero por el que se llega aquí. Se aplica en el primer tick.
+        leavingWorld = false;
         resetTrip();
     }
 
     @Override
     public void onDeactivate() {
-        // Salida 5 (apagado del módulo) y, de hecho, también la 4: cuando se deja el mundo, Modules
-        // llama a onDeactivate() de todos los módulos activos, así que este es el camino que de
-        // verdad se recorre al desconectar. El handler de GameLeftEvent está igualmente, porque el
-        // orden entre los dos no está garantizado; finish() es idempotente y el segundo no hace nada.
+        // Salida 5: apagado del módulo. Al dejar el mundo también se pasa por aquí -Modules llama a
+        // onDeactivate() de todos los módulos activos-, pero para entonces onGameLeft ya ha cerrado
+        // el viaje: corre antes por prioridad (spec §6.4), y finish() es idempotente, así que este
+        // segundo paso no restaura nada. Eso es justo lo que hace falta, porque aquí ya no se puede
+        // distinguir un apagado normal del desmontaje.
         finish("auto-travel se ha apagado", false);
         // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin viaje en marcha
         // se comería en silencio todo comando con prefijo que el jugador escribiera a mano, y con el
@@ -471,9 +508,27 @@ public class AutoTravel extends Module {
         disarmNet();
     }
 
-    /** Salida 4: desconexión o cambio de mundo. */
-    @EventHandler
+    /**
+     * Salida 4: desconexión o cambio de mundo. Va en {@code HIGHEST} a propósito, y no es una
+     * preferencia de orden: es lo que hace que la restauración sepa que está en el desmontaje.
+     *
+     * <p>{@code Modules.onGameLeft} recorre los módulos activos haciendo {@code unsubscribe(module);
+     * module.onDeactivate();} y <b>no</b> pone {@code active = false}, para que vuelvan solos en la
+     * siguiente entrada. Nuestro {@code onDeactivate()} restaura, y restaurar encendía {@code
+     * elytra-fly}: {@code Module.toggle()} lo suscribe al bus en mitad del desmontaje y, si a él ya
+     * le tocó el bucle, termina suscrito y activo. En la siguiente entrada {@code
+     * Modules.onGameJoined} lo suscribe otra vez y {@code EventBus.insert()} de orbit no deduplica,
+     * así que sus handlers corrían dos veces por evento el resto de la sesión -y apagarlo no lo
+     * arreglaba: {@code unsubscribe} usa {@code List.remove}, que quita una sola copia-.
+     *
+     * <p>Con prioridad {@code HIGHEST} este handler corre antes que el de {@code Modules}: marca que
+     * estamos saliendo y termina el viaje él, con los comandos de Baritone -que sí se pueden mandar,
+     * porque {@code GameLeftEvent} se publica con el mundo y el jugador todavía vivos- y sin tocar
+     * ningún módulo. El {@code onDeactivate()} que llega después se encuentra el viaje ya cerrado.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
+        leavingWorld = true;
         finish("se ha dejado el mundo", false);
     }
 
@@ -538,6 +593,11 @@ public class AutoTravel extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        // Lo que quedó por devolver al salir del mundo se devuelve aquí, en el primer tick tras
+        // volver a entrar: para entonces Modules.onGameJoined ya ha terminado de suscribir a todo el
+        // mundo, así que encender un módulo lo suscribe una sola vez.
+        applyPendingModules();
+
         if (!travelling) return;
 
         if (mc.player == null || mc.world == null) {
@@ -634,6 +694,14 @@ public class AutoTravel extends Module {
             return "No llevas ningún fuego artificial: Baritone se impulsa con ellos y sin ninguno no despega. "
                 + "No se lanza nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.";
         }
+        if (!wearsElytra()) {
+            // elytra-replace no tapa esto: su política contesta NOT_WEARING cuando la pechera no lleva
+            // elytra y no hace nada, a propósito -ponerte una elytra por tu cuenta no es su trabajo-.
+            return "No llevas elytra puesta: Baritone vuela con ella, y elytra-replace cambia la que lleves pero "
+                + "no te pone ninguna. Ponte una antes de lanzar.";
+        }
+        String chestSwapRejection = chestSwapRejection();
+        if (chestSwapRejection != null) return chestSwapRejection;
 
         String launchPrefix = prefix.get();
         String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
@@ -658,12 +726,89 @@ public class AutoTravel extends Module {
         // El orden de la preparación es el de spec §6.2: la red ANTES de emitir el primer comando.
         armNet();
         prepare();
+
+        // Y una última comprobación antes de mandar el #elytra, porque preparar mueve armadura: apagar
+        // elytra-fly con chest-swap en Always te pone la pechera en el sitio de la elytra. Eso se
+        // rechaza arriba, antes de tocar nada, así que aquí ya no debería poder pasar; esto es la red
+        // por si algún otro módulo se lleva la elytra entre una línea y la siguiente. Lanzar ahora
+        // sería decir "Viaje lanzado" y enterarse a los treinta segundos por el corte de atasco.
+        if (!wearsElytra()) return undoLaunch();
+
         aimAtCurrentWaypoint();
 
         Waypoint target = waypoints.get(waypoints.size() - 1);
         return String.format("Viaje lanzado con patrón %s: %d waypoints hasta %d, %d, a %d bloques en línea recta.",
             pattern.get(), waypoints.size(), Math.round(target.x()), Math.round(target.z()),
             Math.round(origin.distanceTo(target)));
+    }
+
+    /** Si la pechera lleva una elytra puesta, que es lo único con lo que Baritone puede volar. */
+    private boolean wearsElytra() {
+        return mc.player != null && mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA;
+    }
+
+    /**
+     * El motivo por el que no se puede lanzar con el {@code chest-swap} de {@code elytra-fly}
+     * configurado, o {@code null} si no hay conflicto.
+     *
+     * <p>Verificado en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}: {@code
+     * ElytraFly.onDeactivate()} llama a {@code ChestSwap.swap()} si {@code chest-swap} está en {@code
+     * Always} y llevas la elytra puesta -te cambia a la pechera-, y si está en {@code WaitForGround}
+     * suscribe un oyente que hace ese mismo cambio <b>en cuanto toques suelo</b>. La preparación
+     * apaga {@code elytra-fly} como primer paso y dos líneas después manda {@code #elytra}: con
+     * {@code Always} Baritone no puede volar porque ya no llevas elytra, y con {@code WaitForGround}
+     * te la quita en el aterrizaje, cuando el módulo cree haberlo restaurado todo.
+     *
+     * <p>Se rechaza en vez de acotarse, y se rechaza <b>antes</b> de armar la red y de mandar un solo
+     * comando (spec §9.2). Acotarlo significaría poner {@code chest-swap} en {@code Never} a espaldas
+     * del jugador y devolverlo después, que es un ajuste más que Meteor persiste a disco y que se
+     * perdería con el cliente si la sesión se corta: exactamente la clase de rastro que este módulo
+     * existe para no dejar.
+     *
+     * <p>De fábrica {@code chest-swap} es {@code Never}, así que esto solo le pasa a quien lo haya
+     * configurado -que es justo el perfil que usa este módulo-.
+     */
+    private String chestSwapRejection() {
+        ElytraFly module = Modules.get().get(ElytraFly.class);
+        // Si no está encendido, la preparación no lo apaga, y sin apagarlo no hay cambio de armadura.
+        if (module == null || !module.isActive()) return null;
+
+        ElytraFly.ChestSwapMode mode = module.chestSwap.get();
+        if (mode == ElytraFly.ChestSwapMode.Never) return null;
+
+        String consequence = mode == ElytraFly.ChestSwapMode.Always
+            ? "te pone la pechera en el sitio de la elytra en ese mismo instante, y el \"" + prefix.get()
+                + "elytra\" sale dos líneas después: Baritone no despegaría, y te enterarías treinta segundos "
+                + "más tarde por el corte de atasco"
+            : "deja armado un oyente que te quita la elytra en cuanto toques suelo, que es justo el aterrizaje "
+                + "de Baritone: te la quitaría cuando el módulo cree haberlo restaurado todo";
+
+        return "No se vuela: elytra-fly está encendido con chest-swap en " + mode + ", y la preparación tiene "
+            + "que apagarlo porque Baritone declara que su vuelo no funciona con impulso no vanilla. Apagarlo "
+            + consequence + ". Pon chest-swap en Never dentro de elytra-fly, o apaga elytra-fly a mano antes "
+            + "de lanzar.";
+    }
+
+    /**
+     * Deshace una preparación que ya no puede terminar en vuelo y contesta por qué. No se llama a
+     * {@link #finish(String, boolean)} a propósito: aquí no hay ningún viaje que dar por terminado
+     * -no se ha mandado ni un {@code goal} ni un {@code elytra}-, y decir "viaje terminado" por algo
+     * que no llegó a empezar es la misma confusión que este módulo evita en la restauración.
+     */
+    private String undoLaunch() {
+        // No hace falta mirar si algún módulo se ha quedado pendiente: esto solo se llega a ejecutar
+        // desde start(), con el mundo cargado, que es exactamente cuando sí se pueden tocar.
+        travelling = false;
+        SafetyNet.Restoration undone = restore();
+        String pending = undone.warning(activePrefix);
+
+        String why = "No se vuela: preparar el entorno te ha dejado sin elytra puesta, así que Baritone no "
+            + "podría despegar. He deshecho la preparación";
+        if (pending == null) return why + " y el entorno ha quedado como estaba.";
+
+        loudToast("La preparación se ha deshecho pero no ha llegado a Baritone: sus ajustes se han quedado en "
+            + "valores de vuelo. Lee el chat.", Items.BARRIER);
+        return why + ", pero " + pending + ".";
     }
 
     /** Salida 2: cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
@@ -680,14 +825,17 @@ public class AutoTravel extends Module {
     }
 
     /**
-     * Preparación de spec §6.2, pasos 4 a 6: los dos módulos y, de una pieza, la secuencia de
+     * Preparación de spec §6.2, pasos 5 y 6: los dos módulos y, de una pieza, la secuencia de
      * ajustes de Baritone. Los siete {@code #set} salen juntos a propósito -{@code elytraAutoSwap}
      * incluido-: es la secuencia que el núcleo construye y prueba como una sola cosa, y partirla
      * para meter el encendido de un módulo nuestro en medio no cambia nada observable.
      */
     private void prepare() {
-        switchModule(Modules.get().get(ElytraFly.class), false);
-        switchModule(Modules.get().get(ElytraReplace.class), true);
+        // Antes de anotar nada, devolver lo que quedara pendiente de un viaje anterior: si no, lo que
+        // se anotaría como "reposo del jugador" sería el estado que dejó ese viaje, no el suyo.
+        applyPendingModules();
+        takeModule(Modules.get().get(ElytraFly.class), elytraFly);
+        takeModule(Modules.get().get(ElytraReplace.class), elytraReplace);
         for (String command : BaritoneScript.preparation(activePrefix, flightSettings())) send(command);
     }
 
@@ -712,6 +860,7 @@ public class AutoTravel extends Module {
 
         SafetyNet.Restoration restoration = restore();
         String pending = restoration.warning(activePrefix);
+        warnPendingModules();
 
         if (pending == null) {
             String message = "Viaje terminado: " + reason + ". Entorno restaurado.";
@@ -754,10 +903,12 @@ public class AutoTravel extends Module {
                 outcome = delivered ? SafetyNet.Restoration.ENTREGADA : SafetyNet.Restoration.CANCELADA;
             }
 
-            // Los dos módulos son nuestros y no viajan por el chat: se restauran haya jugador o no,
-            // y lo que les pase no cambia el veredicto de los comandos.
-            switchModule(Modules.get().get(ElytraFly.class), elytraFlyResting.get());
-            switchModule(Modules.get().get(ElytraReplace.class), elytraReplaceResting.get());
+            // Los dos módulos son nuestros y no viajan por el chat: se devuelven haya jugador o no,
+            // y lo que les pase no cambia el veredicto de los comandos. Lo único que los frena es el
+            // desmontaje de salida del mundo (spec §6.4): ahí la devolución se queda pendiente y la
+            // hace el primer tick de la siguiente entrada.
+            releaseModule(Modules.get().get(ElytraFly.class), elytraFly);
+            releaseModule(Modules.get().get(ElytraReplace.class), elytraReplace);
 
             return outcome;
         }
@@ -765,6 +916,30 @@ public class AutoTravel extends Module {
             disarmNet();
             resetTrip();
         }
+    }
+
+    /**
+     * El aviso de los módulos que no se han podido devolver todavía (spec §6.4). Sale fuerte y con
+     * toast, no como línea de chat corriente, por dos motivos: <i>"aterrizar con ElytraFly apagado
+     * sin saberlo es tan malo como el problema original"</i> (spec §6.3), y porque el único momento
+     * en que esto pasa es al salir del mundo, donde el chat se va con la desconexión y lo único que
+     * el jugador llega a leer es el toast.
+     */
+    private void warnPendingModules() {
+        StringBuilder names = new StringBuilder();
+        if (elytraFly.hasPending()) names.append(elytraFly.name());
+        if (elytraReplace.hasPending()) {
+            if (!names.isEmpty()) names.append(" y ");
+            names.append(elytraReplace.name());
+        }
+        if (names.isEmpty()) return;
+
+        String message = "Al salir del mundo no se puede encender ni apagar un módulo de Meteor sin dejarlo "
+            + "suscrito dos veces al bus para el resto de la sesión, así que " + names + " se queda como estaba "
+            + "en vuelo. Se devuelve solo en el primer tick tras volver a entrar; si cierras el cliente antes, "
+            + "repásalo en la ClickGUI.";
+        warning("%s", message);
+        loudToast(message, Items.ELYTRA);
     }
 
     private void resetTrip() {
@@ -790,10 +965,53 @@ public class AutoTravel extends Module {
         MeteorClient.EVENT_BUS.unsubscribe(net);
     }
 
-    private static void switchModule(Module module, boolean wanted) {
-        if (module == null) return;
-        if (wanted && !module.isActive()) module.enable();
-        else if (!wanted && module.isActive()) module.disable();
+    /** Anota cómo está el módulo y lo deja en su estado de vuelo. */
+    private static void takeModule(Module module, BorrowedModule loan) {
+        if (module == null) {
+            // Ni se anota lo que no se puede leer ni se devuelve lo que no se tomó.
+            loan.forget();
+            return;
+        }
+        apply(module, loan.take(module.isActive()));
+    }
+
+    /** Devuelve el módulo a donde estaba, o deja la devolución pendiente si no se puede tocar. */
+    private void releaseModule(Module module, BorrowedModule loan) {
+        if (module == null) {
+            loan.forget();
+            return;
+        }
+        apply(module, loan.release(module.isActive(), !leavingWorld));
+    }
+
+    /**
+     * Hace lo que quedó pendiente del desmontaje de salida del mundo. Es idempotente y barato: sin
+     * nada pendiente no consulta ni el registro de módulos, que es lo que permite llamarlo en cada
+     * tick.
+     */
+    private void applyPendingModules() {
+        if (elytraFly.hasPending()) applyPending(Modules.get().get(ElytraFly.class), elytraFly);
+        if (elytraReplace.hasPending()) applyPending(Modules.get().get(ElytraReplace.class), elytraReplace);
+    }
+
+    private static void applyPending(Module module, BorrowedModule loan) {
+        if (module == null) {
+            loan.forget();
+            return;
+        }
+        apply(module, loan.claimPending());
+    }
+
+    private static void apply(Module module, BorrowedModule.Action action) {
+        switch (action) {
+            case ENCENDER -> {
+                if (!module.isActive()) module.enable();
+            }
+            case APAGAR -> {
+                if (module.isActive()) module.disable();
+            }
+            case NADA -> { }
+        }
     }
 
     /**

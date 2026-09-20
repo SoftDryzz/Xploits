@@ -137,4 +137,35 @@ class BaritoneScriptTest {
         assertThrows(IllegalArgumentException.class, () -> BaritoneScript.preparation("", flying()));
         assertThrows(IllegalArgumentException.class, () -> BaritoneScript.restoration("", flying()));
     }
+
+    /**
+     * Los cuatro valores de fábrica de Baritone, fijados aquí porque son un hecho externo y caro: si
+     * el reposo no es el suyo, la restauración no restaura, <b>reconfigura</b>. Baritone persiste sus
+     * ajustes a disco, así que un solo viaje dejaría todos los #elytra que el jugador haga a mano
+     * después con valores que él nunca eligió -y sin forma de relacionarlo con el addon-.
+     *
+     * <p>Leídos del bytecode de baritone-standalone-fabric-1.17.0.jar (clase Settings, ofuscada como
+     * baritone/e.class, con javap -p -c). Dos de los cuatro no eran los que el módulo declaraba:
+     * elytraConserveFireworks es FALSE, no true, y elytraFireworkSpeed es 1.2d, no 1.
+     */
+    @Test
+    void theRestingValuesAreBaritonesOwnFactoryDefaults() {
+        List<String> commands = BaritoneScript.restoration(PREFIX, BaritoneScript.baritoneDefaults());
+        assertTrue(any(commands, "#set elytraAutoJump false"), commands.toString());
+        assertTrue(any(commands, "#set elytraAllowEmergencyLand true"), commands.toString());
+        assertTrue(any(commands, "#set elytraConserveFireworks false"), commands.toString());
+        assertTrue(any(commands, "#set elytraFireworkSpeed 1.2"), commands.toString());
+    }
+
+    /**
+     * Y el 1.2 tiene que salir con su decimal. El formateador quita los decimales de los enteros para
+     * que "1" no salga "1.0"; si ese recorte se llevara por delante el 1.2, la restauración escribiría
+     * un valor distinto del que dice restaurar.
+     */
+    @Test
+    void theFactoryFireworkSpeedKeepsItsDecimal() {
+        List<String> commands = BaritoneScript.restoration(PREFIX, BaritoneScript.baritoneDefaults());
+        assertFalse(any(commands, "elytraFireworkSpeed 1 "), commands.toString());
+        assertTrue(commands.contains("#set elytraFireworkSpeed 1.2"), commands.toString());
+    }
 }

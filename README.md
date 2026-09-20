@@ -50,6 +50,18 @@ ajuste `baritone-prefix` del módulo. Ese prefijo **no puede empezar por `/`**: 
 camino de comando del servidor, que Baritone no escucha, y la red de seguridad del módulo se comería de paso todos
 los demás comandos con barra mientras durase el viaje. El módulo lo rechaza al lanzar y explica por qué.
 
+**Antes de lanzar un viaje** tienes que llevar la elytra puesta y algún fuego artificial: `elytra-replace` cambia la
+elytra que lleves, pero no te pone ninguna, y sin fuegos Baritone no despega. Y si tienes `elytra-fly` encendido con
+su `chest-swap` en `Always` o `WaitForGround`, el módulo **se niega a lanzar**: la preparación tiene que apagar
+`elytra-fly`, y apagarlo con `chest-swap` puesto te cambia la elytra por la pechera —justo antes del despegue, o en
+el aterrizaje—. Pon `chest-swap` en `Never` o apaga `elytra-fly` a mano.
+
+**Al aterrizar**, `elytra-fly` y `elytra-replace` vuelven al estado que tenían antes del viaje, no a uno declarado; si
+los mueves a mano durante el vuelo, se respeta lo que tú dejaste. La única excepción es desconectarte con el viaje en
+marcha: ahí Meteor está desmontando sus módulos y tocarlos los dejaría rotos para el resto de la sesión, así que la
+devolución se hace sola en el primer tick tras volver a entrar. Si cierras el cliente antes de volver a entrar, se
+quedan como estaban en vuelo y el módulo te lo dice con un toast.
+
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 
 **Tras un cierre anormal del cliente** (cuelgue, kill del proceso, corte de luz), Meteor persiste el estado de sus módulos tal como quedó. Si `auto-pvp` tenía algo tomado en ese momento, conviene mirar la ClickGUI al volver a entrar: puede haber quedado un módulo encendido que `auto-pvp` creía suyo pero que no va a soltar hasta que vuelva a decidir hacerlo.

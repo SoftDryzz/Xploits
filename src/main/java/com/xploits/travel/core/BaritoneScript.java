@@ -23,6 +23,34 @@ public final class BaritoneScript {
     }
 
     /**
+     * Los valores <b>de fábrica de Baritone</b> para los cuatro ajustes que este módulo toca. Es el
+     * reposo por defecto de {@link #restoration(String, FlightSettings)}: quien instala el addon y no
+     * toca nada tiene que aterrizar con Baritone exactamente como estaba antes de instalarlo.
+     *
+     * <p>Leídos del bytecode del jar instalado -{@code baritone-standalone-fabric-1.17.0.jar}, clase
+     * {@code Settings} ofuscada como {@code baritone/e.class}, con {@code javap -p -c}-, en el
+     * constructor donde cada ajuste se construye con su valor inicial:
+     *
+     * <ul>
+     *   <li>{@code elytraAutoJump}: {@code Boolean.FALSE}</li>
+     *   <li>{@code elytraAllowEmergencyLand}: {@code Boolean.TRUE}</li>
+     *   <li>{@code elytraConserveFireworks}: {@code Boolean.FALSE}</li>
+     *   <li>{@code elytraFireworkSpeed}: {@code double 1.2d}</li>
+     * </ul>
+     *
+     * <p><b>Por qué esto importa tanto como para tener su propio sitio.</b> Baritone <b>persiste sus
+     * ajustes a disco</b>. Un valor de reposo inventado no se queda en el viaje: reconfigura para
+     * siempre todos los {@code #elytra} que el jugador haga a mano después, sin que tenga forma de
+     * relacionarlo con el addon. Eso contradice el "lo deja todo como estaba" de spec §1.
+     *
+     * <p>La semilla va vacía porque no es un ajuste que se restaure (ver {@link
+     * #restoration(String, FlightSettings)}): nunca fue un cambio nuestro.
+     */
+    public static FlightSettings baritoneDefaults() {
+        return new FlightSettings(false, true, false, 1.2, "");
+    }
+
+    /**
      * Los comandos que preparan el vuelo: los cuatro ajustes del jugador, más los tres que exige
      * nuestro propio manejo del vuelo (spec §8.1) -{@code elytraAutoSwap false} porque el cambio de
      * élitro lo hace {@code elytra-replace}, no Baritone; {@code elytraTermsAccepted true} para
