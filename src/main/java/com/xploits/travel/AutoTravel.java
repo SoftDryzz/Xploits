@@ -478,7 +478,7 @@ public class AutoTravel extends Module {
 
     public AutoTravel() {
         super(XploitsAddon.CATEGORY, "auto-travel",
-            "Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste, y lo restaura todo al aterrizar.");
+            "Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste, y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con .xploits travel go.");
     }
 
     @Override
@@ -492,6 +492,15 @@ public class AutoTravel extends Module {
         // mitad de eso es el mismo agujero por el que se llega aquí. Se aplica en el primer tick.
         leavingWorld = false;
         resetTrip();
+
+        // Encender este módulo no hace nada visible, y un módulo que al encenderse no hace nada ni
+        // lo dice es indistinguible de uno roto: es exactamente la conclusión a la que llegó el
+        // jugador la primera vez. Los otros cinco del addon se callan porque empiezan a trabajar
+        // solos; éste es el único que espera una segunda orden, así que es el único que tiene que
+        // decirlo. Se repite al entrar al mundo a propósito: si el módulo sigue encendido, saber
+        // que está armado y con qué destino vale más que ahorrar una línea de chat.
+        info("Armado, pero no vuela solo: lanza el viaje con .xploits travel go");
+        info("Patrón %s · destino %s", pattern.get(), describeDestination());
     }
 
     @Override
