@@ -126,4 +126,68 @@ class ModuleLedgerTest {
         assertTrue(result.toDisable().isEmpty());
         assertTrue(ledger.owned().contains("crystal-aura"));
     }
+
+    // --- CRÍTICO B: un apagado propio de Meteor no es un soltado a mano (spec §7) ---
+
+    @Test
+    void aSelfOffModuleThatTurnsItselfOffIsRetakenAndDoesNotWarn() {
+        ModuleLedger ledger = new ModuleLedger();
+
+        // Tick 1: la fase pide auto-trap, nada encendido todavía -> el ledger lo enciende y lo toma.
+        ModuleLedger.Result first = ledger.apply(CombatState.SUPERFICIE, Set.of("auto-trap"), Set.of());
+        assertEquals(List.of("auto-trap"), first.toEnable());
+        assertTrue(ledger.owned().contains("auto-trap"));
+
+        // Tick 2: auto-trap se apagó solo (self-toggle, tras colocar el trap) - la fase lo sigue
+        // pidiendo. Al ser un módulo que se apaga solo, esto NO es un soltado a mano: no debe
+        // bloquear la fase ni generar aviso, y el director debe poder volver a tomarlo.
+        ModuleLedger.Result second = ledger.apply(CombatState.SUPERFICIE, Set.of("auto-trap"), Set.of());
+        assertTrue(second.newlyReleased().isEmpty(), "un apagado propio de Meteor no es un soltado a mano");
+        assertEquals(List.of("auto-trap"), second.toEnable(), "el director debe poder volver a encenderlo en el mismo tick");
+        assertTrue(ledger.owned().contains("auto-trap"));
+    }
+
+    @Test
+    void crystalAuraTurnedOffByHandStaysBlockedAndWarns() {
+        ModuleLedger ledger = new ModuleLedger();
+
+        // Tick 1: toma crystal-aura, que NO se apaga solo (turnsItselfOff() == false).
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(ledger.owned().contains("crystal-aura"));
+
+        // Tick 2: se apaga (aquí, a mano). Como crystal-aura no puede apagarse solo, esto sí cuenta
+        // como soltado a mano: bloquea el resto de la fase y avisa.
+        ModuleLedger.Result second = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertEquals(List.of("crystal-aura"), second.newlyReleased());
+        assertTrue(second.toEnable().isEmpty(), "soltado a mano: no se retoma en el mismo tick");
+        assertFalse(ledger.owned().contains("crystal-aura"));
+
+        // Tick 3, misma fase: sigue bloqueado.
+        ModuleLedger.Result third = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(third.toEnable().isEmpty(), "sigue bloqueado el resto de la fase");
+        assertFalse(ledger.owned().contains("crystal-aura"));
+    }
+
+    @Test
+    void theSelfOffMarkDoesNotChangeOwnedOrReleasedOrSteadyStateBehaviour() {
+        ModuleLedger ledger = new ModuleLedger();
+
+        // auto-anvil se apaga solo, pero mientras siga encendido y siga pidiéndose, el
+        // comportamiento de "tomado" y "estado estable" es idéntico al de un módulo normal.
+        ModuleLedger.Result first = ledger.apply(CombatState.ENTERRADO, Set.of("auto-anvil"), Set.of());
+        assertEquals(List.of("auto-anvil"), first.toEnable());
+        assertTrue(ledger.owned().contains("auto-anvil"));
+
+        ModuleLedger.Result steady = ledger.apply(CombatState.ENTERRADO, Set.of("auto-anvil"), Set.of("auto-anvil"));
+        assertTrue(steady.toEnable().isEmpty());
+        assertTrue(steady.toDisable().isEmpty());
+        assertTrue(ledger.owned().contains("auto-anvil"));
+
+        // Y cuando la fase deja de pedirlo mientras sigue activo, se apaga como cualquier otro
+        // módulo tomado -esto no es un "soltado", es la fase soltándolo.
+        ModuleLedger.Result noLongerWanted = ledger.apply(CombatState.SIN_COMBATE, Set.of(), Set.of("auto-anvil"));
+        assertEquals(List.of("auto-anvil"), noLongerWanted.toDisable());
+        assertTrue(noLongerWanted.newlyReleased().isEmpty());
+        assertFalse(ledger.owned().contains("auto-anvil"));
+    }
 }

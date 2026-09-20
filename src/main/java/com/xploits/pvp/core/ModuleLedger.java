@@ -16,6 +16,16 @@ import java.util.Set;
  * primera pasada soltaba lo que el jugador acababa de apagar a mano, y la segunda lo volvía a
  * encender porque seguía en lo que pedía la fase- llegó hasta el review final (spec §12). Aquí es
  * lógica pura y se puede probar sin arrancar el juego.
+ *
+ * <p><b>Un apagado observado no siempre es un soltado a mano (spec §7).</b> Cuatro de los seis
+ * módulos dirigidos se apagan solos con los ajustes de fábrica de Meteor -{@code auto-trap} tras
+ * colocar el trap, {@code surround} con sus {@code toggle-on-*}, {@code auto-city} si no encuentra
+ * objetivo, bloque o pico, y {@code auto-anvil} con la cabeza vacía-, así que tratar ese apagado
+ * como un soltado a mano bloqueaba la fase entera y avisaba de un "lo apagaste tú" falso. La
+ * distinción es por módulo ({@link ManagedModule#turnsItselfOff()}), no por tiempo: no hay ventana
+ * de ticks que sirva para los seis a la vez, porque {@code auto-trap} se apaga muchos ticks después
+ * de tomarlo y {@code auto-city} puede apagarse dentro del mismo {@code onActivate()} que dispara
+ * su encendido.
  */
 public final class ModuleLedger {
     /** Los módulos que este ledger tiene tomados ahora mismo. */
@@ -29,6 +39,20 @@ public final class ModuleLedger {
     private final Set<String> releasedThisPhase = new LinkedHashSet<>();
 
     private CombatState lastPhase;
+
+    /**
+     * Si un apagado observado en {@code name} cuenta como "soltado a mano" (spec §7). Busca en
+     * {@link ManagedModules#ALL}, el catálogo de los seis módulos dirigidos, que vive en este mismo
+     * paquete: no hace falta ningún adaptador para consultarlo, sigue siendo lógica pura. Un nombre
+     * que no está en el catálogo (por ejemplo uno de los "de siempre") nunca llega aquí como
+     * "owned", así que el valor por defecto (false) no importa en la práctica.
+     */
+    private static boolean turnsItselfOff(String name) {
+        for (ManagedModule module : ManagedModules.ALL) {
+            if (module.name().equals(name)) return module.turnsItselfOff();
+        }
+        return false;
+    }
 
     /**
      * Lo que hay que hacer este tick: qué encender de verdad, qué apagar de verdad, y de qué
@@ -65,10 +89,16 @@ public final class ModuleLedger {
         // Primera pasada: reconciliar lo que creíamos tomado con lo que está encendido de verdad.
         for (String name : new ArrayList<>(owned)) {
             if (!active.contains(name)) {
-                // Lo apagaron a mano: deja de ser nuestro. Si la fase lo sigue pidiendo, no se
-                // vuelve a tomar hasta que la fase cambie (spec §7, spec §12).
+                // Ya no está encendido: deja de ser nuestro en cualquier caso. Pero cuatro de los
+                // seis módulos dirigidos se apagan solos con los ajustes de fábrica de Meteor
+                // (spec §7) -auto-trap al colocar el trap, surround con sus toggle-on-*, auto-city
+                // si no encuentra objetivo/bloque/pico, auto-anvil con la cabeza vacía-, y ese
+                // apagado no es que el jugador lo soltara a mano. Solo para los módulos que NO
+                // pueden apagarse solos (turnsItselfOff() == false) un apagado observado cuenta
+                // como soltado: bloquea la fase y avisa. Para los demás, el director puede
+                // volver a tomarlo en la segunda pasada de este mismo tick.
                 owned.remove(name);
-                if (wanted.contains(name)) {
+                if (wanted.contains(name) && !turnsItselfOff(name)) {
                     releasedThisPhase.add(name);
                     newlyReleased.add(name);
                 }
