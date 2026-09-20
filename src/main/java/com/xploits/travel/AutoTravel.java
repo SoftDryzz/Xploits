@@ -5,10 +5,12 @@ import com.xploits.elytra.ElytraReplace;
 import com.xploits.travel.core.Axis;
 import com.xploits.travel.core.BaritoneScript;
 import com.xploits.travel.core.Destination;
+import com.xploits.travel.core.FireworkWatch;
 import com.xploits.travel.core.FlightPattern;
 import com.xploits.travel.core.PatternParams;
 import com.xploits.travel.core.Route;
 import com.xploits.travel.core.RoutePlanner;
+import com.xploits.travel.core.StallWatch;
 import com.xploits.travel.core.Waypoint;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
@@ -16,6 +18,7 @@ import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.EnumSetting;
+import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.settings.StringSetting;
@@ -23,6 +26,7 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraFly;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.loader.api.FabricLoader;
@@ -61,17 +65,10 @@ public class AutoTravel extends Module {
     /** El id con el que Baritone se registra en el cargador de mods. */
     private static final String BARITONE_MOD_ID = "baritone";
 
-    /**
-     * Sin acercarse al waypoint durante este tiempo, el viaje se corta (spec §8). Baritone no
-     * informa de cómo le va: lo único que se puede observar desde fuera es si la distancia baja.
-     */
-    private static final long STUCK_TIMEOUT_MS = 30_000;
+    /** Sin acercarse al waypoint durante este tiempo, el viaje se corta (spec §8). */
+    private static final double STALL_SECONDS = 30;
 
-    /**
-     * Cuánto tiene que bajar la distancia para contar como avance. Sin este margen, el vaivén de un
-     * bloque que da el propio vuelo rearmaría el reloj del atasco eternamente y la vigilancia no
-     * cortaría nunca.
-     */
+    /** Cuánto tiene que bajar la distancia para contar como avance, en bloques. */
     private static final double PROGRESS_EPSILON = 1.0;
 
     /** Las dos formas de pedir un destino (spec §4), como vocabulario de los ajustes. */
@@ -353,7 +350,7 @@ public class AutoTravel extends Module {
     private final Setting<Boolean> notify = sgNotify.add(new BoolSetting.Builder()
         .name("notify")
         .description("Aviso local al lanzar, al pasar de waypoint y al terminar. Los avisos fuertes -la red de "
-            + "seguridad y el atasco- salen siempre, lo apagues o no.")
+            + "seguridad, el atasco y los fuegos que se acaban- salen siempre, lo apagues o no.")
         .defaultValue(true)
         .build()
     );
@@ -362,6 +359,16 @@ public class AutoTravel extends Module {
         .name("notify-sound")
         .description("Sonido en los avisos fuertes.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> fireworkThreshold = sgNotify.add(new IntSetting.Builder()
+        .name("firework-warning")
+        .description("Con estos fuegos artificiales o menos sale el aviso fuerte (spec §8). Cero avisa solo al "
+            + "quedarse sin ninguno, que a 100 000 bloques suele ser tarde. No cuenta los que vayan dentro de shulkers.")
+        .defaultValue(16)
+        .min(0)
+        .sliderRange(0, 128)
         .build()
     );
 
@@ -391,9 +398,19 @@ public class AutoTravel extends Module {
     private List<Waypoint> waypoints = List.of();
     private int index;
 
-    /** La distancia más corta observada al waypoint actual, y cuándo se observó (vigilancia de atasco). */
-    private double closestDistance = Double.MAX_VALUE;
-    private long lastProgressAt;
+    /**
+     * La vigilancia del atasco (spec §8), en el núcleo y con tests. El adaptador solo le da el
+     * waypoint al que va y la distancia que queda; ella lleva la cuenta y decide si se corta,
+     * incluido reiniciarse sola al cambiar de waypoint.
+     */
+    private final StallWatch stallWatch = StallWatch.ofSeconds(STALL_SECONDS, PROGRESS_EPSILON);
+
+    /**
+     * La decisión del aviso de fuegos (spec §8), también en el núcleo. Aquí solo se cuentan los
+     * fuegos del inventario y se saca el toast; cuándo avisar y cuándo rearmar el aviso es suyo.
+     * Se construye al lanzar cada viaje porque el umbral es un ajuste y puede haber cambiado.
+     */
+    private FireworkWatch fireworkWatch = new FireworkWatch(0);
 
     public AutoTravel() {
         super(XploitsAddon.CATEGORY, "auto-travel",
@@ -483,6 +500,8 @@ public class AutoTravel extends Module {
             return;
         }
 
+        checkFireworks();
+
         Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
         double distance = here.distanceTo(waypoints.get(index));
 
@@ -499,20 +518,40 @@ public class AutoTravel extends Module {
         }
 
         // Salida 6: atasco. Lo único observable desde fuera es si la distancia baja; Baritone no
-        // informa de nada más (spec §8).
-        long now = System.currentTimeMillis();
-        if (distance < closestDistance - PROGRESS_EPSILON) {
-            closestDistance = distance;
-            lastProgressAt = now;
-            return;
-        }
-        if (now - lastProgressAt >= STUCK_TIMEOUT_MS) {
+        // informa de nada más (spec §8). El índice va en la llamada a propósito: es lo que hace que
+        // el salto de distancia al cambiar de waypoint no se lea como treinta segundos sin avanzar.
+        if (stallWatch.tick(index, distance)) {
             String message = String.format("Sin acercarme al waypoint %d en %d s, a %d bloques: corto y restauro.",
-                index + 1, STUCK_TIMEOUT_MS / 1000, Math.round(distance));
+                index + 1, stallWatch.limitSeconds(), Math.round(distance));
             warning("%s", message);
             loudToast(message, Items.ELYTRA);
             finish("atasco", false);
         }
+    }
+
+    /**
+     * El aviso fuerte de fuegos artificiales (spec §8: <i>"Enterarse a 100k importa"</i>). Lo único
+     * que hace el adaptador es contarlos; si el aviso toca o no -y si ya salió- lo decide {@link
+     * FireworkWatch}.
+     *
+     * <p>Camino verificado contra las fuentes remapeadas de {@code meteor-client:1.21.11-SNAPSHOT}:
+     * {@code InvUtils.find(Item...)} recorre {@code mc.player.getInventory().getStack(i)} de 0 a
+     * {@code size()} y suma {@code getCount()} de cada pila que case, así que cubre la barra rápida,
+     * el inventario principal, la armadura y la mano secundaria; devuelve {@code count 0} sin
+     * jugador en vez de reventar. Es el mismo camino que usa el propio {@code ElytraFlightMode} de
+     * Meteor para sus fuegos. Lo que hay dentro de un shulker no se cuenta, igual que en
+     * {@code elytra-replace}.
+     */
+    private void checkFireworks() {
+        int fireworks = InvUtils.find(Items.FIREWORK_ROCKET).count();
+        if (!fireworkWatch.observe(fireworks)) return;
+
+        String message = fireworks == 0
+            ? "Te has quedado SIN fuegos artificiales a mitad de vuelo: Baritone no puede seguir impulsándose."
+            : String.format("Te quedan %d fuegos artificiales, el aviso está puesto en %d: repón o aterriza.",
+                fireworks, fireworkWatch.threshold());
+        warning("%s", message);
+        loudToast(message, Items.FIREWORK_ROCKET);
     }
 
     /**
@@ -546,6 +585,9 @@ public class AutoTravel extends Module {
         waypoints = route.waypoints();
         index = 0;
         travelling = true;
+        stallWatch.reset();
+        // El umbral es un ajuste: se toma al despegar, para que no cambie a mitad de vuelo.
+        fireworkWatch = new FireworkWatch(fireworkThreshold.get());
 
         // El orden de la preparación es el de spec §6.2: la red ANTES de emitir el primer comando.
         armNet();
@@ -580,8 +622,6 @@ public class AutoTravel extends Module {
     private void aimAtCurrentWaypoint() {
         send(BaritoneScript.goTo(activePrefix, waypoints.get(index)));
         send(BaritoneScript.launch(activePrefix));
-        closestDistance = Double.MAX_VALUE;
-        lastProgressAt = System.currentTimeMillis();
     }
 
     /**
@@ -621,8 +661,8 @@ public class AutoTravel extends Module {
         travelling = false;
         waypoints = List.of();
         index = 0;
-        closestDistance = Double.MAX_VALUE;
-        lastProgressAt = 0;
+        stallWatch.reset();
+        fireworkWatch.reset();
     }
 
     private void armNet() {
