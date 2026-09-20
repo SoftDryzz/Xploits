@@ -63,6 +63,26 @@ marcha: ahí Meteor está desmontando sus módulos y tocarlos los dejaría rotos
 devolución se hace sola en el primer tick tras volver a entrar. Si cierras el cliente antes de volver a entrar, se
 quedan como estaban en vuelo y el módulo te lo dice con un toast.
 
+**El patrón se vuela sin aterrizar en cada waypoint.** `#elytra` le dice a Baritone "vuela hasta el objetivo **y
+pósate**": en cuanto entra en los 48 bloques de su objetivo da la ruta por terminada y se pone a buscar sitio donde
+aterrizar, y no tiene ningún ajuste que lo desactive. Por eso el módulo le cambia el objetivo **antes** de que
+llegue: el ajuste `waypoint-margin` (150 bloques de fábrica, mínimo 100) es cuántos bloques antes de cada waypoint
+intermedio se le pasa al siguiente. Sólo el **último** waypoint —el destino real— se deja llegar, que es donde
+aterrizar es justo lo que quieres.
+
+El precio es que las esquinas del patrón se redondean: nunca llegas a tocar el vértice, así que con el zigzag de
+fábrica te quedas a unos 29 bloques de sus 200 de amplitud (el 15 %) y con el quiebro a unos 46 de sus 800 (el 6 %).
+Subir `waypoint-margin` redondea más; bajarlo acerca el aterrizaje.
+
+**Y por eso hay patrones que ahora se rechazan.** Dos waypoints seguidos tienen que estar al menos al doble del
+margen —300 bloques de fábrica, que es también lo más corto que una elytra con cohetes vuela como tramo en vez de
+como bamboleo—. Si tus ajustes los dejan más juntos, el módulo **no vuela y dice a cuánto subir qué**: pasa con un
+zigzag o un quiebro de paso y amplitud pequeños, con un señuelo en un viaje muy corto, y con la espiral en modo
+autopista si dejas el `highway-max-amplitude` de fábrica (300), porque una espiral que no puede apartarse más de 300
+bloques del eje deja pasos de 8 —súbelo a 338 o más—. La espiral sí recorta por su cuenta sus últimos grados: ahí el
+radio ya va camino de cero y no hay ajuste que lo haga volable, así que se deja de emitir ese tramo y el resto de la
+curva se vuela entera.
+
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
 
 **`auto-pvp` no ataca nunca a los tuyos:** tus amigos de Meteor, los couriers de `kit-requester`

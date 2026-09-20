@@ -141,7 +141,9 @@ public class AutoTravel extends Module {
 
     private final Setting<Double> highwayMaxAmplitude = sgDestination.add(new DoubleSetting.Builder()
         .name("highway-max-amplitude")
-        .description("Lo más que el patrón puede apartarse del eje en modo autopista (spec §4.2).")
+        .description("Lo más que el patrón puede apartarse del eje en modo autopista (spec §4.2). Con ESPIRAL "
+            + "necesita al menos 338: una espiral más estrecha deja los pasos tan juntos que Baritone aterrizaría "
+            + "en casi todos, y el módulo se niega a volar en vez de dejarte creer que giras.")
         .defaultValue(300)
         .min(0)
         .sliderRange(0, 2_000)
@@ -152,10 +154,11 @@ public class AutoTravel extends Module {
 
     private final Setting<Double> waypointMargin = sgDestination.add(new DoubleSetting.Builder()
         .name("waypoint-margin")
-        .description("A menos de esta distancia de un waypoint se pasa al siguiente.")
-        .defaultValue(30)
-        .min(1)
-        .sliderRange(5, 500)
+        .description("Cuántos bloques antes de un waypoint intermedio se le cambia el objetivo a Baritone, para "
+            + "que no le dé tiempo a aterrizar en él. Cuanto más alto, más redondea las esquinas del patrón.")
+        .defaultValue(RoutePlanner.DEFAULT_WAYPOINT_MARGIN)
+        .min(RoutePlanner.MIN_WAYPOINT_MARGIN)
+        .sliderRange(RoutePlanner.MIN_WAYPOINT_MARGIN, 500)
         .decimalPlaces(0)
         .build()
     );
@@ -626,7 +629,10 @@ public class AutoTravel extends Module {
         Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
         double distance = here.distanceTo(waypoints.get(index));
 
-        if (distance <= waypointMargin.get()) {
+        // El margen con el que se da por alcanzado un waypoint no es el mismo para todos -el último
+        // es el único sitio donde Baritone debe aterrizar-, y esa decisión vive en el núcleo con
+        // tests: ver RoutePlanner.reachedMargin.
+        if (distance <= RoutePlanner.reachedMargin(index, waypoints.size(), waypointMargin.get())) {
             index++;
             // Salida 1: llegada.
             if (index >= waypoints.size()) {
@@ -721,7 +727,8 @@ public class AutoTravel extends Module {
         }
 
         Waypoint origin = new Waypoint(mc.player.getX(), mc.player.getZ());
-        Route route = RoutePlanner.plan(origin, destination(), pattern.get(), params(), highwayMaxAmplitude.get());
+        Route route = RoutePlanner.plan(origin, destination(), pattern.get(), params(), highwayMaxAmplitude.get(),
+            waypointMargin.get());
         if (route.isRejected()) return "No se vuela: " + route.rejection() + ".";
 
         activePrefix = launchPrefix;
