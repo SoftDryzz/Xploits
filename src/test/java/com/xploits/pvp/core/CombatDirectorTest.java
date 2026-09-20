@@ -24,7 +24,7 @@ class CombatDirectorTest {
     private static CombatSnapshot with(CombatSnapshot base, boolean surrounded, boolean burrowed,
                                        boolean targetGliding, boolean selfGliding) {
         // cityBlockDistance no es relevante para estos tests (ninguno toca la frontera de
-        // AUTO_CITY_MAX_TARGET_DISTANCE): usar la propia targetDistance del snapshot base basta
+        // AUTO_CITY_BREAK_RANGE): usar la propia targetDistance del snapshot base basta
         // para que "surrounded" clasifique RODEADO cuando corresponde.
         return new CombatSnapshot(base.hasTarget(), base.targetDistance(), surrounded, base.targetDistance(),
             burrowed, targetGliding, selfGliding, base.selfTotems(), base.resources());
@@ -128,7 +128,7 @@ class CombatDirectorTest {
         // director no debe pedir RODEADO: encendería y apagaría auto-city sin parar (spec §4.2.1).
         // El objetivo está cerca (surroundedAt fija targetDistance = 3.0): lo único que lo saca de
         // RODEADO es que el BLOQUE está lejos, precisamente lo que la corrección exige comprobar.
-        CombatSnapshot beyond = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE + 1.0);
+        CombatSnapshot beyond = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE + 1.0);
         Plan plan = settle(new CombatDirector(), beyond);
 
         assertEquals(CombatState.SUPERFICIE, plan.state(), "dentro de approach-distance, cae a SUPERFICIE");
@@ -137,7 +137,7 @@ class CombatDirectorTest {
 
     @Test
     void surroundedAndWithinAutoCityRangeIsRodeado() {
-        CombatSnapshot within = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE - 1.0);
+        CombatSnapshot within = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE - 1.0);
         Plan plan = settle(new CombatDirector(), within);
 
         assertEquals(CombatState.RODEADO, plan.state());
@@ -146,14 +146,14 @@ class CombatDirectorTest {
 
     @Test
     void atExactlyTheAutoCityRangeItIsStillRodeado() {
-        CombatSnapshot atBoundary = surroundedAt(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE);
+        CombatSnapshot atBoundary = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE);
         assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atBoundary).state(),
             "la comparación es menor-o-igual-que: igual al umbral sigue siendo RODEADO");
     }
 
     @Test
     void justBeyondTheAutoCityRangeItIsNoLongerRodeado() {
-        CombatSnapshot justBeyond = surroundedAt(Math.nextUp(CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE));
+        CombatSnapshot justBeyond = surroundedAt(Math.nextUp(CombatDirector.AUTO_CITY_BREAK_RANGE));
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
             "un paso por encima del umbral ya no es RODEADO");
     }
@@ -178,13 +178,13 @@ class CombatDirectorTest {
     void theAutoCityRangeConstantIsFixedAtFourPointFive() {
         // Fija el valor, no solo su existencia: sin esto, cambiar la constante a 2, 3 o 4 deja
         // el resto de tests en verde porque todos se expresan en función de ella misma.
-        assertEquals(4.5, CombatDirector.AUTO_CITY_MAX_TARGET_DISTANCE, 0.0,
+        assertEquals(4.5, CombatDirector.AUTO_CITY_BREAK_RANGE, 0.0,
             "4.5 es el break-range de fábrica de auto-city en Meteor");
     }
 
     @Test
     void aCityBlockAtTheLiteralFourPointFiveIsRodeado() {
-        // Con literales, no con la constante: si alguien mueve AUTO_CITY_MAX_TARGET_DISTANCE a otro
+        // Con literales, no con la constante: si alguien mueve AUTO_CITY_BREAK_RANGE a otro
         // valor, este test lo detecta -al contrario que surroundedAt(), que se movería con ella.
         CombatSnapshot atLiteralBoundary = new CombatSnapshot(true, 3.0, true, 4.5, false, false, false, 2, FULL);
         assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
@@ -193,6 +193,71 @@ class CombatDirectorTest {
     @Test
     void aCityBlockJustBeyondTheLiteralFourPointFiveIsNotRodeado() {
         CombatSnapshot justBeyond = new CombatSnapshot(true, 3.0, true, 4.51, false, false, false, 2, FULL);
+        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
+    }
+
+    /**
+     * CRÍTICO (tercera corrección): AUTO_CITY_BREAK_RANGE por sí sola no basta. AutoCity.onTick()
+     * comprueba primero TargetUtils.isBadTarget(target, targetRange) -distancia al OBJETIVO, no al
+     * bloque- y se apaga solo si falla, antes de mirar el bloque en absoluto. El bloque de rodeado
+     * es un vecino horizontal del objetivo medido a su esquina mínima, así que un bloque a &le;4.5
+     * admite un objetivo bastante más lejos que eso: aquí el bloque está pegado (1.0) pero el
+     * objetivo está fuera de target-range.
+     */
+    @Test
+    void targetBeyondAutoCityTargetRangeIsNotRodeadoEvenWithTheBlockClose() {
+        CombatSnapshot snapshot = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE + 0.5,
+            true, 1.0, false, false, false, 2, FULL);
+        Plan plan = settle(new CombatDirector(), snapshot);
+
+        assertEquals(CombatState.SUPERFICIE, plan.state(),
+            "bloque al alcance pero el objetivo real está fuera del target-range de auto-city");
+        assertFalse(enables(plan, ManagedModules.AUTO_CITY));
+    }
+
+    @Test
+    void targetWithinAutoCityTargetRangeAndBlockCloseIsRodeado() {
+        CombatSnapshot snapshot = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE - 0.5,
+            true, 1.0, false, false, false, 2, FULL);
+        Plan plan = settle(new CombatDirector(), snapshot);
+
+        assertEquals(CombatState.RODEADO, plan.state());
+        assertTrue(enables(plan, ManagedModules.AUTO_CITY));
+    }
+
+    @Test
+    void atExactlyTheAutoCityTargetRangeItIsStillRodeado() {
+        CombatSnapshot atBoundary = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE,
+            true, 1.0, false, false, false, 2, FULL);
+        assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atBoundary).state(),
+            "la comparación es menor-o-igual-que: igual al umbral sigue siendo RODEADO");
+    }
+
+    @Test
+    void justBeyondTheAutoCityTargetRangeItIsNoLongerRodeado() {
+        CombatSnapshot justBeyond = new CombatSnapshot(true, Math.nextUp(CombatDirector.AUTO_CITY_TARGET_RANGE),
+            true, 1.0, false, false, false, 2, FULL);
+        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
+            "un paso por encima del umbral ya no es RODEADO");
+    }
+
+    @Test
+    void theAutoCityTargetRangeConstantIsFixedAtFivePointFive() {
+        assertEquals(5.5, CombatDirector.AUTO_CITY_TARGET_RANGE, 0.0,
+            "5.5 es el target-range de fábrica de auto-city en Meteor");
+    }
+
+    @Test
+    void aTargetAtTheLiteralFivePointFiveIsRodeado() {
+        // Con literales, no con la constante: si alguien mueve AUTO_CITY_TARGET_RANGE a otro
+        // valor, este test lo detecta.
+        CombatSnapshot atLiteralBoundary = new CombatSnapshot(true, 5.5, true, 1.0, false, false, false, 2, FULL);
+        assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
+    }
+
+    @Test
+    void aTargetJustBeyondTheLiteralFivePointFiveIsNotRodeado() {
+        CombatSnapshot justBeyond = new CombatSnapshot(true, 5.51, true, 1.0, false, false, false, 2, FULL);
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
     }
 
