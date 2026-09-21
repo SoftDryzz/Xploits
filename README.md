@@ -32,7 +32,8 @@ com/xploits/pvp/                Módulo auto-pvp (adaptador a Meteor).
 com/xploits/pvp/core/           Máquina de fases, catálogo de módulos dirigidos, quién es de los nuestros
                                 y qué se escribe en la lista de amigos de Meteor, de auto-pvp.
 com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
-com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
+com/xploits/travel/core/        Geometría de la ruta, los ocho ejes de autopista, resolución del destino,
+                                patrones de despiste y comandos de Baritone de auto-travel.
 ```
 
 ## Uso
@@ -62,6 +63,29 @@ los mueves a mano durante el vuelo, se respeta lo que tú dejaste. La única exc
 marcha: ahí Meteor está desmontando sus módulos y tocarlos los dejaría rotos para el resto de la sesión, así que la
 devolución se hace sola en el primer tick tras volver a entrar. Si cierras el cliente antes de volver a entrar, se
 quedan como estaban en vuelo y el módulo te lo dice con un toast.
+
+**El destino se pide de tres maneras.** `COORDENADAS` es un punto del mundo (`x`, `z`). `RELATIVO` es un
+desplazamiento desde donde estés (`offset-x`, `offset-z`): poner 5000 y −3000 es "muévete 5000 en X y −3000 en Z
+desde aquí". `AUTOPISTA` es un eje y una distancia (`axis`, `highway-distance`), contada desde donde arranque el
+viaje.
+
+**Cada modo tiene sus propios ajustes**, y eso es a propósito: si el desplazamiento reutilizara `x` y `z`, tener
+puesto un destino absoluto lejano y cambiar de modo convertiría esos números en un desplazamiento enorme desde donde
+estés, sin haber tocado nada. Cambiar de modo aquí no reinterpreta ningún número: lee otros campos, y en la ClickGUI
+sólo se ven los del modo que tengas puesto.
+
+**Y `RELATIVO` deja menos rastro en disco.** Meteor guarda los ajustes de sus módulos en
+`<instancia>/meteor-client/modules.nbt` —al salir del mundo y al cerrar el juego, y todo ajuste que no esté en su
+valor de fábrica, se vea o no en la ClickGUI—. Con un destino en `COORDENADAS`, las coordenadas acaban escritas ahí;
+con un desplazamiento, lo que se guarda es cuánto te mueves, que no dice desde dónde. Ojo: esconder `x`/`z` al
+cambiar de modo no borra lo que ya se hubiera guardado, así que si venías de usar coordenadas, ponlas a 0 antes.
+
+**Los ejes de autopista son ocho:** `X_PLUS`, `X_MINUS`, `Z_PLUS`, `Z_MINUS` y las cuatro diagonales
+`X_PLUS_Z_PLUS`, `X_PLUS_Z_MINUS`, `X_MINUS_Z_PLUS` y `X_MINUS_Z_MINUS`. En todos ellos `highway-distance` son
+**bloques volados**, no bloques por coordenada: 20 000 por una diagonal avanzan unos 14 142 en X y otros tantos en Z,
+y el vuelo mide 20 000, igual que 20 000 por `X_PLUS`. Así el número significa lo mismo apunte a donde apunte, y un
+viaje por la diagonal cuesta los fuegos que dice. El corredor de `highway-max-amplitude` se respeta igual en las ocho
+direcciones, medido perpendicular al eje.
 
 **El patrón se vuela sin aterrizar en cada waypoint.** `#elytra` le dice a Baritone "vuela hasta el objetivo **y
 pósate**": en cuanto entra en los 48 bloques de su objetivo da la ruta por terminada y se pone a buscar sitio donde

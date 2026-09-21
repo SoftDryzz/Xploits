@@ -282,6 +282,110 @@ class RoutePlannerTest {
     }
 
     @Test
+    void onADiagonalHighwayNoWaypointLeavesTheCorridorEither() {
+        // La geometría del planificador trabaja con el vector unitario origen->destino, así que las
+        // diagonales DEBERÍAN acotarse solas. "Debería" no es una garantía: este test lo comprueba.
+        //
+        // Y se mide la distancia perpendicular al eje, no la coordenada Z. En +X las dos coinciden y
+        // por eso el test de los cardinales podía mirar la Z; en una diagonal, un waypoint puede
+        // estar a 200 bloques del eje y a 141 de Z, o a 700 de Z y encima del eje. Mirar la Z aquí
+        // daría verde con el corredor roto.
+        for (Axis axis : Axis.values()) {
+            for (FlightPattern pattern : FlightPattern.values()) {
+                Destination destination = Destination.highway(axis, 50_000);
+                Route route = RoutePlanner.plan(ORIGIN, destination, pattern,
+                    PatternParams.defaults(), HIGHWAY_WIDE, MARGIN);
+
+                if (pattern == FlightPattern.SENUELO) {
+                    assertTrue(route.isRejected(),
+                        "el señuelo debe rechazarse en autopista también por " + axis);
+                    continue;
+                }
+
+                assertFalse(route.isRejected(),
+                    pattern + " por " + axis + " no debería rechazarse: " + route.rejection());
+
+                // n = (-uz, ux), la normal al eje; el desvío es la proyección del waypoint sobre ella.
+                Waypoint end = destination.resolve(ORIGIN);
+                double distance = ORIGIN.distanceTo(end);
+                double nx = -(end.z() - ORIGIN.z()) / distance;
+                double nz = (end.x() - ORIGIN.x()) / distance;
+
+                for (Waypoint point : route.waypoints()) {
+                    double offset = (point.x() - ORIGIN.x()) * nx + (point.z() - ORIGIN.z()) * nz;
+                    assertTrue(Math.abs(offset) <= HIGHWAY_WIDE + TOLERANCE,
+                        pattern + " se salió del corredor de " + axis + " por " + offset + " bloques");
+                }
+            }
+        }
+    }
+
+    @Test
+    void aDiagonalRouteIsTheCardinalOneRotatedFortyFiveDegrees() {
+        // El mismo patrón por un eje diagonal tiene que dar el mismo dibujo que por uno cardinal,
+        // girado 45 grados: mismo número de waypoints y mismos desvíos respecto al eje. Si la
+        // geometría dependiera de las coordenadas y no del vector unitario, aquí saldrían dos rutas
+        // distintas.
+        Route cardinal = RoutePlanner.plan(ORIGIN, Destination.highway(Axis.X_PLUS, 50_000),
+            FlightPattern.ZIGZAG, PatternParams.defaults(), HIGHWAY_WIDE, MARGIN);
+        Route diagonal = RoutePlanner.plan(ORIGIN, Destination.highway(Axis.X_PLUS_Z_PLUS, 50_000),
+            FlightPattern.ZIGZAG, PatternParams.defaults(), HIGHWAY_WIDE, MARGIN);
+
+        assertEquals(cardinal.waypoints().size(), diagonal.waypoints().size(),
+            "la diagonal debe dibujar el mismo zigzag que el cardinal");
+        for (int i = 0; i < cardinal.waypoints().size(); i++) {
+            assertEquals(ORIGIN.distanceTo(cardinal.waypoints().get(i)),
+                ORIGIN.distanceTo(diagonal.waypoints().get(i)), TOLERANCE,
+                "el waypoint " + i + " no está a la misma distancia del origen en los dos ejes");
+        }
+    }
+
+    @Test
+    void aRelativeDestinationPlansTheSameRouteAsTheAbsoluteOneItResolvesTo() {
+        // El planificador no distingue modos: recibe un origen y un destino ya resuelto. Este test
+        // fija esa frontera -la resolución vive en Destination, con su propio test- y de paso impide
+        // que alguien meta aquí una rama por modo.
+        Waypoint start = new Waypoint(1_000, -2_000);
+        Route relative = RoutePlanner.plan(start, Destination.relative(20_000, 5_000),
+            FlightPattern.QUIEBRO, PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
+        Route absolute = RoutePlanner.plan(start, Destination.coordinates(21_000, 3_000),
+            FlightPattern.QUIEBRO, PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
+
+        assertFalse(relative.isRejected(), relative.rejection());
+        assertEquals(absolute.waypoints().size(), relative.waypoints().size());
+        for (int i = 0; i < absolute.waypoints().size(); i++) {
+            assertEquals(absolute.waypoints().get(i).x(), relative.waypoints().get(i).x(), TOLERANCE);
+            assertEquals(absolute.waypoints().get(i).z(), relative.waypoints().get(i).z(), TOLERANCE);
+        }
+    }
+
+    @Test
+    void aRelativeDestinationOfZeroBehavesLikeAnyOtherDestinationEqualToTheOrigin() {
+        // Un desplazamiento de (0, 0) es el destino igual al origen, que es el mismo caso que ya
+        // llegaba por coordenadas puestas donde está el jugador o por una distancia de autopista de
+        // 0. No abre ninguna puerta nueva y no se rechaza: un viaje de cero bloques es exactamente
+        // lo que se pidió, entregado tal cual. La doctrina rechaza entregar OTRA cosa callándolo, no
+        // entregar lo pedido.
+        Waypoint start = new Waypoint(1_000, -2_000);
+        for (FlightPattern pattern : FlightPattern.values()) {
+            Route route = RoutePlanner.plan(start, Destination.relative(0, 0), pattern,
+                PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
+
+            assertFalse(route.isRejected(), pattern + " no debería rechazar un desplazamiento nulo");
+            assertEquals(1, route.waypoints().size(), pattern + " no debería inventar waypoints");
+            assertEquals(start.x(), route.waypoints().get(0).x(), TOLERANCE);
+            assertEquals(start.z(), route.waypoints().get(0).z(), TOLERANCE);
+        }
+
+        // Y es el mismo desenlace que los otros dos caminos al mismo punto, que es lo que hace que
+        // el modo nuevo sea coherente en vez de una excepción.
+        assertFalse(RoutePlanner.plan(start, Destination.highway(Axis.X_PLUS_Z_MINUS, 0),
+            FlightPattern.ZIGZAG, PatternParams.defaults(), HIGHWAY_MAX, MARGIN).isRejected());
+        assertFalse(RoutePlanner.plan(start, Destination.coordinates(start.x(), start.z()),
+            FlightPattern.ZIGZAG, PatternParams.defaults(), HIGHWAY_MAX, MARGIN).isRejected());
+    }
+
+    @Test
     void quiebroUsesLegLengthAndLateralOffsetNotAmplitudeAndPeriod() {
         // Sin este test, intercambiar los parámetros del quiebro (usar amplitude/period en vez de
         // lateralOffset/legLength) pasaba todos los tests igual. Distancia elegida (13 000) para que
@@ -817,9 +921,10 @@ class RoutePlannerTest {
 
     @Test
     void aHighwayDestinationWithoutAnAxisIsRejectedEagerly() {
-        // Antes: new Destination(true, 0, 0, null, 5).resolve(...) reventaba con un NullPointerException
-        // confuso dentro del switch. Ahora falla al construirse, con un mensaje claro.
-        assertThrows(IllegalArgumentException.class, () -> new Destination(true, 0, 0, null, 5));
+        // Antes: un destino de autopista sin eje reventaba con un NullPointerException confuso dentro
+        // del switch de resolve(). Ahora falla al construirse, con un mensaje claro.
+        assertThrows(IllegalArgumentException.class,
+            () -> new Destination(Destination.Kind.AUTOPISTA, 0, 0, null, 5));
     }
 
     @Test

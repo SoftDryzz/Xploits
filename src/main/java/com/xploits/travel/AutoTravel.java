@@ -80,9 +80,15 @@ public class AutoTravel extends Module {
     /** Cuánto tiene que bajar la distancia para contar como avance, en bloques. */
     private static final double PROGRESS_EPSILON = 1.0;
 
-    /** Las dos formas de pedir un destino (spec §4), como vocabulario de los ajustes. */
+    /**
+     * Las tres formas de pedir un destino (spec §4), como vocabulario de los ajustes.
+     *
+     * <p>Cada una lee <b>sus propios</b> ajustes, y por eso son tres y no dos con un interruptor:
+     * ver {@link #destination()}.
+     */
     public enum DestinationMode {
         COORDENADAS,
+        RELATIVO,
         AUTOPISTA
     }
 
@@ -95,14 +101,17 @@ public class AutoTravel extends Module {
 
     private final Setting<DestinationMode> destinationMode = sgDestination.add(new EnumSetting.Builder<DestinationMode>()
         .name("destination-mode")
-        .description("COORDENADAS: un punto del mundo. AUTOPISTA: una distancia por un eje, desde donde estés.")
+        .description("COORDENADAS: un punto del mundo. RELATIVO: un desplazamiento en X y en Z desde donde "
+            + "estés. AUTOPISTA: una distancia por uno de los ocho ejes, desde donde estés. Cada modo tiene "
+            + "sus propios ajustes: cambiar de modo no reinterpreta los números del anterior.")
         .defaultValue(DestinationMode.COORDENADAS)
         .build()
     );
 
     private final Setting<Double> destinationX = sgDestination.add(new DoubleSetting.Builder()
         .name("x")
-        .description("Coordenada X del destino.")
+        .description("Coordenada X del destino. Meteor guarda este valor en meteor-client/modules.nbt: si "
+            + "prefieres que el sitio al que vas no quede escrito en disco, usa el modo RELATIVO.")
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -112,7 +121,7 @@ public class AutoTravel extends Module {
 
     private final Setting<Double> destinationZ = sgDestination.add(new DoubleSetting.Builder()
         .name("z")
-        .description("Coordenada Z del destino.")
+        .description("Coordenada Z del destino. Se guarda en disco igual que la X: ver el aviso de ese ajuste.")
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -120,9 +129,40 @@ public class AutoTravel extends Module {
         .build()
     );
 
+    // El desplazamiento del modo RELATIVO tiene ajustes PROPIOS, y no son x/z con otro significado.
+    // Compartirlos sería barato de escribir y caro de usar: un destino absoluto lejano ya
+    // configurado pasaría a leerse como un desplazamiento enorme desde donde estés en cuanto
+    // cambiaras de modo, sin haber tocado un número. Con ajustes propios, cambiar de modo no
+    // reinterpreta nada: lee otros campos, y los de antes siguen queriendo decir lo que decían.
+
+    private final Setting<Double> offsetX = sgDestination.add(new DoubleSetting.Builder()
+        .name("offset-x")
+        .description("Cuánto moverse en X desde donde arranque el viaje. Es un desplazamiento, no una coordenada, "
+            + "y eso también deja menos rastro: Meteor guarda los ajustes de sus módulos en "
+            + "meteor-client/modules.nbt -al salir del mundo y al cerrar el juego, y todo el que no esté en su "
+            + "valor de fábrica-, así que un destino puesto en COORDENADAS acaba escrito en disco con sus "
+            + "coordenadas exactas. Un desplazamiento no dice desde dónde.")
+        .defaultValue(0)
+        .sliderRange(-100_000, 100_000)
+        .decimalPlaces(0)
+        .visible(() -> destinationMode.get() == DestinationMode.RELATIVO)
+        .build()
+    );
+
+    private final Setting<Double> offsetZ = sgDestination.add(new DoubleSetting.Builder()
+        .name("offset-z")
+        .description("Cuánto moverse en Z desde donde arranque el viaje. Es un desplazamiento, no una coordenada, "
+            + "así que lo que queda guardado en disco es cuánto te mueves y no adónde vas (ver offset-x).")
+        .defaultValue(0)
+        .sliderRange(-100_000, 100_000)
+        .decimalPlaces(0)
+        .visible(() -> destinationMode.get() == DestinationMode.RELATIVO)
+        .build()
+    );
+
     private final Setting<Axis> axis = sgDestination.add(new EnumSetting.Builder<Axis>()
         .name("axis")
-        .description("El eje de autopista por el que se viaja.")
+        .description("El eje de autopista por el que se viaja: los cuatro cardinales y las cuatro diagonales.")
         .defaultValue(Axis.X_PLUS)
         .visible(() -> destinationMode.get() == DestinationMode.AUTOPISTA)
         .build()
@@ -130,7 +170,9 @@ public class AutoTravel extends Module {
 
     private final Setting<Double> highwayDistance = sgDestination.add(new DoubleSetting.Builder()
         .name("highway-distance")
-        .description("Cuántos bloques recorrer por el eje, contados desde donde arranque el viaje.")
+        .description("Cuántos bloques recorrer por el eje, contados desde donde arranque el viaje. Son bloques "
+            + "VOLADOS, no bloques por coordenada: por una diagonal, 20 000 avanzan unos 14 142 en X y otros "
+            + "tantos en Z, y el vuelo mide 20 000. Así el número significa lo mismo en los ocho ejes.")
         .defaultValue(10_000)
         .min(0)
         .sliderRange(0, 100_000)
@@ -1060,11 +1102,22 @@ public class AutoTravel extends Module {
         return !sendCaught;
     }
 
+    /**
+     * El destino que se le pasa al núcleo, leído de los ajustes del modo que esté puesto.
+     *
+     * <p><b>Cada modo lee sus propios ajustes</b>, y esa es la razón de que {@code offset-x} y
+     * {@code offset-z} existan en vez de reutilizar {@code x} y {@code z} con otro significado. Con
+     * un solo par de campos, quien tuviera puesto un destino absoluto lejano y cambiara a RELATIVO
+     * se encontraría con que esos números pasan a ser un desplazamiento desde donde está: el mismo
+     * ajuste, sin tocarlo, querría decir otra cosa, y el viaje no se parecería a ninguno de los dos
+     * que el jugador pidió nunca. Aquí cambiar de modo no reinterpreta ningún número: lee otros.
+     */
     private Destination destination() {
-        if (destinationMode.get() == DestinationMode.AUTOPISTA) {
-            return Destination.highway(axis.get(), highwayDistance.get());
-        }
-        return Destination.coordinates(destinationX.get(), destinationZ.get());
+        return switch (destinationMode.get()) {
+            case AUTOPISTA -> Destination.highway(axis.get(), highwayDistance.get());
+            case RELATIVO -> Destination.relative(offsetX.get(), offsetZ.get());
+            case COORDENADAS -> Destination.coordinates(destinationX.get(), destinationZ.get());
+        };
     }
 
     private PatternParams params() {
@@ -1118,9 +1171,15 @@ public class AutoTravel extends Module {
     }
 
     private String describeDestination() {
-        if (destinationMode.get() == DestinationMode.AUTOPISTA) {
-            return String.format("%d bloques por %s", Math.round(highwayDistance.get()), axis.get());
-        }
-        return String.format("%d, %d", Math.round(destinationX.get()), Math.round(destinationZ.get()));
+        return switch (destinationMode.get()) {
+            case AUTOPISTA -> String.format("%d bloques por %s", Math.round(highwayDistance.get()), axis.get());
+            // El desplazamiento se dice tal cual, con su signo y diciendo que es un desplazamiento: si
+            // se resolviera aquí a coordenadas, el modo que existe para no escribir el destino en
+            // ningún sitio lo estaría escribiendo en el chat.
+            case RELATIVO -> String.format("%+d, %+d desde donde arranque",
+                Math.round(offsetX.get()), Math.round(offsetZ.get()));
+            case COORDENADAS -> String.format("%d, %d",
+                Math.round(destinationX.get()), Math.round(destinationZ.get()));
+        };
     }
 }
