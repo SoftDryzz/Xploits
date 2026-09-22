@@ -62,7 +62,7 @@ class DefensivePolicyTest {
 
     @Test
     void theDirectorPassesTheMarginThrough() {
-        CombatSnapshot aimed = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, Map.of())
+        CombatSnapshot aimed = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, Map.of())
             .withDefense(20, 10, false, true);
 
         assertEquals(CombatPosture.AMENAZADO, new CombatDirector().tick(aimed, 6).posture());
@@ -97,6 +97,37 @@ class DefensivePolicyTest {
     }
 
     @Test
+    void surroundIsNotAskedForOnTheTickYouLandInTheHole() {
+        // C2: Surround se apaga solo con toggle-on-y-change (defaultValue(true)), y lo comprueba
+        // en TickEvent.Pre con prevY != getY(), es decir UN TICK DESPUÉS de que te movieras en
+        // vertical. Aterrizar en el agujero te deja en el suelo y dentro, así que las dos
+        // condiciones de antes lo pedían igual: el ledger lo encendía y el módulo se apagaba solo
+        // al tick siguiente, y ese apagado es indistinguible de que lo apagaras tú.
+        CombatSnapshot landing = self(10, 0, true, true).withSelfYChanged(true);
+        assertFalse(DefensivePolicy.modulesFor(CombatPosture.AMENAZADO, landing)
+            .contains(ManagedModules.SURROUND),
+            "mientras tu Y se mueva, pedirlo es encenderlo para que se apague solo");
+
+        CombatSnapshot settled = self(10, 0, true, true).withSelfYChanged(false);
+        assertTrue(DefensivePolicy.modulesFor(CombatPosture.AMENAZADO, settled)
+            .contains(ManagedModules.SURROUND),
+            "con la altura quieta sí, que es cuando el surround sirve de algo");
+    }
+
+    @Test
+    void theOtherFourDefensiveModulesDoNotCareAboutYourHeight() {
+        // La condición es de surround y solo de surround: los otros cuatro no tienen toggle-on-*.
+        List<ManagedModule> moving = DefensivePolicy.modulesFor(CombatPosture.AMENAZADO,
+            self(10, 0, true, true).withSelfYChanged(true));
+
+        assertTrue(moving.contains(ManagedModules.HOLE_FILLER));
+        assertTrue(moving.contains(ManagedModules.ANTI_ANVIL));
+        assertTrue(moving.contains(ManagedModules.ANTI_BED));
+        assertTrue(moving.contains(ManagedModules.ANTI_ANCHOR));
+        assertEquals(4, moving.size());
+    }
+
+    @Test
     void theModulesThatLockYouInAreNotInTheCatalogueAtAll() {
         // §5: self-trap, self-web y burrow quedan fuera a propósito. Si el criterio se equivoca, te
         // inmoviliza tu propio cliente en una pelea que ibas ganando.
@@ -109,7 +140,7 @@ class DefensivePolicyTest {
     @Test
     void theAntiModulesCostNothingSoNoShortageCanRemoveThem() {
         // Los tres anti- no colocan: escuchan y reaccionan. Con el inventario a cero siguen subiendo.
-        CombatSnapshot broke = Snapshots.of(false, 0, false, 0, false, false, false, 0, Map.of())
+        CombatSnapshot broke = Snapshots.of(false, 0, 0, 0, false, false, false, 0, Map.of())
             .withDefense(4, 0, false, true);
         Plan plan = new CombatDirector().tick(broke, 6);
 

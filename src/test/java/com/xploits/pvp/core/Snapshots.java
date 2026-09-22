@@ -5,7 +5,7 @@ import java.util.Map;
 /**
  * Atajo de los tests para construir un {@link CombatSnapshot} dando solo la mitad del enemigo y la
  * del inventario, con el resto en valores neutros: sin objetivo identificado, sin hostiles a rango
- * de cristal, la vida llena, nada de daño apuntándote, ni en agujero ni en el suelo, y con el
+ * de cristal, la vida llena, nada de daño apuntándote, ni en agujero ni en el suelo, con la altura quieta y con el
  * {@code anti-suicide} de {@code crystal-aura} <b>encendido</b>, que es como viene de fábrica.
  *
  * <p>Este atajo vivía en el núcleo como constructor de transición mientras el adaptador todavía no
@@ -17,13 +17,13 @@ import java.util.Map;
 final class Snapshots {
     private Snapshots() {}
 
-    static CombatSnapshot of(boolean hasTarget, double targetDistance, boolean targetSurrounded,
+    static CombatSnapshot of(boolean hasTarget, double targetDistance, int targetSurroundSides,
                              double cityBlockDistance, boolean targetBurrowed,
                              boolean targetGliding, boolean selfGliding, int selfTotems,
                              Map<Resource, Integer> resources) {
-        return new CombatSnapshot(hasTarget, targetDistance, targetSurrounded, cityBlockDistance,
+        return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
-            null, 0, CombatSnapshot.FULL_HEALTH, 0, false, false, true);
+            null, 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, true);
     }
 
     /**
@@ -31,10 +31,11 @@ final class Snapshots {
      * en el que el suelo de tótems sigue en pie (rediseño §7, por la puerta de §10).
      */
     static CombatSnapshot antiSuicideOff(CombatSnapshot base) {
-        return new CombatSnapshot(base.hasTarget(), base.targetDistance(), base.targetSurrounded(),
+        return new CombatSnapshot(base.hasTarget(), base.targetDistance(), base.targetSurroundSides(),
             base.cityBlockDistance(), base.targetBurrowed(), base.targetGliding(),
             base.selfGliding(), base.selfTotems(), base.resources(),
-            base.targetId(), base.unprotectedHostilesInCrystalRange(), base.selfTotalHealth(),
-            base.incomingDamage(), base.selfInHole(), base.selfOnGround(), false);
+            base.targetId(), base.hostilesInCrystalRange(), base.selfTotalHealth(),
+            base.incomingDamage(), base.selfInHole(), base.selfOnGround(), base.selfYChanged(),
+            false);
     }
 }

@@ -60,13 +60,23 @@ public final class DefensivePolicy {
     /**
      * Qué pide la postura (§5). {@code TRANQUILO} no pide nada; {@code AMENAZADO} pide los tres
      * {@code anti-} y el {@code hole-filler}, que tapan formas concretas de matarte sin
-     * inmovilizarte, y además {@code surround} <b>solo</b> si estás en un agujero y en el suelo.
+     * inmovilizarte, y además {@code surround} <b>solo</b> si estás en un agujero, en el suelo y
+     * con la altura quieta.
      *
-     * <p>Las dos condiciones de {@code surround} son suyas, no un adorno: con
+     * <p>Las tres condiciones de {@code surround} son suyas, no un adorno: con
      * {@code toggle-on-y-change} en {@code true} de fábrica y una llamada a
      * {@code PlayerUtils.centerPlayer()} mientras el surround esté incompleto, encenderlo mientras
      * te mueves te recoloca y se apaga solo en bucle. Es un módulo defensivo de agujero y ese es su
      * único sitio.
+     *
+     * <p>La tercera -{@code selfYChanged}- entra con el crítico C2 y es la que hace honesto el
+     * {@code turnsItselfOff == false} de {@link ManagedModules#SURROUND}. {@code Surround} comprueba
+     * {@code prevY != getY()} en {@code TickEvent.Pre}, es decir <b>un tick después</b> de que te
+     * movieras en vertical, y estar en el suelo y dentro del agujero no excluye ese tick: aterrizar
+     * en el agujero te deja precisamente ahí -en el suelo, dentro y con la Y recién cambiada-, la
+     * postura lo pedía, el ledger lo encendía y el módulo se apagaba solo al tick siguiente. Ese
+     * apagado es indistinguible de que lo apagaras tú, y por eso había que dejar de provocarlo. No
+     * se pierde nada: en esos ticks el módulo se habría apagado igual por su cuenta.
      */
     public static List<ManagedModule> modulesFor(CombatPosture posture, CombatSnapshot snapshot) {
         if (posture == CombatPosture.TRANQUILO) return List.of();
@@ -74,7 +84,9 @@ public final class DefensivePolicy {
         List<ManagedModule> modules = new ArrayList<>(List.of(
             ManagedModules.HOLE_FILLER, ManagedModules.ANTI_ANVIL,
             ManagedModules.ANTI_BED, ManagedModules.ANTI_ANCHOR));
-        if (snapshot.selfInHole() && snapshot.selfOnGround()) modules.add(ManagedModules.SURROUND);
+        if (snapshot.selfInHole() && snapshot.selfOnGround() && !snapshot.selfYChanged()) {
+            modules.add(ManagedModules.SURROUND);
+        }
         return List.copyOf(modules);
     }
 }

@@ -19,7 +19,7 @@ class CombatSnapshotTest {
 
     @Test
     void itReportsTheResourcesItWasGiven() {
-        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2,
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2,
             Map.of(Resource.CRYSTALS, 12, Resource.OBSIDIAN, 5));
 
         assertEquals(12, snapshot.amountOf(Resource.CRYSTALS));
@@ -31,7 +31,7 @@ class CombatSnapshotTest {
     void theSnapshotCopiesItsResourcesSoLaterChangesDoNotLeakIn() {
         Map<Resource, Integer> resources = new HashMap<>();
         resources.put(Resource.CRYSTALS, 12);
-        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, resources);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, resources);
 
         resources.put(Resource.CRYSTALS, 999);
 
@@ -49,10 +49,10 @@ class CombatSnapshotTest {
         // El andamio para que el adaptador siga compilando mientras se le añade la lectura de los
         // campos nuevos: los rellena con lo neutro, no con lo real, para que los dos ejes nuevos se
         // comporten como si no existieran hasta que alguien los rellene de verdad.
-        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, Map.of());
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, Map.of());
 
         assertNull(snapshot.targetId());
-        assertEquals(0, snapshot.unprotectedHostilesInCrystalRange());
+        assertEquals(0, snapshot.hostilesInCrystalRange());
         assertEquals(CombatSnapshot.FULL_HEALTH, snapshot.selfTotalHealth(), 0.0);
         assertEquals(0.0, snapshot.incomingDamage(), 0.0);
         assertFalse(snapshot.selfInHole());
@@ -62,13 +62,13 @@ class CombatSnapshotTest {
 
     @Test
     void theHelpersChangeOnlyWhatTheyName() {
-        CombatSnapshot base = Snapshots.of(true, 3.0, false, 0, false, false, false, 2,
+        CombatSnapshot base = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2,
             Map.of(Resource.CRYSTALS, 12));
 
         assertEquals("pepe", base.withTargetId("pepe").targetId());
         assertEquals(3.0, base.withTargetId("pepe").targetDistance(), 0.0);
 
-        assertEquals(2, base.withHostiles(2).unprotectedHostilesInCrystalRange());
+        assertEquals(2, base.withHostiles(2).hostilesInCrystalRange());
         assertEquals(12, base.withHostiles(2).amountOf(Resource.CRYSTALS));
 
         CombatSnapshot defended = base.withDefense(10, 4, true, true);
@@ -96,13 +96,15 @@ class CombatSnapshotTest {
         assertEquals(Resource.NONE, ManagedModules.ANTI_BED.needs());
         assertEquals(Resource.NONE, ManagedModules.ANTI_ANCHOR.needs());
 
-        // La marca turnsItselfOff() (spec §7): crystal-aura, auto-web y los cuatro defensivos solo
-        // se apagan porque el jugador los apaga; los otros cuatro se apagan solos con los ajustes
-        // de fábrica de Meteor. Sin esto, cambiar la marca de cualquiera no lo detecta ningún test.
+        // La marca turnsItselfOff() (spec §7): crystal-aura, auto-web y los cinco defensivos
+        // -surround incluido desde C2- solo se apagan porque el jugador los apaga; los otros tres
+        // se apagan solos con los ajustes de fábrica de Meteor. Sin esto, cambiar la marca de
+        // cualquiera no lo detecta ningún test.
         assertFalse(ManagedModules.CRYSTAL_AURA.turnsItselfOff());
         assertTrue(ManagedModules.AUTO_TRAP.turnsItselfOff());
         assertFalse(ManagedModules.AUTO_WEB.turnsItselfOff());
-        assertTrue(ManagedModules.SURROUND.turnsItselfOff());
+        assertFalse(ManagedModules.SURROUND.turnsItselfOff(),
+            "C2: con la marca puesta el antirrebote no se le aplicaba y no podías apagarlo a mano");
         assertTrue(ManagedModules.AUTO_ANVIL.turnsItselfOff());
         assertTrue(ManagedModules.AUTO_CITY.turnsItselfOff());
         assertFalse(ManagedModules.HOLE_FILLER.turnsItselfOff());
