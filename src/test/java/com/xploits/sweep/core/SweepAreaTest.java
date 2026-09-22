@@ -3,7 +3,11 @@ package com.xploits.sweep.core;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SweepAreaTest {
     @Test
@@ -105,5 +109,97 @@ class SweepAreaTest {
         // colarse como si tuviera coste, ni tampoco romper la suma.
         Lane lane = new Lane(1500, -700, 1500, -700);
         assertEquals(0, lane.lengthInBlocks(), 0.0001);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // El tope de tamaño: dos recorridos del módulo cuestan el rectángulo entero
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unAreaNormalNoSeRechazaPorTamano() {
+        // La caja entera que el jugador ha cruzado en meses en este servidor, 384x580 chunks
+        // (spec §1): 222.720 chunks, muy por debajo del tope. Si esto se rechazara, el tope estaría
+        // estorbando al uso que justifica el módulo.
+        SweepArea area = SweepArea.ofChunks(0, 0, 383, 579);
+
+        assertEquals(222_720, area.chunkCount());
+        assertNull(area.oversizeRejection());
+    }
+
+    @Test
+    void unAreaJustoEnElTopeSeAcepta() {
+        // 2.000 x 2.000 = 4.000.000 clavados. El borde entra: el tope es "como mucho esto", no
+        // "menos que esto".
+        SweepArea area = SweepArea.ofChunks(0, 0, 1_999, 1_999);
+
+        assertEquals(SweepArea.MAXIMO_DE_CHUNKS, area.chunkCount());
+        assertNull(area.oversizeRejection());
+    }
+
+    @Test
+    void unChunkPorEncimaDelTopeYaSeRechaza() {
+        // 2.000 x 2.001 = 4.002.000, apenas un 0,05 % por encima. El corte está donde dice estar.
+        SweepArea area = SweepArea.ofChunks(0, 0, 1_999, 2_000);
+
+        assertNotNull(area.oversizeRejection());
+    }
+
+    @Test
+    void elAreaDelLimiteDelDeslizadorSeRechazaSinIntentarRecorrerla() {
+        // 20.000 x 20.000 chunks es lo que dan las esquinas en los extremos del deslizador de los
+        // ajustes: 400 millones de chunks. Antes de este tope, Coverage.seenIn y SweepPlanner los
+        // visitaban uno a uno en el hilo principal desde un comando.
+        SweepArea area = SweepArea.ofChunks(-10_000, -10_000, 9_999, 9_999);
+
+        String motivo = area.oversizeRejection();
+        assertNotNull(motivo);
+        assertTrue(motivo.contains("400000000"), motivo);
+    }
+
+    @Test
+    void unAreaQueNiSiquieraCabeEnUnIntSeRechazaEnVezDeLanzar() {
+        // 50.001 x 50.001 = 2.500.100.001 chunks: el área que hace lanzar a chunkCount(). El tope
+        // tiene que poder contestar precisamente sobre ella, así que la cuenta va en long y no
+        // llamando a chunkCount().
+        SweepArea area = SweepArea.ofChunks(0, 0, 50_000, 50_000);
+
+        assertThrows(ArithmeticException.class, area::chunkCount);
+        assertNotNull(area.oversizeRejection());
+    }
+
+    @Test
+    void elMotivoDiceElTamanoElTopeYQueAjusteTocar() {
+        // Mismo estilo que los demás rechazos del módulo: qué pasa, cuánto vale ahora y qué tocar,
+        // con los ajustes nombrados como aparecen en la interfaz.
+        SweepArea area = SweepArea.ofChunks(0, 0, 2_999, 2_999);
+
+        String motivo = area.oversizeRejection();
+        assertTrue(motivo.contains("3000x3000"), motivo);
+        assertTrue(motivo.contains("9000000"), motivo);
+        assertTrue(motivo.contains(String.valueOf(SweepArea.MAXIMO_DE_CHUNKS)), motivo);
+        assertTrue(motivo.contains("chunk-x-1"), motivo);
+        assertTrue(motivo.contains("chunk-z-2"), motivo);
+    }
+
+    @Test
+    void elMotivoDiceACuantoBajarElLadoLargoManteniendoElCorto() {
+        // 8.000 de ancho por 1.000 de alto: manteniendo el lado corto en 1.000, el largo no puede
+        // pasar de 4.000.000 / 1.000 = 4.000. Ese es el número accionable.
+        SweepArea area = SweepArea.ofChunks(0, 0, 7_999, 999);
+
+        String motivo = area.oversizeRejection();
+        assertTrue(motivo.contains("no puede pasar de 4000"), motivo);
+    }
+
+    @Test
+    void siElLadoCortoYaSePasaSoloSeDiceQueAcerqueLasDosEsquinas() {
+        // 5.000 x 5.000: el lado corto son 5.000 chunks y 4.000.000 / 5.000 = 800, que es MENOS que
+        // el propio lado corto. Decirle "baja el largo a 800" sería mandarle a un rectángulo que
+        // sigue sin caber, así que aquí el consejo es otro.
+        SweepArea area = SweepArea.ofChunks(0, 0, 4_999, 4_999);
+
+        String motivo = area.oversizeRejection();
+        assertTrue(motivo.contains("acerca las dos"), motivo);
+        assertFalse(motivo.contains("no puede pasar de"), motivo);
     }
 }

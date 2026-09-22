@@ -856,6 +856,14 @@ public class NetherSweep extends Module {
 
         SweepArea area = SweepArea.ofChunks(chunkX1.get(), chunkZ1.get(), chunkX2.get(), chunkZ2.get());
 
+        // El tamaño se comprueba aquí, ANTES de leer la cobertura y antes de planificar, porque los
+        // dos recorren el rectángulo entero chunk a chunk en el hilo principal -Coverage.seenIn para
+        // contar lo ya visto y SweepPlanner para decidir qué bandas saltarse-. Con un área tecleada
+        // de más, el cliente se queda colgado dentro de un comando y ni siquiera llega el rechazo.
+        // El motivo va como argumento de un "%s", como todos.
+        String tamanoRechazo = area.oversizeRejection();
+        if (tamanoRechazo != null) return String.format("No se barre: %s", tamanoRechazo);
+
         String anchuraRechazo = resolverAnchura();
         if (anchuraRechazo != null) return anchuraRechazo;
 
