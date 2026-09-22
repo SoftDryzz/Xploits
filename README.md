@@ -35,8 +35,9 @@ com/xploits/pvp/core/           Máquina de fases, postura defensiva, catálogo 
 com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
 com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
 com/xploits/sweep/              Módulo nether-sweep (adaptador a Meteor).
-com/xploits/sweep/core/         Geometría del rectángulo, planificador de pasadas, cobertura, presupuesto de
-                                cohetes y sonda de anchura de nether-sweep.
+com/xploits/sweep/core/         Geometría del rectángulo, planificador de pasadas, cobertura, recuento de lo
+                                que llega, presupuesto de cohetes, cuentakilómetros y sonda de anchura de
+                                nether-sweep.
 ```
 
 ## Uso
@@ -56,6 +57,26 @@ Baritone, cámbialo también en el ajuste `baritone-prefix` de cada módulo por 
 prefijo **no puede empezar por `/`**: con barra el comando iría por el camino de comando del servidor, que Baritone
 no escucha, y la red de seguridad del módulo se comería de paso todos los demás comandos con barra mientras durase
 el viaje o el barrido. Cada módulo lo rechaza al lanzar y explica por qué.
+
+**`auto-travel` y `nether-sweep` no se pueden volar a la vez.** Los dos dirigen al mismo Baritone por los mismos
+comandos, y el objetivo de `#elytra` es uno solo: el segundo en lanzar se lo quitaría al primero, el primero vería
+crecer su distancia y a los 45 segundos cortaría con su propia restauración —parando el vuelo del segundo a mitad y
+devolviendo la velocidad de cohete a su valor de reposo—, y el segundo diagnosticaría un atasco que no existe.
+Además cada uno se presta `elytra-fly` y `elytra-replace` por su cuenta, así que el segundo anotaría como «reposo
+del jugador» el estado que dejó el primero. Se usan en el mismo viaje —se vuela hasta la zona con `auto-travel` y se
+barre al llegar—, así que cada uno comprueba al otro y **se niega a lanzar** mientras el otro esté volando: termina
+o corta el primero (`.xploits travel stop` o `.xploits sweep stop`) y entonces lanza el segundo.
+
+**La anchura de pasada de `nether-sweep` se mide andando, no volando.** El módulo la saca del flujo de chunks que
+manda el servidor, y una muestra tomada en movimiento mide lo que te moviste mientras el paquete estaba en cola en
+vez de hasta dónde manda el servidor: volando con elytra, la medida sube justo cuando el alcance real baja. Así que
+las muestras tomadas por encima de una velocidad de paso se descartan, y para medir basta con **dar una vuelta
+andando** con el módulo encendido unos segundos. La medida se tira al lanzar un barrido: para relanzar, otra vuelta.
+
+**`nether-sweep` te dice cuánto ha mirado, no solo que ha terminado.** Mientras vuela cuenta los chunks del
+rectángulo que de verdad van llegando, y al terminar dice cuántos de los N del área están cubiertos. Si se queda por
+debajo de `coverage-floor` el aviso sale **fuerte**, con toast: esa zona NO está peinada entera y hay que relanzar el
+mismo rectángulo, que se replanifica solo sobre los huecos que queden.
 
 **`nether-sweep` vuela; no detecta nada.** El módulo solo consigue que el terreno pase por delante del cliente
 —vuela un rectángulo del Nether con pasadas de cortacésped—, pero quien registra lo que ve son otros tres mods, y
