@@ -91,6 +91,75 @@ class FuelBudgetTest {
     }
 
     // ---------------------------------------------------------------------------------------
+    // El gasto medido caduca si pasa demasiado vuelo sin confirmarlo (reposición frecuente)
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unGastoMedidoSeDaPorCaducadoTrasVolarSinConfirmarloTantoComoLoQueCostoConfirmarlo() {
+        // Se confirma un gasto de 400 bloques / 2 cohetes = 200 bloques/cohete. Luego el jugador
+        // repone a menudo -cada muestra siguiente sube o mantiene los cohetes-, así que ningún
+        // tramo vuelve a confirmar gasto real. Sin caducidad, blocksPerRocket() se quedaría
+        // congelado en 200 para siempre, aunque el consumo real de después fuera distinto.
+        FuelBudget presupuesto = new FuelBudget();
+        presupuesto.sample(0.0, 10);
+        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
+
+        assertEquals(200.0, presupuesto.blocksPerRocket().getAsDouble(), 1e-9,
+            "el gasto tiene que estar disponible justo tras confirmarlo");
+
+        presupuesto.sample(700.0, 9);  // repone: 8 -> 9, ignorado, 300 bloques sin confirmar
+        presupuesto.sample(900.0, 9);  // se mantiene: 9 -> 9, ignorado, 500 bloques sin confirmar
+
+        // 500 bloques sin confirmar superan los 400 que costó confirmar la tasa: caducada.
+        assertTrue(presupuesto.blocksPerRocket().isEmpty(),
+            "un gasto viejo sin confirmar no puede seguir usándose como si fuera actual");
+    }
+
+    @Test
+    void exactamenteElMismoVueloQueCostoConfirmarElGastoTodaviaNoLoCaduca() {
+        // Límite exacto: 400 bloques sin confirmar contra 400 que costó confirmar. Todavía cuenta
+        // como vigente -la caducidad exige superarlo, no solo igualarlo-, y un bloque más lo pasa.
+        FuelBudget presupuesto = new FuelBudget();
+        presupuesto.sample(0.0, 10);
+        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
+        presupuesto.sample(800.0, 8); // se mantiene: 400 bloques sin confirmar, igual a lo confirmado
+
+        assertTrue(presupuesto.blocksPerRocket().isPresent(),
+            "en el límite exacto el dato todavía es de fiar");
+
+        presupuesto.sample(801.0, 8); // un bloque más sin confirmar y ya supera el límite
+
+        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+    }
+
+    @Test
+    void unTramoConGastoRealTrasLaCaducidadRestableceLaConfianzaDeInmediato() {
+        FuelBudget presupuesto = new FuelBudget();
+        presupuesto.sample(0.0, 10);
+        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
+        presupuesto.sample(900.0, 8); // 500 sin confirmar: caducado
+
+        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+
+        presupuesto.sample(1100.0, 7); // gasta 1 cohete en 200 bloques: vuelve a confirmar
+
+        assertTrue(presupuesto.blocksPerRocket().isPresent(),
+            "un tramo con gasto real tiene que restablecer la confianza aunque el dato anterior"
+                + " hubiera caducado");
+    }
+
+    @Test
+    void willRunOutLanzaSiElGastoMedidoHaCaducado() {
+        FuelBudget presupuesto = new FuelBudget();
+        presupuesto.sample(0.0, 10);
+        presupuesto.sample(400.0, 8);
+        presupuesto.sample(900.0, 8); // 500 sin confirmar: caducado
+
+        assertThrows(java.util.NoSuchElementException.class,
+            () -> presupuesto.willRunOut(1000.0, 10, 0.2));
+    }
+
+    // ---------------------------------------------------------------------------------------
     // willRunOut(): corta antes de llegar a cero, respetando la reserva
     // ---------------------------------------------------------------------------------------
 
@@ -126,6 +195,48 @@ class FuelBudgetTest {
 
         assertThrows(java.util.NoSuchElementException.class,
             () -> presupuesto.willRunOut(1000.0, 10, 0.2));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // reserveFraction negativo invertiría la garantía de seguridad: se rechaza
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unaReservaNegativaLanzaEnVezDeDecirQueLlegaConCeroCohetes() {
+        // Caso límite real: tasa 100 bloques/cohete, 5000 bloques por delante -> hacen falta 50
+        // cohetes. Con reserva -1.0 el umbral sale en 50 * (1 + (-1.0)) = 0, así que sin la
+        // validación willRunOut(5000, 0, -1.0) devolvería false -"no hace falta cortar"- con CERO
+        // cohetes en la mano. Tiene que lanzar antes de llegar a ese cálculo.
+        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+
+        assertThrows(IllegalArgumentException.class, () -> presupuesto.willRunOut(5000.0, 0, -1.0));
+    }
+
+    @Test
+    void unaReservaNegativaMasSuaveTambienLanza() {
+        // Con -0.5 el umbral baja a 25 en vez de subir a 50 + reserva: con 30 cohetes -veinte menos
+        // de los que hacen falta a pelo- willRunOut diría "no corta" sin la validación.
+        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+
+        assertThrows(IllegalArgumentException.class, () -> presupuesto.willRunOut(5000.0, 30, -0.5));
+    }
+
+    @Test
+    void unaReservaNaNTambienLanza() {
+        // NaN compara siempre a falso: rocketsLeft < umbral(NaN) también sería falso sin la
+        // validación, colando el mismo fallo por otra puerta.
+        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+
+        assertThrows(IllegalArgumentException.class,
+            () -> presupuesto.willRunOut(5000.0, 0, Double.NaN));
+    }
+
+    @Test
+    void unaReservaCeroSigueSiendoValida() {
+        // Regresión: la validación no puede rechazar el caso normal de "sin margen".
+        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+
+        assertFalse(presupuesto.willRunOut(5000.0, 51, 0.0));
     }
 
     /** Un presupuesto con un único tramo medido: 1000 bloques por 10 cohetes, 100 por cohete. */

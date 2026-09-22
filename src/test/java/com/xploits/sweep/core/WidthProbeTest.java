@@ -98,12 +98,72 @@ class WidthProbeTest {
         assertThrows(IllegalStateException.class, sonda::observedRadiusInChunks);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // laneWidthInChunks(): radio observado -> anchura de pasada segura (spec §5, margen)
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void laAnchuraEsElDobleDelRadioSeguroRedondeadoHaciaAbajo() {
+        // Radio 7, margen 0.1: radio seguro 6.3, anchura 12.6. Tiene que salir 12, no 13 -el
+        // redondeo va siempre hacia la anchura más estrecha, nunca hacia la más ancha.
+        WidthProbe sonda = sondaConRadio(7);
+
+        assertEquals(12, sonda.laneWidthInChunks(0.1));
+    }
+
+    @Test
+    void margenCeroDaElDobleExactoDelRadioObservado() {
+        WidthProbe sonda = sondaConRadio(7);
+
+        assertEquals(14, sonda.laneWidthInChunks(0.0));
+    }
+
+    @Test
+    void unMargenMayorReduceMasLaAnchura() {
+        WidthProbe sonda = sondaConRadio(10);
+
+        int conMargenPequeno = sonda.laneWidthInChunks(0.1);
+        int conMargenGrande = sonda.laneWidthInChunks(0.4);
+
+        assertTrue(conMargenGrande < conMargenPequeno,
+            "un margen mayor tiene que dar una anchura igual o más estrecha, nunca más ancha");
+    }
+
+    @Test
+    void laneWidthInChunksLanzaSiTodaviaNoHayBastantesMuestras() {
+        WidthProbe sonda = new WidthProbe();
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(4, 4));
+
+        assertThrows(IllegalStateException.class, () -> sonda.laneWidthInChunks(0.2));
+    }
+
+    @Test
+    void unMargenNegativoLanza() {
+        WidthProbe sonda = sondaConRadio(7);
+
+        assertThrows(IllegalArgumentException.class, () -> sonda.laneWidthInChunks(-0.1));
+    }
+
+    @Test
+    void unMargenDeUnoOMasLanza() {
+        WidthProbe sonda = sondaConRadio(7);
+
+        assertThrows(IllegalArgumentException.class, () -> sonda.laneWidthInChunks(1.0));
+    }
+
     /** Una sonda con exactamente {@link WidthProbe#MUESTRAS_MINIMAS} muestras de radio 1. */
     private static WidthProbe llenarHastaElMinimo() {
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
             sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0));
         }
+        return sonda;
+    }
+
+    /** Una sonda con bastantes muestras y radio observado exactamente {@code radio}. */
+    private static WidthProbe sondaConRadio(int radio) {
+        WidthProbe sonda = llenarHastaElMinimo();
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(radio, 0));
         return sonda;
     }
 }
