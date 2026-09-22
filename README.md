@@ -1,6 +1,6 @@
 # Xploits
 
-Addon de Meteor Client (MC 1.21.11) para 6b6t con seis módulos independientes.
+Addon de Meteor Client (MC 1.21.11) para 6b6t con siete módulos independientes.
 
 | Módulo | Qué hace |
 |---|---|
@@ -9,7 +9,8 @@ Addon de Meteor Client (MC 1.21.11) para 6b6t con seis módulos independientes.
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
 | `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
 | `auto-pvp` | Dirige los módulos de combate de Meteor por dos ejes a la vez —en qué fase está el enemigo y qué te está apuntando a ti—, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. Nunca elige como objetivo a los tuyos, y mientras está encendido los mete en tu lista de amigos de Meteor para que los cinco módulos que eligen su propio objetivo tampoco les ataquen. |
-| `auto-travel` | Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste (zigzag, quiebro, espiral o señuelo) y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con `.xploits travel go`. **Requiere Baritone**, y es el único módulo del addon que lo usa. |
+| `auto-travel` | Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste (zigzag, quiebro, espiral o señuelo) y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con `.xploits travel go`. **Requiere Baritone**. |
+| `nether-sweep` | Barre un rectángulo del Nether con pasadas de cortacésped, volando con elytra de Baritone solo lo que `NewerNewChunks` todavía no ha registrado. Encenderlo no vuela: el barrido se lanza con `.xploits sweep go`. **Este módulo vuela, no detecta**: ver la nota más abajo. **Requiere Baritone**. |
 
 ## Estructura de paquetes
 
@@ -33,6 +34,9 @@ com/xploits/pvp/core/           Máquina de fases, postura defensiva, catálogo 
                                 de los nuestros y qué se escribe en la lista de amigos de Meteor, de auto-pvp.
 com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
 com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
+com/xploits/sweep/              Módulo nether-sweep (adaptador a Meteor).
+com/xploits/sweep/core/         Geometría del rectángulo, planificador de pasadas, cobertura, presupuesto de
+                                cohetes y sonda de anchura de nether-sweep.
 ```
 
 ## Uso
@@ -41,15 +45,25 @@ com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y co
 2. Copiar `build/libs/xploits-0.1.0.jar` a `mods/`.
 3. Los datos (cola de kits y progreso) se guardan en `<instancia>/meteor-client/xploits/`. El índice de
    stash-keeper, por mundo, en `<instancia>/meteor-client/xploits/stash/<mundo>/index.json`.
-4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash`, `.xploits find <ítem>`, `.xploits pvp` y
-   `.xploits travel` (sin más, el estado del viaje; `go` lo lanza, `stop` lo corta y restaura).
+4. Comandos: `.xploits status`, `.xploits reload`, `.xploits stash`, `.xploits find <ítem>`, `.xploits pvp`,
+   `.xploits travel` (sin más, el estado del viaje; `go` lo lanza, `stop` lo corta y restaura) y `.xploits sweep`
+   (sin más, el estado del barrido; `go` lo lanza, `stop` lo corta y restaura).
 
-**`auto-travel` requiere Baritone** instalado junto a Meteor: es el único módulo del addon que lo usa, y los otros
-cinco funcionan igual sin él. El módulo dirige el vuelo con elytra de Baritone por sus comandos de chat, así que sin
-Baritone cargado se niega a lanzar nada y lo dice. Si has cambiado el prefijo de Baritone, cámbialo también en el
-ajuste `baritone-prefix` del módulo. Ese prefijo **no puede empezar por `/`**: con barra el comando iría por el
-camino de comando del servidor, que Baritone no escucha, y la red de seguridad del módulo se comería de paso todos
-los demás comandos con barra mientras durase el viaje. El módulo lo rechaza al lanzar y explica por qué.
+**`auto-travel` y `nether-sweep` requieren Baritone** instalado junto a Meteor: son los dos únicos módulos del addon
+que lo usan, y los otros cinco funcionan igual sin él. Los dos dirigen el vuelo con elytra de Baritone por sus
+comandos de chat, así que sin Baritone cargado se niegan a lanzar nada y lo dicen. Si has cambiado el prefijo de
+Baritone, cámbialo también en el ajuste `baritone-prefix` de cada módulo por separado —cada uno tiene el suyo—. Ese
+prefijo **no puede empezar por `/`**: con barra el comando iría por el camino de comando del servidor, que Baritone
+no escucha, y la red de seguridad del módulo se comería de paso todos los demás comandos con barra mientras durase
+el viaje o el barrido. Cada módulo lo rechaza al lanzar y explica por qué.
+
+**`nether-sweep` vuela; no detecta nada.** El módulo solo consigue que el terreno pase por delante del cliente
+—vuela un rectángulo del Nether con pasadas de cortacésped—, pero quien registra lo que ve son otros tres mods, y
+tienen que estar **encendidos** para que el barrido sirva de algo: `BaseFinder` (de trouser-streak), `stash-finder`
+(de Meteor) y `NewerNewChunks` (de trouser-streak, y además es de donde `nether-sweep` lee qué chunks ya están
+vistos para no repetirlos). Si alguno está apagado o no está instalado, el barrido lo avisa fuerte justo antes de
+despegar —con toast y en el chat, uno por cada detector que falte— pero **no** se niega a lanzar por eso: si sigues
+adelante, el barrido puede volar una hora entera y no registrar nada.
 
 **Antes de lanzar un viaje** tienes que llevar la elytra puesta y algún fuego artificial: `elytra-replace` cambia la
 elytra que lleves, pero no te pone ninguna, y sin fuegos Baritone no despega. Y si tienes `elytra-fly` encendido con
