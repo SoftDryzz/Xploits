@@ -6,6 +6,7 @@ import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
+import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -61,6 +62,19 @@ public class XploitsCommand extends Command {
                 travel().ifPresent(this::travelStop);
                 return SINGLE_SUCCESS;
             })));
+        builder.then(literal("sweep")
+            .executes(context -> {
+                sweep().ifPresent(module -> info("%s", module.status()));
+                return SINGLE_SUCCESS;
+            })
+            .then(literal("go").executes(context -> {
+                sweep().ifPresent(this::sweepGo);
+                return SINGLE_SUCCESS;
+            }))
+            .then(literal("stop").executes(context -> {
+                sweep().ifPresent(this::sweepStop);
+                return SINGLE_SUCCESS;
+            })));
     }
 
     /**
@@ -88,6 +102,31 @@ public class XploitsCommand extends Command {
         boolean travelling = autoTravel.isTravelling();
         String message = autoTravel.stop();
         if (travelling) info("%s", message);
+        else warning("%s", message);
+    }
+
+    /**
+     * Lanza el barrido y enseña lo que conteste {@link NetherSweep#start()}: el resumen del
+     * lanzamiento, o el motivo entero por el que no se vuela.
+     *
+     * <p>Igual que en {@link #travelGo}, el motivo de un rechazo aquí nombra el ajuste que hay que
+     * tocar y a cuánto ponerlo, y puede llevar un {@code %} -por ejemplo si el rechazo cita
+     * {@code baritone-prefix} tal como lo dejó el jugador-. Por eso va como <b>argumento</b> de un
+     * {@code "%s"}, nunca como cadena de formato: pasarlo directo a {@code info(mensaje)} acabaría en
+     * {@code String.format(mensaje)} y, con un motivo que llevara un porcentaje, en una excepción que
+     * se traga el mensaje justo cuando el jugador más lo necesita.
+     */
+    private void sweepGo(NetherSweep sweep) {
+        String message = sweep.start();
+        if (sweep.isSweeping()) info("%s", message);
+        else warning("%s", message);
+    }
+
+    /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
+    private void sweepStop(NetherSweep sweep) {
+        boolean sweeping = sweep.isSweeping();
+        String message = sweep.stop();
+        if (sweeping) info("%s", message);
         else warning("%s", message);
     }
 
@@ -195,6 +234,16 @@ public class XploitsCommand extends Command {
         AutoTravel module = Modules.get().get(AutoTravel.class);
         if (module == null) {
             warning("El módulo auto-travel no está registrado.");
+            return Optional.empty();
+        }
+        return Optional.of(module);
+    }
+
+    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    private Optional<NetherSweep> sweep() {
+        NetherSweep module = Modules.get().get(NetherSweep.class);
+        if (module == null) {
+            warning("El módulo nether-sweep no está registrado.");
             return Optional.empty();
         }
         return Optional.of(module);

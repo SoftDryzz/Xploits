@@ -2,6 +2,7 @@ package com.xploits.travel;
 
 import com.xploits.XploitsAddon;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.core.Axis;
 import com.xploits.travel.core.BaritoneScript;
 import com.xploits.travel.core.BorrowedModule;
@@ -689,6 +690,8 @@ public class AutoTravel extends Module {
     public String start() {
         if (!isActive()) return "auto-travel está apagado: enciéndelo antes de lanzar un viaje.";
         if (travelling) return "Ya hay un viaje en marcha: córtalo antes de lanzar otro.";
+        String barridoEnMarcha = rechazoPorNetherSweep();
+        if (barridoEnMarcha != null) return barridoEnMarcha;
         if (mc.player == null || mc.world == null) return "No hay mundo cargado: no se lanza nada.";
         if (!mc.player.isAlive()) {
             // Sin esto, desde la pantalla de muerte pasan todas las demás guardas: se arma la red, se
@@ -756,6 +759,37 @@ public class AutoTravel extends Module {
         return String.format("Viaje lanzado con patrón %s: %d waypoints hasta %d, %d, a %d bloques en línea recta.",
             pattern.get(), waypoints.size(), Math.round(target.x()), Math.round(target.z()),
             Math.round(origin.distanceTo(target)));
+    }
+
+    /**
+     * El motivo por el que no se puede volar con {@code nether-sweep} barriendo, o {@code null} si no
+     * lo está.
+     *
+     * <p><b>Los dos módulos dirigen al mismo Baritone por los mismos comandos</b>, y ninguno
+     * preguntaba por el otro pese a que se usan en el mismo viaje -se vuela hasta la zona con esto y
+     * se barre al llegar-. Lo que pasa si se solapan, en orden: {@code #goal} solo admite un
+     * objetivo, así que el segundo en lanzar se queda con Baritone; el primero ve crecer su distancia
+     * al suyo, a los 45 s salta su vigilancia de atasco y emite su {@code #cancel} y su restauración
+     * entera, que <b>para el vuelo del segundo a mitad</b> y además le devuelve
+     * {@code elytraFireworkSpeed} a un valor de reposo distinto del que él cree estar usando; el
+     * segundo no se entera de nada y 45 s después diagnostica un atasco que no existe. Y como cada
+     * uno se presta {@code elytra-fly} y {@code elytra-replace} con su propio {@link BorrowedModule},
+     * el segundo anota como «reposo del jugador» el estado que dejó el primero, y al terminar lo deja
+     * ahí.
+     *
+     * <p>Es simétrico: la misma guarda está en {@code NetherSweep.start()} mirando hacia aquí.
+     */
+    private String rechazoPorNetherSweep() {
+        NetherSweep barrido = Modules.get().get(NetherSweep.class);
+        if (barrido == null || !barrido.isSweeping()) return null;
+
+        return "nether-sweep tiene un barrido en marcha, y los dos dirigen al mismo Baritone: el objetivo de "
+            + "#elytra es uno solo, así que este viaje se lo quitaría, el barrido vería crecer su distancia y a "
+            + "los 45 s cortaría con su propia restauración -parando este viaje a mitad y devolviendo la "
+            + "velocidad de cohete a su valor de reposo-, y este viaje diagnosticaría un atasco que no existe. "
+            + "Además los dos se prestan elytra-fly y elytra-replace por su cuenta, así que el segundo anotaría "
+            + "como reposo tuyo lo que dejó el primero. Termina el barrido o córtalo con .xploits sweep stop, y "
+            + "entonces lanza el viaje.";
     }
 
     /** Si la pechera lleva una elytra puesta, que es lo único con lo que Baritone puede volar. */
