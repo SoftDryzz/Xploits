@@ -3,6 +3,7 @@ package com.xploits.pvp;
 import com.xploits.XploitsAddon;
 import com.xploits.autotpy.AutoTpy;
 import com.xploits.kitrequester.KitRequester;
+import com.xploits.pvp.core.ActionWatch;
 import com.xploits.pvp.core.AllyPolicy;
 import com.xploits.pvp.core.CombatDirector;
 import com.xploits.pvp.core.CombatPosture;
@@ -68,6 +69,8 @@ import java.util.stream.Collectors;
  */
 public class AutoPvp extends Module {
     private static final int FIRST_SLOT = 0;
+    /** Ticks por segundo del juego: la única conversión que hace falta para informar de tiempos. */
+    private static final int TICKS_PER_SECOND = 20;
     /**
      * Último slot de la hotbar (spec §6): lo que ven {@code InvUtils.findInHotbar}/{@code
      * testInHotbar}, y también el único rango que cuenta para {@code PICKAXE} — {@code AutoCity}
@@ -164,8 +167,9 @@ public class AutoPvp extends Module {
         .name("notify")
         .description("Aviso local al cambiar de fase ofensiva o de postura defensiva, al no encender algo que "
             + "la situación pedía, al no atacar a uno de los nuestros y al tocar tu lista de amigos de Meteor. "
-            + "Cada aviso se dice una vez, cuando aparece, no en cada tick. SIN_RECURSOS avisa siempre, lo "
-            + "apagues o no.")
+            + "Cada aviso se dice una vez, cuando aparece, no en cada tick. Los dos avisos de fallo silencioso "
+            + "-SIN_RECURSOS y 'lleva rato encendido sin gastar nada'- se dicen siempre, lo apagues o no: son "
+            + "justo los que no se pueden ver de ninguna otra manera.")
         .defaultValue(true)
         .build()
     );
@@ -179,6 +183,14 @@ public class AutoPvp extends Module {
 
     private final CombatDirector director = new CombatDirector();
     private final ModuleLedger ledger = new ModuleLedger();
+
+    /**
+     * El vigilante de "lo tengo encendido y no hace nada" ({@link ActionWatch}). Vive aquí y no en
+     * el director porque necesita un dato que el director no ve: qué módulos están encendidos <b>de
+     * verdad</b> ahora mismo. El adaptador mide -lo que pide el plan, lo que está encendido y lo
+     * que queda en la hotbar- y el núcleo decide cuándo eso ha dejado de ser un hueco de combate.
+     */
+    private final ActionWatch actionWatch = new ActionWatch();
     private final FriendLedger friendLedger = new FriendLedger();
 
     /**
@@ -223,6 +235,7 @@ public class AutoPvp extends Module {
     public void onActivate() {
         director.reset();
         ledger.reset();
+        actionWatch.reset();
         lastPlan = null;
         lastSnapshot = null;
         lastTargetName = null;
@@ -714,6 +727,12 @@ public class AutoPvp extends Module {
             if (m != null && m.isActive()) active.add(module.name());
         }
 
+        // El vigilante mide ANTES de ejecutar nada: `active` es lo que está encendido de verdad al
+        // principio de este tick, que es lo que hay que cruzar con lo que el plan quiere. Un módulo
+        // recién encendido no cuenta hasta el tick siguiente, y eso es lo correcto: todavía no ha
+        // tenido ocasión de gastar.
+        reportIdle(actionWatch.update(lastSnapshot, wanted, active));
+
         ModuleLedger.Result result = ledger.apply(director.state(), plan.posture(), wanted, active);
 
         for (String name : result.toDisable()) {
@@ -729,6 +748,22 @@ public class AutoPvp extends Module {
                 info("%s ya no es mío: lo apagaste tú y no lo vuelvo a tomar en esta fase.", name);
             }
         }
+    }
+
+    /**
+     * Dice lo que el vigilante acaba de concluir ({@link ActionWatch}). <b>Se dice aunque
+     * {@code notify} esté apagado</b>, por la misma razón que {@code SIN_RECURSOS}: los dos son
+     * fallos que no se pueden ver de ninguna otra manera -el módulo anuncia la fase, enciende el
+     * aura y no pasa nada-, y callarlos es exactamente lo que el principio del módulo prohíbe. Los
+     * avisos normales -cambios de fase, de postura, omisiones- sí respetan el ajuste: esos se ven
+     * de sobra por sus efectos.
+     *
+     * <p>No apaga nada. El aviso es el final del camino: quien decide si {@code min-damage} está
+     * mal puesto es el jugador, y mientras tanto el módulo sigue listo para el tick en el que sí
+     * haya posición válida.
+     */
+    private void reportIdle(List<ManagedModule> newlyIdle) {
+        for (ManagedModule module : newlyIdle) warning("%s", ActionWatch.reason(module));
     }
 
     /** I1: si algo que dirige ya estaba encendido al activar auto-pvp, es del jugador y hay que decirlo. */
@@ -752,6 +787,7 @@ public class AutoPvp extends Module {
         }
         ledger.reset();
         director.reset();
+        actionWatch.reset();
         lastPlan = null;
         lastSnapshot = null;
         lastReported = CombatState.SIN_COMBATE;
@@ -798,7 +834,7 @@ public class AutoPvp extends Module {
         // enemigo y la postura eres tú, y las dos son verdad a la vez. Debajo, el detalle de cada
         // una, para que se vea de un vistazo por qué está encendido lo que está encendido.
         StringBuilder sb = new StringBuilder();
-        sb.append(lastPlan.state()).append(" desde hace ").append(director.ticksInState() / 20L).append(" s");
+        sb.append(lastPlan.state()).append(" desde hace ").append(director.ticksInState() / TICKS_PER_SECOND).append(" s");
         sb.append(" · ").append(lastPlan.posture());
         if (lastTargetName != null) {
             sb.append(" · objetivo ").append(lastTargetName);
@@ -828,6 +864,7 @@ public class AutoPvp extends Module {
         }
         sb.append("\n  en amigos:    ").append(syncedFriendsLine());
         sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
+        sb.append("\n  sin gastar:   ").append(idleLine());
         for (Skipped skipped : lastPlan.skipped()) {
             sb.append("\n  no encendido: ").append(skipped.module().name()).append(" — ").append(skipped.reason());
         }
@@ -837,6 +874,25 @@ public class AutoPvp extends Module {
         List<String> yours = yourActiveModules(owned);
         sb.append("\n  tuyos:        ").append(yours.isEmpty() ? "ninguno" : String.join(", ", yours)).append(" (no los toco)");
         return sb.toString();
+    }
+
+    /**
+     * Qué módulos llevan rato encendidos sin gastar nada ({@link ActionWatch}), y cuánto rato. Es la
+     * otra mitad del aviso: el aviso se dice una vez, pero la situación dura -un {@code min-damage}
+     * mal puesto no se cura solo- y tiene que poder consultarse mientras dura.
+     *
+     * <p>La línea sale siempre, aunque no haya ninguno, porque decir "ninguno" también es
+     * información: significa que lo que está encendido está gastando.
+     */
+    private String idleLine() {
+        List<ManagedModule> idle = actionWatch.idle();
+        if (idle.isEmpty()) return "ninguno (lo que está encendido está gastando)";
+
+        List<String> parts = new ArrayList<>();
+        for (ManagedModule module : idle) {
+            parts.add(module.name() + " (" + actionWatch.idleTicksOf(module) / TICKS_PER_SECOND + " s)");
+        }
+        return String.join(", ", parts) + " — encendidos, con enemigo delante y material de sobra";
     }
 
     /**
