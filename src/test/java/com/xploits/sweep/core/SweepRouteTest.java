@@ -1,5 +1,6 @@
 package com.xploits.sweep.core;
 
+import com.xploits.travel.core.RoutePlanner;
 import com.xploits.travel.core.Waypoint;
 import org.junit.jupiter.api.Test;
 
@@ -192,5 +193,89 @@ class SweepRouteTest {
     void sinSaberDeDondeSeDespegaNoHayViajeQuePresupuestar() {
         assertThrows(NullPointerException.class, () -> SweepRoute.of(dosPasadas(), null, true));
         assertThrows(NullPointerException.class, () -> SweepRoute.of(null, new Waypoint(0, 0), true));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // minimumGap(): la regla de separacion del barrido, que no es la de las rutas de evasion
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void laSeparacionMinimaDeUnBarridoEsElMargenYNoElDoble() {
+        // En un barrido los vertices forman angulo recto: al que remata una pasada se llega a lo
+        // largo de ella y el siguiente esta perpendicular, asi que la distancia al segundo es la
+        // hipotenusa y nunca baja del hueco. El doble del margen protege de dos vertices alineados,
+        // que es la geometria de las rutas de evasion, no la de un cortacesped.
+        assertEquals(150, SweepRoute.minimumGap(150), EPSILON);
+        assertEquals(100, SweepRoute.minimumGap(100), EPSILON);
+    }
+
+    @Test
+    void laPasadaMasCortaYElEnlaceMasCortoSonHuecosDistintos() {
+        // Los vertices salen en parejas: el hueco 0->1 es una pasada, el 1->2 el enlace a la
+        // siguiente. Con dosPasadas() las pasadas miden 100 y el enlace 50.
+        SweepRoute ruta = SweepRoute.of(dosPasadas(), new Waypoint(0, -30), true);
+
+        assertEquals(100, ruta.shortestLane(), EPSILON);
+        assertEquals(50, ruta.shortestLink(), EPSILON);
+        assertEquals(50, ruta.tightestGap(), EPSILON);
+    }
+
+    @Test
+    void unaRutaDeUnaSolaPasadaNoTieneNingunEnlace() {
+        // Y entonces el enlace mas corto no es cero -que pareceria un enlace imposible- sino que no
+        // hay ninguno: quien avise sobre enlaces cortos no tiene nada de que avisar.
+        SweepRoute ruta = SweepRoute.of(List.of(new Lane(0, 0, 400, 0)), new Waypoint(0, 0), false);
+
+        assertEquals(400, ruta.shortestLane(), EPSILON);
+        assertEquals(Double.MAX_VALUE, ruta.shortestLink(), EPSILON);
+    }
+
+    @Test
+    void unServidorQueEntregaOchoChunksSePuedeBarrerConLosValoresDeFabrica() {
+        // El fallo entero, con numeros: radio observado 8 -normal en un anarchy cargado- y el margen
+        // de anchura de fabrica dan una anchura de 12 chunks, o sea enlaces entre pasadas de menos
+        // de 300 bloques. Contra el suelo de las rutas de evasion ESE barrido se rechazaba siempre,
+        // para cualquier rectangulo, y ninguna de las salidas que el rechazo ofrecia funcionaba.
+        WidthProbe sonda = new WidthProbe();
+        for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 16, 0);
+        }
+        int anchura = sonda.laneWidthInChunks(0.2);
+        assertEquals(12, anchura);
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(new SweepArea(0, 0, 199, 199),
+            Coverage.empty(), anchura);
+        SweepRoute ruta = SweepRoute.of(plan.lanes(), new Waypoint(0, 0), true);
+
+        assertTrue(ruta.shortestLane() > SweepRoute.minimumGap(RoutePlanner.DEFAULT_WAYPOINT_MARGIN),
+            "ninguna pasada se pierde, que es lo unico que no se puede permitir");
+        assertTrue(ruta.tightestGap() < RoutePlanner.minimumSpacing(RoutePlanner.DEFAULT_WAYPOINT_MARGIN),
+            "y el hueco mas corto sigue por debajo del suelo de las rutas de evasion: ese es el caso"
+                + " que se rechazaba siempre");
+    }
+
+    @Test
+    void laUltimaBandaEstrechaJuntaSuPasadaALaAnteriorSinPerderNinguna() {
+        // Un area que no es multiplo de la anchura deja una ultima banda mas estrecha, su pasada se
+        // centra mas cerca de la anterior y el enlace se queda en poco mas de media anchura. Eso es
+        // un enlace corto -esquina perdida, aviso-, nunca una pasada perdida.
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(new SweepArea(0, 0, 199, 192),
+            Coverage.empty(), 12);
+        SweepRoute ruta = SweepRoute.of(plan.lanes(), new Waypoint(0, 0), false);
+
+        assertEquals(104, ruta.shortestLink(), EPSILON);
+        assertTrue(ruta.shortestLane() > SweepRoute.minimumGap(RoutePlanner.DEFAULT_WAYPOINT_MARGIN));
+    }
+
+    @Test
+    void unAreaDiminutaPorSuLadoLargoSiSeQuedaSinPasadaVolable() {
+        // Esto es lo que si hay que rechazar: un area de 8 chunks de lado largo da pasadas de 112
+        // bloques, que caben dentro del margen de fabrica. Esa pasada se consumiria sin volarla y el
+        // barrido la daria por peinada igual, que es la mentira de spec 9.
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(new SweepArea(0, 0, 7, 7), Coverage.empty(), 12);
+        SweepRoute ruta = SweepRoute.of(plan.lanes(), new Waypoint(0, 0), false);
+
+        assertEquals(112, ruta.shortestLane(), EPSILON);
+        assertTrue(ruta.shortestLane() <= SweepRoute.minimumGap(RoutePlanner.DEFAULT_WAYPOINT_MARGIN));
     }
 }

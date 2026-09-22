@@ -91,6 +91,16 @@ class SweepAreaTest {
     }
 
     @Test
+    void theCanonicalConstructorRejectsWhenOnlyTheZAxisIsInverted() {
+        // El simétrico del anterior, y hacía falta: con solo el caso del eje X cubierto, borrar
+        // entera la comprobación de Z no rompía ningún test. Un área con Z invertido da
+        // heightInChunks() negativo, y de ahí salen un chunkCount() negativo y un recorrido del
+        // rectángulo que no visita ni un chunk: el barrido diría "no hay nada que barrer" sobre un
+        // área que nadie ha mirado, que es la mentira de spec §9 entrando por la puerta del tecleo.
+        assertThrows(IllegalArgumentException.class, () -> new SweepArea(0, 5, 3, -1));
+    }
+
+    @Test
     void laneLengthIsTheEuclideanDistanceBetweenItsEnds() {
         // 300-400-500: la terna pitagórica de toda la vida, fácil de verificar a ojo.
         Lane lane = new Lane(0, 0, 300, 400);

@@ -2,6 +2,7 @@ package com.xploits.sweep.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -210,5 +211,53 @@ class CoverageTest {
     @Test
     void seenInNecesitaUnArea() {
         assertThrows(NullPointerException.class, () -> Coverage.empty().seenIn(null));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // La promesa de saltarse "cualquier otra cosa" se cumple entera, nulos incluidos
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unaLineaNulaSeSaltaComoCualquierOtraLineaMala() {
+        // El javadoc promete saltarse "cualquier otra cosa" y seguir con las siguientes. Un nulo
+        // rompia esa promesa desde dentro del camino cuyo proposito declarado es no abortar nunca
+        // la lectura por una linea mala.
+        List<String> lineas = new ArrayList<>();
+        lineas.add("1,1");
+        lineas.add(null);
+        lineas.add("2,2");
+
+        Coverage coverage = Coverage.ofLines(lineas);
+
+        assertEquals(2, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(1, 1)));
+        assertTrue(coverage.seen(new ChunkPos(2, 2)));
+    }
+
+    @Test
+    void ofLinesSinLineasQueLeerSeQuejaEnVezDeFingirUnFicheroVacio() {
+        assertThrows(NullPointerException.class, () -> Coverage.ofLines(null));
+    }
+
+    @Test
+    void unaLecturaNulaNoSeLlevaPorDelanteLasDemas() {
+        // Son cinco ficheros y la union es la respuesta a "se ha visto ya este chunk?": que de uno
+        // no haya salido nada no puede tirar lo que si salio de los otros, porque una cobertura
+        // leida vacia significa replanificar horas de terreno ya visto.
+        List<Coverage> partes = new ArrayList<>();
+        partes.add(Coverage.ofLines(List.of("1,1")));
+        partes.add(null);
+        partes.add(Coverage.ofLines(List.of("2,2")));
+
+        Coverage union = Coverage.merge(partes);
+
+        assertEquals(2, union.size());
+        assertTrue(union.seen(new ChunkPos(1, 1)));
+        assertTrue(union.seen(new ChunkPos(2, 2)));
+    }
+
+    @Test
+    void mergeSinNadaQueUnirSeQuejaEnVezDeFingirQueNoHabiaFicheros() {
+        assertThrows(NullPointerException.class, () -> Coverage.merge(null));
     }
 }

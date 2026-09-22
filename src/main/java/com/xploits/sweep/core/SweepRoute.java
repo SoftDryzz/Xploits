@@ -42,13 +42,17 @@ public final class SweepRoute {
 
     private final double aproximacion;
     private final double regreso;
+    private final double pasadaMasCorta;
+    private final double enlaceMasCorto;
 
     private SweepRoute(List<Waypoint> waypoints, double[] restanteDesde, double aproximacion,
-                       double regreso) {
+                       double regreso, double pasadaMasCorta, double enlaceMasCorto) {
         this.waypoints = waypoints;
         this.restanteDesde = restanteDesde;
         this.aproximacion = aproximacion;
         this.regreso = regreso;
+        this.pasadaMasCorta = pasadaMasCorta;
+        this.enlaceMasCorto = enlaceMasCorto;
     }
 
     /**
@@ -91,8 +95,20 @@ public final class SweepRoute {
             restante[i] = vertices.get(i).distanceTo(vertices.get(i + 1)) + restante[i + 1];
         }
 
+        // Los vértices salen en parejas -principio y final de cada pasada-, así que el hueco entre
+        // el 2i y el 2i+1 es una pasada y el del 2i+1 al 2i+2 es el enlace hasta la siguiente. Los
+        // dos mínimos se separan porque significan cosas distintas: ver sus métodos.
+        double pasadaMasCorta = Double.MAX_VALUE;
+        double enlaceMasCorto = Double.MAX_VALUE;
+        for (int i = 0; i + 1 < vertices.size(); i++) {
+            double hueco = vertices.get(i).distanceTo(vertices.get(i + 1));
+            if (i % 2 == 0) pasadaMasCorta = Math.min(pasadaMasCorta, hueco);
+            else enlaceMasCorto = Math.min(enlaceMasCorto, hueco);
+        }
+
         double aproximacion = origin.distanceTo(vertices.get(0));
-        return new SweepRoute(List.copyOf(vertices), restante, aproximacion, regreso);
+        return new SweepRoute(List.copyOf(vertices), restante, aproximacion, regreso, pasadaMasCorta,
+            enlaceMasCorto);
     }
 
     /** Los vértices en el orden en que se vuelan: principio y final de cada pasada. */
@@ -172,13 +188,100 @@ public final class SweepRoute {
     }
 
     /**
-     * La separación más corta entre dos vértices consecutivos de la ruta.
+     * La separación mínima que se le puede exigir a dos vértices seguidos de un <b>barrido</b> con
+     * el margen de waypoint configurado: el margen a secas.
      *
-     * <p>Quien vuele esto tiene que compararla con la separación mínima que admite su margen de
-     * waypoint: dos vértices más juntos que eso se consumen en el mismo tick —cuando se suelta el
-     * primero ya se está a un margen de él, y el segundo cae dentro del otro margen—, y aquí lo que
-     * se consume sin volar <b>son pasadas enteras</b>, que el barrido daría por peinadas igual. Es el
-     * peor fallo que este módulo puede cometer (spec §9).
+     * <p><b>No es {@code RoutePlanner.minimumSpacing}, y esa diferencia es el arreglo.</b> Aquel
+     * número es el doble del margen y además nunca baja de 300 bloques, y los dos sumandos vienen de
+     * un problema que aquí no se da:
+     *
+     * <ul>
+     *   <li><b>El doble del margen sale de dos vértices alineados.</b> En una ruta de evasión el
+     *       waypoint siguiente puede estar justo detrás del actual y en la misma dirección: al
+     *       soltar el primero ya se está a un margen de él, y el segundo cae dentro del otro margen.
+     *       En un barrido no puede pasar, porque <b>los vértices forman ángulo recto</b>: al que
+     *       remata una pasada se llega <i>a lo largo</i> de la pasada, y el que arranca la siguiente
+     *       está <i>perpendicular</i>, a una banda de distancia. Si el primero se suelta estando a
+     *       {@code d ≤ margen} de él, la distancia al segundo es {@code hipotenusa(d, hueco)}, que
+     *       nunca baja del hueco. Basta, pues, con que el hueco pase del margen.</li>
+     *   <li><b>Los 300 bloques salen de la física de la elytra</b>: por debajo de unos cuantos
+     *       radios de giro, Baritone se pasa de largo y vuelve a por el vértice. Eso hace el vuelo
+     *       más feo, pero <b>no pierde ninguna pasada</b> —el vértice sigue siendo el objetivo y se
+     *       acaba alcanzando—, mientras que la mentira de spec §9 solo la produce un vértice
+     *       consumido sin haberlo volado. Un suelo que no protege de eso no puede ser el que decide
+     *       si el barrido se rechaza; quien lo quiera decir, que lo avise.</li>
+     * </ul>
+     *
+     * <p><b>Lo que costaba importarlo:</b> el hueco más corto de un barrido es el enlace entre
+     * pasadas, {@code anchura × 16} bloques. Con el margen de fábrica, un suelo de 300 exigía
+     * anchura ≥ 19 chunks, o sea un radio observado ≥ 12; un servidor que declarase 8, 10 u 11
+     * —normal en anarchy— veía <b>rechazado todo barrido medido, siempre, para cualquier
+     * rectángulo</b>, y ninguna de las salidas que el rechazo ofrecía servía ahí: por debajo de 150
+     * el margen no movía el suelo, agrandar el área no separa las bandas y subir la anchura a mano
+     * no aplica a quien la tiene medida. Con esta regla, ese mismo radio de 8 da anchura 12 y hueco
+     * 192, que pasa de sobra, y el margen vuelve a ser una salida de verdad: en su mínimo admite
+     * hasta un radio observado de 5.
+     *
+     * @param waypointMargin cuántos bloques antes de cada vértice intermedio se le cambia el
+     *                       objetivo a Baritone
+     */
+    public static double minimumGap(double waypointMargin) {
+        return waypointMargin;
+    }
+
+    /**
+     * La pasada más corta del plan, en bloques: el hueco entre el vértice que la arranca y el que la
+     * remata.
+     *
+     * <p><b>Este es el número que decide si un barrido se puede volar</b>, porque es el único hueco
+     * cuya pérdida es la mentira de spec §9. Si una pasada cabe dentro del margen de waypoint, sus
+     * dos vértices se consumen casi seguidos y <b>la pasada no se vuela nunca</b>: el adaptador pasa
+     * de aimarla a darla por hecha, el barrido la cuenta como suya y esa franja del rectángulo queda
+     * marcada como peinada sin que nadie la haya mirado.
+     *
+     * <p>Compárese con {@link #minimumGap(double)}. Solo puede quedarse corta en un área diminuta por
+     * su eje largo: las pasadas van de punta a punta, así que la más corta mide el lado largo del
+     * rectángulo entero.
+     */
+    public double shortestLane() {
+        return pasadaMasCorta;
+    }
+
+    /**
+     * El enlace más corto entre dos pasadas seguidas, en bloques: el salto perpendicular de una banda
+     * a la siguiente.
+     *
+     * <p><b>Que este se quede corto no pierde ninguna pasada</b>, y por eso no es motivo de rechazo
+     * sino de aviso. Si el enlace cabe dentro del margen, el adaptador suelta el vértice que remata
+     * una pasada y en el tick siguiente suelta también el que arranca la otra, así que Baritone nunca
+     * recibe la esquina: su objetivo pasa a ser <b>el final de la pasada siguiente</b>, y vuela hasta
+     * él en diagonal. Esa diagonal recorre el eje largo entero derivando una banda a lo ancho, o sea
+     * que cruza la banda de la pasada perdida igual —lo que se pierde es la esquina limpia, no el
+     * terreno—. Lo que el barrido nunca puede hacer es saltarse una pasada entera, y eso lo vigila
+     * {@link #shortestLane()}.
+     *
+     * <p>Y no se puede encadenar: consumido el enlace, el vértice siguiente es el final de la pasada,
+     * que está a una pasada entera de distancia. Como mucho se pierde una esquina por curva.
+     *
+     * <p>Suele ser el hueco más corto de la ruta, y suele medir la anchura de pasada por 16. El
+     * mínimo aparece en la última banda cuando el área no es múltiplo exacto de la anchura: esa banda
+     * sale más estrecha, su pasada se centra más cerca de la anterior, y el enlace llega a valer
+     * poco más de media anchura.
+     */
+    public double shortestLink() {
+        return enlaceMasCorto;
+    }
+
+    /**
+     * La separación más corta entre dos vértices consecutivos de la ruta, sean del tipo que sean.
+     *
+     * <p><b>No es el número con el que se decide si un barrido se vuela</b>, y confundirlo con eso
+     * costó una ronda entera: los dos tipos de hueco pesan cosas distintas. Si el que se queda corto
+     * es una pasada, esa pasada no se vuela y el barrido la da por peinada igual —la mentira de spec
+     * §9, y eso se rechaza—; si es un enlace entre pasadas, lo que se pierde es la esquina y no el
+     * terreno, y eso se avisa. Para decidir, {@link #shortestLane()} y {@link #shortestLink()}; esto
+     * es la consulta general, útil para describir la ruta o para compararla con el suelo físico de la
+     * elytra.
      *
      * <p>Una ruta de una sola pasada tiene un único hueco, el de la propia pasada.
      */

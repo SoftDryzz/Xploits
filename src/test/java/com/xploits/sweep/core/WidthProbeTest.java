@@ -21,6 +21,19 @@ class WidthProbeTest {
      */
     private static final int TECHO = 32;
 
+    /**
+     * El jugador parado, que es la única situación en la que una muestra mide el alcance del
+     * servidor y no la deriva de la cola. Lo usan los tests que comprueban otra cosa, para no
+     * arrastrar el descarte por movimiento; los del descarte traen su propia velocidad.
+     */
+    private static final double QUIETO = 0;
+
+    /**
+     * Una elytra empujada por cohetes: unos 33 bloques por segundo, 1,65 por tick. Es la velocidad a
+     * la que se vuela un barrido entero y a la que toda muestra viene inflada por la deriva.
+     */
+    private static final double VOLANDO = 1.65;
+
     @Test
     void laDistanciaEsDeChebyshevNoEuclidea() {
         // Un chunk en diagonal a (3,3) del jugador mide radio 3 -el lado del cuadrado-, no
@@ -28,7 +41,7 @@ class WidthProbeTest {
         // diagonales y abriría huecos justo entre pasadas, que es el fallo que este test protege.
         WidthProbe sonda = llenarHastaElMinimo();
 
-        sonda.sample(new ChunkPos(100, 200), new ChunkPos(103, 203), TECHO);
+        sonda.sample(new ChunkPos(100, 200), new ChunkPos(103, 203), TECHO, QUIETO);
 
         assertEquals(3, sonda.observedRadiusInChunks());
     }
@@ -38,7 +51,7 @@ class WidthProbeTest {
         // dx=2, dz=6: Chebyshev da 6, no la media ni la euclídea (6,32).
         WidthProbe sonda = llenarHastaElMinimo();
 
-        sonda.sample(new ChunkPos(-10, -10), new ChunkPos(-8, -16), TECHO);
+        sonda.sample(new ChunkPos(-10, -10), new ChunkPos(-8, -16), TECHO, QUIETO);
 
         assertEquals(6, sonda.observedRadiusInChunks());
     }
@@ -49,10 +62,10 @@ class WidthProbeTest {
         // anchura ya vista. El resultado tiene que ser 8, no la media (13/3).
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(2, 0), TECHO);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(2, 0), TECHO, QUIETO);
         }
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), TECHO);
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(3, 0), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), TECHO, QUIETO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(3, 0), TECHO, QUIETO);
 
         assertEquals(8, sonda.observedRadiusInChunks());
     }
@@ -60,10 +73,10 @@ class WidthProbeTest {
     @Test
     void unaMuestraPosteriorMasPequenaNoBajaElMaximo() {
         WidthProbe sonda = llenarHastaElMinimo();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(20, 0), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(20, 0), TECHO, QUIETO);
         int maximoTrasLaGrande = sonda.observedRadiusInChunks();
 
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), TECHO, QUIETO);
 
         assertEquals(maximoTrasLaGrande, sonda.observedRadiusInChunks());
     }
@@ -83,7 +96,7 @@ class WidthProbeTest {
     void conPocasMuestrasNoHayBastantes() {
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS - 1; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(5, 5), TECHO);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(5, 5), TECHO, QUIETO);
         }
 
         assertFalse(sonda.hasEnoughSamples());
@@ -99,7 +112,7 @@ class WidthProbeTest {
     @Test
     void observedRadiusInChunksLanzaSiTodaviaNoHayBastantesMuestras() {
         WidthProbe sonda = new WidthProbe();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(4, 4), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(4, 4), TECHO, QUIETO);
 
         assertThrows(IllegalStateException.class, sonda::observedRadiusInChunks);
     }
@@ -138,7 +151,7 @@ class WidthProbeTest {
     @Test
     void laneWidthInChunksLanzaSiTodaviaNoHayBastantesMuestras() {
         WidthProbe sonda = new WidthProbe();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(4, 4), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(4, 4), TECHO, QUIETO);
 
         assertThrows(IllegalStateException.class, () -> sonda.laneWidthInChunks(0.2));
     }
@@ -161,7 +174,7 @@ class WidthProbeTest {
     private static WidthProbe llenarHastaElMinimo() {
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), TECHO);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), TECHO, QUIETO);
         }
         return sonda;
     }
@@ -169,7 +182,7 @@ class WidthProbeTest {
     /** Una sonda con bastantes muestras y radio observado exactamente {@code radio}. */
     private static WidthProbe sondaConRadio(int radio) {
         WidthProbe sonda = llenarHastaElMinimo();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(radio, 0), TECHO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(radio, 0), TECHO, QUIETO);
         return sonda;
     }
 
@@ -184,10 +197,10 @@ class WidthProbeTest {
         // puede venir del servidor, asi que no es una medida de nada.
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 8);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 8, QUIETO);
         }
 
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(18, 0), 8);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(18, 0), 8, QUIETO);
 
         assertEquals(8, sonda.observedRadiusInChunks());
         assertEquals(WidthProbe.MUESTRAS_MINIMAS, sonda.sampleCount());
@@ -200,9 +213,9 @@ class WidthProbeTest {
         // el artefacto dentro, laneWidthInChunks daria 27 sobre un servidor que cubre 16.
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 8);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 8, QUIETO);
         }
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(18, 0), 8);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(18, 0), 8, QUIETO);
 
         assertEquals(12, sonda.laneWidthInChunks(0.25));
     }
@@ -213,7 +226,7 @@ class WidthProbeTest {
         // legitimo, no un artefacto. Descartarlo estrecharia la pasada sin motivo.
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(16, 0), 16);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(16, 0), 16, QUIETO);
         }
 
         assertEquals(16, sonda.observedRadiusInChunks());
@@ -225,7 +238,7 @@ class WidthProbeTest {
         // La distancia es de Chebyshev, asi que un chunk a (9,9) con techo 8 se pasa por los dos
         // ejes a la vez y se descarta igual.
         WidthProbe sonda = new WidthProbe();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(9, 9), 8);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(9, 9), 8, QUIETO);
 
         assertEquals(0, sonda.sampleCount());
         assertEquals(1, sonda.discardedSamples());
@@ -238,7 +251,7 @@ class WidthProbeTest {
         // quedarse con un radio 0 con pinta de medida.
         WidthProbe sonda = new WidthProbe();
         for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS * 2; i++) {
-            sonda.sample(new ChunkPos(0, 0), new ChunkPos(30, 0), 8);
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(30, 0), 8, QUIETO);
         }
 
         assertFalse(sonda.hasEnoughSamples());
@@ -250,9 +263,84 @@ class WidthProbeTest {
         WidthProbe sonda = new WidthProbe();
 
         assertThrows(IllegalArgumentException.class,
-            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), 0));
+            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), 0, QUIETO));
         assertThrows(IllegalArgumentException.class,
-            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), -4));
+            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), -4, QUIETO));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // El movimiento: una muestra tomada volando mide la cola del servidor, no su alcance
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unaMuestraTomadaEnMovimientoNiFijaElMaximoNiCuentaComoMuestra() {
+        WidthProbe sonda = new WidthProbe();
+
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(14, 0), 16, VOLANDO);
+
+        assertEquals(0, sonda.sampleCount());
+        assertEquals(1, sonda.movingSamples());
+        assertEquals(0, sonda.discardedSamples(), "el descarte por movimiento no es el del techo");
+        assertFalse(sonda.hasEnoughSamples());
+    }
+
+    @Test
+    void laMedidaNoSubeCuandoElServidorCubreMenos() {
+        // El fallo entero, con los números del javadoc de la clase: techo 16, un servidor que de
+        // verdad entrega 8, y el jugador volando con elytra. Cada muestra llega inflada por la
+        // deriva de la cola -14, 15, 16 chunks- y ninguna se pasa del techo, así que antes de este
+        // arreglo todas contaban y el máximo acababa pegado a 16 justo cuando el alcance real
+        // bajaba. Lo que se mide tiene que ser lo que el servidor cubre, no lo que el jugador se
+        // movió mientras el paquete estaba en cola.
+        WidthProbe sonda = new WidthProbe();
+        for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(8, 0), 16, QUIETO);
+        }
+        for (int i = 0; i < 20; i++) {
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(14 + i % 3, 0), 16, VOLANDO);
+        }
+
+        assertEquals(8, sonda.observedRadiusInChunks());
+        assertEquals(12, sonda.laneWidthInChunks(0.2),
+            "media banda tiene que caber en los 8 chunks que el servidor cubre de verdad");
+        assertEquals(20, sonda.movingSamples());
+    }
+
+    @Test
+    void andarNoEsVolarYSusMuestrasCuentan() {
+        // Correr son 5,6 bloques por segundo, 0,28 por tick: por debajo del tope, y con esa
+        // velocidad ni un segundo entero de cola infla la muestra un chunk. Si esto no contara, la
+        // única forma de medir sería quedarse absolutamente quieto, y quieto el servidor no manda
+        // chunks nuevos: la sonda no llegaría a medir nunca.
+        WidthProbe sonda = new WidthProbe();
+        for (int i = 0; i < WidthProbe.MUESTRAS_MINIMAS; i++) {
+            sonda.sample(new ChunkPos(0, 0), new ChunkPos(7, 0), 16, 0.28);
+        }
+
+        assertTrue(sonda.hasEnoughSamples());
+        assertEquals(7, sonda.observedRadiusInChunks());
+        assertEquals(0, sonda.movingSamples());
+    }
+
+    @Test
+    void unaMuestraJustoEnElTopeDeVelocidadSiCuenta() {
+        WidthProbe sonda = new WidthProbe();
+
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(5, 0), 16, WidthProbe.BLOQUES_POR_TICK_MAXIMOS);
+
+        assertEquals(1, sonda.sampleCount());
+        assertEquals(0, sonda.movingSamples());
+    }
+
+    @Test
+    void unaVelocidadQueNoEsUnaVelocidadSeRechazaEnVezDeColarLaMuestra() {
+        WidthProbe sonda = new WidthProbe();
+
+        assertThrows(IllegalArgumentException.class,
+            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), 16, -1));
+        assertThrows(IllegalArgumentException.class,
+            () -> sonda.sample(new ChunkPos(0, 0), new ChunkPos(1, 0), 16, Double.NaN));
+        assertEquals(0, sonda.sampleCount());
     }
 
     @Test
@@ -260,8 +348,8 @@ class WidthProbeTest {
         // El jugador baja su distancia de renderizado, o el servidor declara otra: la muestra que
         // era legitima con el techo viejo se descarta con el nuevo.
         WidthProbe sonda = new WidthProbe();
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(12, 0), 16);
-        sonda.sample(new ChunkPos(0, 0), new ChunkPos(12, 0), 8);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(12, 0), 16, QUIETO);
+        sonda.sample(new ChunkPos(0, 0), new ChunkPos(12, 0), 8, QUIETO);
 
         assertEquals(1, sonda.sampleCount());
         assertEquals(1, sonda.discardedSamples());

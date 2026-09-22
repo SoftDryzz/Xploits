@@ -47,9 +47,23 @@ public final class Coverage {
      * Lee las líneas de uno de los ficheros de {@code NewerNewChunks}, una por chunk. Cada línea
      * válida tiene exactamente dos campos separados por coma, {@code x,z} en coordenadas de chunk;
      * cualquier otra cosa -línea vacía, con espacios, con un solo campo, con un campo que no
-     * parsea como entero- se salta en vez de romper la lectura.
+     * parsea como entero, o una línea nula- se salta en vez de romper la lectura.
+     *
+     * <p>La línea nula entra en esa lista y no es un detalle de nada: el javadoc promete saltarse
+     * «cualquier otra cosa», y una promesa así en el núcleo se cumple entera o no vale nada. Sin
+     * ella, una lista con un nulo dentro reventaba con un {@code NullPointerException} desde dentro
+     * de la lectura, justo en el camino cuyo propósito declarado es no abortar nunca por una línea
+     * mala y cuyo fallo cuesta replanificar terreno ya visto.
+     *
+     * @throws NullPointerException si {@code lines} es nulo: eso no es una línea mala, es no haber
+     *                              traído nada que leer
      */
     public static Coverage ofLines(Iterable<String> lines) {
+        if (lines == null) {
+            throw new NullPointerException("hacen falta las líneas que leer: una lista nula no es un"
+                + " fichero vacío, es no haber leído nada");
+        }
+
         Set<ChunkPos> chunks = new HashSet<>();
         for (String line : lines) {
             ChunkPos pos = parseLine(line);
@@ -136,6 +150,9 @@ public final class Coverage {
     }
 
     private static ChunkPos parseLine(String line) {
+        if (line == null) {
+            return null;
+        }
         String trimmed = line.trim();
         if (trimmed.isEmpty()) {
             return null;
@@ -160,10 +177,27 @@ public final class Coverage {
      *
      * <p>Una colección vacía -que no exista ningún fichero que leer- da {@link #empty()}, no un
      * error: no tener ningún registro previo significa empezar de cero, no que algo haya fallado.
+     *
+     * <p>Y por el mismo motivo <b>una lectura nula dentro de la colección se salta</b> en vez de
+     * tirar la unión entera: es el mismo criterio que {@link #ofLines} aplica a una línea mala, y el
+     * coste de romper aquí es el mismo -la cobertura se lee vacía y el barrido replanifica horas de
+     * terreno ya visto-. Que no haya salido nada de uno de los cinco ficheros no puede llevarse por
+     * delante lo que sí salió de los otros cuatro.
+     *
+     * @throws NullPointerException si {@code coverages} es nulo: eso no es un fichero que faltara,
+     *                              es no haber mirado
      */
     public static Coverage merge(Collection<Coverage> coverages) {
+        if (coverages == null) {
+            throw new NullPointerException("hacen falta las lecturas que unir: una colección nula no"
+                + " es «ningún fichero», es no haber mirado");
+        }
+
         Set<ChunkPos> union = new HashSet<>();
         for (Coverage coverage : coverages) {
+            if (coverage == null) {
+                continue;
+            }
             union.addAll(coverage.seen);
         }
         return new Coverage(union);
