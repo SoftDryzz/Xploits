@@ -10,6 +10,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModuleLedgerTest {
+    /**
+     * Observa el módulo apagado los ticks que haga falta para que el antirrebote de §8 lo dé por
+     * soltado, y devuelve el resultado del tick en que eso ocurre.
+     */
+    private static ModuleLedger.Result releaseByHand(ModuleLedger ledger, CombatState phase, String name) {
+        ModuleLedger.Result result = null;
+        for (int i = 0; i < ModuleLedger.RELEASE_DEBOUNCE_TICKS; i++) {
+            result = ledger.apply(phase, Set.of(name), Set.of());
+        }
+        return result;
+    }
+
     @Test
     void aModuleTheUserTurnedOnByHandIsNeverDisabled() {
         ModuleLedger ledger = new ModuleLedger();
@@ -31,15 +43,15 @@ class ModuleLedgerTest {
         assertEquals(List.of("crystal-aura"), first.toEnable());
         assertTrue(ledger.owned().contains("crystal-aura"));
 
-        // Tick 2: el jugador lo apaga a mano; la fase lo sigue pidiendo, pero "active" ya no lo trae.
-        ModuleLedger.Result second = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        assertTrue(second.toEnable().isEmpty(), "no debe reencenderlo en el mismo tick en que se soltó");
-        assertEquals(List.of("crystal-aura"), second.newlyReleased());
+        // El jugador lo apaga a mano y lo deja apagado: pasado el antirrebote, es suyo.
+        ModuleLedger.Result released = releaseByHand(ledger, CombatState.SUPERFICIE, "crystal-aura");
+        assertEquals(List.of("crystal-aura"), released.newlyReleased());
+        assertTrue(released.toEnable().isEmpty(), "no debe reencenderlo en el tick en que se soltó");
         assertFalse(ledger.owned().contains("crystal-aura"));
 
-        // Tick 3, misma fase: sigue sin tomarlo aunque la fase lo siga pidiendo.
-        ModuleLedger.Result third = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        assertTrue(third.toEnable().isEmpty(), "soltado a mano: no se retoma en la misma fase");
+        // Misma fase: sigue sin tomarlo aunque la fase lo siga pidiendo.
+        ModuleLedger.Result next = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(next.toEnable().isEmpty(), "soltado a mano: no se retoma en la misma fase");
         assertFalse(ledger.owned().contains("crystal-aura"));
     }
 
@@ -47,7 +59,7 @@ class ModuleLedgerTest {
     void releasingTwiceInARowDoesNotDisableAgainOrRepeatTheNotice() {
         ModuleLedger ledger = new ModuleLedger();
         ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of()); // se suelta aquí
+        releaseByHand(ledger, CombatState.SUPERFICIE, "crystal-aura");
 
         // Dos ticks más sin que nada cambie: nunca vuelve a pedir el apagado ni a repetir el aviso.
         for (int i = 0; i < 2; i++) {
@@ -61,7 +73,7 @@ class ModuleLedgerTest {
     void aPhaseChangeForgetsWhatWasReleasedByHand() {
         ModuleLedger ledger = new ModuleLedger();
         ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of()); // soltado en SUPERFICIE
+        releaseByHand(ledger, CombatState.SUPERFICIE, "crystal-aura");
         assertFalse(ledger.owned().contains("crystal-aura"));
 
         // La fase cambia (por ejemplo a RODEADO, que también pide crystal-aura) y vuelve a pedirlo:
@@ -105,7 +117,7 @@ class ModuleLedgerTest {
     void resetForgetsOwnershipAndReleases() {
         ModuleLedger ledger = new ModuleLedger();
         ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of()); // soltado
+        releaseByHand(ledger, CombatState.SUPERFICIE, "crystal-aura");
         assertFalse(ledger.owned().contains("crystal-aura"));
 
         ledger.reset();
@@ -113,6 +125,18 @@ class ModuleLedgerTest {
         // Sin reset, seguir en la misma fase no lo habría retomado; con reset, sí.
         ModuleLedger.Result result = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
         assertEquals(List.of("crystal-aura"), result.toEnable());
+    }
+
+    @Test
+    void resetForgetsAnUnfinishedDebounce() {
+        ModuleLedger ledger = new ModuleLedger();
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of()); // un tick apagado
+
+        ledger.reset();
+
+        ModuleLedger.Result result = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertEquals(List.of("crystal-aura"), result.toEnable(), "la cuenta a medias no sobrevive al reset");
     }
 
     @Test
@@ -140,7 +164,8 @@ class ModuleLedgerTest {
 
         // Tick 2: auto-trap se apagó solo (self-toggle, tras colocar el trap) - la fase lo sigue
         // pidiendo. Al ser un módulo que se apaga solo, esto NO es un soltado a mano: no debe
-        // bloquear la fase ni generar aviso, y el director debe poder volver a tomarlo.
+        // bloquear la fase ni generar aviso, y el director debe poder volver a tomarlo. Tampoco
+        // pasa por el antirrebote: esperar cuatro ticks a recolocar el trap sería esperar de más.
         ModuleLedger.Result second = ledger.apply(CombatState.SUPERFICIE, Set.of("auto-trap"), Set.of());
         assertTrue(second.newlyReleased().isEmpty(), "un apagado propio de Meteor no es un soltado a mano");
         assertEquals(List.of("auto-trap"), second.toEnable(), "el director debe poder volver a encenderlo en el mismo tick");
@@ -155,16 +180,13 @@ class ModuleLedgerTest {
         ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
         assertTrue(ledger.owned().contains("crystal-aura"));
 
-        // Tick 2: se apaga (aquí, a mano). Como crystal-aura no puede apagarse solo, esto sí cuenta
-        // como soltado a mano: bloquea el resto de la fase y avisa.
-        ModuleLedger.Result second = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        assertEquals(List.of("crystal-aura"), second.newlyReleased());
-        assertTrue(second.toEnable().isEmpty(), "soltado a mano: no se retoma en el mismo tick");
+        ModuleLedger.Result released = releaseByHand(ledger, CombatState.SUPERFICIE, "crystal-aura");
+        assertEquals(List.of("crystal-aura"), released.newlyReleased());
+        assertTrue(released.toEnable().isEmpty(), "soltado a mano: no se retoma en el mismo tick");
         assertFalse(ledger.owned().contains("crystal-aura"));
 
-        // Tick 3, misma fase: sigue bloqueado.
-        ModuleLedger.Result third = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
-        assertTrue(third.toEnable().isEmpty(), "sigue bloqueado el resto de la fase");
+        ModuleLedger.Result next = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(next.toEnable().isEmpty(), "sigue bloqueado el resto de la fase");
         assertFalse(ledger.owned().contains("crystal-aura"));
     }
 
@@ -189,5 +211,76 @@ class ModuleLedgerTest {
         assertEquals(List.of("auto-anvil"), noLongerWanted.toDisable());
         assertTrue(noLongerWanted.newlyReleased().isEmpty());
         assertFalse(ledger.owned().contains("auto-anvil"));
+    }
+
+    // --- §8: un parpadeo no es soltar ---
+
+    @Test
+    void aSingleOffTickDoesNotReleaseTheModule() {
+        // §11: un "off" de un tick no suelta el módulo. Una doble pulsación de un bind te dejaba
+        // sin él en mitad del combate.
+        ModuleLedger ledger = new ModuleLedger();
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+
+        ModuleLedger.Result blip = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+
+        assertTrue(blip.newlyReleased().isEmpty(), "un tick apagado no es un soltado");
+        assertTrue(ledger.owned().contains("crystal-aura"), "sigue siendo nuestro mientras dura el antirrebote");
+        assertTrue(blip.toEnable().isEmpty(),
+            "y tampoco se reenciende: pelearse con el bind impediría que la cuenta subiera nunca");
+    }
+
+    @Test
+    void aDoublePressComesBackWithoutLosingOwnership() {
+        ModuleLedger ledger = new ModuleLedger();
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+
+        // Apagado dos ticks (la separación de una doble pulsación humana) y encendido de nuevo por
+        // el propio jugador.
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        ModuleLedger.Result back = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of("crystal-aura"));
+
+        assertTrue(back.newlyReleased().isEmpty());
+        assertTrue(back.toDisable().isEmpty());
+        assertTrue(ledger.owned().contains("crystal-aura"));
+
+        // Y la cuenta vuelve a cero: otro parpadeo suelto tampoco lo suelta.
+        ModuleLedger.Result another = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(another.newlyReleased().isEmpty(), "el antirrebote se reinicia al volver a verlo encendido");
+    }
+
+    @Test
+    void anOffThatLastsTheWholeDebounceDoesRelease() {
+        ModuleLedger ledger = new ModuleLedger();
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+
+        ModuleLedger.Result result = null;
+        for (int i = 0; i < ModuleLedger.RELEASE_DEBOUNCE_TICKS - 1; i++) {
+            result = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+            assertTrue(result.newlyReleased().isEmpty(), "tick " + i + ": todavía dentro del antirrebote");
+        }
+
+        result = ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertEquals(List.of("crystal-aura"), result.newlyReleased(), "sostenido sí es un soltado");
+    }
+
+    @Test
+    void theDebounceIsFourTicks() {
+        assertEquals(4, ModuleLedger.RELEASE_DEBOUNCE_TICKS,
+            "0,2 s: más que una doble pulsación humana, menos que un ciclo de cristal");
+    }
+
+    @Test
+    void aModuleTheUserTurnsOffAndThePhaseStopsWantingIsNotAReleaseEither() {
+        ModuleLedger ledger = new ModuleLedger();
+        ledger.apply(CombatState.SUPERFICIE, Set.of("crystal-aura"), Set.of());
+        assertTrue(ledger.owned().contains("crystal-aura"), "precondición: es nuestro");
+
+        // Se apaga y además la fase deja de pedirlo: no hay nada que soltar ni de qué avisar.
+        ModuleLedger.Result result = ledger.apply(CombatState.SUPERFICIE, Set.of(), Set.of());
+        assertTrue(result.newlyReleased().isEmpty());
+        assertTrue(result.toDisable().isEmpty(), "ya está apagado");
+        assertFalse(ledger.owned().contains("crystal-aura"));
     }
 }
