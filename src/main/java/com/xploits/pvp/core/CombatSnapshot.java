@@ -55,6 +55,15 @@ import java.util.Map;
  *                                          en el Nether y caída
  * @param selfInHole                        si estás en un agujero ({@code PlayerUtils.isInHole(false)})
  * @param selfOnGround                      si estás tocando el suelo
+ * @param crystalAuraAntiSuicide            si el ajuste {@code anti-suicide} de {@code CrystalAura}
+ *                                          está encendido. Es {@code defaultValue(true)}, y con él
+ *                                          Meteor se niega a colocar o a romper un cristal cuyo
+ *                                          daño a ti mismo te mataría: la misma decisión que tomaba
+ *                                          el suelo de tótems, pero con el daño exacto en vez de
+ *                                          con un contador de ítems. <b>Pero es solo un valor por
+ *                                          defecto</b>: si el jugador lo apaga, esa protección no
+ *                                          existe, y entonces -y solo entonces- el suelo de tótems
+ *                                          vuelve a hacer falta
  */
 public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              boolean targetSurrounded, double cityBlockDistance,
@@ -63,7 +72,8 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              Map<Resource, Integer> resources,
                              String targetId, int unprotectedHostilesInCrystalRange,
                              double selfTotalHealth, double incomingDamage,
-                             boolean selfInHole, boolean selfOnGround) {
+                             boolean selfInHole, boolean selfOnGround,
+                             boolean crystalAuraAntiSuicide) {
     /** Vida llena sin absorción: el valor neutro cuando nadie ha medido la de verdad. */
     public static final double FULL_HEALTH = 20.0;
 
@@ -72,32 +82,12 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
     }
 
     /**
-     * Constructor de transición con la forma que tenía el snapshot antes del rediseño.
-     *
-     * <p><b>Es un andamio, no la forma definitiva.</b> Existe solo para que el adaptador
-     * ({@code AutoPvp}) siga compilando mientras se le añade la lectura de los campos nuevos, que es
-     * una tarea aparte. Rellena esos campos con valores <b>neutros</b>, no con los reales: sin
-     * objetivo identificado, sin hostiles conocidos a rango de cristal, vida llena, nada de daño
-     * apuntándote, ni en agujero ni en el suelo. Con ellos el núcleo se comporta en los dos ejes
-     * nuevos como si no existieran: la postura sale siempre {@code TRANQUILO} y la regla del aura de
-     * §4.4 nunca se dispara.
-     *
-     * <p>Lo que el adaptador tiene que pasar a rellenar, y de dónde sale cada cosa, está en el
-     * javadoc de los parámetros del constructor canónico. Cuando lo haga, este constructor sobra.
+     * Sin objetivo y sin nada encima. El {@code anti-suicide} se da por <b>apagado</b>, que es el
+     * valor prudente: sin nadie que haya leído el ajuste de verdad, el suelo de tótems sigue en pie.
      */
-    public CombatSnapshot(boolean hasTarget, double targetDistance,
-                          boolean targetSurrounded, double cityBlockDistance,
-                          boolean targetBurrowed, boolean targetGliding,
-                          boolean selfGliding, int selfTotems,
-                          Map<Resource, Integer> resources) {
-        this(hasTarget, targetDistance, targetSurrounded, cityBlockDistance, targetBurrowed,
-            targetGliding, selfGliding, selfTotems, resources,
-            null, 0, FULL_HEALTH, 0, false, false);
-    }
-
-    /** Sin objetivo y sin nada encima. */
     public static CombatSnapshot none() {
-        return new CombatSnapshot(false, 0, false, 0, false, false, false, 0, Map.of());
+        return new CombatSnapshot(false, 0, false, 0, false, false, false, 0, Map.of(),
+            null, 0, FULL_HEALTH, 0, false, false, false);
     }
 
     public int amountOf(Resource resource) {
@@ -109,21 +99,23 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurrounded, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             id, unprotectedHostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround);
+            selfInHole, selfOnGround, crystalAuraAntiSuicide);
     }
 
     /** El mismo snapshot con otra cuenta de hostiles sin proteger a rango de cristal (§4.4). */
     public CombatSnapshot withHostiles(int hostiles) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurrounded, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
-            targetId, hostiles, selfTotalHealth, incomingDamage, selfInHole, selfOnGround);
+            targetId, hostiles, selfTotalHealth, incomingDamage, selfInHole, selfOnGround,
+            crystalAuraAntiSuicide);
     }
 
     /** El mismo snapshot con otra lectura defensiva (§5). */
     public CombatSnapshot withDefense(double totalHealth, double incoming, boolean inHole, boolean onGround) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurrounded, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
-            targetId, unprotectedHostilesInCrystalRange, totalHealth, incoming, inHole, onGround);
+            targetId, unprotectedHostilesInCrystalRange, totalHealth, incoming, inHole, onGround,
+            crystalAuraAntiSuicide);
     }
 
     /** El mismo snapshot a otra distancia del objetivo. */
@@ -131,6 +123,6 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, distance, targetSurrounded, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, unprotectedHostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround);
+            selfInHole, selfOnGround, crystalAuraAntiSuicide);
     }
 }

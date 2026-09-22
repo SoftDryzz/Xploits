@@ -38,13 +38,23 @@ public final class DefensivePolicy {
 
     private DefensivePolicy() {}
 
+    /** Lo mismo con el margen de fábrica, {@link #THREAT_MARGIN}. */
+    public static CombatPosture postureFor(CombatSnapshot snapshot) {
+        return postureFor(snapshot, THREAT_MARGIN);
+    }
+
     /**
      * {@code AMENAZADO} cuando el daño que ya te apunta te dejaría por debajo del margen (§5). La
      * comparación es menor-o-igual: justo en el umbral ya cuenta como amenaza.
+     *
+     * <p>El margen entra por parámetro porque la spec lo deja abierto y como ajuste del módulo
+     * ({@code threat-margin}); {@link #THREAT_MARGIN} es solo su valor de fábrica. Es el mismo trato
+     * que recibe {@code approach-distance} en {@link CombatDirector#tick}: el número lo pone el
+     * jugador, la comparación sigue siendo del núcleo.
      */
-    public static CombatPosture postureFor(CombatSnapshot snapshot) {
+    public static CombatPosture postureFor(CombatSnapshot snapshot, double threatMargin) {
         double remaining = snapshot.selfTotalHealth() - snapshot.incomingDamage();
-        return remaining <= THREAT_MARGIN ? CombatPosture.AMENAZADO : CombatPosture.TRANQUILO;
+        return remaining <= threatMargin ? CombatPosture.AMENAZADO : CombatPosture.TRANQUILO;
     }
 
     /**

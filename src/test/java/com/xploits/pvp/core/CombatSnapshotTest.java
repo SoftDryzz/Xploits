@@ -19,7 +19,7 @@ class CombatSnapshotTest {
 
     @Test
     void itReportsTheResourcesItWasGiven() {
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2,
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2,
             Map.of(Resource.CRYSTALS, 12, Resource.OBSIDIAN, 5));
 
         assertEquals(12, snapshot.amountOf(Resource.CRYSTALS));
@@ -31,7 +31,7 @@ class CombatSnapshotTest {
     void theSnapshotCopiesItsResourcesSoLaterChangesDoNotLeakIn() {
         Map<Resource, Integer> resources = new HashMap<>();
         resources.put(Resource.CRYSTALS, 12);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, resources);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, resources);
 
         resources.put(Resource.CRYSTALS, 999);
 
@@ -49,7 +49,7 @@ class CombatSnapshotTest {
         // El andamio para que el adaptador siga compilando mientras se le añade la lectura de los
         // campos nuevos: los rellena con lo neutro, no con lo real, para que los dos ejes nuevos se
         // comporten como si no existieran hasta que alguien los rellene de verdad.
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, Map.of());
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, Map.of());
 
         assertNull(snapshot.targetId());
         assertEquals(0, snapshot.unprotectedHostilesInCrystalRange());
@@ -62,7 +62,7 @@ class CombatSnapshotTest {
 
     @Test
     void theHelpersChangeOnlyWhatTheyName() {
-        CombatSnapshot base = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2,
+        CombatSnapshot base = Snapshots.of(true, 3.0, false, 0, false, false, false, 2,
             Map.of(Resource.CRYSTALS, 12));
 
         assertEquals("pepe", base.withTargetId("pepe").targetId());

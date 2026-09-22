@@ -8,7 +8,7 @@ Addon de Meteor Client (MC 1.21.11) para 6b6t con seis módulos independientes.
 | `auto-tpy` | Acepta al instante las TPA de tu lista y de tus amigos de Meteor. |
 | `stash-keeper` | Apunta pasivamente el contenido de los contenedores que abres y de los shulkers que ves, sin mover nada. |
 | `elytra-replace` | Cambia la elytra puesta por una de repuesto antes de que se rompa y avisa con toast y sonido si no hay ninguna válida. Funciona sin ElytraFly. |
-| `auto-pvp` | Dirige los módulos de combate de Meteor según la fase de la pelea, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. Nunca elige como objetivo a los tuyos, y mientras está encendido los mete en tu lista de amigos de Meteor para que los otros cinco módulos de combate tampoco les ataquen. |
+| `auto-pvp` | Dirige los módulos de combate de Meteor por dos ejes a la vez —en qué fase está el enemigo y qué te está apuntando a ti—, y solo apaga los que encendió él. No ejecuta ninguna acción de combate. Nunca elige como objetivo a los tuyos, y mientras está encendido los mete en tu lista de amigos de Meteor para que los cinco módulos que eligen su propio objetivo tampoco les ataquen. |
 | `auto-travel` | Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste (zigzag, quiebro, espiral o señuelo) y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con `.xploits travel go`. **Requiere Baritone**, y es el único módulo del addon que lo usa. |
 
 ## Estructura de paquetes
@@ -29,8 +29,8 @@ com/xploits/stash/core/         Índice de contenedores, claves y búsqueda de s
 com/xploits/elytra/             Módulo elytra-replace (adaptador a Meteor).
 com/xploits/elytra/core/        Política de cambio de elytra-replace.
 com/xploits/pvp/                Módulo auto-pvp (adaptador a Meteor).
-com/xploits/pvp/core/           Máquina de fases, catálogo de módulos dirigidos, quién es de los nuestros
-                                y qué se escribe en la lista de amigos de Meteor, de auto-pvp.
+com/xploits/pvp/core/           Máquina de fases, postura defensiva, catálogo de módulos dirigidos, quién es
+                                de los nuestros y qué se escribe en la lista de amigos de Meteor, de auto-pvp.
 com/xploits/travel/             Módulo auto-travel (adaptador a Meteor).
 com/xploits/travel/core/        Geometría de la ruta, patrones de despiste y comandos de Baritone de auto-travel.
 ```
@@ -84,6 +84,33 @@ radio ya va camino de cero y no hay ajuste que lo haga volable, así que se deja
 curva se vuela entera.
 
 **Si vienes de `kitbot-0.1.0.jar`:** borra ese jar de `mods/` antes de poner el nuevo, o tendrás los módulos duplicados.
+
+**`auto-pvp` decide dos cosas a la vez, no una.** «Me están cristaleando» y «él está rodeado» son
+verdad al mismo tiempo, así que meterlas en una sola fase obligaba a elegir entre atacar y
+defenderte. Ahora hay dos ejes y se enciende la **unión** de lo que pide cada uno:
+
+- **La fase**, que sale del enemigo: `SIN_COMBATE`, `ACERCAMIENTO`, `SUPERFICIE`, `RODEADO`,
+  `ENTERRADO`, `PERSECUCION`. Enciende lo ofensivo —`crystal-aura`, `auto-trap`, `auto-web`,
+  `auto-anvil`, `auto-city`— y nunca fuera del alcance real de cada módulo.
+- **La postura**, que sales tú: `TRANQUILO` o `AMENAZADO`. Es `AMENAZADO` cuando el daño que **ya
+  está colocado** contra ti te dejaría por debajo de `threat-margin` (12 de fábrica), y entonces
+  enciende `hole-filler`, `anti-anvil`, `anti-bed` y `anti-anchor` —ninguno te inmoviliza: tapan
+  formas concretas de matarte— y además `surround` **solo** si estás en un agujero y pisando suelo,
+  que es su único sitio. `self-trap`, `self-web` y `burrow` no se dirigen a propósito: te encierran,
+  y si el criterio se equivoca te inmoviliza tu propio cliente en una pelea que ibas ganando.
+
+`.xploits pvp` enseña las dos en la primera línea, con tu vida, el daño que te apunta y el margen
+debajo. En el chat cada eje avisa por su cuenta y solo al cambiar.
+
+**El aura casi nunca se apaga.** `crystal-aura` es la única dirigida con una mitad útil a coste cero
+—rompe los cristales que te ponen, y romper no gasta ninguno tuyo—, que es justo lo que te mantiene
+vivo cuando no tienes con qué responder. Así que queda fuera del filtro de recursos: sin cristales
+sube igual y te lo dice como aviso, no como omisión. Y si hay alguien a rango de cristal sin
+proteger, se queda encendida aunque la fase sea `ENTERRADO`: el cebo obvio era que uno se enterrase
+mientras el otro te cristaleaba. Lo único que todavía la puede apagar es no llevar tótems **y** tener
+el `anti-suicide` de `crystal-aura` apagado; con `anti-suicide` puesto —viene puesto— Meteor ya se
+niega por su cuenta a colocar o romper un cristal que te mate, y lo mide con el daño exacto en vez de
+con un contador de ítems.
 
 **`auto-pvp` no ataca nunca a los tuyos:** tus amigos de Meteor, los couriers de `kit-requester`
 (su ajuste `known-couriers`) y la lista `users` de `auto-tpy`. El trato es el mismo que Meteor da a

@@ -17,7 +17,7 @@ class CombatDirectorTest {
 
     /** Enemigo cerca (3,0), a pie, limpio, con todo el equipo encima y sin nada apuntándote. */
     private static CombatSnapshot surface() {
-        return new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, FULL)
+        return Snapshots.of(true, 3.0, false, 0, false, false, false, 2, FULL)
             .withTargetId("enemigo");
     }
 
@@ -27,7 +27,7 @@ class CombatDirectorTest {
      * no es lo mismo que {@link CombatSnapshot#none()}, que además se queda sin tótems.
      */
     private static CombatSnapshot noTarget() {
-        return new CombatSnapshot(false, 0, false, 0, false, false, false, 2, FULL);
+        return Snapshots.of(false, 0, false, 0, false, false, false, 2, FULL);
     }
 
     private static CombatSnapshot with(CombatSnapshot base, boolean surrounded, boolean burrowed,
@@ -38,7 +38,8 @@ class CombatDirectorTest {
         return new CombatSnapshot(base.hasTarget(), base.targetDistance(), surrounded, base.targetDistance(),
             burrowed, targetGliding, selfGliding, base.selfTotems(), base.resources(),
             base.targetId(), base.unprotectedHostilesInCrystalRange(), base.selfTotalHealth(),
-            base.incomingDamage(), base.selfInHole(), base.selfOnGround());
+            base.incomingDamage(), base.selfInHole(), base.selfOnGround(),
+            base.crystalAuraAntiSuicide());
     }
 
     /**
@@ -221,7 +222,7 @@ class CombatDirectorTest {
      * targetDistance).
      */
     private static CombatSnapshot surroundedAt(double cityBlockDistance) {
-        return new CombatSnapshot(true, 3.0, true, cityBlockDistance, false, false, false, 2, FULL);
+        return Snapshots.of(true, 3.0, true, cityBlockDistance, false, false, false, 2, FULL);
     }
 
     @Test
@@ -267,7 +268,7 @@ class CombatDirectorTest {
         // 20.5 > 4.5² = 20.25. Con el criterio antiguo (proxy: distancia al objetivo) esto se
         // declaraba RODEADO y auto-city se apagaba solo, con error, cada tick.
         double realBlockDistance = Math.sqrt(20.5);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 4.0, true, realBlockDistance, false, false, false, 2, FULL);
+        CombatSnapshot snapshot = Snapshots.of(true, 4.0, true, realBlockDistance, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
         assertEquals(CombatState.SUPERFICIE, plan.state(),
@@ -287,13 +288,13 @@ class CombatDirectorTest {
     void aCityBlockAtTheLiteralFourPointFiveIsRodeado() {
         // Con literales, no con la constante: si alguien mueve AUTO_CITY_BREAK_RANGE a otro
         // valor, este test lo detecta -al contrario que surroundedAt(), que se movería con ella.
-        CombatSnapshot atLiteralBoundary = new CombatSnapshot(true, 3.0, true, 4.5, false, false, false, 2, FULL);
+        CombatSnapshot atLiteralBoundary = Snapshots.of(true, 3.0, true, 4.5, false, false, false, 2, FULL);
         assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
     }
 
     @Test
     void aCityBlockJustBeyondTheLiteralFourPointFiveIsNotRodeado() {
-        CombatSnapshot justBeyond = new CombatSnapshot(true, 3.0, true, 4.51, false, false, false, 2, FULL);
+        CombatSnapshot justBeyond = Snapshots.of(true, 3.0, true, 4.51, false, false, false, 2, FULL);
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
     }
 
@@ -304,7 +305,7 @@ class CombatDirectorTest {
      */
     @Test
     void targetBeyondAutoCityTargetRangeIsNotRodeadoEvenWithTheBlockClose() {
-        CombatSnapshot snapshot = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE + 0.5,
+        CombatSnapshot snapshot = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE + 0.5,
             true, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -315,7 +316,7 @@ class CombatDirectorTest {
 
     @Test
     void targetWithinAutoCityTargetRangeAndBlockCloseIsRodeado() {
-        CombatSnapshot snapshot = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE - 0.5,
+        CombatSnapshot snapshot = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE - 0.5,
             true, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -325,7 +326,7 @@ class CombatDirectorTest {
 
     @Test
     void atExactlyTheAutoCityTargetRangeItIsStillRodeado() {
-        CombatSnapshot atBoundary = new CombatSnapshot(true, CombatDirector.AUTO_CITY_TARGET_RANGE,
+        CombatSnapshot atBoundary = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE,
             true, 1.0, false, false, false, 2, FULL);
         assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atBoundary).state(),
             "la comparación es menor-o-igual-que: igual al umbral sigue siendo RODEADO");
@@ -333,7 +334,7 @@ class CombatDirectorTest {
 
     @Test
     void justBeyondTheAutoCityTargetRangeItIsNoLongerRodeado() {
-        CombatSnapshot justBeyond = new CombatSnapshot(true, Math.nextUp(CombatDirector.AUTO_CITY_TARGET_RANGE),
+        CombatSnapshot justBeyond = Snapshots.of(true, Math.nextUp(CombatDirector.AUTO_CITY_TARGET_RANGE),
             true, 1.0, false, false, false, 2, FULL);
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
             "un paso por encima del umbral ya no es RODEADO");
@@ -347,13 +348,13 @@ class CombatDirectorTest {
 
     @Test
     void aTargetAtTheLiteralFivePointFiveIsRodeado() {
-        CombatSnapshot atLiteralBoundary = new CombatSnapshot(true, 5.5, true, 1.0, false, false, false, 2, FULL);
+        CombatSnapshot atLiteralBoundary = Snapshots.of(true, 5.5, true, 1.0, false, false, false, 2, FULL);
         assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
     }
 
     @Test
     void aTargetJustBeyondTheLiteralFivePointFiveIsNotRodeado() {
-        CombatSnapshot justBeyond = new CombatSnapshot(true, 5.51, true, 1.0, false, false, false, 2, FULL);
+        CombatSnapshot justBeyond = Snapshots.of(true, 5.51, true, 1.0, false, false, false, 2, FULL);
         assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
     }
 
@@ -753,7 +754,7 @@ class CombatDirectorTest {
         // autobreak, que es justo lo que te mantiene vivo cuando no tienes con qué responder.
         Map<Resource, Integer> noCrystals = Map.of(
             Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, noCrystals);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, noCrystals);
 
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -769,29 +770,55 @@ class CombatDirectorTest {
     }
 
     @Test
-    void withoutTotemsTheAuraIsStillRefused() {
-        // El suelo de seguridad (spec §6.1) no es el filtro de recursos: un aura de cristales sin
-        // tótem te mata a ti.
-        CombatSnapshot noTotems = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 0, FULL);
+    void withoutTotemsButWithAntiSuicideTheAuraStillGoesUp() {
+        // El suelo de tótems era una decisión de vida tomada con un contador de ítems, y Meteor ya
+        // la toma con el daño exacto: anti-suicide se niega a colocar o romper un cristal que te
+        // mate. Sin tótems es justo cuando más falta hace el autobreak.
+        CombatSnapshot noTotems = Snapshots.of(true, 3.0, false, 0, false, false, false, 0, FULL);
         Plan plan = settle(new CombatDirector(), noTotems);
 
-        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "y el resto sigue subiendo");
     }
 
     @Test
-    void withoutTotemsAndOnlyCrystalsItIsOutOfResources() {
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 0,
+    void withoutTotemsAndWithAntiSuicideOffTheAuraIsRefused() {
+        // anti-suicide es solo un valor por defecto: apagado, esa protección no existe y el suelo
+        // de tótems vuelve a ser lo único que queda.
+        CombatSnapshot noTotems =
+            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, false, 0, false, false, false, 0, FULL));
+        Plan plan = settle(new CombatDirector(), noTotems);
+
+        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(plan.skipped().stream().anyMatch(sk -> sk.reason().contains("anti-suicide")),
+            "y el motivo dice por qué, no solo que faltan tótems");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "y el resto sigue subiendo");
+    }
+
+    @Test
+    void withTotemsTheAntiSuicideSettingChangesNothing() {
+        CombatSnapshot withTotems =
+            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, false, 0, false, false, false, 2, FULL));
+        assertTrue(enables(settle(new CombatDirector(), withTotems), ManagedModules.CRYSTAL_AURA));
+    }
+
+    @Test
+    void withoutTotemsAndOnlyCrystalsItIsOutOfResourcesOnlyWithAntiSuicideOff() {
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 0,
             Map.of(Resource.CRYSTALS, 12));
-        assertEquals(CombatState.SIN_RECURSOS, settle(new CombatDirector(), snapshot).state());
+        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), snapshot).state(),
+            "con anti-suicide puesto el aura sube y hay con qué pelear");
+        assertEquals(CombatState.SIN_RECURSOS,
+            settle(new CombatDirector(), Snapshots.antiSuicideOff(snapshot)).state());
     }
 
     @Test
     void withoutAPickaxeAutoCitySkipsItInSurrounded() {
         Map<Resource, Integer> noPickaxe = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.ANVILS, 3);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, true, 3.0, false, false, false, 2, noPickaxe);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, true, 3.0, false, false, false, 2, noPickaxe);
 
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -803,7 +830,9 @@ class CombatDirectorTest {
 
     @Test
     void withNothingAtAllAndNoTotemsItReportsOutOfResources() {
-        CombatSnapshot broke = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 0, Map.of());
+        // Sin nada encima y sin la red de anti-suicide no queda ni el autobreak.
+        CombatSnapshot broke =
+            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, false, 0, false, false, false, 0, Map.of()));
         Plan plan = settle(new CombatDirector(), broke);
 
         assertEquals(CombatState.SIN_RECURSOS, plan.state());
@@ -812,8 +841,19 @@ class CombatDirectorTest {
     }
 
     @Test
+    void withNothingAtAllButWithAntiSuicideTheAutobreakIsStillSomethingToFightWith() {
+        CombatSnapshot broke = Snapshots.of(true, 3.0, false, 0, false, false, false, 0, Map.of());
+        Plan plan = settle(new CombatDirector(), broke);
+
+        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(plan.warnings().stream().anyMatch(w -> w.contains("crystal-aura")));
+    }
+
+    @Test
     void outOfResourcesIsHowItReportsNotWhereItLives() {
-        CombatSnapshot broke = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 0, Map.of());
+        CombatSnapshot broke =
+            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, false, 0, false, false, false, 0, Map.of()));
         CombatDirector director = new CombatDirector();
         settle(director, broke);
 
@@ -822,7 +862,7 @@ class CombatDirectorTest {
 
     @Test
     void aPhaseThatAsksForNothingIsNotOutOfResources() {
-        CombatSnapshot broke = new CombatSnapshot(true, 8.0, false, 0, false, false, false, 0, Map.of());
+        CombatSnapshot broke = Snapshots.of(true, 8.0, false, 0, false, false, false, 0, Map.of());
         assertEquals(CombatState.ACERCAMIENTO, settle(new CombatDirector(), broke).state(),
             "que no haya nada que encender no es quedarse sin recursos");
     }
@@ -831,7 +871,7 @@ class CombatDirectorTest {
     void notEnoughObsidianForATrapSkipsItEvenWithSomeObsidian() {
         Map<Resource, Integer> little = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 2, Resource.WEBS, 5);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, little);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, little);
 
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -843,7 +883,7 @@ class CombatDirectorTest {
     void withoutWebsTheWebIsSkippedWhereItWouldHaveGoneUp() {
         Map<Resource, Integer> noWebs = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.ANVILS, 3, Resource.PICKAXE, 1);
-        CombatSnapshot snapshot = new CombatSnapshot(true, 4.0, false, 0, false, false, false, 2, noWebs);
+        CombatSnapshot snapshot = Snapshots.of(true, 4.0, false, 0, false, false, false, 2, noWebs);
 
         Plan plan = settle(new CombatDirector(), snapshot);
 
@@ -860,7 +900,7 @@ class CombatDirectorTest {
         Map<Resource, Integer> resources = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, amount,
             Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
-        return new CombatSnapshot(true, 3.0, false, 0, false, false, false, 2, resources);
+        return Snapshots.of(true, 3.0, false, 0, false, false, false, 2, resources);
     }
 
     @Test
@@ -924,7 +964,7 @@ class CombatDirectorTest {
 
         Map<Resource, Integer> noWebs = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.ANVILS, 3, Resource.PICKAXE, 1);
-        CombatSnapshot noWebsSnapshot = new CombatSnapshot(true, 4.0, false, 0, false, false, false, 2, noWebs);
+        CombatSnapshot noWebsSnapshot = Snapshots.of(true, 4.0, false, 0, false, false, false, 2, noWebs);
 
         Plan plan = null;
         for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS - 1; i++) {

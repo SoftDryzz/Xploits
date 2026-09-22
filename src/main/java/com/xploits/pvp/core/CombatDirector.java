@@ -256,6 +256,11 @@ public final class CombatDirector {
         missingTargetTicks = 0;
     }
 
+    /** Un ciclo completo del criterio con el margen defensivo de fábrica. */
+    public Plan tick(CombatSnapshot snapshot, int approachDistance) {
+        return tick(snapshot, approachDistance, DefensivePolicy.THREAT_MARGIN);
+    }
+
     /**
      * Ejecuta un ciclo completo del criterio. En orden:
      *
@@ -272,16 +277,23 @@ public final class CombatDirector {
      *       encender el aura.</li>
      *   <li><b>Postura defensiva</b> ({@link DefensivePolicy}), que no depende de la fase.</li>
      *   <li>La <b>unión</b> de lo que piden los dos ejes, filtrada por recursos con histéresis y por
-     *       el suelo de seguridad de los tótems.</li>
+     *       el suelo de tótems, que desde §7.1 solo queda en pie con el {@code anti-suicide} de
+     *       {@code crystal-aura} apagado.</li>
      * </ol>
      *
      * @param snapshot         la situación de este tick, ya traducida a valores simples (spec §5)
      * @param approachDistance distancia a partir de la cual el objetivo se considera lejos, no cerca
+     * @param threatMargin     vida que te tiene que quedar, descontando lo que ya te apunta, para
+     *                         seguir {@code TRANQUILO} (§5). La spec deja el umbral abierto y como
+     *                         ajuste del módulo ({@code threat-margin});
+     *                         {@link DefensivePolicy#THREAT_MARGIN} es solo su valor de fábrica, el
+     *                         que pone la firma corta. Mismo trato que {@code approach-distance}: el
+     *                         número lo pone el jugador, la decisión sigue siendo del núcleo
      * @return el plan de este tick: la fase con la que se informa (puede ser {@code SIN_RECURSOS}
      *     aunque la fase física siga siendo otra), la postura, los módulos a encender, los que se
      *     omitieron con su motivo y los avisos
      */
-    public Plan tick(CombatSnapshot snapshot, int approachDistance) {
+    public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin) {
         CombatSnapshot effective = rememberTarget(snapshot);
 
         CombatState candidate = classify(effective, approachDistance, state);
@@ -296,7 +308,7 @@ public final class CombatDirector {
 
         ticksInState++;
         boolean retreating = retreat.update(effective);
-        Plan plan = planFor(state, effective, retreating);
+        Plan plan = planFor(state, effective, retreating, threatMargin);
         // Se guarda DESPUÉS de calcular el plan: planFor() necesita ver lo que estaba encendido
         // en el tick anterior, no lo que acaba de decidir este. Mientras la fase física sea
         // SIN_COMBATE no se toca: un blip sin objetivo no debe borrar la memoria de recursos de la
@@ -338,7 +350,8 @@ public final class CombatDirector {
             seen.cityBlockDistance(), seen.targetBurrowed(), seen.targetGliding(),
             now.selfGliding(), now.selfTotems(), now.resources(),
             seen.targetId(), now.unprotectedHostilesInCrystalRange(),
-            now.selfTotalHealth(), now.incomingDamage(), now.selfInHole(), now.selfOnGround());
+            now.selfTotalHealth(), now.incomingDamage(), now.selfInHole(), now.selfOnGround(),
+            now.crystalAuraAntiSuicide());
     }
 
     private void enter(CombatState next) {
@@ -444,7 +457,7 @@ public final class CombatDirector {
         return modules;
     }
 
-    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating) {
+    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, double threatMargin) {
         List<ManagedModule> offensive = offensiveModules(state, snapshot, retreating);
 
         Set<ManagedModule> wanted = new LinkedHashSet<>(offensive);
@@ -453,7 +466,7 @@ public final class CombatDirector {
         // entierra, el otro te cristalea, y el director te apaga el aura contra el segundo-.
         if (snapshot.unprotectedHostilesInCrystalRange() > 0) wanted.add(ManagedModules.CRYSTAL_AURA);
 
-        CombatPosture posture = DefensivePolicy.postureFor(snapshot);
+        CombatPosture posture = DefensivePolicy.postureFor(snapshot, threatMargin);
         wanted.addAll(DefensivePolicy.modulesFor(posture, snapshot));
 
         List<ManagedModule> enable = new ArrayList<>();
@@ -462,11 +475,18 @@ public final class CombatDirector {
 
         for (ManagedModule module : wanted) {
             if (module.equals(ManagedModules.CRYSTAL_AURA)) {
-                // El suelo de seguridad: un aura de cristales sin tótem te mata a ti (spec §6.1). Es
-                // binario a propósito, sin histéresis: la cuenta de tótems no oscila sola, baja
-                // cuando te salva uno, y ahí apagar los cristales es lo correcto (spec §6.2).
-                if (snapshot.selfTotems() <= 0) {
-                    skipped.add(new Skipped(module, "no llevas tótems"));
+                // El suelo de tótems, ya solo como red de emergencia. Es §7 por otra puerta: era una
+                // decisión de vida tomada con un contador de ítems, y Meteor ya la toma con el daño
+                // exacto. Para la mitad de COLOCAR, anti-suicide (defaultValue(true)) se niega a
+                // ponerte un cristal que te mate; para la mitad de ROMPER, el suelo te quitaba el
+                // autobreak justo cuando no llevas tótems, que es cuando más falta hace.
+                //
+                // Pero anti-suicide es solo un valor por defecto: si el jugador lo ha apagado, esa
+                // protección no existe, y entonces -y solo entonces- el suelo sigue en pie. El
+                // motivo lo dice entero para que el jugador sepa qué apagar o qué encender.
+                if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraAntiSuicide()) {
+                    skipped.add(new Skipped(module,
+                        "no llevas tótems y el anti-suicide de crystal-aura está apagado"));
                     continue;
                 }
                 // §7: el aura queda fuera del filtro de recursos. Es la única de las dirigidas con

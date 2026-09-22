@@ -14,7 +14,7 @@ class RetreatWatchTest {
     }
 
     private static CombatSnapshot at(double distance, String id) {
-        return new CombatSnapshot(true, distance, false, 0, false, false, false, 2, Map.of())
+        return Snapshots.of(true, distance, false, 0, false, false, false, 2, Map.of())
             .withTargetId(id);
     }
 

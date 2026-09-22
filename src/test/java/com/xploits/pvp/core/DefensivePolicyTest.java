@@ -51,6 +51,25 @@ class DefensivePolicyTest {
     }
 
     @Test
+    void theMarginCanComeFromTheSetting() {
+        // §5 deja el umbral abierto y como ajuste (threat-margin): THREAT_MARGIN es solo el valor
+        // de fábrica. Con el margen del jugador la comparación es la misma, con otro número.
+        assertEquals(CombatPosture.TRANQUILO, DefensivePolicy.postureFor(self(20, 10, false, true), 4),
+            "un margen corto aguanta lo que el de fábrica ya llamaba amenaza");
+        assertEquals(CombatPosture.AMENAZADO, DefensivePolicy.postureFor(self(20, 2, false, true), 18),
+            "y uno largo salta antes");
+    }
+
+    @Test
+    void theDirectorPassesTheMarginThrough() {
+        CombatSnapshot aimed = Snapshots.of(true, 3.0, false, 0, false, false, false, 2, Map.of())
+            .withDefense(20, 10, false, true);
+
+        assertEquals(CombatPosture.AMENAZADO, new CombatDirector().tick(aimed, 6).posture());
+        assertEquals(CombatPosture.TRANQUILO, new CombatDirector().tick(aimed, 6, 4).posture());
+    }
+
+    @Test
     void calmAsksForNothing() {
         assertTrue(DefensivePolicy.modulesFor(CombatPosture.TRANQUILO, self(20, 0, true, true)).isEmpty(),
             "en un agujero y tranquilo tampoco se enciende el surround");
@@ -90,7 +109,7 @@ class DefensivePolicyTest {
     @Test
     void theAntiModulesCostNothingSoNoShortageCanRemoveThem() {
         // Los tres anti- no colocan: escuchan y reaccionan. Con el inventario a cero siguen subiendo.
-        CombatSnapshot broke = new CombatSnapshot(false, 0, false, 0, false, false, false, 0, Map.of())
+        CombatSnapshot broke = Snapshots.of(false, 0, false, 0, false, false, false, 0, Map.of())
             .withDefense(4, 0, false, true);
         Plan plan = new CombatDirector().tick(broke, 6);
 
