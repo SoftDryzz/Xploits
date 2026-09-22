@@ -3,6 +3,7 @@ package com.xploits.sweep.core;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SweepAreaTest {
     @Test
@@ -50,6 +51,39 @@ class SweepAreaTest {
     void overworldEquivalentIsIndependentPerAxis() {
         SweepArea area = SweepArea.ofChunks(0, 0, 1, 3);
         assertEquals("256x512 bloques del Overworld", area.overworldEquivalent());
+    }
+
+    @Test
+    void chunkCountFitsAsAnIntForALargeButRealisticArea() {
+        // 40000x40000 chunks: grande de verdad, pero el producto (1.600.000.000) todavía cabe en
+        // un int, así que no debe lanzar ni desbordar.
+        SweepArea area = SweepArea.ofChunks(0, 0, 39_999, 39_999);
+        assertEquals(1_600_000_000, area.chunkCount());
+    }
+
+    @Test
+    void chunkCountRejectsAnAreaTooBigToCountAsAnInt() {
+        // 50001x50001 chunks: tecleable, muy por debajo del límite real del mundo (~±3.750.000 en
+        // chunks), pero el producto (2.500.100.001) ya no cabe en un int. Antes del arreglo esto
+        // desbordaba en silencio a -1.794.867.295; ahora debe fallar alto, no devolver un número
+        // negativo con pinta de válido.
+        SweepArea area = SweepArea.ofChunks(0, 0, 50_000, 50_000);
+        assertThrows(ArithmeticException.class, area::chunkCount);
+    }
+
+    @Test
+    void theCanonicalConstructorRejectsInvertedCorners() {
+        // A diferencia de ofChunks, el constructor canónico no reordena: los nombres min/max
+        // prometen un orden, y aceptarlo al revés en silencio es justo el bug que se arregla aquí
+        // -antes daba chunkCount()=16 (positivo) y overworldEquivalent()="-512x-512" a la vez-.
+        assertThrows(IllegalArgumentException.class, () -> new SweepArea(5, 5, 0, 0));
+    }
+
+    @Test
+    void theCanonicalConstructorRejectsWhenOnlyOneAxisIsInverted() {
+        // El eje Z está bien (min -1 <= max 3); solo el X viene invertido (min 5 > max 0). Debe
+        // rechazarse igual: no basta con que un eje esté bien para salvar el área entera.
+        assertThrows(IllegalArgumentException.class, () -> new SweepArea(5, -1, 0, 3));
     }
 
     @Test

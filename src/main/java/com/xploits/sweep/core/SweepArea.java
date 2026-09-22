@@ -11,6 +11,22 @@ public record SweepArea(int minChunkX, int minChunkZ, int maxChunkX, int maxChun
     private static final int RATIO_NETHER_OVERWORLD = 8;
 
     /**
+     * Rechaza, no reordena. Los nombres de los componentes prometen cuál es el borde menor y cuál
+     * el mayor de cada eje; si se aceptara un min &gt; max en silencio, {@code chunkCount()} y
+     * {@code overworldEquivalent()} podían contradecirse en la misma llamada (una anunciaba área
+     * negativa, la otra un recuento positivo). Sigue el precedente de {@code Destination.java}: el
+     * constructor canónico valida y rechaza, no repara; quien no conozca el orden de las esquinas
+     * usa {@link #ofChunks} para que se normalicen antes de llegar aquí.
+     */
+    public SweepArea {
+        if (minChunkX > maxChunkX || minChunkZ > maxChunkZ) {
+            throw new IllegalArgumentException(
+                "minChunkX/minChunkZ deben ser <= que maxChunkX/maxChunkZ respectivamente; "
+                    + "usa ofChunks si no conoces de antemano el orden de las esquinas");
+        }
+    }
+
+    /**
      * Construye el área a partir de dos esquinas cualesquiera, en cualquier orden: normaliza cada
      * eje por separado con min/max, porque dar la esquina «mayor» primero es el error de dedo más
      * fácil de cometer al teclear coordenadas.
@@ -31,9 +47,20 @@ public record SweepArea(int minChunkX, int minChunkZ, int maxChunkX, int maxChun
         return maxChunkZ - minChunkZ + 1;
     }
 
-    /** Número total de chunks del rectángulo. */
+    /**
+     * Número total de chunks del rectángulo. Se multiplica en {@code long} para no desbordar antes
+     * de comprobar el rango: con anchura y altura como {@code int}, hacer la cuenta directamente en
+     * {@code int} podía envolverse a un número negativo con pinta de válido para áreas grandes pero
+     * tecleables (muy por debajo del límite real del mundo). Si ni así cabe en un {@code int} se
+     * falla alto en vez de devolver ese número envuelto.
+     */
     public int chunkCount() {
-        return widthInChunks() * heightInChunks();
+        long total = (long) widthInChunks() * heightInChunks();
+        if (total > Integer.MAX_VALUE) {
+            throw new ArithmeticException(
+                "el área tiene " + total + " chunks, demasiados para contarlos en un entero");
+        }
+        return (int) total;
     }
 
     /** Tamaño del rectángulo en bloques del Overworld, para que el jugador vea qué área real cubre. */
