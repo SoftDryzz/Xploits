@@ -239,17 +239,50 @@ class SweepPlannerTest {
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void totalBlocksSumaLaLongitudDeTodasLasPasadas() {
-        SweepArea area = SweepArea.ofChunks(0, 0, 31, 15);
+    void totalBlocksCuentaLosEnlacesEntrePasadasYNoSoloLasPasadas() {
+        // De este número sale la estimación de cohetes que se enseña ANTES de despegar (spec §6):
+        // si sale por debajo de la distancia real, el módulo dice "te llegan" a quien no le llegan.
+        // El caso lleva DOS bandas saltadas seguidas a propósito, para que uno de los enlaces sea
+        // largo: un caso sin bandas saltadas pasaría igual aunque los enlaces no se contaran.
+        //
+        // Área 0..31 x 0..23 chunks, más ancha que alta: pasadas en X, apiladas en Z. Con anchura 4
+        // salen seis bandas en Z (0-3, 4-7, 8-11, 12-15, 16-19, 20-23) y las bandas 4-7 y 8-11 están
+        // vistas enteras, así que se vuelan cuatro pasadas.
+        //
+        // Centros de banda en Z, en bloques:  banda 0-3 -> 32;  12-15 -> 224;  16-19 -> 288;
+        // 20-23 -> 352. El eje X va del centro del chunk 0 (bloque 8) al del chunk 31 (bloque 504),
+        // así que cada pasada mide 496 bloques.
+        //
+        //   4 pasadas x 496                                              = 1984
+        //   enlace tras saltarse dos bandas:      |224 - 32|             =  192
+        //   enlace entre bandas seguidas:         |288 - 224|            =   64
+        //   enlace entre bandas seguidas:         |352 - 288|            =   64
+        //                                                          total = 2304
+        SweepArea area = SweepArea.ofChunks(0, 0, 31, 23);
+        Coverage vista = coberturaDe(SweepArea.ofChunks(0, 4, 31, 11));
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+
+        assertEquals(4, plan.lanes().size());
+        assertEquals(2304.0, plan.totalBlocks(), 1e-9);
+
+        double soloLasPasadas = 0.0;
+        for (Lane pasada : plan.lanes()) {
+            soloLasPasadas += pasada.lengthInBlocks();
+        }
+        assertEquals(1984.0, soloLasPasadas, 1e-9);
+        assertTrue(plan.totalBlocks() > soloLasPasadas,
+            "totalBlocks se quedó en la suma de las pasadas: la estimación de cohetes saldría corta");
+    }
+
+    @Test
+    void totalBlocksDeUnaSolaPasadaEsEsaPasadaPorqueNoHayEnlace() {
+        SweepArea area = SweepArea.ofChunks(0, 0, 31, 3);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
-        double esperado = 0.0;
-        for (Lane pasada : plan.lanes()) {
-            esperado += pasada.lengthInBlocks();
-        }
-        assertEquals(esperado, plan.totalBlocks(), 1e-9);
-        assertTrue(plan.totalBlocks() > 0.0);
+        assertEquals(1, plan.lanes().size());
+        assertEquals(plan.lanes().get(0).lengthInBlocks(), plan.totalBlocks(), 1e-9);
     }
 
     @Test

@@ -71,18 +71,34 @@ public final class SweepPlanner {
         }
 
         /**
-         * Bloques totales de vuelo del plan, sumando todas las pasadas. Es el número del que sale la
-         * estimación de cohetes que se enseña antes de despegar (spec §6).
+         * Los bloques que el jugador va a volar de verdad para ejecutar este plan: <b>la longitud de
+         * todas las pasadas más la de los enlaces que las unen</b>, es decir el trayecto completo
+         * desde el arranque de la primera pasada hasta el final de la última. Un plan sin pasadas
+         * mide cero, y uno de una sola pasada mide esa pasada, porque no hay ningún enlace.
          *
-         * <p>No incluye los enlaces entre pasadas: alternando el sentido, cada enlace es un salto
-         * perpendicular de unas pocas anchuras de pasada -una si las bandas van seguidas, más si se
-         * saltaron bandas ya vistas por en medio-, corto al lado de la pasada. Quien proyecte
-         * cohetes sobre este número debe contar con que se queda algo corto, no algo largo.
+         * <p>Los enlaces cuentan porque este número alimenta una decisión de seguridad: de él sale
+         * la estimación de cohetes que se enseña <b>antes</b> de despegar (spec §6), y quedarse sin
+         * cohetes lejos de casa cuesta la sesión entera. Una distancia por debajo de la real da
+         * cohetes estimados de menos, y entonces el módulo dice «te llegan» a un jugador al que no
+         * le llegan: la comprobación previa, que es justo la que existe para evitar el viaje, la
+         * pasaría en falso. Que la medición en vuelo lo cace a la media hora no lo salva, porque
+         * para entonces ya está lejos.
+         *
+         * <p>Y no son un redondeo. Con las pasadas de punta a punta, el enlace entre dos pasadas
+         * consecutivas es un salto perpendicular que vale una anchura de pasada si las bandas van
+         * seguidas, pero tantas como bandas ya vistas se hayan saltado por en medio si no —y
+         * saltarse bandas es el caso normal aquí, porque se planifica sobre huecos—.
          */
         public double totalBlocks() {
             double total = 0.0;
-            for (Lane lane : lanes) {
-                total += lane.lengthInBlocks();
+            for (int i = 0; i < lanes.size(); i++) {
+                Lane pasada = lanes.get(i);
+                total += pasada.lengthInBlocks();
+                if (i + 1 < lanes.size()) {
+                    Lane siguiente = lanes.get(i + 1);
+                    total += Math.hypot(siguiente.fromX() - pasada.toX(),
+                        siguiente.fromZ() - pasada.toZ());
+                }
             }
             return total;
         }
