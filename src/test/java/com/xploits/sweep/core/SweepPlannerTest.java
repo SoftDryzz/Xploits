@@ -311,6 +311,22 @@ class SweepPlannerTest {
         assertTrue(motivoNegativo.contains("1 chunk"), motivoNegativo);
     }
 
+    @Test
+    void elMotivoDelRechazoNombraLosAjustesComoAparecenEnLaInterfaz() {
+        // Nombrar el ajuste solo en prosa -"la anchura de pasada"- manda al jugador a buscar en la
+        // ClickGUI algo que no existe con ese nombre. Los identificadores que fija este test son los
+        // de los ajustes del módulo sweep/NetherSweep, y tienen que moverse juntos.
+        SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
+
+        String motivoCero = SweepPlanner.plan(area, Coverage.empty(), 0).rejection();
+        assertTrue(motivoCero.contains("lane-width"), motivoCero);
+        assertTrue(motivoCero.contains("lane-width-margin"), motivoCero);
+
+        String motivoNegativo = SweepPlanner.plan(area, Coverage.empty(), -3).rejection();
+        assertTrue(motivoNegativo.contains("lane-width"), motivoNegativo);
+        assertTrue(motivoNegativo.contains("lane-width-margin"), motivoNegativo);
+    }
+
     // ---------------------------------------------------------------------------------------
     // El plan como valor
     // ---------------------------------------------------------------------------------------

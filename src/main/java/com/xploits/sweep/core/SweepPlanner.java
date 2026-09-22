@@ -243,6 +243,12 @@ public final class SweepPlanner {
      * solo que algo está mal. Un rechazo que no dice cómo salir del atasco es casi tan malo como el
      * silencio.
      *
+     * <p><b>Los ajustes se nombran tal y como aparecen en la interfaz de Meteor</b> -{@code
+     * lane-width} y {@code lane-width-margin} del módulo {@code nether-sweep}-, y no solo por su
+     * nombre en prosa. Un motivo que dijera únicamente «sube la anchura de pasada» manda al jugador a
+     * buscar en la ClickGUI algo que no existe con ese nombre, y entonces el rechazo vuelve a ser lo
+     * que este texto existe para no ser: saber que algo está mal y no saber qué tocar.
+     *
      * <p>Y se rechaza en vez de degradar a 1 por lo de siempre: un barrido volado con una separación
      * que el módulo se inventa deja franjas sin mirar y las marca como peinadas igual. Degradar aquí
      * sería contar en silencio la única mentira que este módulo no puede contar.
@@ -253,12 +259,13 @@ public final class SweepPlanner {
                 + " área no terminaría nunca"
             : "avanza hacia atrás: las bandas se irían saliendo del área por el borde contrario y el"
                 + " rectángulo no llegaría a recorrerse entero";
-        return "El barrido con la anchura de pasada en " + laneWidthInChunks + " chunks " + queHaria
+        return "El barrido con la anchura de pasada -el ajuste lane-width- en " + laneWidthInChunks
+            + " chunks " + queHaria
             + ". Degradarla a 1 chunk en silencio sería peor que pararse: el barrido volaría con una"
             + " separación inventada, dejaría franjas sin mirar y las marcaría como peinadas igual."
-            + " Sube la anchura de pasada a 1 chunk o más. Normalmente no se teclea -sale medida del"
-            + " flujo de chunks que manda el servidor-, así que si ha llegado aquí en "
-            + laneWidthInChunks + " es que la medida todavía no tiene muestras o que el margen de"
-            + " seguridad la ha dejado en eso.";
+            + " Sube lane-width a 1 chunk o más. Normalmente no se teclea -se deja en 0 y sale medida"
+            + " del flujo de chunks que manda el servidor-, así que si ha llegado aquí en "
+            + laneWidthInChunks + " es que la medida todavía no tiene muestras o que"
+            + " lane-width-margin la ha dejado en eso.";
     }
 }

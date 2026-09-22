@@ -5,9 +5,9 @@ import com.xploits.elytra.ElytraReplace;
 import com.xploits.sweep.core.ChunkPos;
 import com.xploits.sweep.core.Coverage;
 import com.xploits.sweep.core.FuelBudget;
-import com.xploits.sweep.core.Lane;
 import com.xploits.sweep.core.SweepArea;
 import com.xploits.sweep.core.SweepPlanner;
+import com.xploits.sweep.core.SweepRoute;
 import com.xploits.sweep.core.WidthProbe;
 import com.xploits.travel.core.BaritoneScript;
 import com.xploits.travel.core.BorrowedModule;
@@ -194,12 +194,13 @@ public class NetherSweep extends Module {
         .build()
     );
 
-    // La anchura de pasada (spec §5). El nombre del ajuste es el mismo que el que usan los motivos
-    // de rechazo de SweepPlanner -"la anchura de pasada"- a propósito: si divergieran, el mensaje
-    // mandaría al jugador a tocar algo que no existe con ese nombre.
+    // La anchura de pasada (spec §5). Los identificadores "lane-width" y "lane-width-margin" son los
+    // que nombran los motivos de rechazo de SweepPlanner, a propósito y con un test que los fija
+    // allí: si divergieran, el mensaje mandaría al jugador a buscar en la ClickGUI algo que no
+    // existe con ese nombre. Se mueven juntos o no se mueven.
 
     private final Setting<Integer> anchuraDePasada = sgPasada.add(new IntSetting.Builder()
-        .name("anchura-de-pasada")
+        .name("lane-width")
         .description("Separación entre pasadas, en chunks. Déjalo en 0 y se MIDE del flujo de chunks que manda "
             + "el servidor, que es lo correcto (spec §5). Cualquier otro valor la fija a mano y desactiva la "
             + "medida: solo si sabes el alcance real del servidor, porque pasarse deja franjas sin mirar y el "
@@ -211,10 +212,10 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> margenDeAnchura = sgPasada.add(new DoubleSetting.Builder()
-        .name("margen-de-anchura-de-pasada")
+        .name("lane-width-margin")
         .description("Qué fracción del radio medido se descuenta como margen. Volar rápido deja huecos aunque "
             + "la distancia nominal sea correcta, porque los chunks tardan en llegar: 0.2 se queda con el 80 % "
-            + "del radio observado. No se usa si la anchura de pasada está fijada a mano.")
+            + "del radio observado. No se usa si lane-width está fijada a mano.")
         .defaultValue(0.2)
         .range(0, 0.9)
         .sliderRange(0, 0.9)
@@ -223,7 +224,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> margenDeWaypoint = sgPasada.add(new DoubleSetting.Builder()
-        .name("margen-de-waypoint")
+        .name("waypoint-margin")
         .description("Cuántos bloques antes de cada vértice se le cambia el objetivo a Baritone, para que no le "
             + "dé tiempo a aterrizar en él. Un barrido tiene dos vértices por pasada, así que sin esto serían "
             + "decenas de aterrizajes.")
@@ -237,7 +238,7 @@ public class NetherSweep extends Module {
     // Cohetes (spec §6): el límite real de un barrido no es el tiempo.
 
     private final Setting<Double> reservaDeCohetes = sgCohetes.add(new DoubleSetting.Builder()
-        .name("reserva-de-cohetes")
+        .name("firework-reserve")
         .description("Margen sobre los cohetes que la proyección dice que hacen falta. 0.2 corta cuando quede un "
             + "20 % menos de lo necesario, es decir con cohetes todavía en la mano y no al quedarse a cero.")
         .defaultValue(0.2)
@@ -248,7 +249,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Boolean> contarElRegreso = sgCohetes.add(new BoolSetting.Builder()
-        .name("contar-el-regreso")
+        .name("count-return-trip")
         .description("Si el presupuesto de cohetes incluye la vuelta desde el final del barrido hasta donde "
             + "despegaste. Apagarlo no te deja más cohetes: solo deja de contarlos, y te enteras de que no "
             + "llegan cuando ya estás lejos.")
@@ -257,7 +258,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> bloquesPorCohete = sgCohetes.add(new DoubleSetting.Builder()
-        .name("bloques-por-cohete-medido")
+        .name("blocks-per-firework")
         .description("El gasto medido en barridos anteriores, que es de donde sale la estimación de ANTES de "
             + "despegar (spec §6). Lo escribe el módulo al terminar cada barrido; en 0 significa que todavía no "
             + "hay ninguna medida, y entonces se dice que no la hay en vez de enseñar un número inventado.")
@@ -269,7 +270,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> graciaSinProyeccion = sgCohetes.add(new DoubleSetting.Builder()
-        .name("gracia-sin-proyeccion")
+        .name("no-projection-grace")
         .description("Cuántos bloques se aguanta volando sin poder proyectar los cohetes antes de cortar. Pasa "
             + "al principio -hasta la primera medida- y si repones cohetes más a menudo de lo que se mide, que "
             + "hace caducar el dato. Seguir volando sin proyección es volar sin la protección de cohetes, así "
@@ -288,21 +289,21 @@ public class NetherSweep extends Module {
     // está en BaritoneScript.baritoneDefaults().
 
     private final Setting<String> prefijo = sgVuelo.add(new StringSetting.Builder()
-        .name("prefijo-de-baritone")
+        .name("baritone-prefix")
         .description("El prefijo con el que Baritone lee sus comandos. Cámbialo solo si lo has cambiado en Baritone.")
         .defaultValue("#")
         .build()
     );
 
     private final Setting<Boolean> autoSalto = sgVuelo.add(new BoolSetting.Builder()
-        .name("auto-salto")
+        .name("auto-jump")
         .description("elytraAutoJump durante el barrido: que Baritone despegue solo.")
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> autoSaltoEnReposo = sgVuelo.add(new BoolSetting.Builder()
-        .name("auto-salto-en-reposo")
+        .name("auto-jump-resting")
         .description("A qué valor se devuelve elytraAutoJump al terminar. Hay que declararlo: los ajustes de "
             + "Baritone se pueden escribir pero no leer. De fábrica Baritone lo trae en false.")
         .defaultValue(BaritoneScript.baritoneDefaults().autoJump())
@@ -310,14 +311,14 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Boolean> aterrizajeDeUrgencia = sgVuelo.add(new BoolSetting.Builder()
-        .name("aterrizaje-de-urgencia")
+        .name("emergency-land")
         .description("elytraAllowEmergencyLand durante el barrido: que aterrice de urgencia antes que estrellarse.")
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> aterrizajeDeUrgenciaEnReposo = sgVuelo.add(new BoolSetting.Builder()
-        .name("aterrizaje-de-urgencia-en-reposo")
+        .name("emergency-land-resting")
         .description("A qué valor se devuelve elytraAllowEmergencyLand al terminar. De fábrica Baritone lo trae "
             + "en true.")
         .defaultValue(BaritoneScript.baritoneDefaults().allowEmergencyLand())
@@ -325,7 +326,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Boolean> ahorrarCohetes = sgVuelo.add(new BoolSetting.Builder()
-        .name("ahorrar-cohetes")
+        .name("conserve-fireworks")
         .description("elytraConserveFireworks durante el barrido: gastar menos cohetes a cambio de ir más lento. "
             + "En un barrido de horas suele compensar.")
         .defaultValue(true)
@@ -333,7 +334,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Boolean> ahorrarCohetesEnReposo = sgVuelo.add(new BoolSetting.Builder()
-        .name("ahorrar-cohetes-en-reposo")
+        .name("conserve-fireworks-resting")
         .description("A qué valor se devuelve elytraConserveFireworks al terminar. De fábrica Baritone lo trae en "
             + "false: ponlo en true solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
             + "vuelos a mano irían más lentos a partir del primer barrido.")
@@ -342,9 +343,9 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> velocidadDeCohete = sgVuelo.add(new DoubleSetting.Builder()
-        .name("velocidad-de-cohete")
+        .name("firework-speed")
         .description("elytraFireworkSpeed durante el barrido. Volar más rápido que cuando se midió la anchura de "
-            + "pasada abre huecos: para eso está el margen de anchura de pasada.")
+            + "pasada abre huecos: para eso está lane-width-margin.")
         .defaultValue(1)
         .min(0)
         .sliderRange(0.5, 3)
@@ -353,7 +354,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Double> velocidadDeCoheteEnReposo = sgVuelo.add(new DoubleSetting.Builder()
-        .name("velocidad-de-cohete-en-reposo")
+        .name("firework-speed-resting")
         .description("A qué valor se devuelve elytraFireworkSpeed al terminar. De fábrica Baritone lo trae en 1.2.")
         .defaultValue(BaritoneScript.baritoneDefaults().fireworkSpeed())
         .min(0)
@@ -363,7 +364,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<String> semillaDelNether = sgVuelo.add(new StringSetting.Builder()
-        .name("semilla-del-nether")
+        .name("nether-seed")
         .description("La semilla del Nether, si se conoce. Vacía se deja en paz: sin semilla Baritone apaga la "
             + "predicción de terreno él solo, que es lo correcto.")
         .defaultValue("")
@@ -373,7 +374,7 @@ public class NetherSweep extends Module {
     // Avisos
 
     private final Setting<Boolean> avisos = sgAvisos.add(new BoolSetting.Builder()
-        .name("avisos")
+        .name("notify")
         .description("Aviso local al lanzar, al cambiar de pasada y al terminar. Los avisos fuertes -la red de "
             + "seguridad, el atasco, los cohetes y los detectores apagados- salen siempre, lo apagues o no.")
         .defaultValue(true)
@@ -381,7 +382,7 @@ public class NetherSweep extends Module {
     );
 
     private final Setting<Boolean> sonidoEnAvisos = sgAvisos.add(new BoolSetting.Builder()
-        .name("sonido-en-avisos")
+        .name("notify-sound")
         .description("Sonido en los avisos fuertes.")
         .defaultValue(true)
         .build()
@@ -431,19 +432,15 @@ public class NetherSweep extends Module {
     private final BorrowedModule elytraFly = new BorrowedModule("elytra-fly", false);
     private final BorrowedModule elytraReplace = new BorrowedModule("elytra-replace", true);
 
-    /** Los vértices del barrido, en el orden en que se vuelan: principio y final de cada pasada. */
-    private List<Waypoint> waypoints = List.of();
-    private int index;
-
     /**
-     * Cuántos bloques quedan desde el waypoint {@code i} hasta el final del viaje -el resto de la
-     * ruta más el regreso, si se cuenta-. Se precalcula al lanzar para que la comprobación de
-     * cohetes de cada muestra cueste una resta y no un recorrido de toda la ruta.
+     * El viaje que se está volando: los vértices en orden y todas las distancias que hay que
+     * presupuestar, aproximación y regreso incluidos. Es {@code null} mientras no hay barrido en
+     * marcha, y todo lo que lo lee está detrás de {@link #sweeping}.
      */
-    private double[] colaDesde = new double[0];
+    private SweepRoute route;
 
-    /** Dónde despegó el barrido, que es a donde se vuelve si {@link #contarElRegreso} está puesto. */
-    private Waypoint origen = new Waypoint(0, 0);
+    /** En qué vértice de {@link #route} va el barrido. */
+    private int index;
 
     /** Cuántas pasadas tiene el plan que se está volando, para el estado y los avisos. */
     private int pasadasDelPlan;
@@ -640,13 +637,13 @@ public class NetherSweep extends Module {
         checkFireworks();
         if (muestrearCohetes()) return;
 
-        double distancia = aqui.distanceTo(waypoints.get(index));
+        double distancia = aqui.distanceTo(route.waypoints().get(index));
 
         // El margen con el que se da por alcanzado un waypoint no es el mismo para todos -el último
         // es el único sitio donde Baritone debe aterrizar-, y esa decisión vive en el núcleo.
-        if (distancia <= RoutePlanner.reachedMargin(index, waypoints.size(), margenDeWaypoint.get())) {
+        if (distancia <= RoutePlanner.reachedMargin(index, route.size(), margenDeWaypoint.get())) {
             index++;
-            if (index >= waypoints.size()) {
+            if (index >= route.size()) {
                 finish("el barrido ha terminado", false);
                 return;
             }
@@ -730,9 +727,9 @@ public class NetherSweep extends Module {
                 return false;
             }
 
-            String message = String.format("Llevo %d bloques sin poder proyectar los cohetes y la gracia está en "
-                    + "%d: corto el barrido. Seguir sería volar sin la única protección que tienes contra quedarte "
-                    + "tirado lejos de casa, y callármelo sería peor que pararlo.",
+            String message = String.format("Llevo %d bloques sin poder proyectar los cohetes y no-projection-grace "
+                    + "está en %d: corto el barrido. Seguir sería volar sin la única protección que tienes contra "
+                    + "quedarte tirado lejos de casa, y callármelo sería peor que pararlo.",
                 Math.round(bloquesSinProyeccion), Math.round(graciaSinProyeccion.get()));
             warning("%s", message);
             loudToast(message, Items.FIREWORK_ROCKET);
@@ -765,9 +762,8 @@ public class NetherSweep extends Module {
      * barrido.
      */
     private double bloquesRestantes() {
-        double cola = colaDesde[index];
-        if (mc.player == null) return cola;
-        return new Waypoint(mc.player.getX(), mc.player.getZ()).distanceTo(waypoints.get(index)) + cola;
+        if (mc.player == null) return route.remainingFrom(index);
+        return route.remainingFrom(index, new Waypoint(mc.player.getX(), mc.player.getZ()));
     }
 
     /**
@@ -839,29 +835,26 @@ public class NetherSweep extends Module {
         }
 
         Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
-        List<Waypoint> ruta = rutaDe(plan.lanes());
+        // Todas las distancias del viaje -aproximación incluida- las calcula SweepRoute, en el núcleo
+        // y con tests: aquí no se rehace ninguna a mano, que es por donde se coló dos veces un
+        // "total" que no incluía la aproximación y que acabó decidiendo si había cohetes.
+        SweepRoute ruta = SweepRoute.of(plan.lanes(), aqui, contarElRegreso.get());
 
         String separacionRechazo = rechazoPorSeparacion(ruta);
         if (separacionRechazo != null) return separacionRechazo;
 
-        double aproximacion = aqui.distanceTo(ruta.get(0));
-        double barrido = plan.totalBlocks();
-        double regreso = contarElRegreso.get() ? ruta.get(ruta.size() - 1).distanceTo(aqui) : 0;
-        double total = aproximacion + barrido + regreso;
-
         avisarDeLosDetectores();
         if (anchuraTecleada) {
-            String message = String.format("La anchura de pasada está tecleada a mano en %d chunks, así que el "
-                    + "barrido NO la mide: si el servidor manda menos que eso, quedarán franjas sin ver y este "
-                    + "barrido las dará por peinadas igual. Ponla en 0 para que se mida sola.", anchuraUsada);
+            String message = String.format("lane-width está tecleada a mano en %d chunks, así que el barrido NO "
+                    + "mide la anchura de pasada: si el servidor manda menos que eso, quedarán franjas sin ver y "
+                    + "este barrido las dará por peinadas igual. Pon lane-width en 0 para que se mida sola.",
+                anchuraUsada);
             warning("%s", message);
             loudToast(message, Items.BARRIER);
         }
 
         activePrefix = launchPrefix;
-        waypoints = ruta;
-        colaDesde = colaDe(ruta, aqui);
-        origen = aqui;
+        route = ruta;
         posicionAnterior = aqui;
         index = 0;
         pasadasDelPlan = plan.lanes().size();
@@ -890,9 +883,11 @@ public class NetherSweep extends Module {
                 + "de los que %d ya estaban vistos (%s).%n  Vuelo: %d bloques de aproximación + %d de barrido%s = "
                 + "%d bloques.%n  Cobertura equivalente: %s.%n  %s",
             plan.lanes().size(), anchuraUsada, anchuraTecleada ? "tecleada" : "medida", area.chunkCount(),
-            chunksYaVistos, lectura.resumen(), Math.round(aproximacion), Math.round(barrido),
-            contarElRegreso.get() ? String.format(" + %d de regreso", Math.round(regreso)) : "",
-            Math.round(total), area.overworldEquivalent(), estimacionDeCohetes(total));
+            chunksYaVistos, lectura.resumen(), Math.round(ruta.approachBlocks()),
+            Math.round(ruta.sweepBlocks()),
+            contarElRegreso.get() ? String.format(" + %d de regreso", Math.round(ruta.returnBlocks())) : "",
+            Math.round(ruta.totalBlocks()), area.overworldEquivalent(),
+            estimacionDeCohetes(ruta.totalBlocks()));
     }
 
     /**
@@ -914,39 +909,12 @@ public class NetherSweep extends Module {
             return String.format("No se barre todavía: la anchura de pasada sale medida del flujo de chunks que "
                     + "manda el servidor, y aún no hay muestras suficientes (hacen falta %d). Deja el módulo "
                     + "encendido y muévete un poco para que el servidor te mande terreno, o si sabes su alcance "
-                    + "real ponlo a mano en la anchura de pasada -con el aviso de que ahí ya no se mide nada-.",
+                    + "real ponlo a mano en lane-width -con el aviso de que ahí ya no se mide nada-.",
                 WidthProbe.MUESTRAS_MINIMAS);
         }
         anchuraUsada = probe.laneWidthInChunks(margenDeAnchura.get());
         anchuraTecleada = false;
         return null;
-    }
-
-    /**
-     * Los vértices del barrido en el orden en que se vuelan: principio y final de cada pasada. Las
-     * pasadas ya salen alternando el sentido de {@link SweepPlanner}, así que cada una arranca donde
-     * terminó la anterior y el enlace entre dos es el salto perpendicular entre bandas.
-     */
-    private static List<Waypoint> rutaDe(List<Lane> pasadas) {
-        List<Waypoint> ruta = new ArrayList<>(pasadas.size() * 2);
-        for (Lane pasada : pasadas) {
-            ruta.add(new Waypoint(pasada.fromX(), pasada.fromZ()));
-            ruta.add(new Waypoint(pasada.toX(), pasada.toZ()));
-        }
-        return List.copyOf(ruta);
-    }
-
-    /**
-     * Cuántos bloques quedan desde cada vértice hasta el final del viaje, regreso incluido si se
-     * cuenta. Se recorre de atrás hacia delante una sola vez al lanzar.
-     */
-    private double[] colaDe(List<Waypoint> ruta, Waypoint origen) {
-        double[] cola = new double[ruta.size()];
-        cola[ruta.size() - 1] = contarElRegreso.get() ? ruta.get(ruta.size() - 1).distanceTo(origen) : 0;
-        for (int i = ruta.size() - 2; i >= 0; i--) {
-            cola[i] = ruta.get(i).distanceTo(ruta.get(i + 1)) + cola[i + 1];
-        }
-        return cola;
     }
 
     /**
@@ -959,19 +927,21 @@ public class NetherSweep extends Module {
      * consumen en ráfaga <b>son pasadas enteras que nunca se vuelan</b> y que el barrido da por
      * peinadas igual. Así que se rechaza con el número que hay que tocar, en vez de volar un barrido
      * con agujeros.
+     *
+     * <p>Cuál es el hueco más corto lo sabe {@link SweepRoute#tightestGap()}, en el núcleo y con
+     * tests; cuál es el mínimo admisible, {@link RoutePlanner#minimumSpacing(double)}, también. Aquí
+     * solo se comparan y se redacta el motivo.
      */
-    private String rechazoPorSeparacion(List<Waypoint> ruta) {
+    private String rechazoPorSeparacion(SweepRoute ruta) {
         double minima = RoutePlanner.minimumSpacing(margenDeWaypoint.get());
-        for (int i = 0; i + 1 < ruta.size(); i++) {
-            double separacion = ruta.get(i).distanceTo(ruta.get(i + 1));
-            if (separacion > minima) continue;
-            return String.format("No se barre: hay dos vértices del recorrido a %d bloques, y con el margen de "
-                    + "waypoint en %d hacen falta más de %d. Tan juntos se consumirían en el mismo tick, así que "
-                    + "habría pasadas que no se volarían nunca y el barrido las daría por peinadas igual. Baja el "
-                    + "margen de waypoint, agranda el área, o sube la anchura de pasada si la tienes tecleada.",
-                Math.round(separacion), Math.round(margenDeWaypoint.get()), Math.round(minima));
-        }
-        return null;
+        double separacion = ruta.tightestGap();
+        if (separacion > minima) return null;
+
+        return String.format("No se barre: hay dos vértices del recorrido a %d bloques, y con waypoint-margin en "
+                + "%d hacen falta más de %d. Tan juntos se consumirían en el mismo tick, así que habría pasadas "
+                + "que no se volarían nunca y el barrido las daría por peinadas igual. Baja waypoint-margin, "
+                + "agranda el área, o sube lane-width si la tienes tecleada.",
+            Math.round(separacion), Math.round(margenDeWaypoint.get()), Math.round(minima));
     }
 
     /**
@@ -1120,7 +1090,7 @@ public class NetherSweep extends Module {
 
     /** Fija el vértice actual y relanza el vuelo: Baritone toma el objetivo al arrancar, no después. */
     private void aimAtCurrentWaypoint() {
-        send(BaritoneScript.goTo(activePrefix, waypoints.get(index)));
+        send(BaritoneScript.goTo(activePrefix, route.waypoints().get(index)));
         send(BaritoneScript.launch(activePrefix));
     }
 
@@ -1217,8 +1187,7 @@ public class NetherSweep extends Module {
 
     private void resetSweep() {
         sweeping = false;
-        waypoints = List.of();
-        colaDesde = new double[0];
+        route = null;
         index = 0;
         pasadasDelPlan = 0;
         bloquesVolados = 0;
