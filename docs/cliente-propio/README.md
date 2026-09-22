@@ -18,22 +18,49 @@ escribir una línea, no después.
 
 ### Meteor Client — GPL-3.0
 
-Verificado en su repositorio. Si usáis su código —aunque sea parcialmente— vuestro cliente hereda
-estas obligaciones:
+Verificado en su repositorio. **Y lo primero que hay que entender: las obligaciones se disparan al
+distribuir, no al usar.**
 
-- **Tiene que ser de código abierto**, con las fuentes publicadas.
-- **Tiene que llevar la misma licencia**, GPL-3.0.
-- **No puede ser cerrado ni ofuscado.**
-- **Tenéis que decir de forma clara y visible a todos los usuarios** que usáis código de Meteor.
+La GPL-3.0 lo dice expresamente: podéis ejecutar y modificar la obra **sin ninguna condición**
+mientras no se la transmitáis a nadie.
 
-**Qué significa en la práctica.** Un cliente derivado de Meteor es legítimo y hay muchos, pero tiene
-que ser abierto. Si la intención era algo cerrado o de pago, **el camino no es derivar de Meteor**:
-es escribir el vuestro desde cero sobre Fabric, sin mirar su código.
+**Uso privado — sin obligación ninguna.** Forkear Meteor, modificarlo y usarlo vosotros no genera
+ningún deber: ni publicar fuentes, ni licenciar de ninguna forma, ni declarar nada. Un repositorio
+privado tampoco es distribuir.
 
-Y ojo con la vía de en medio, que es la trampa: leer su código «para inspirarse» y reescribirlo de
-memoria es exactamente lo que la GPL considera obra derivada. La frontera limpia es **usar sus ideas
-públicas** (que un cliente tiene módulos, ajustes y un bus de eventos lo sabe cualquiera) frente a
-**reproducir su implementación**.
+**En cuanto sale de vuestras manos**, sí:
+
+- **Con las fuentes**, de lo que entreguéis.
+- **Bajo GPL-3.0**, la misma licencia.
+- **Sin ofuscar.**
+- **Diciendo claramente** que usa código de Meteor.
+
+Tres matices que suelen sorprender:
+
+- **Distribuir no obliga a publicar al mundo.** Si se lo pasáis a tres personas, esas tres tienen
+  derecho al código; nadie más. No hace falta un repositorio público.
+- **Es GPL, no AGPL.** La AGPL se dispara al dar servicio por red; la GPL no. Jugar en un servidor
+  con vuestro cliente no es distribuirlo.
+- **No hay efecto retroactivo.** Si dentro de un año decidís compartirlo, cumplís entonces. Nada de
+  lo que hagáis ahora en privado os lo impide.
+
+**Qué significa para el proyecto.** Si esto va a ser privado, la licencia **no vota** en la decisión
+de fork o cliente propio: elegid por razones técnicas. Si algún día va a salir de vuestras manos,
+entonces sí: un cliente derivado de Meteor tiene que ser abierto, y si la intención era algo cerrado
+o de pago, el camino no es derivar de Meteor sino escribir el vuestro sobre Fabric sin mirar su
+código.
+
+Y ojo con la vía de en medio, que es la trampa **para ese caso**: leer su código «para inspirarse» y
+reescribirlo de memoria es exactamente lo que la GPL considera obra derivada. La frontera limpia es
+**usar sus ideas públicas** (que un cliente tiene módulos, ajustes y un bus de eventos lo sabe
+cualquiera) frente a **reproducir su implementación**.
+
+**El consejo que vale en los dos casos:** mantened vuestro código separado del derivado. No por la
+licencia, sino porque el día que queráis compartir algo, poder decir «esto es mío y esto viene de
+Meteor» convierte un problema en un trámite. La arquitectura de núcleos puros ya lo hace.
+
+*(Esto es cómo se lee la licencia, no asesoramiento legal. Si algún día hay dinero de por medio,
+que lo mire alguien que sepa.)*
 
 ### Baritone — LGPL-3.0, y esto sí es buena noticia
 
@@ -77,8 +104,8 @@ chasis.
 ## Las tres formas de hacerlo
 
 **1. Fork de Meteor.** Partís de su código y lo modificáis. Tenéis los 197 módulos y los 212 mixins
-desde el minuto uno; a cambio, GPL-3.0 y arrastráis su arquitectura y sus decisiones. Es el camino
-más rápido a algo usable y el que menos libertad deja.
+desde el minuto uno; a cambio, arrastráis su arquitectura y sus decisiones —y GPL-3.0 **el día que
+lo distribuyáis**, no antes—. Es el camino más rápido a algo usable y el que menos libertad deja.
 
 **2. Cliente propio sobre Fabric, con Meteor como referencia conceptual.** Escribís vuestro chasis
 —módulos, ajustes, bus de eventos, GUI— y portáis vuestros núcleos encima. Mucho más trabajo, pero
