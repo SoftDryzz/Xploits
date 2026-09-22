@@ -2,8 +2,6 @@ package com.xploits.pvp.core;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +29,23 @@ import java.util.Set;
  * Es el mismo razonamiento con el que {@code nether-sweep} mide la anchura de pasada del servidor y
  * el gasto real de cohetes en vez de suponer un número.
  *
+ * <h2>El veredicto es de la pila, no del módulo</h2>
+ * Lo que se mide es <b>una pila del inventario</b>, y una pila puede tener varios consumidores:
+ * {@code auto-trap}, {@code surround} y {@code hole-filler} beben de la misma obsidiana (I3). El
+ * inventario dice cuánta obsidiana queda, <b>no quién la colocó</b>, así que con este dato no se
+ * puede afirmar nada de uno solo de los tres: la única frase honesta es "no ha colocado ninguno de
+ * estos". Por eso la cuenta va <b>por recurso</b> y el aviso sale con los nombres de todos los que
+ * estaban en condiciones de gastarlo, diciendo con todas las letras que el veredicto es conjunto.
+ * Cuando el recurso tiene un solo consumidor -los cuatro casos habituales- el grupo es de uno y el
+ * aviso es del módulo.
+ *
+ * <p><b>Y eso tiene un precio que hay que decir, no esconder:</b> mientras uno del grupo gaste de
+ * verdad, la pila se mueve y del resto <b>no se dice nada</b>. En una guerra de trampa, con el rival
+ * rompiendo el trap y {@code auto-trap} reconstruyéndolo una y otra vez, un {@code hole-filler} roto
+ * de verdad puede no avisar en toda la pelea. Eso no es un retraso, es silencio, y con este dato no
+ * se arregla: se arreglaría viendo quién coloca, que es justo lo que el inventario no cuenta. Lo que
+ * sí se puede hacer -y es lo que se hace- es no afirmar una certeza por módulo que no existe.
+ *
  * <h2>A quién vigila, y a quién no</h2>
  * El vigilante cubre <b>seis de los diez</b> módulos dirigidos: {@code crystal-aura},
  * {@code auto-trap}, {@code auto-web}, {@code auto-anvil} y los dos de la obsidiana,
@@ -53,18 +68,19 @@ import java.util.Set;
  *
  * <h2>Qué hace y qué no hace</h2>
  * <b>No corta ni apaga nada.</b> Un módulo que no actúa puede ser perfectamente correcto -puede no
- * haber posición válida ahora mismo, o el {@code surround} puede estar ya completo-, y apagarlo
- * sería peor que avisar: el módulo dejaría de estar listo para el tick en el que sí haya posición.
- * Lo único que hace es decirlo <b>una vez</b>, nombrando al módulo y apuntando a los sospechosos
- * <b>sin afirmar cuál es</b>, y volver a armarse cuando la situación cambia.
+ * haber posición válida ahora mismo, el {@code surround} puede estar ya completo, la casilla que
+ * {@code auto-web} telaraña puede tener ya telaraña-, y apagarlo sería peor que avisar: el módulo
+ * dejaría de estar listo para el tick en el que sí haya posición. Lo único que hace es decirlo
+ * <b>una vez</b>, nombrando los módulos y apuntando a los sospechosos <b>sin afirmar cuál es</b>, y
+ * volver a armarse cuando la situación cambia.
  */
 public final class ActionWatch {
     /** Ticks por segundo del juego, para decir el margen en segundos en el aviso. */
     private static final int TICKS_PER_SECOND = 20;
 
     /**
-     * Ticks seguidos cumpliendo las cuatro condiciones sin que el recurso baje antes de avisar.
-     * Sesenta, tres segundos.
+     * Ticks seguidos con alguien en condiciones de gastar la pila y sin que la pila se mueva antes
+     * de avisar. Sesenta, tres segundos.
      *
      * <p>El número sale de las dos formas de equivocarse, y son muy asimétricas.
      *
@@ -103,93 +119,135 @@ public final class ActionWatch {
     public static final List<ManagedModule> WATCHED =
         ManagedModules.ALL.stream().filter(ActionWatch::watches).toList();
 
-    /** Ticks seguidos que cada vigilado lleva queriéndose, encendido, con objetivo y sin gastar. */
-    private final Map<ManagedModule, Integer> idleTicks = new LinkedHashMap<>();
-
-    /** Cuánto había de cada recurso vigilado en el tick anterior. */
-    private final Map<Resource, Integer> lastAmount = new EnumMap<>(Resource.class);
-
-    /** De qué módulos ya se avisó, para decirlo una vez y no en bucle. */
-    private final Set<ManagedModule> warned = new LinkedHashSet<>();
+    /** Las pilas que hay que mirar, sin repetir y en el orden en que aparecen en {@link #WATCHED}. */
+    public static final List<Resource> WATCHED_RESOURCES =
+        List.copyOf(new LinkedHashSet<>(WATCHED.stream().map(ManagedModule::needs).toList()));
 
     /**
-     * Un tick de vigilancia. Devuelve los módulos de los que <b>hay que avisar ahora</b>, es decir
-     * los que acaban de cumplir el margen y de los que todavía no se había avisado.
+     * Un veredicto: la pila que no se mueve, los módulos que estaban en condiciones de gastarla y
+     * cuántos ticks llevan así.
      *
-     * <p>Las cuatro condiciones que tienen que cumplirse a la vez para que el tick cuente son: el
-     * plan lo <b>quiere</b>, está <b>encendido de verdad</b>, hay <b>objetivo</b> y hay
-     * <b>recurso suficiente</b> (su {@link ManagedModule#minimum()}). Que falle cualquiera de ellas
-     * no pausa la cuenta: la <b>reinicia</b>, y además rearma el aviso. Es lo conservador y es lo
-     * que hace falta -la afirmación que se va a hacer es "lleva tres segundos seguidos sin gastar
-     * pudiendo gastar", y un tick en el que no podía gastar la rompe entera-.
+     * <p>Con más de un módulo el veredicto es <b>conjunto y no se puede repartir</b> ({@link
+     * #joint()}): lo único medido es que la pila no baja, y el inventario no dice quién coloca.
+     *
+     * @param resource la pila que no se ha movido
+     * @param modules  los que se querían, estaban encendidos y tenían material de sobra, en el orden
+     *                 del catálogo
+     * @param ticks    ticks seguidos que lleva así, ya cumplido el margen
+     */
+    public record Idle(Resource resource, List<ManagedModule> modules, int ticks) {
+        public Idle {
+            modules = List.copyOf(modules);
+        }
+
+        /** Si el veredicto es de varios módulos a la vez y por tanto no se puede repartir. */
+        public boolean joint() {
+            return modules.size() > 1;
+        }
+    }
+
+    /** Ticks seguidos que cada pila lleva quieta con alguien en condiciones de gastarla. */
+    private final Map<Resource, Integer> idleTicks = new EnumMap<>(Resource.class);
+
+    /** Quiénes estaban en condiciones de gastar cada pila en el tick anterior. */
+    private final Map<Resource, List<ManagedModule>> lastEligible = new EnumMap<>(Resource.class);
+
+    /** Cuánto había de cada pila vigilada en el tick anterior. */
+    private final Map<Resource, Integer> lastAmount = new EnumMap<>(Resource.class);
+
+    /** De qué pilas ya se avisó, para decirlo una vez y no en bucle. */
+    private final Set<Resource> warned = new LinkedHashSet<>();
+
+    /**
+     * Un tick de vigilancia. Devuelve los veredictos de los que <b>hay que avisar ahora</b>: las
+     * pilas que acaban de cumplir el margen y de las que todavía no se había avisado.
+     *
+     * <p>Las cuatro condiciones que ponen a un módulo "en condiciones de gastar" son: el plan lo
+     * <b>quiere</b>, está <b>encendido de verdad</b>, hay <b>objetivo</b> y hay <b>recurso
+     * suficiente</b> (su {@link ManagedModule#minimum()}). La cuenta de una pila corre mientras haya
+     * al menos uno en esas condiciones.
+     *
+     * <p>Que deje de haberlo no pausa la cuenta: la <b>reinicia</b>, y además rearma el aviso. Es lo
+     * conservador y es lo que hace falta -la afirmación que se va a hacer es "lleva tres segundos
+     * seguidos sin gastar pudiendo gastar", y un tick en el que no podía gastar la rompe entera-.
+     *
+     * <p><b>Que cambie quién está en condiciones también reinicia.</b> Si {@code auto-trap} se suma
+     * a la obsidiana en el tick 50, el veredicto de los tres no puede apoyarse en los cincuenta
+     * ticks en los que él no estaba: esa serie se refería a otro grupo. Se empieza de cero.
      *
      * <p>El objetivo se exige también a los dos defensivos, aunque {@code surround} y
      * {@code hole-filler} no lo necesiten para colocar: sin nadie delante, que no gasten es lo
      * normal, y contar esos ticks solo produciría avisos de nada.
      *
-     * <p><b>Cualquier movimiento del recurso reinicia, no solo una bajada.</b> Si baja, el módulo
-     * está actuando y no hay nada que decir. Si sube -recoges obsidiana, sacas telarañas de la
+     * <p><b>Cualquier movimiento de la pila reinicia, no solo una bajada.</b> Si baja, alguien del
+     * grupo está actuando y no hay nada que decir. Si sube -recoges obsidiana, sacas telarañas de la
      * mochila- la serie deja de comparar lo mismo, y una subida puede además tapar un gasto (gastas
-     * una y recoges dos). No se puede afirmar que no gasta mientras la pila se mueve, así que no se
-     * afirma.
-     *
-     * <p><b>La obsidiana es de tres, y eso obliga a reiniciar a los tres.</b> {@code auto-trap},
-     * {@code surround} y {@code hole-filler} beben de la misma pila (I3), y el inventario no dice
-     * quién colocó: si la obsidiana baja, la medida no puede atribuir el gasto a ninguno, así que
-     * se le concede a todos. Es el lado barato del sesgo -callar de más es un aviso que se retrasa;
-     * hablar de más es un aviso falso-, y también el motivo por el que el aviso de esos dos nombra
-     * primero la causa inocente.
+     * una y recoges dos). No se puede afirmar que no se gasta mientras la pila se mueve, así que no
+     * se afirma.
      *
      * @param snapshot la situación de este tick, para el objetivo y para las cuentas del inventario
      * @param wanted   los nombres de módulo que el plan de este tick quiere encendidos
      * @param active   los nombres de módulo que están encendidos de verdad ahora mismo
      */
-    public List<ManagedModule> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active) {
-        Set<Resource> moved = EnumSet.noneOf(Resource.class);
-        Set<Resource> watchedResources = EnumSet.noneOf(Resource.class);
-        for (ManagedModule module : WATCHED) watchedResources.add(module.needs());
-        for (Resource resource : watchedResources) {
-            Integer before = lastAmount.put(resource, snapshot.amountOf(resource));
-            if (before != null && before != snapshot.amountOf(resource)) moved.add(resource);
-        }
+    public List<Idle> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active) {
+        List<Idle> newlyIdle = new ArrayList<>();
 
-        List<ManagedModule> newlyIdle = new ArrayList<>();
-        for (ManagedModule module : WATCHED) {
-            if (moved.contains(module.needs()) || !couldHaveActed(module, snapshot, wanted, active)) {
-                idleTicks.remove(module);
-                warned.remove(module);
+        for (Resource resource : WATCHED_RESOURCES) {
+            int amount = snapshot.amountOf(resource);
+            Integer before = lastAmount.put(resource, amount);
+            boolean moved = before != null && before != amount;
+
+            List<ManagedModule> eligible = eligibleFor(resource, snapshot, wanted, active);
+            List<ManagedModule> previous = lastEligible.put(resource, eligible);
+
+            if (eligible.isEmpty() || moved) {
+                idleTicks.remove(resource);
+                warned.remove(resource);
                 continue;
             }
+            if (!eligible.equals(previous)) {
+                idleTicks.remove(resource);
+                warned.remove(resource);
+            }
 
-            int ticks = idleTicks.merge(module, 1, Integer::sum);
-            if (ticks >= IDLE_TICKS && warned.add(module)) newlyIdle.add(module);
+            int ticks = idleTicks.merge(resource, 1, Integer::sum);
+            if (ticks >= IDLE_TICKS && warned.add(resource)) {
+                newlyIdle.add(new Idle(resource, eligible, ticks));
+            }
         }
         return List.copyOf(newlyIdle);
     }
 
-    /** Las cuatro condiciones de un tick que cuenta. */
-    private static boolean couldHaveActed(ManagedModule module, CombatSnapshot snapshot,
-                                          Set<String> wanted, Set<String> active) {
-        return snapshot.hasTarget()
-            && wanted.contains(module.name())
-            && active.contains(module.name())
-            && snapshot.amountOf(module.needs()) >= module.minimum();
+    /** Los vigilados de esa pila que este tick estaban en condiciones de gastarla. */
+    private static List<ManagedModule> eligibleFor(Resource resource, CombatSnapshot snapshot,
+                                                   Set<String> wanted, Set<String> active) {
+        if (!snapshot.hasTarget()) return List.of();
+
+        List<ManagedModule> eligible = new ArrayList<>();
+        for (ManagedModule module : WATCHED) {
+            if (module.needs() != resource) continue;
+            if (!wanted.contains(module.name()) || !active.contains(module.name())) continue;
+            if (snapshot.amountOf(resource) < module.minimum()) continue;
+            eligible.add(module);
+        }
+        return List.copyOf(eligible);
     }
 
-    /** Ticks que {@code module} lleva sin gastar pudiendo gastar; cero si no está en esa situación. */
-    public int idleTicksOf(ManagedModule module) {
-        return idleTicks.getOrDefault(module, 0);
+    /** Ticks que esa pila lleva quieta con alguien en condiciones de gastarla; cero si no es el caso. */
+    public int idleTicksOf(Resource resource) {
+        return idleTicks.getOrDefault(resource, 0);
     }
 
     /**
-     * Los vigilados que ya han cumplido el margen entero y siguen sin gastar, en el orden del
-     * catálogo. Es lo que enseña {@code .xploits pvp}: el aviso se dice una vez, pero la situación
-     * dura, y tiene que poder consultarse mientras dura.
+     * Los veredictos que ya han cumplido el margen entero y siguen en pie, en el orden de las pilas.
+     * Es lo que enseña {@code .xploits pvp}: el aviso se dice una vez, pero la situación dura, y
+     * tiene que poder consultarse mientras dura.
      */
-    public List<ManagedModule> idle() {
-        List<ManagedModule> result = new ArrayList<>();
-        for (ManagedModule module : WATCHED) {
-            if (idleTicksOf(module) >= IDLE_TICKS) result.add(module);
+    public List<Idle> idle() {
+        List<Idle> result = new ArrayList<>();
+        for (Resource resource : WATCHED_RESOURCES) {
+            int ticks = idleTicksOf(resource);
+            if (ticks >= IDLE_TICKS) result.add(new Idle(resource, lastEligible.get(resource), ticks));
         }
         return List.copyOf(result);
     }
@@ -197,52 +255,108 @@ public final class ActionWatch {
     /** Olvida las cuentas, las pilas y lo ya avisado. Se llama al encender o apagar el módulo. */
     public void reset() {
         idleTicks.clear();
+        lastEligible.clear();
         lastAmount.clear();
         warned.clear();
     }
 
     /**
-     * El aviso de un módulo: nombra el módulo, dice qué se ha medido y <b>apunta a los sospechosos
-     * sin afirmar cuál es</b>. Todos los ajustes y valores de fábrica que se nombran están
-     * verificados en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}, no supuestos.
+     * El aviso de un veredicto: nombra los módulos, dice qué se ha medido y <b>apunta a los
+     * sospechosos sin afirmar cuál es</b>. Todos los ajustes y valores de fábrica que se nombran
+     * están verificados en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT} y, donde son
+     * nombres de bloque, contra las mappings de yarn 1.21.11+build.3; ninguno es supuesto.
      *
-     * <p>Los dos de la obsidiana nombran primero la causa inocente -el surround ya completo, no
-     * haber ningún hueco- porque en su caso es la más probable con diferencia: {@code Surround}
-     * sigue encendido cuando termina ({@code toggle-on-complete} es {@code false} de fábrica) y
-     * desde ese momento no coloca nada, legítimamente y para siempre.
+     * <p>Con un solo módulo se nombra <b>primero la causa inocente</b> ({@link #innocent}) y después
+     * los sospechosos. Con varios -solo puede pasar con la obsidiana- se dice además, con todas las
+     * letras, que el veredicto es conjunto y por qué no se puede repartir.
      */
-    public static String reason(ManagedModule module) {
-        String head = module.name() + " lleva " + IDLE_TICKS / TICKS_PER_SECOND
-            + " s encendido, con enemigo delante y " + material(module) + " de sobra, sin gastar nada. ";
-        return head + switch (module.name()) {
-            case "crystal-aura" -> "No lo apago -puede que no haya posición válida ahora mismo-, pero si no es "
-                + "eso, los sospechosos son min-damage (6 de fábrica: contra netherita con Protección IV casi "
-                + "ninguna posición llega a 6 de daño) y support (Disabled de fábrica: sin él no coloca donde "
-                + "no haya ya un bloque debajo).";
-            case "auto-trap" -> "No lo apago -puede que no haya posición válida ahora mismo-, pero si no es "
-                + "eso, los sospechosos son whitelist (de fábrica solo obsidiana y bloque de netherita), "
-                + "place-range y walls-range (4 de fábrica, y manda el segundo en cuanto haya algo por medio) "
-                + "y top-blocks/bottom-blocks.";
-            case "auto-web" -> "No lo apago -puede que no haya posición válida ahora mismo-, pero si no es "
-                + "eso, los sospechosos son place-range y walls-range (4 de fábrica) y ticks-to-predict (10 de "
-                + "fábrica: telaraña donde estará dentro de medio segundo, no donde está).";
-            case "auto-anvil" -> "No lo apago -puede que no haya posición válida ahora mismo-, pero si no es "
-                + "eso, los sospechosos son height (2 de fábrica: necesita el hueco libre sobre su cabeza) y "
-                + "delay (10 ticks de fábrica entre yunque y yunque).";
-            case "surround" -> "Lo más probable es que el surround ya esté completo, y entonces no hay nada "
-                + "que colocar y está bien así -no lo apago-; si no es eso, los sospechosos son blocks (su "
-                + "lista trae tres bloques y yo solo te cuento la obsidiana) y only-on-ground.";
-            case "hole-filler" -> "Lo más probable es que no haya ningún hueco que tapar, y entonces está bien "
-                + "así -no lo apago-; si no es eso, los sospechosos son only-moving (encendido de fábrica, y en "
-                + "las fuentes descarta al que SE MUEVE, no al que está quieto), feet-range (1,5 de fábrica "
-                + "desde los pies del objetivo, ya predichos) e ignore-safe.";
-            default -> "No lo apago: mira sus ajustes de rango y de posición.";
+    public static String reason(Idle idle) {
+        String material = material(idle.resource());
+        if (!idle.joint()) {
+            ManagedModule module = idle.modules().getFirst();
+            return module.name() + " lleva " + seconds(idle) + " s encendido, con enemigo delante y "
+                + material + " de sobra, sin gastar nada. No lo apago -" + innocent(module)
+                + "-, pero si no es eso, los sospechosos son " + suspects(module) + ".";
+        }
+
+        List<String> names = new ArrayList<>();
+        List<String> tails = new ArrayList<>();
+        for (ManagedModule module : idle.modules()) {
+            names.add(module.name());
+            tails.add(module.name() + ": " + suspects(module));
+        }
+        return join(names) + " llevan " + seconds(idle) + " s encendidos, con enemigo delante y "
+            + material + " de sobra, y la pila no ha bajado. No puedo decirte cuál de los "
+            + idle.modules().size() + " falla, y con esta medida no se puede: el inventario dice "
+            + "cuánta " + material + " queda, no quién la colocó, así que lo único que esto afirma es "
+            + "que no ha colocado ninguno. No apago ninguno. Sospechosos — "
+            + String.join("; ", tails) + ".";
+    }
+
+    /** Los segundos que lleva el veredicto, como se leen en el aviso. */
+    private static int seconds(Idle idle) {
+        return idle.ticks() / TICKS_PER_SECOND;
+    }
+
+    /** "a, b y c", como se enumera en español. */
+    private static String join(List<String> names) {
+        if (names.size() == 1) return names.getFirst();
+        return String.join(", ", names.subList(0, names.size() - 1)) + " y " + names.getLast();
+    }
+
+    /**
+     * La razón por la que <b>no</b> sería un fallo, que va delante de los sospechosos porque en
+     * varios casos es la más probable con diferencia.
+     *
+     * <p>Las tres que no son "no hay posición" están verificadas en las fuentes: {@code Surround}
+     * pone {@code complete = true} y deja de colocar cuando el surround está terminado, y con
+     * {@code toggle-on-complete} en {@code false} de fábrica <b>se queda encendido para siempre</b>;
+     * {@code HoleFiller} con {@code smart} encendido solo tapa huecos cerca de un objetivo, y puede
+     * no haber ninguno; y {@code AutoWeb} solo coloca donde {@code isReplaceable()}, y una telaraña
+     * no lo es, así que en cuanto la casilla prevista tiene telaraña deja de colocar ahí -contra
+     * alguien arrinconado que sigue contando como "se aleja", la casilla prevista no cambia y no
+     * vuelve a gastar ni una-.
+     */
+    private static String innocent(ManagedModule module) {
+        return switch (module.name()) {
+            case "surround" -> "lo más probable es que el surround ya esté completo, y entonces no hay "
+                + "nada que colocar y está bien así";
+            case "hole-filler" -> "lo más probable es que no haya ningún hueco que tapar cerca del "
+                + "objetivo, y entonces está bien así";
+            case "auto-web" -> "lo más probable es que la casilla prevista ya tenga telaraña: una "
+                + "telaraña no se sustituye, así que contra alguien arrinconado que sigue alejándose "
+                + "la casilla no cambia y no hay nada más que colocar";
+            default -> "puede que no haya posición válida ahora mismo";
         };
     }
 
-    /** Cómo se llama en español lo que ese módulo gasta, para el aviso. */
-    private static String material(ManagedModule module) {
-        return switch (module.needs()) {
+    /** A qué ajustes mirar, sin afirmar que el culpable esté entre ellos. */
+    private static String suspects(ManagedModule module) {
+        return switch (module.name()) {
+            case "crystal-aura" -> "min-damage (6 de fábrica: contra netherita con Protección IV casi "
+                + "ninguna posición llega a 6 de daño) y support (Disabled de fábrica: sin él no coloca "
+                + "donde no haya ya un bloque debajo)";
+            case "auto-trap" -> "whitelist (de fábrica trae obsidiana y obsidiana llorosa, y el bloque "
+                + "de netherita NO está en ella), place-range y walls-range (4 de fábrica, y manda el "
+                + "segundo en cuanto haya algo por medio) y top-blocks/bottom-blocks";
+            case "auto-web" -> "place-range y walls-range (4 de fábrica), ticks-to-predict (10 de "
+                + "fábrica: telaraña donde estará dentro de medio segundo, no donde está) y doubles "
+                + "(apagado de fábrica)";
+            case "auto-anvil" -> "height (2 de fábrica: el yunque va tres bloques por encima de sus "
+                + "pies, y esa casilla tiene que estar libre) y delay (10 ticks de fábrica entre yunque "
+                + "y yunque)";
+            case "surround" -> "blocks (de fábrica trae obsidiana, obsidiana llorosa y bloque de "
+                + "netherita, y yo solo te cuento la obsidiana) y only-on-ground";
+            case "hole-filler" -> "only-moving (encendido de fábrica, y en las fuentes descarta al que "
+                + "SE MUEVE, no al que está quieto), feet-range (1,5 de fábrica desde los pies del "
+                + "objetivo, ya predichos) e ignore-safe";
+            default -> "sus ajustes de rango y de posición";
+        };
+    }
+
+    /** Cómo se llama en español lo que sale de esa pila, para el aviso. */
+    private static String material(Resource resource) {
+        return switch (resource) {
             case CRYSTALS -> "cristales";
             case OBSIDIAN -> "obsidiana";
             case WEBS -> "telarañas";

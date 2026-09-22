@@ -762,8 +762,8 @@ public class AutoPvp extends Module {
      * mal puesto es el jugador, y mientras tanto el módulo sigue listo para el tick en el que sí
      * haya posición válida.
      */
-    private void reportIdle(List<ManagedModule> newlyIdle) {
-        for (ManagedModule module : newlyIdle) warning("%s", ActionWatch.reason(module));
+    private void reportIdle(List<ActionWatch.Idle> newlyIdle) {
+        for (ActionWatch.Idle idle : newlyIdle) warning("%s", ActionWatch.reason(idle));
     }
 
     /** I1: si algo que dirige ya estaba encendido al activar auto-pvp, es del jugador y hay que decirlo. */
@@ -883,14 +883,25 @@ public class AutoPvp extends Module {
      *
      * <p>La línea sale siempre, aunque no haya ninguno, porque decir "ninguno" también es
      * información: significa que lo que está encendido está gastando.
+     *
+     * <p>Los que comparten pila salen juntos y marcados como veredicto conjunto, que es lo único
+     * que la medida sostiene: el inventario dice cuánta obsidiana queda, no quién la colocó.
      */
     private String idleLine() {
-        List<ManagedModule> idle = actionWatch.idle();
+        List<ActionWatch.Idle> idle = actionWatch.idle();
         if (idle.isEmpty()) return "ninguno (lo que está encendido está gastando)";
 
         List<String> parts = new ArrayList<>();
-        for (ManagedModule module : idle) {
-            parts.add(module.name() + " (" + actionWatch.idleTicksOf(module) / TICKS_PER_SECOND + " s)");
+        for (ActionWatch.Idle verdict : idle) {
+            List<String> names = new ArrayList<>();
+            for (ManagedModule module : verdict.modules()) names.add(module.name());
+            // El "+" no es decorativo: dice que esos nombres van juntos porque comparten pila y el
+            // veredicto no se puede repartir entre ellos.
+            String joint = verdict.joint()
+                ? ", veredicto conjunto: los " + names.size() + " comparten pila y no sé cuál falla"
+                : "";
+            parts.add(String.join(" + ", names)
+                + " (" + verdict.ticks() / TICKS_PER_SECOND + " s" + joint + ")");
         }
         return String.join(", ", parts) + " — encendidos, con enemigo delante y material de sobra";
     }
