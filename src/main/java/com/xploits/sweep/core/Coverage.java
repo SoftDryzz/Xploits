@@ -22,6 +22,14 @@ import java.util.Set;
  * dos formas de fallar aquí son peores que perder un chunk suelto: tirar la lectura entera manda al
  * jugador a repetir terreno ya visto, y leer una línea a medias como si fuera un chunk válido puede
  * dar por peinada una zona que nunca se miró.
+ *
+ * <p><b>Y la segunda de esas dos no la puede cerrar {@link #ofLines}</b>, porque una línea cortada
+ * puede parsear perfectamente: {@code "-412,1087"} truncado en {@code "-412,1"} es un {@code x,z}
+ * válido de un chunk que nunca se vio. Lo único que distingue un fichero terminado de uno cortado
+ * está fuera de las líneas -el salto de línea final-, así que el arreglo vive en
+ * {@link #ofFileContent(String)}, que recibe el contenido entero. <b>Es la entrada buena para leer
+ * un fichero;</b> {@code ofLines} se queda para quien ya tenga las líneas por otro camino y sepa que
+ * están completas.
  */
 public final class Coverage {
     private final Set<ChunkPos> seen;
@@ -50,6 +58,81 @@ public final class Coverage {
             }
         }
         return new Coverage(chunks);
+    }
+
+    /**
+     * Lee el contenido entero de uno de los ficheros de {@code NewerNewChunks}, <b>descartando la
+     * última línea si el fichero no termina en salto de línea</b>.
+     *
+     * <p>Es el arreglo del fallo que el javadoc de esta clase nombra y que {@link #ofLines} no puede
+     * cerrar. {@code NewerNewChunks} escribe mientras el jugador vuela; si el cliente se cierra de
+     * golpe a mitad de escritura, la última línea se queda cortada. Una línea cortada que no parsea
+     * ya se salta -{@code "-412,"} o {@code "-41"}-, pero <b>una línea cortada puede parsear
+     * perfectamente</b>: lo que iba a ser {@code "-412,1087"} se queda en {@code "-412,1"}, que es un
+     * {@code x,z} válido de un chunk que nunca se vio. Marcar visto un chunk que no se vio es peor
+     * que perder uno visto: si era el que le faltaba a su banda, {@link SweepPlanner} se salta la
+     * banda entera y una pasada de punta a punta no se vuela y se da por peinada igual (spec §9).
+     *
+     * <p>No hay forma de distinguir esa línea mirándola, así que se mira <b>el fichero</b>: el único
+     * indicio de que la escritura terminó es el salto de línea final. Si está, todas las líneas son
+     * de fiar; si no está, la última se tira sin más análisis.
+     *
+     * <p><b>Lo que cuesta cuando no ha pasado nada:</b> normalmente nada. Comprobado en los ficheros
+     * de esta instancia, {@code NewerNewChunks} los deja terminados en salto de línea, así que el
+     * caso normal no pierde ni un chunk; solo se pierde uno en el fichero que de verdad se quedó a
+     * medias, y ahí perderlo es justo lo que se quiere. Aun si algún día escribiera sin el salto
+     * final, el coste sería un chunk replanificado -volar de más-, que es el lado barato.
+     *
+     * <p>Recibe el contenido y no una ruta: esta clase sigue sin tocar disco. Leer el fichero es del
+     * adaptador; saber qué significa que no acabe en salto de línea, de aquí.
+     *
+     * @throws NullPointerException si {@code content} es nulo
+     */
+    public static Coverage ofFileContent(String content) {
+        if (content == null) {
+            throw new NullPointerException("el contenido del fichero de cobertura no puede ser nulo");
+        }
+        if (content.isEmpty()) {
+            return empty();
+        }
+
+        String[] lineas = content.split(TERMINADORES, -1);
+        int hasta = terminaEnSaltoDeLinea(content) ? lineas.length : lineas.length - 1;
+
+        Set<ChunkPos> chunks = new HashSet<>();
+        for (int i = 0; i < hasta; i++) {
+            ChunkPos pos = parseLine(lineas[i]);
+            if (pos != null) {
+                chunks.add(pos);
+            }
+        }
+        return new Coverage(chunks);
+    }
+
+    /**
+     * Cómo se parte el contenido en líneas: {@code \r\n} primero para que un fin de línea de Windows
+     * no cuente como dos.
+     *
+     * <p>A propósito <b>no</b> es {@code \R}, que además casa con la tabulación vertical, el avance
+     * de página y tres separadores Unicode. No porque den miedo, sino porque {@link
+     * #terminaEnSaltoDeLinea} tiene que reconocer exactamente el mismo conjunto: si uno partiera por
+     * un carácter que el otro no considera fin de línea, un fichero terminado en él se leería como
+     * truncado y perdería su última línea buena. Dos listas que tienen que coincidir son una fuente
+     * de fallos; una lista corta que cubre lo que este fichero puede traer -dígitos, comas y saltos
+     * de línea- no lo es.
+     */
+    private static final String TERMINADORES = "\r\n|\r|\n";
+
+    /**
+     * Si el contenido termina en un salto de línea, que es el único indicio de que la escritura de la
+     * última línea llegó a terminar.
+     *
+     * <p>Basta mirar el último carácter: de los tres terminadores de {@link #TERMINADORES}, dos son
+     * un solo carácter y el tercero, {@code \r\n}, acaba en uno de ellos.
+     */
+    private static boolean terminaEnSaltoDeLinea(String content) {
+        char ultimo = content.charAt(content.length() - 1);
+        return ultimo == '\n' || ultimo == '\r';
     }
 
     private static ChunkPos parseLine(String line) {
@@ -91,8 +174,39 @@ public final class Coverage {
         return seen.contains(pos);
     }
 
-    /** Cuántos chunks distintos hay en esta cobertura. */
+    /**
+     * Cuántos chunks distintos hay en esta cobertura, <b>en toda la dimensión</b>.
+     *
+     * <p>Casi nunca es el número que se le quiere enseñar al jugador. Lo que le dice cuánto le ahorra
+     * su cobertura previa -y por tanto si el barrido vale las horas que cuesta- es cuántos chunks
+     * <b>del área que ha pedido</b> ya estaban vistos, y eso es {@link #seenIn(SweepArea)}. Este
+     * número puede ser mayor que el área entera: con los 17.369 chunks acumulados de spec §1 y un
+     * rectángulo nuevo de 60x60, diría «de los 3.600 chunks del área, 17.369 ya estaban vistos».
+     */
     public int size() {
         return seen.size();
+    }
+
+    /**
+     * Cuántos chunks <b>de este área</b> ya se han visto. Es la respuesta a «¿cuánto me ahorra lo que
+     * ya tengo?», que es la mitad de lo que el jugador necesita para decidir si el barrido merece la
+     * pena; la otra mitad es cuántos chunks tiene el área.
+     *
+     * <p>Se recorre el área y no la cobertura porque el área es lo acotado: la cobertura de una
+     * dimensión entera puede ser mucho mayor que el rectángulo, y al revés nunca importa -un chunk
+     * visto fuera del área no ahorra ni un bloque de vuelo-.
+     */
+    public int seenIn(SweepArea area) {
+        if (area == null) throw new NullPointerException("hace falta un área para contar dentro de ella");
+
+        int vistos = 0;
+        for (int x = area.minChunkX(); x <= area.maxChunkX(); x++) {
+            for (int z = area.minChunkZ(); z <= area.maxChunkZ(); z++) {
+                if (seen.contains(new ChunkPos(x, z))) {
+                    vistos++;
+                }
+            }
+        }
+        return vistos;
     }
 }

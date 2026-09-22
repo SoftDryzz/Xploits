@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CoverageTest {
@@ -91,5 +92,123 @@ class CoverageTest {
     void emptyCoverageSeesNothing() {
         assertFalse(Coverage.empty().seen(new ChunkPos(0, 0)));
         assertEquals(0, Coverage.empty().size());
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // ofFileContent: la última línea de un fichero cortado no se puede creer
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void unFicheroTerminadoEnSaltoDeLineaConservaTodasSusLineas() {
+        Coverage coverage = Coverage.ofFileContent("12,-7\n4,9\n");
+
+        assertEquals(2, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(12, -7)));
+        assertTrue(coverage.seen(new ChunkPos(4, 9)));
+    }
+
+    @Test
+    void unaLineaTruncadaQueParseaNoSeCuelaComoChunkVisto() {
+        // El caso exacto: una línea que iba a ser "-412,1087" y que el cierre brusco del cliente
+        // dejó en "-412,1". Es un x,z perfectamente válido de un chunk que nunca se vio, así que
+        // parseLine no puede cazarlo; si se cuela y era el que le faltaba a su banda, SweepPlanner
+        // se salta la banda entera y da por peinada una pasada que no se voló.
+        Coverage coverage = Coverage.ofFileContent("100,200\n-412,1");
+
+        assertEquals(1, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(100, 200)));
+        assertFalse(coverage.seen(new ChunkPos(-412, 1)));
+        assertFalse(coverage.seen(new ChunkPos(-412, 1087)));
+    }
+
+    @Test
+    void unFicheroDeUnaSolaLineaSinTerminarNoDejaNadaVisto() {
+        // Esa única línea no terminó de escribirse y no hay ninguna anterior: de este fichero no se
+        // sabe nada, y "nada" es lo correcto, no el chunk que aparenta.
+        assertEquals(0, Coverage.ofFileContent("12,-7").size());
+    }
+
+    @Test
+    void elFinDeLineaDeWindowsNoCuentaComoDosLineas() {
+        Coverage coverage = Coverage.ofFileContent("12,-7\r\n4,9\r\n");
+
+        assertEquals(2, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(12, -7)));
+        assertTrue(coverage.seen(new ChunkPos(4, 9)));
+    }
+
+    @Test
+    void unFicheroDeWindowsCortadoTambienPierdeSuUltimaLinea() {
+        Coverage coverage = Coverage.ofFileContent("12,-7\r\n4,9");
+
+        assertEquals(1, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(12, -7)));
+        assertFalse(coverage.seen(new ChunkPos(4, 9)));
+    }
+
+    @Test
+    void unFicheroVacioEsEmpezarDeCeroYNoUnError() {
+        assertEquals(0, Coverage.ofFileContent("").size());
+    }
+
+    @Test
+    void laBasuraDeEnMedioSeSigueSaltandoSinTirarElResto() {
+        Coverage coverage = Coverage.ofFileContent("12,-7\nbasura\n1,2,3\n\n4,9\n");
+
+        assertEquals(2, coverage.size());
+        assertTrue(coverage.seen(new ChunkPos(12, -7)));
+        assertTrue(coverage.seen(new ChunkPos(4, 9)));
+    }
+
+    @Test
+    void unContenidoNuloNoSeLeeComoFicheroVacio() {
+        assertThrows(NullPointerException.class, () -> Coverage.ofFileContent(null));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // seenIn: lo que ahorra la cobertura previa es lo que cae DENTRO del área
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void seenInCuentaSoloLosChunksQueCaenDentroDelArea() {
+        // Tres dentro del rectángulo 0,0..2,2 y dos fuera.
+        Coverage coverage = Coverage.ofLines(List.of("0,0", "1,1", "2,2", "3,0", "-1,-1"));
+
+        assertEquals(5, coverage.size());
+        assertEquals(3, coverage.seenIn(SweepArea.ofChunks(0, 0, 2, 2)));
+    }
+
+    @Test
+    void seenInNuncaPasaDeLosChunksQueTieneElArea() {
+        // El fallo que este método arregla: con size() -la cobertura de toda la dimensión- el
+        // mensaje llegaba a anunciar más chunks vistos que chunks tiene el área. Aquí hay 9 chunks
+        // de área y 12 vistos en total.
+        Coverage coverage = Coverage.ofLines(List.of(
+            "0,0", "0,1", "0,2", "1,0", "1,1", "1,2", "2,0", "2,1", "2,2",
+            "50,50", "51,50", "52,50"));
+        SweepArea area = SweepArea.ofChunks(0, 0, 2, 2);
+
+        assertEquals(12, coverage.size());
+        assertEquals(area.chunkCount(), coverage.seenIn(area));
+    }
+
+    @Test
+    void seenInSobreUnAreaSinNadaVistoEsCero() {
+        Coverage coverage = Coverage.ofLines(List.of("50,50"));
+
+        assertEquals(0, coverage.seenIn(SweepArea.ofChunks(0, 0, 9, 9)));
+    }
+
+    @Test
+    void seenInCuentaLosBordesDelArea() {
+        // Las cuatro esquinas entran: el área incluye ambos bordes de cada eje.
+        Coverage coverage = Coverage.ofLines(List.of("0,0", "0,3", "3,0", "3,3"));
+
+        assertEquals(4, coverage.seenIn(SweepArea.ofChunks(0, 0, 3, 3)));
+    }
+
+    @Test
+    void seenInNecesitaUnArea() {
+        assertThrows(NullPointerException.class, () -> Coverage.empty().seenIn(null));
     }
 }
