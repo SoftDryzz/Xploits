@@ -71,12 +71,23 @@ public final class SweepPlanner {
         }
 
         /**
-         * Los bloques que el jugador va a volar de verdad para ejecutar este plan: <b>la longitud de
-         * todas las pasadas más la de los enlaces que las unen</b>, es decir el trayecto completo
-         * desde el arranque de la primera pasada hasta el final de la última. Un plan sin pasadas
-         * mide cero, y uno de una sola pasada mide esa pasada, porque no hay ningún enlace.
+         * Los bloques del barrido en sí: <b>la longitud de todas las pasadas más la de los enlaces
+         * que las unen</b>, es decir el trayecto <b>desde el arranque de la primera pasada hasta el
+         * final de la última</b>. Un plan sin pasadas mide cero, y uno de una sola pasada mide esa
+         * pasada, porque no hay ningún enlace.
          *
-         * <p>Los enlaces cuentan porque este número alimenta una decisión de seguridad: de él sale
+         * <p><b>No es todo lo que el jugador va a volar</b>, y quien estime cohetes con esto tiene
+         * que saberlo: falta la aproximación, el trayecto desde donde esté el jugador hasta el
+         * arranque de la primera pasada. En un barrido de los que justifican este módulo -a una hora
+         * de casa- esa pata es la más larga de todas, y sobre el ejemplo de spec §6, unos 116.000
+         * bloques de barrido, son decenas de miles más. <b>Quien calcule el presupuesto de cohetes
+         * debe sumarla aparte</b>, y si además piensa volver, también la vuelta.
+         *
+         * <p>Aquí no se puede incluir: un {@link SweepPlan} es geometría del área y no sabe dónde
+         * está el jugador. Por eso este método promete el barrido y no «el viaje», y por eso lo dice
+         * en la primera línea en vez de dejarlo a que alguien lo deduzca del nombre.
+         *
+         * <p>Los enlaces sí cuentan porque este número alimenta una decisión de seguridad: de él sale
          * la estimación de cohetes que se enseña <b>antes</b> de despegar (spec §6), y quedarse sin
          * cohetes lejos de casa cuesta la sesión entera. Una distancia por debajo de la real da
          * cohetes estimados de menos, y entonces el módulo dice «te llegan» a un jugador al que no
@@ -182,13 +193,30 @@ public final class SweepPlanner {
      * normal aquí, porque se planifica sobre huecos- la paridad se rompe y aparecen justo esos
      * viajes en vacío. Contando las pasadas emitidas, cada una arranca donde terminó la anterior
      * pase lo que pase con las bandas de en medio.
+     *
+     * <p><b>Ninguna pasada sale con los dos extremos en el mismo punto.</b> Los extremos caen sobre
+     * el centro del primer y del último chunk del eje largo, así que un área de un solo chunk los
+     * dejaría encima: una «pasada» de longitud cero. No emitirla sería el fallo que este módulo no
+     * puede cometer -ese chunk se quedaría sin ver y el barrido lo daría por peinado igual-, y
+     * entregarla tal cual tampoco vale: una pasada de longitud cero no es una instrucción de vuelo,
+     * es un vector nulo que el adaptador tendría que normalizar y un objetivo idéntico al origen
+     * para Baritone. Así que se le da la longitud mínima que significa algo aquí: el chunk entero,
+     * de borde a borde, que es exactamente el terreno que hay que hacer que el servidor mande. El
+     * centro del chunk sigue cayendo sobre la pasada, así que la cobertura no cambia. Solo puede
+     * pasar en un área de 1x1 chunk: en cualquier otra, el eje largo mide dos chunks o más.
      */
     private static Lane pasadaDeLaBanda(boolean pasadasEnX, int desde, int hasta, int minRecorrido,
                                          int maxRecorrido, int pasadasYaEmitidas) {
         boolean deIda = pasadasYaEmitidas % 2 == 0;
         double centro = centroDeLaBandaEnBloques(desde, hasta);
-        double arranque = centroDelChunkEnBloques(deIda ? minRecorrido : maxRecorrido);
-        double remate = centroDelChunkEnBloques(deIda ? maxRecorrido : minRecorrido);
+        double principio = centroDelChunkEnBloques(minRecorrido);
+        double fin = centroDelChunkEnBloques(maxRecorrido);
+        if (principio == fin) {
+            principio -= BLOQUES_POR_CHUNK / 2.0;
+            fin += BLOQUES_POR_CHUNK / 2.0;
+        }
+        double arranque = deIda ? principio : fin;
+        double remate = deIda ? fin : principio;
         return pasadasEnX
             ? new Lane(arranque, centro, remate, centro)
             : new Lane(centro, arranque, centro, remate);

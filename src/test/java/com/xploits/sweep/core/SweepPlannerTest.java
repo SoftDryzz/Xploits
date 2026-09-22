@@ -50,6 +50,43 @@ class SweepPlannerTest {
     }
 
     @Test
+    void conElEjeApiladoMultiploExactoDeLaAnchuraLaPasadaTieneQueIrEnElCentroDeLaBanda() {
+        // Los dos casos de arriba miden la SEPARACIÓN entre pasadas, pero casi no miden dónde cae
+        // cada una: la tolerancia (media anchura) coincide con media separación, así que una pasada
+        // corrida dentro de su banda queda tapada por la pasada vecina. Salvo en la última banda,
+        // que no tiene vecina por fuera -y las dos áreas de arriba la tienen corta, que es justo la
+        // forma que lo esconde-.
+        //
+        // Con el eje apilado múltiplo exacto de la anchura, la última banda va completa y su borde
+        // exterior queda expuesto: colocar la pasada al principio de la banda en vez de al centro
+        // deja ese borde a (W-1) chunks de la pasada más cercana, por encima de los W/2 de alcance
+        // para cualquier W > 2. Con W=5 eso son dos filas de chunks por banda sin mirar en todo el
+        // barrido.
+        SweepArea area = SweepArea.ofChunks(0, 0, 39, 19);
+        int anchuraDePasada = 5;
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+
+        assertFalse(plan.isRejected());
+        assertEquals(4, plan.lanes().size());
+        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+    }
+
+    @Test
+    void elCentroDeLaBandaTambienMandaConAnchuraParYEjeMultiploExacto() {
+        // El mismo caso con anchura par: el centro de banda cae entre dos chunks y la banda final va
+        // completa, así que su borde exterior también queda sin vecina que lo tape.
+        SweepArea area = SweepArea.ofChunks(0, 0, 39, 15);
+        int anchuraDePasada = 4;
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+
+        assertFalse(plan.isRejected());
+        assertEquals(4, plan.lanes().size());
+        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+    }
+
+    @Test
     void unAreaMasEstrechaQueUnaPasadaDaUnaPasadaNoCero() {
         SweepArea area = SweepArea.ofChunks(10, 10, 11, 11);
 
@@ -61,13 +98,25 @@ class SweepPlannerTest {
     }
 
     @Test
-    void unAreaDeUnSoloChunkTambienDaUnaPasada() {
+    void unAreaDeUnSoloChunkDaUnaPasadaVolableNoUnPuntoDoble() {
+        // Con los extremos sobre el centro del primer y del último chunk del eje largo, un área de
+        // 1x1 los dejaría encima: una "pasada" de longitud cero, que no es una instrucción de vuelo
+        // sino un vector nulo y un objetivo idéntico al origen para Baritone. No emitirla tampoco
+        // vale: ese chunk se quedaría sin ver y el barrido lo daría por peinado igual.
         SweepArea area = SweepArea.ofChunks(-4, 9, -4, 9);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 8);
 
         assertFalse(plan.isRejected());
         assertEquals(1, plan.lanes().size());
+        Lane pasada = plan.lanes().get(0);
+        assertTrue(pasada.fromX() != pasada.toX() || pasada.fromZ() != pasada.toZ(),
+            "la pasada salió con los dos extremos en el mismo punto: " + pasada);
+        assertEquals(BLOQUES_POR_CHUNK, pasada.lengthInBlocks(), 1e-9,
+            "la pasada de un área de un solo chunk debería medir el chunk entero: " + pasada);
+        // Y el chunk sigue cayendo sobre la pasada: darle longitud no puede mover la cobertura.
+        assertEquals(0.0, distanciaMinima(new ChunkPos(-4, 9), plan.lanes()), 1e-9);
+        assertEquals(BLOQUES_POR_CHUNK, plan.totalBlocks(), 1e-9);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -148,6 +197,34 @@ class SweepPlannerTest {
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
         assertEquals(4, plan.lanes().size());
+        assertLasPasadasEncadenan(plan.lanes());
+    }
+
+    @Test
+    void lasPasadasEnZTambienAlternanElSentido() {
+        // La rama Z de la colocación es código aparte de la rama X, y sin este caso no la miraba
+        // nadie: sin alternar, en esta área el jugador volaría más de tres mil bloques en vacío
+        // -tres enlaces del largo entero del área- y ningún test lo diría.
+        SweepArea area = SweepArea.ofChunks(0, 0, 15, 63);
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
+
+        assertEquals(4, plan.lanes().size());
+        for (Lane pasada : plan.lanes()) {
+            assertEquals(pasada.fromX(), pasada.toX(), "esta prueba asume pasadas paralelas a Z");
+        }
+        assertLasPasadasEncadenan(plan.lanes());
+    }
+
+    @Test
+    void enZLaAlternanciaTambienCuentaLasPasadasVoladasNoLasBandasSaltadas() {
+        // El mismo hueco de paridad de la rama X, en la rama Z: una banda ya vista por el medio.
+        SweepArea area = SweepArea.ofChunks(0, 0, 23, 63);
+        Coverage vista = coberturaDe(SweepArea.ofChunks(4, 0, 7, 63));
+
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+
+        assertEquals(5, plan.lanes().size());
         assertLasPasadasEncadenan(plan.lanes());
     }
 
@@ -354,14 +431,26 @@ class SweepPlannerTest {
      * Las pasadas se vuelan en secuencia, así que cada una tiene que arrancar donde terminó la
      * anterior en el eje largo; si no, el jugador recorre el área entera en vacío entre pasada y
      * pasada.
+     *
+     * <p>Mira el eje largo de cada pasada, no siempre X. Comparando {@code toX} con {@code fromX} a
+     * pelo, este helper solo dice algo de las áreas más anchas que altas: en las más altas que
+     * anchas las pasadas corren en Z y sus X son centros de banda distintos, así que la afirmación
+     * se volvía trivialmente falsa -o, si se hubiera aflojado, trivialmente cierta- y dejaba la
+     * rama Z de la alternancia sin proteger.
      */
     private static void assertLasPasadasEncadenan(List<Lane> pasadas) {
         for (int i = 0; i + 1 < pasadas.size(); i++) {
             Lane actual = pasadas.get(i);
             Lane siguiente = pasadas.get(i + 1);
-            assertEquals(actual.toX(), siguiente.fromX(), 1e-9,
-                "la pasada " + (i + 1) + " no arranca en X donde terminó la " + i);
-            assertTrue(actual.fromX() != actual.toX() || actual.fromZ() != actual.toZ());
+            assertTrue(actual.fromX() != actual.toX() || actual.fromZ() != actual.toZ(),
+                "la pasada " + i + " no va a ninguna parte: " + actual);
+            boolean enX = actual.fromZ() == actual.toZ();
+            String eje = enX ? "X" : "Z";
+            double finDeLaActual = enX ? actual.toX() : actual.toZ();
+            double arranqueDeLaSiguiente = enX ? siguiente.fromX() : siguiente.fromZ();
+            assertEquals(finDeLaActual, arranqueDeLaSiguiente, 1e-9,
+                "la pasada " + (i + 1) + " no arranca en " + eje + " donde terminó la " + i
+                    + ": el jugador recorre el largo del área en vacío entre las dos");
             assertEquals(esDeIda(actual), !esDeIda(siguiente),
                 "dos pasadas seguidas en el mismo sentido: se vuelve en vacío entre ellas");
         }
