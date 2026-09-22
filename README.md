@@ -10,14 +10,39 @@ promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido 
 
 ## Antes de instalar
 
-| Necesitas | Para qué |
-|---|---|
-| **Meteor Client 1.21.11** | Todo |
-| **Baritone** (`baritone-standalone-fabric`) | Solo `auto-travel` y `nether-sweep`. Los otros cinco funcionan sin él |
-| **Trouser Streak** | Solo para `nether-sweep`: es quien detecta y registra lo que el barrido hace pasar por delante |
+**Copia `xploits-0.1.0.jar` a la carpeta `mods/` de tu instancia**, junto a Meteor. Reinicia el
+juego. Los módulos salen en la ClickGUI, categoría **Xploits**.
 
-**Instalar:** copia `xploits-0.1.0.jar` a la carpeta `mods/` de tu instancia, junto a Meteor.
-Reinicia el juego. Los módulos salen en la ClickGUI, categoría **Xploits**.
+### Qué necesitas instalado, y qué deja de funcionar si falta
+
+Este addon **se apoya en otros mods a propósito**: cuando algo ya está resuelto y bien resuelto, lo
+usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
+
+| Mod | Obligatorio para | Si falta |
+|---|---|---|
+| **Meteor Client 1.21.11** | Todo | El addon no carga |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros cinco módulos funcionan igual |
+| **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
+| **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
+| **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |
+
+⚠️ **Los tres detectores de `nether-sweep` tienen que estar encendidos, no solo instalados.** El
+módulo te avisa con toast antes de despegar si alguno falta, **pero no te lo impide**: puedes volar
+una hora y no registrar nada.
+
+### Qué módulos de Meteor toca el addon
+
+Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga o consulta.
+
+| Quién | Qué toca | Cómo |
+|---|---|---|
+| `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Los enciende y apaga según la situación. **Solo apaga los que encendió él**: si tocas uno a mano, deja de tocarlo |
+| `auto-pvp` | Tu **lista de amigos de Meteor** | Mete a los tuyos mientras está encendido, para que esos diez tampoco les ataquen. Al apagarlo quita **solo los que puso él** |
+| `auto-pvp` | El ajuste `anti-suicide` de `crystal-aura` | Solo lo **lee**, para saber si puede fiarse de que Meteor no te mate con tu propio cristal |
+| `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
+| `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco |
+
+Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/seguridad.md).
 
 ---
 
