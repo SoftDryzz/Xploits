@@ -5,10 +5,13 @@ import com.xploits.elytra.ElytraReplace;
 import com.xploits.sweep.core.ChunkPos;
 import com.xploits.sweep.core.Coverage;
 import com.xploits.sweep.core.FuelBudget;
+import com.xploits.sweep.core.Odometer;
 import com.xploits.sweep.core.SweepArea;
 import com.xploits.sweep.core.SweepPlanner;
 import com.xploits.sweep.core.SweepRoute;
+import com.xploits.sweep.core.SweepTally;
 import com.xploits.sweep.core.WidthProbe;
+import com.xploits.travel.AutoTravel;
 import com.xploits.travel.core.BaritoneScript;
 import com.xploits.travel.core.BorrowedModule;
 import com.xploits.travel.core.FireworkWatch;
@@ -148,6 +151,32 @@ public class NetherSweep extends Module {
      */
     private static final double BLOQUES_POR_MUESTRA_DE_COHETES = 1_000;
 
+    /**
+     * El suelo de {@code no-projection-grace}, y por qué no puede ser un intervalo de muestreo.
+     *
+     * <p>Una tasa de gasto necesita <b>dos</b> muestras: la primera solo fija la referencia de la
+     * que se mide la segunda (ver {@link FuelBudget#sample}). Así que en la primera muestra
+     * {@link #bloquesSinProyeccion} vale exactamente un intervalo y en la segunda, dos, si para
+     * entonces todavía no ha bajado ningún cohete -que es lo normal al principio de un vuelo con
+     * {@code elytraConserveFireworks} encendido-.
+     *
+     * <p>Con la gracia en un solo intervalo, la comparación de la primera muestra era
+     * {@code 1000 < 1000}, falsa, y <b>el barrido se cortaba durante la aproximación</b>: sin haber
+     * llegado a dar el aviso de media gracia, determinista, y con un valor que el propio deslizador
+     * ofrecía. El suelo tiene que dejar pasar las dos muestras que la tasa necesita y alguna más,
+     * así que son tres intervalos: en la segunda se avisa -2.000 ya pasa de la media gracia- y solo
+     * en la tercera se corta.
+     *
+     * <p>A quien tuviera guardado el 1.000 de antes esto no le deja el módulo roto:
+     * {@code Setting.set} de Meteor devuelve {@code false} sin escribir nada cuando el valor no pasa
+     * {@code isValueValid}, y {@code DoubleSetting.load} carga por ahí, así que un valor persistido
+     * por debajo del suelo se descarta al cargar y el ajuste se queda en su valor de fábrica.
+     */
+    private static final double GRACIA_MINIMA_SIN_PROYECCION = 3 * BLOQUES_POR_MUESTRA_DE_COHETES;
+
+    /** Lo que mide un chunk de lado, en bloques: de aquí sale el enlace entre dos pasadas. */
+    private static final int BLOQUES_POR_CHUNK = 16;
+
     /** Sin acercarse al waypoint durante este tiempo, el barrido se corta. */
     private static final double SEGUNDOS_DE_ATASCO = 45;
 
@@ -274,10 +303,11 @@ public class NetherSweep extends Module {
         .description("Cuántos bloques se aguanta volando sin poder proyectar los cohetes antes de cortar. Pasa "
             + "al principio -hasta la primera medida- y si repones cohetes más a menudo de lo que se mide, que "
             + "hace caducar el dato. Seguir volando sin proyección es volar sin la protección de cohetes, así "
-            + "que se corta en vez de callarse.")
+            + "que se corta en vez de callarse. El mínimo son tres intervalos de muestreo porque una tasa "
+            + "necesita dos muestras: por debajo, el corte llega antes que la primera medida posible.")
         .defaultValue(5_000)
-        .min(1_000)
-        .sliderRange(1_000, 50_000)
+        .min(GRACIA_MINIMA_SIN_PROYECCION)
+        .sliderRange(GRACIA_MINIMA_SIN_PROYECCION, 50_000)
         .decimalPlaces(0)
         .build()
     );
@@ -381,6 +411,19 @@ public class NetherSweep extends Module {
         .build()
     );
 
+    private final Setting<Double> sueloDeCobertura = sgAvisos.add(new DoubleSetting.Builder()
+        .name("coverage-floor")
+        .description("Qué fracción del área tiene que haber llegado de verdad para que el barrido se dé por "
+            + "bueno al terminar. Por debajo de esto el aviso final sale FUERTE en vez de en un info: un barrido "
+            + "que cubrió la mitad no puede parecerse a uno que cubrió todo, porque los dos terminan y solo uno "
+            + "hay que repetirlo. Relanzar el mismo rectángulo replanifica sobre los huecos que queden.")
+        .defaultValue(0.95)
+        .range(0, 1)
+        .sliderRange(0, 1)
+        .decimalPlaces(2)
+        .build()
+    );
+
     private final Setting<Boolean> sonidoEnAvisos = sgAvisos.add(new BoolSetting.Builder()
         .name("notify-sound")
         .description("Sonido en los avisos fuertes.")
@@ -469,11 +512,28 @@ public class NetherSweep extends Module {
     /** La medición del gasto de cohetes de <b>este</b> vuelo (spec §6). */
     private FuelBudget fuel = new FuelBudget();
 
-    /** Bloques recorridos de verdad desde el despegue, que es lo que se le pasa a {@link FuelBudget}. */
-    private double bloquesVolados;
+    /**
+     * El cuentakilómetros del jugador, <b>de toda la sesión y no de un barrido</b>: se alimenta en
+     * cada tick con el módulo encendido, se esté volando o no, porque de él salen dos cosas que hacen
+     * falta en los dos estados. Una es la velocidad del último tick, que es lo que decide si una
+     * muestra de anchura vale (ver {@link WidthProbe#sample}); la otra son los bloques volados, que
+     * se miden por diferencia contra {@link #bloquesAlDespegar} en vez de reiniciando el contador,
+     * para que el paso del tick del despegue no salga falseado a cero justo cuando la sonda lo mira.
+     */
+    private final Odometer odometro = new Odometer();
+
+    /** En qué kilometraje del cuentakilómetros arrancó este barrido. */
+    private double bloquesAlDespegar;
 
     /** Dónde estaba el jugador en el tick anterior, para medir el desplazamiento real. */
     private Waypoint posicionAnterior = new Waypoint(0, 0);
+
+    /**
+     * Si {@link #posicionAnterior} es de verdad la del tick pasado. Es falso al entrar al mundo y
+     * mientras no hay jugador: sin posición anterior no hay desplazamiento que medir, y suponer uno
+     * sería meterle al cuentakilómetros un salto que nadie voló.
+     */
+    private boolean hayPosicionAnterior;
 
     /** En qué kilometraje se tomó la última muestra de cohetes. */
     private double bloquesDeLaUltimaMuestra;
@@ -484,8 +544,13 @@ public class NetherSweep extends Module {
     /** Si ya se avisó una vez de que no hay proyección de cohetes, para no repetirlo por muestra. */
     private boolean avisoSinProyeccionDado;
 
-    /** Cuántos chunks del área ya estaban vistos al planificar, para el estado. */
-    private int chunksYaVistos;
+    /**
+     * La cuenta de cuántos chunks del área han llegado de verdad (spec §9). Se arma al planificar
+     * -con la cobertura previa ya marcada- y se alimenta con cada chunk que llega mientras se vuela,
+     * para que el mensaje final pueda decir <b>cuánto se miró</b> y no solo que el recorrido
+     * terminó. Es {@code null} mientras no hay barrido en marcha.
+     */
+    private SweepTally tally;
 
     /**
      * La vigilancia del atasco, en el núcleo y con tests. El adaptador solo le da el waypoint al que
@@ -595,10 +660,27 @@ public class NetherSweep extends Module {
 
         int jugadorX = (int) Math.floor(mc.player.getX()) >> 4;
         int jugadorZ = (int) Math.floor(mc.player.getZ()) >> 4;
+        int chunkX = event.chunk().getPos().x;
+        int chunkZ = event.chunk().getPos().z;
+
+        // Esta es la comprobación de que el terreno ha llegado de verdad (spec §9), y sale de aquí
+        // y no de releer los ficheros del otro mod porque aquí es donde está el hecho: un evento por
+        // chunk que el servidor manda, sin depender de que NewerNewChunks esté encendido ni de que
+        // haya llegado a volcar a disco.
+        if (sweeping && tally != null) tally.record(chunkX, chunkZ);
+
+        // La velocidad del último tick decide si esta muestra mide el alcance del servidor o la
+        // deriva de su cola: el porqué entero está en el javadoc de WidthProbe. Y mientras no haya
+        // una posición anterior con la que compararse no hay velocidad medida, solo un cero de
+        // arranque: muestrear con él es declarar quieto a un jugador que puede venir volando -el
+        // caso de encender el módulo en pleno vuelo-, y esa muestra entraría inflada. Sin medida no
+        // se mide; el tick siguiente ya la habrá.
+        if (!hayPosicionAnterior) return;
         probe.sample(
             new ChunkPos(jugadorX, jugadorZ),
-            new ChunkPos(event.chunk().getPos().x, event.chunk().getPos().z),
-            techo);
+            new ChunkPos(chunkX, chunkZ),
+            techo,
+            odometro.lastStep());
     }
 
     /**
@@ -656,6 +738,11 @@ public class NetherSweep extends Module {
         // volver a entrar: para entonces Modules.onGameJoined ya ha terminado de suscribir a todos.
         applyPendingModules();
 
+        // El cuentakilómetros va siempre, se esté volando o no: con el módulo encendido y sin
+        // barrido su único trabajo útil es medir la anchura de pasada, y para saber si una muestra
+        // vale hace falta saber a qué velocidad iba el jugador cuando llegó.
+        medirDesplazamiento();
+
         if (!sweeping) return;
 
         if (mc.player == null || mc.world == null) {
@@ -670,8 +757,6 @@ public class NetherSweep extends Module {
         }
 
         Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
-        bloquesVolados += aqui.distanceTo(posicionAnterior);
-        posicionAnterior = aqui;
 
         checkFireworks();
         if (muestrearCohetes()) return;
@@ -703,6 +788,41 @@ public class NetherSweep extends Module {
             loudToast(message, Items.ELYTRA);
             finish("atasco", false);
         }
+    }
+
+    /**
+     * Mide lo que el jugador se ha desplazado en este tick y se lo pasa al cuentakilómetros, que es
+     * quien decide si eso fue vuelo o fue un salto.
+     *
+     * <p><b>Un teletransporte no es vuelo</b> -un portal, un {@code /tpa}, reaparecer, un tirón del
+     * servidor- y sumarlo a los bloques recorridos infla la tasa de bloques por cohete hacia el lado
+     * peligroso: la proyección contesta que los cohetes llegan cuando no llegan. El filtro y su
+     * razonamiento viven en {@link Odometer}, en el núcleo y con tests.
+     *
+     * <p>Sin posición anterior -al entrar al mundo, o tras un tick sin jugador- no hay
+     * desplazamiento que medir, así que se registra cero: inventar uno sería justo meterle al
+     * cuentakilómetros el salto que existe para no contar.
+     */
+    private void medirDesplazamiento() {
+        if (mc.player == null) {
+            hayPosicionAnterior = false;
+            odometro.advance(0);
+            return;
+        }
+
+        Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
+        odometro.advance(hayPosicionAnterior ? aqui.distanceTo(posicionAnterior) : 0);
+        posicionAnterior = aqui;
+        hayPosicionAnterior = true;
+    }
+
+    /**
+     * Los bloques volados desde el despegue de este barrido, que es lo que se le pasa a
+     * {@link FuelBudget}. Sale por diferencia contra el cuentakilómetros de la sesión -ver
+     * {@link #odometro}- y ya viene sin los tramos que no se volaron.
+     */
+    private double bloquesVolados() {
+        return odometro.blocksFlown() - bloquesAlDespegar;
     }
 
     /**
@@ -744,12 +864,13 @@ public class NetherSweep extends Module {
      * @return si el barrido se ha cortado y quien llame tiene que dejar de tocar su estado
      */
     private boolean muestrearCohetes() {
-        double desdeLaUltima = bloquesVolados - bloquesDeLaUltimaMuestra;
+        double volados = bloquesVolados();
+        double desdeLaUltima = volados - bloquesDeLaUltimaMuestra;
         if (desdeLaUltima < BLOQUES_POR_MUESTRA_DE_COHETES) return false;
-        bloquesDeLaUltimaMuestra = bloquesVolados;
+        bloquesDeLaUltimaMuestra = volados;
 
         int cohetes = InvUtils.find(Items.FIREWORK_ROCKET).count();
-        fuel.sample(bloquesVolados, cohetes);
+        fuel.sample(volados, cohetes);
 
         OptionalDouble tasa = fuel.blocksPerRocket();
         if (tasa.isEmpty()) {
@@ -783,11 +904,19 @@ public class NetherSweep extends Module {
         if (!fuel.willRunOut(restante, cohetes, reservaDeCohetes.get())) return false;
 
         long necesarios = (long) Math.ceil(restante / tasa.getAsDouble() * (1 + reservaDeCohetes.get()));
+        // Es el único mensaje de corte que llega con el jugador lejos de casa, así que nombra los
+        // dos ajustes de los que salen sus números: sin ellos, "unos 420 cohetes" es una cifra que
+        // no se sabe de dónde viene y el jugador no tiene qué tocar para la próxima vez.
         String message = String.format("Los cohetes NO llegan: al ritmo medido de %d bloques por cohete te quedan "
-                + "%d bloques por delante%s, que con la reserva son unos %d cohetes, y llevas %d. Corto el barrido "
-                + "aquí en vez de dejarte tirado más lejos.",
+                + "%d bloques por delante%s, que con el %d %% de firework-reserve son unos %d cohetes, y llevas "
+                + "%d. Corto el barrido aquí en vez de dejarte tirado más lejos. Los dos ajustes que mandan en "
+                + "esta cuenta son firework-reserve, el margen sobre lo que hace falta, y count-return-trip, que "
+                + "ahora mismo %s el regreso hasta donde despegaste -apagarlo no te deja más cohetes, solo deja "
+                + "de contarlos-.",
             Math.round(tasa.getAsDouble()), Math.round(restante),
-            contarElRegreso.get() ? " contando el regreso" : " SIN contar el regreso", necesarios, cohetes);
+            contarElRegreso.get() ? " contando el regreso" : " SIN contar el regreso",
+            Math.round(reservaDeCohetes.get() * 100), necesarios, cohetes,
+            contarElRegreso.get() ? "SÍ cuenta" : "NO cuenta");
         warning("%s", message);
         loudToast(message, Items.FIREWORK_ROCKET);
         finish("los cohetes no llegan", false);
@@ -815,6 +944,8 @@ public class NetherSweep extends Module {
     public String start() {
         if (!isActive()) return "nether-sweep está apagado: enciéndelo antes de lanzar un barrido.";
         if (sweeping) return "Ya hay un barrido en marcha: córtalo antes de lanzar otro.";
+        String viajeEnMarcha = rechazoPorAutoTravel();
+        if (viajeEnMarcha != null) return viajeEnMarcha;
         if (mc.player == null || mc.world == null) return "No hay mundo cargado: no se lanza nada.";
         if (!mc.player.isAlive()) {
             return "Estás muerto: reaparece antes de lanzar un barrido, que desde la pantalla de muerte no se vuela.";
@@ -872,7 +1003,11 @@ public class NetherSweep extends Module {
         // Del área, no de la dimensión entera: lo que le dice al jugador cuánto le ahorra su
         // cobertura previa es lo que cae DENTRO del rectángulo que ha pedido. Con size() el mensaje
         // llegaba a anunciar más chunks vistos que chunks tiene el área.
-        chunksYaVistos = vista.seenIn(area);
+        //
+        // Y la cuenta se arma aquí, no al terminar, porque tiene que arrancar sabiendo qué chunks
+        // del área NO hacía falta volver a ver: los de las bandas que el planificador se salta. De
+        // ella sale el "cuánto he mirado" del mensaje final (spec §9).
+        SweepTally cuenta = SweepTally.of(area, vista);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, anchuraUsada);
         // El motivo va como ARGUMENTO de un "%s" y nunca como cadena de formato: estos textos llevan
@@ -894,6 +1029,7 @@ public class NetherSweep extends Module {
         if (separacionRechazo != null) return separacionRechazo;
 
         avisarDeLosDetectores();
+        avisarDeEnlacesCortos(ruta);
         if (lectura.servidorDesconocido()) {
             // No es "no hay nada registrado": es "ni he mirado". El plan sale igual que si empezara
             // de cero, así que sin decirlo el jugador vuela tres horas repitiendo terreno que lleva
@@ -915,10 +1051,12 @@ public class NetherSweep extends Module {
 
         activePrefix = launchPrefix;
         route = ruta;
+        tally = cuenta;
         posicionAnterior = aqui;
+        hayPosicionAnterior = true;
         index = 0;
         pasadasDelPlan = plan.lanes().size();
-        bloquesVolados = 0;
+        bloquesAlDespegar = odometro.blocksFlown();
         bloquesDeLaUltimaMuestra = 0;
         bloquesSinProyeccion = 0;
         avisoSinProyeccionDado = false;
@@ -939,11 +1077,18 @@ public class NetherSweep extends Module {
 
         aimAtCurrentWaypoint();
 
+        // Y la sonda se tira aquí, ya volando. Un barrido no puede planificar con el máximo que
+        // quedó del anterior: la anchura tiene que salir de muestras tomadas con el jugador parado
+        // -las de un vuelo se descartan, ver WidthProbe-, y arrastrar la medida vieja es planificar
+        // sobre un alcance que el servidor tenía hace tres horas. Para relanzar se vuelve a medir,
+        // que son unos segundos andando.
+        probe = new WidthProbe();
+
         return String.format("Barrido lanzado: %d pasadas de %d chunks de anchura (%s) sobre %d chunks del área, "
                 + "de los que %d ya estaban vistos (%s).\n  Vuelo: %d bloques de aproximación + %d de barrido%s "
                 + "= %d bloques.\n  Cobertura equivalente: %s.\n  %s",
             plan.lanes().size(), anchuraUsada, anchuraTecleada ? "tecleada" : "medida", area.chunkCount(),
-            chunksYaVistos, lectura.resumen(), Math.round(ruta.approachBlocks()),
+            cuenta.alreadySeen(), lectura.resumen(), Math.round(ruta.approachBlocks()),
             Math.round(ruta.sweepBlocks()),
             contarElRegreso.get() ? String.format(" + %d de regreso", Math.round(ruta.returnBlocks())) : "",
             Math.round(ruta.totalBlocks()), area.overworldEquivalent(),
@@ -968,8 +1113,10 @@ public class NetherSweep extends Module {
         if (!probe.hasEnoughSamples()) {
             return String.format("No se barre todavía: la anchura de pasada sale medida del flujo de chunks que "
                     + "manda el servidor, y solo llevo %d de las %d muestras que hacen falta%s. Deja el módulo "
-                    + "encendido y muévete un poco para que el servidor te mande terreno, o si sabes su alcance "
-                    + "real ponlo a mano en lane-width -con el aviso de que ahí ya no se mide nada-.",
+                    + "encendido y date una vuelta ANDANDO para que el servidor te mande terreno -volando no "
+                    + "vale: a esa velocidad cada chunk llega cuando ya estás lejos de donde el servidor lo "
+                    + "encoló, y eso mide su cola y no su alcance-. Si sabes su alcance real, ponlo a mano en "
+                    + "lane-width, con el aviso de que ahí ya no se mide nada.",
                 probe.sampleCount(), WidthProbe.MUESTRAS_MINIMAS, descartadas());
         }
         anchuraUsada = probe.laneWidthInChunks(margenDeAnchura.get());
@@ -981,27 +1128,116 @@ public class NetherSweep extends Module {
      * El motivo por el que la ruta no se puede volar con el margen de waypoint configurado, o
      * {@code null} si se puede.
      *
-     * <p>Dos vértices separados por menos del doble del margen se consumen en el mismo tick: cuando
-     * el adaptador suelta el primero ya está a un margen de él, y el segundo cae dentro del otro
-     * margen. En {@code auto-travel} eso recorta el patrón; aquí es peor, porque los vértices que se
-     * consumen en ráfaga <b>son pasadas enteras que nunca se vuelan</b> y que el barrido da por
-     * peinadas igual. Así que se rechaza con el número que hay que tocar, en vez de volar un barrido
-     * con agujeros.
+     * <p><b>Lo que se mira es la pasada más corta, no el hueco más corto</b>, y ahí está medio
+     * arreglo. Dos vértices que caben dentro del margen se consumen casi seguidos: el adaptador
+     * suelta el primero y al tick siguiente suelta el segundo, así que Baritone nunca llega a volar
+     * hacia el de en medio. Si esos dos vértices son <b>los extremos de una pasada</b>, esa pasada no
+     * se vuela nunca y el barrido la da por peinada igual: la mentira de spec §9. Si son el final de
+     * una pasada y el arranque de la siguiente, lo que se pierde es la esquina y no el terreno -el
+     * objetivo pasa a ser el final de la pasada siguiente y Baritone cruza la banda en diagonal-, así
+     * que eso se avisa en {@link #avisarDeEnlacesCortos(SweepRoute)} y no se rechaza. El porqué
+     * entero, en {@link SweepRoute#shortestLane()} y {@link SweepRoute#shortestLink()}.
      *
-     * <p>Cuál es el hueco más corto lo sabe {@link SweepRoute#tightestGap()}, en el núcleo y con
-     * tests; cuál es el mínimo admisible, {@link RoutePlanner#minimumSpacing(double)}, también. Aquí
-     * solo se comparan y se redacta el motivo.
+     * <p><b>Lo que costaba no distinguirlos:</b> el hueco más corto de un barrido casi siempre es un
+     * enlace, y contra el suelo de las rutas de evasión -{@code RoutePlanner.minimumSpacing}, el
+     * doble del margen y nunca menos de 300 bloques- hacía falta una anchura de 19 chunks, o sea un
+     * radio observado de 12. Un servidor que entregara 8, 10 u 11 -normal en un anarchy cargado- veía
+     * <b>rechazado todo barrido medido, siempre y para cualquier rectángulo</b>, y ninguna de las tres
+     * salidas que el mensaje ofrecía servía: por debajo de 150 el margen no movía el suelo, agrandar
+     * el área no separa las bandas y subir la anchura a mano no aplica a quien la tiene medida. Ahora
+     * lo único que se rechaza es lo que de verdad pierde terreno, y eso solo pasa en un área diminuta
+     * por su eje largo, donde «agranda el área» sí es una salida.
      */
     private String rechazoPorSeparacion(SweepRoute ruta) {
-        double minima = RoutePlanner.minimumSpacing(margenDeWaypoint.get());
-        double separacion = ruta.tightestGap();
-        if (separacion > minima) return null;
+        double minima = SweepRoute.minimumGap(margenDeWaypoint.get());
+        double pasada = ruta.shortestLane();
+        if (pasada > minima) return null;
 
-        return String.format("No se barre: hay dos vértices del recorrido a %d bloques, y con waypoint-margin en "
-                + "%d hacen falta más de %d. Tan juntos se consumirían en el mismo tick, así que habría pasadas "
-                + "que no se volarían nunca y el barrido las daría por peinadas igual. Baja waypoint-margin, "
-                + "agranda el área, o sube lane-width si la tienes tecleada.",
-            Math.round(separacion), Math.round(margenDeWaypoint.get()), Math.round(minima));
+        return String.format("No se barre: la pasada más corta del recorrido mide %d bloques y con waypoint-margin "
+                + "en %d hacen falta más de %d. Una pasada así se consume en cuanto se suelta el vértice que la "
+                + "arranca, o sea que NO se volaría nunca y el barrido la daría por peinada igual. Las pasadas van "
+                + "de punta a punta, así que la más corta mide el lado largo del área: agranda el rectángulo por "
+                + "ahí -acerca chunk-x-1 a chunk-x-2, o chunk-z-1 a chunk-z-2, el par que esté más junto- hasta "
+                + "pasar de %d bloques, que son %d chunks. También vale bajar waypoint-margin%s.",
+            Math.round(pasada), Math.round(margenDeWaypoint.get()), Math.round(minima),
+            Math.round(minima), (long) Math.ceil(minima / BLOQUES_POR_CHUNK),
+            pasada > RoutePlanner.MIN_WAYPOINT_MARGIN
+                ? String.format(" por debajo de %d, que su mínimo es %d", Math.round(pasada),
+                    Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN))
+                : String.format(", pero no basta: su mínimo es %d y la pasada ya está por debajo",
+                    Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN)));
+    }
+
+    /**
+     * Los avisos sobre los enlaces entre pasadas: lo que se pierde cuando las bandas quedan juntas.
+     * <b>Avisan, no rechazan</b>, y la diferencia es el criterio de siempre: ninguno de los dos casos
+     * pierde una pasada, y lo único que este módulo no puede hacer es dar por peinado lo que no miró.
+     *
+     * <ul>
+     *   <li><b>El enlace cabe dentro del margen.</b> El adaptador lo consume sin volarlo, así que
+     *       Baritone nunca recibe la esquina: su objetivo pasa a ser el final de la pasada siguiente
+     *       y vuela hasta él en diagonal, cruzando la banda igual. Se pierde la esquina limpia, no el
+     *       terreno -razonado en {@link SweepRoute#shortestLink()}-, pero el jugador tiene que
+     *       saberlo porque los bordes de esa banda pasan más lejos del cliente de lo previsto.</li>
+     *   <li><b>El enlace es más corto de lo que una elytra vuela como tramo</b>
+     *       ({@link RoutePlanner#MIN_WAYPOINT_SPACING}, unos cuatro radios de giro). Baritone se pasa
+     *       de largo y vuelve a por el vértice: más lento y más cohetes, pero la pasada se vuela
+     *       entera.</li>
+     * </ul>
+     *
+     * <p>Una ruta de una sola pasada no tiene ningún enlace, y entonces {@code shortestLink()} vale
+     * {@code Double.MAX_VALUE}: no entra en ninguno de los dos avisos, que es lo correcto.
+     */
+    private void avisarDeEnlacesCortos(SweepRoute ruta) {
+        double enlace = ruta.shortestLink();
+        if (enlace <= SweepRoute.minimumGap(margenDeWaypoint.get())) {
+            warning("%s", String.format("El enlace más corto entre dos pasadas mide %d bloques y waypoint-margin "
+                    + "está en %d, así que ese vértice se consumirá sin volarlo: Baritone no hará la esquina, irá "
+                    + "en diagonal desde el final de una pasada hasta el final de la siguiente. La banda se cruza "
+                    + "igual -no se pierde ninguna pasada-, pero sus bordes pasarán más lejos del cliente de lo "
+                    + "previsto. Si quieres las esquinas limpias, baja waypoint-margin o baja lane-width-margin, "
+                    + "que ensancha las pasadas y separa las bandas.",
+                Math.round(enlace), Math.round(margenDeWaypoint.get())));
+            return;
+        }
+        if (enlace >= RoutePlanner.MIN_WAYPOINT_SPACING) return;
+
+        warning("%s", String.format("El enlace más corto entre dos pasadas mide %d bloques, por debajo de los %d "
+                + "que una elytra vuela como tramo: ahí Baritone se pasará de largo y volverá a por el vértice, "
+                + "así que el barrido irá más lento y gastará más cohetes. No se pierde ninguna pasada, así que "
+                + "vuelo igual.",
+            Math.round(enlace), Math.round(RoutePlanner.MIN_WAYPOINT_SPACING)));
+    }
+
+    /**
+     * El motivo por el que no se puede barrer con {@code auto-travel} volando, o {@code null} si no
+     * lo está.
+     *
+     * <p><b>Los dos módulos dirigen al mismo Baritone por los mismos comandos</b>, y ninguno
+     * preguntaba por el otro pese a que se usan en el mismo viaje -se vuela hasta la zona con
+     * {@code auto-travel} y se barre al llegar-. Lo que pasa si se solapan, en orden: {@code #goal}
+     * solo admite un objetivo, así que el segundo en lanzar se queda con Baritone; el primero ve
+     * crecer su distancia al suyo, a los 45 s salta su vigilancia de atasco y emite su {@code
+     * #cancel} y su restauración entera, que <b>para el vuelo del segundo a mitad</b> y además le
+     * devuelve {@code elytraFireworkSpeed} a un valor de reposo distinto del que él cree estar
+     * usando; el segundo no se entera de nada y 45 s después diagnostica un atasco que no existe.
+     * Y como cada uno se presta {@code elytra-fly} y {@code elytra-replace} con su propio
+     * {@code BorrowedModule}, el segundo anota como «reposo del jugador» el estado que dejó el
+     * primero, y al terminar lo deja ahí.
+     *
+     * <p>Es simétrico: la misma guarda está en {@code AutoTravel.start()} mirando hacia aquí.
+     */
+    private String rechazoPorAutoTravel() {
+        AutoTravel viaje = Modules.get().get(AutoTravel.class);
+        if (viaje == null || !viaje.isTravelling()) return null;
+
+        return "auto-travel tiene un viaje en marcha, y los dos dirigen al mismo Baritone: el objetivo de "
+            + "#elytra es uno solo, así que el barrido se lo quitaría, auto-travel vería crecer su distancia y "
+            + "a los 45 s cortaría con su propia restauración -parando el barrido a mitad y devolviendo la "
+            + "velocidad de cohete a su valor de reposo-, y el barrido diagnosticaría un atasco que no existe. "
+            + "Además los dos se prestan elytra-fly y elytra-replace por su cuenta, así que el segundo anotaría "
+            + "como reposo tuyo lo que dejó el primero. Termina el viaje o córtalo con .xploits travel stop, y "
+            + "entonces lanza el barrido.";
     }
 
     /**
@@ -1159,6 +1395,21 @@ public class NetherSweep extends Module {
      * nada, que es justo lo que hace falta cuando el apagado del módulo y la salida del mundo se
      * solapan.
      *
+     * <p><b>Aquí es donde se comprueba que el terreno llegó</b>, y no darlo por hecho es lo único que
+     * separa este módulo de la única mentira que no puede contar (spec §9). Antes, el barrido
+     * recorría los vértices y al llegar al último anunciaba «terminado» sin haber mirado nunca si los
+     * chunks del rectángulo habían llegado: con el servidor entregando con retraso, o volando más
+     * rápido de lo que entrega, una fracción de cada banda no llega nunca, y el jugador lee «Barrido
+     * terminado», tacha la zona y no vuelve. La autocorrección de spec §7 -relanzar replanifica sobre
+     * los huecos- solo sirve si el jugador sabe que tiene que relanzar, y el único que puede saberlo
+     * es el módulo.
+     *
+     * <p>Lo que se cuenta y cómo está en {@link SweepTally}; aquí solo se lee antes de restaurar
+     * -{@link #restore()} deja el estado del barrido a cero- y se decide el tono. <b>Por debajo de
+     * {@code coverage-floor} el aviso sale fuerte y con toast</b>, no en un {@code info} que además
+     * se puede apagar: un barrido que cubrió la mitad no puede parecerse a uno que cubrió todo,
+     * porque los dos terminan y solo uno hay que repetirlo.
+     *
      * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después
      */
     private SafetyNet.Restoration finish(String reason, boolean warn) {
@@ -1170,22 +1421,43 @@ public class NetherSweep extends Module {
         // sería cambiar un dato por un "no lo sé".
         fuel.blocksPerRocket().ifPresent(tasa -> bloquesPorCohete.set(tasa));
 
+        // Antes de restaurar: restore() llama a resetSweep() en un finally y ahí la cuenta se tira.
+        String cobertura = tally == null ? null : tally.summary();
+        boolean seQuedoCorto = tally != null && tally.shortOfCoverage(sueloDeCobertura.get());
+        int faltan = tally == null ? 0 : tally.missing();
+
         SafetyNet.Restoration restoration = restore();
         String pending = restoration.warning(activePrefix);
         warnPendingModules();
 
-        if (pending == null) {
-            String message = "Barrido terminado: " + reason + ". Entorno restaurado.";
-            if (warn) warning("%s", message);
-            else if (avisos.get()) info("%s", message);
-            return restoration;
-        }
-
+        StringBuilder cierre = new StringBuilder("Barrido terminado: ").append(reason);
         // Emitir no es llegar, y decir "entorno restaurado" sin que haya llegado nada es la mentira
         // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando.
-        warning("%s", "Barrido terminado: " + reason + ", pero el entorno NO ha quedado restaurado: " + pending + ".");
-        loudToast("El barrido ha terminado pero la restauración no ha llegado a Baritone: puede seguir volando y "
-            + "sus ajustes se han quedado en valores de vuelo. Lee el chat.", Items.BARRIER);
+        cierre.append(pending == null
+            ? ". Entorno restaurado."
+            : ", pero el entorno NO ha quedado restaurado: " + pending + ".");
+        if (cobertura != null) cierre.append(' ').append(cobertura).append('.');
+        if (seQuedoCorto) {
+            cierre.append(" Relanza el mismo rectángulo cuando puedas: NewerNewChunks ha ido anotando lo que sí "
+                + "llegó, así que el barrido se replanifica solo sobre los huecos que queden.");
+        }
+        String message = cierre.toString();
+
+        if (pending != null) {
+            warning("%s", message);
+            loudToast("El barrido ha terminado pero la restauración no ha llegado a Baritone: puede seguir volando "
+                + "y sus ajustes se han quedado en valores de vuelo. Lee el chat.", Items.BARRIER);
+            return restoration;
+        }
+        if (seQuedoCorto) {
+            warning("%s", message);
+            loudToast(String.format("El barrido ha terminado sin que llegaran %d chunks del área: NO está peinada "
+                + "entera. Relánzalo sobre el mismo rectángulo y se volará solo lo que falta.", faltan),
+                Items.BARRIER);
+            return restoration;
+        }
+        if (warn) warning("%s", message);
+        else if (avisos.get()) info("%s", message);
         return restoration;
     }
 
@@ -1248,9 +1520,10 @@ public class NetherSweep extends Module {
     private void resetSweep() {
         sweeping = false;
         route = null;
+        tally = null;
         index = 0;
         pasadasDelPlan = 0;
-        bloquesVolados = 0;
+        bloquesAlDespegar = odometro.blocksFlown();
         bloquesDeLaUltimaMuestra = 0;
         bloquesSinProyeccion = 0;
         avisoSinProyeccionDado = false;
@@ -1386,8 +1659,10 @@ public class NetherSweep extends Module {
             .append(" de ").append(pasadasDelPlan)
             .append(" · anchura ").append(anchuraUsada).append(" chunks (")
             .append(anchuraTecleada ? "tecleada" : "medida").append(")");
-        sb.append("\n  chunks del área que ya estaban vistos al planificar: ").append(chunksYaVistos);
-        sb.append("\n  volados ").append(Math.round(bloquesVolados)).append(" bloques");
+        if (tally != null) {
+            sb.append("\n  ").append(tally.summary());
+        }
+        sb.append("\n  volados ").append(Math.round(bloquesVolados())).append(" bloques");
         if (mc.player != null) {
             sb.append(", quedan ").append(Math.round(bloquesRestantes()))
                 .append(contarElRegreso.get() ? " contando el regreso" : " sin contar el regreso");
@@ -1415,15 +1690,23 @@ public class NetherSweep extends Module {
     }
 
     /**
-     * La coletilla de las muestras descartadas por pasarse del techo. Se enseña porque es la
-     * explicación de por qué la medida es la que es: un servidor con mucho retraso descarta muchas, y
-     * sin verlo el jugador solo ve que la anchura tarda en salir.
+     * La coletilla de las muestras descartadas. Se enseña porque es la explicación de por qué la
+     * medida es la que es, y <b>los dos descartes significan cosas distintas</b>: uno es un servidor
+     * con retraso y el otro es que el jugador está volando, que se arregla parando. Sin verlos, lo
+     * único que se ve es que la anchura no sale.
      */
     private String descartadas() {
-        int descartadas = probe.discardedSamples();
-        if (descartadas == 0) return "";
-        return String.format("; he descartado %d chunks que llegaron tarde -por encima de la distancia de "
-            + "renderizado, así que no medían el alcance del servidor-", descartadas);
+        StringBuilder coletilla = new StringBuilder();
+        if (probe.discardedSamples() > 0) {
+            coletilla.append(String.format("; he descartado %d chunks que llegaron tarde -por encima de la "
+                + "distancia de renderizado, así que no medían el alcance del servidor-", probe.discardedSamples()));
+        }
+        if (probe.movingSamples() > 0) {
+            coletilla.append(String.format("; y %d que llegaron contigo en movimiento -medían lo que te habías "
+                + "movido mientras el paquete estaba en cola, no hasta dónde manda el servidor-",
+                probe.movingSamples()));
+        }
+        return coletilla.toString();
     }
 
     // --- La cobertura que ya existe (spec §5.1) -----------------------------------------------
