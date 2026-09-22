@@ -459,6 +459,13 @@ public class NetherSweep extends Module {
      */
     private WidthProbe probe = new WidthProbe();
 
+    /**
+     * El techo con el que se tomó la última muestra, en chunks, o 0 si todavía no se ha tomado
+     * ninguna. Sirve para notar que la distancia de renderizado efectiva ha cambiado y tirar una
+     * medida que ya no se puede comparar con la nueva.
+     */
+    private int ultimoTecho;
+
     /** La medición del gasto de cohetes de <b>este</b> vuelo (spec §6). */
     private FuelBudget fuel = new FuelBudget();
 
@@ -511,6 +518,7 @@ public class NetherSweep extends Module {
         // anchura del servidor anterior.
         leavingWorld = false;
         probe = new WidthProbe();
+        ultimoTecho = 0;
         resetSweep();
 
         info("Armado, pero no vuela solo: lanza el barrido con .xploits sweep go");
@@ -538,6 +546,7 @@ public class NetherSweep extends Module {
         leavingWorld = true;
         finish("se ha dejado el mundo", false);
         probe = new WidthProbe();
+        ultimoTecho = 0;
     }
 
     /**
@@ -548,18 +557,48 @@ public class NetherSweep extends Module {
      * módulo desde aquí sin carreras.
      *
      * <p>Se alimenta siempre que el módulo esté encendido, se esté volando o no, porque la anchura
-     * tiene que estar medida <b>antes</b> de lanzar. La distancia de Chebyshev y el máximo sobre la
-     * media los decide {@link WidthProbe}, en el núcleo y con tests.
+     * tiene que estar medida <b>antes</b> de lanzar. La distancia de Chebyshev, el máximo sobre la
+     * media y el descarte de los artefactos los decide {@link WidthProbe}, en el núcleo y con tests;
+     * aquí solo se lee la posición, la del chunk y el techo.
+     *
+     * <p><b>El techo es lo único que impide que un chunk tardío ensanche las pasadas el resto de la
+     * sesión</b> (ver el javadoc de {@link WidthProbe}). Sale de {@code getClampedViewDistance()},
+     * cuyo bytecode dice literalmente {@code serverViewDistance > 0 ? min(viewDistance,
+     * serverViewDistance) : viewDistance}: es exactamente «el menor de los dos» de spec §3 -lo que
+     * el jugador tiene puesto y lo que el servidor ha declarado-, que es el límite por encima del
+     * cual una muestra no puede venir del servidor.
      */
     @EventHandler
     private void onChunkData(ChunkDataEvent event) {
         if (mc.player == null || event.chunk() == null) return;
 
+        int techo = mc.options.getClampedViewDistance();
+        // Un techo por debajo de 1 no es un estado real del juego -la distancia de renderizado
+        // mínima es 2-, pero si alguna vez lo fuera, muestrear con él lanzaría una excepción por
+        // cada chunk recibido. Aquí se calla y no se mide, que es el lado seguro: sin muestras el
+        // módulo se niega a despegar en vez de volar con una anchura inventada.
+        if (techo < 1) return;
+
+        if (techo != ultimoTecho) {
+            // La distancia de renderizado ha cambiado -la ha tocado el jugador, o el servidor ha
+            // declarado otra-. Las muestras viejas se tomaron contra un techo que ya no vale, y si
+            // el techo ha BAJADO el máximo guardado puede estar por encima de lo que el servidor
+            // manda ahora: exactamente el hueco que el techo existe para cerrar, entrando por la
+            // otra puerta. Se tira la medida y se vuelve a medir.
+            if (ultimoTecho > 0 && probe.sampleCount() > 0) {
+                info("La distancia de renderizado efectiva ha pasado de %d a %d chunks: tiro la medida de la "
+                    + "anchura de pasada y la vuelvo a tomar.", ultimoTecho, techo);
+            }
+            ultimoTecho = techo;
+            probe = new WidthProbe();
+        }
+
         int jugadorX = (int) Math.floor(mc.player.getX()) >> 4;
         int jugadorZ = (int) Math.floor(mc.player.getZ()) >> 4;
         probe.sample(
             new ChunkPos(jugadorX, jugadorZ),
-            new ChunkPos(event.chunk().getPos().x, event.chunk().getPos().z));
+            new ChunkPos(event.chunk().getPos().x, event.chunk().getPos().z),
+            techo);
     }
 
     /**
@@ -822,7 +861,10 @@ public class NetherSweep extends Module {
 
         LecturaDeCobertura lectura = leerCobertura();
         Coverage vista = lectura.cobertura();
-        chunksYaVistos = vista.size();
+        // Del área, no de la dimensión entera: lo que le dice al jugador cuánto le ahorra su
+        // cobertura previa es lo que cae DENTRO del rectángulo que ha pedido. Con size() el mensaje
+        // llegaba a anunciar más chunks vistos que chunks tiene el área.
+        chunksYaVistos = vista.seenIn(area);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, anchuraUsada);
         // El motivo va como ARGUMENTO de un "%s" y nunca como cadena de formato: estos textos llevan
@@ -844,6 +886,16 @@ public class NetherSweep extends Module {
         if (separacionRechazo != null) return separacionRechazo;
 
         avisarDeLosDetectores();
+        if (lectura.servidorDesconocido()) {
+            // No es "no hay nada registrado": es "ni he mirado". El plan sale igual que si empezara
+            // de cero, así que sin decirlo el jugador vuela tres horas repitiendo terreno que lleva
+            // meses acumulando sin enterarse de que su cobertura previa no ha entrado en la cuenta.
+            String message = "No he podido saber en qué servidor estás, así que NO he leído la cobertura de "
+                + "NewerNewChunks: esto NO es que no haya nada registrado, es que ni he mirado. Voy a planificar "
+                + "el rectángulo entero, así que si ya habías visto parte de él lo vas a repetir.";
+            warning("%s", message);
+            loudToast(message, Items.BARRIER);
+        }
         if (anchuraTecleada) {
             String message = String.format("lane-width está tecleada a mano en %d chunks, así que el barrido NO "
                     + "mide la anchura de pasada: si el servidor manda menos que eso, quedarán franjas sin ver y "
@@ -880,8 +932,8 @@ public class NetherSweep extends Module {
         aimAtCurrentWaypoint();
 
         return String.format("Barrido lanzado: %d pasadas de %d chunks de anchura (%s) sobre %d chunks del área, "
-                + "de los que %d ya estaban vistos (%s).%n  Vuelo: %d bloques de aproximación + %d de barrido%s = "
-                + "%d bloques.%n  Cobertura equivalente: %s.%n  %s",
+                + "de los que %d ya estaban vistos (%s).\n  Vuelo: %d bloques de aproximación + %d de barrido%s "
+                + "= %d bloques.\n  Cobertura equivalente: %s.\n  %s",
             plan.lanes().size(), anchuraUsada, anchuraTecleada ? "tecleada" : "medida", area.chunkCount(),
             chunksYaVistos, lectura.resumen(), Math.round(ruta.approachBlocks()),
             Math.round(ruta.sweepBlocks()),
@@ -907,10 +959,10 @@ public class NetherSweep extends Module {
         }
         if (!probe.hasEnoughSamples()) {
             return String.format("No se barre todavía: la anchura de pasada sale medida del flujo de chunks que "
-                    + "manda el servidor, y aún no hay muestras suficientes (hacen falta %d). Deja el módulo "
+                    + "manda el servidor, y solo llevo %d de las %d muestras que hacen falta%s. Deja el módulo "
                     + "encendido y muévete un poco para que el servidor te mande terreno, o si sabes su alcance "
                     + "real ponlo a mano en lane-width -con el aviso de que ahí ya no se mide nada-.",
-                WidthProbe.MUESTRAS_MINIMAS);
+                probe.sampleCount(), WidthProbe.MUESTRAS_MINIMAS, descartadas());
         }
         anchuraUsada = probe.laneWidthInChunks(margenDeAnchura.get());
         anchuraTecleada = false;
@@ -1346,10 +1398,24 @@ public class NetherSweep extends Module {
             return anchuraDePasada.get() + " chunks, TECLEADA a mano (no se mide nada)";
         }
         if (!probe.hasEnoughSamples()) {
-            return "midiéndose todavía, aún no hay " + WidthProbe.MUESTRAS_MINIMAS + " muestras del flujo de chunks";
+            return String.format("midiéndose todavía, llevo %d de %d muestras del flujo de chunks%s",
+                probe.sampleCount(), WidthProbe.MUESTRAS_MINIMAS, descartadas());
         }
-        return String.format("%d chunks, medidos (radio observado %d chunks, margen %.2f)",
-            probe.laneWidthInChunks(margenDeAnchura.get()), probe.observedRadiusInChunks(), margenDeAnchura.get());
+        return String.format("%d chunks, medidos (radio observado %d chunks de un techo de %d, margen %.2f)%s",
+            probe.laneWidthInChunks(margenDeAnchura.get()), probe.observedRadiusInChunks(), ultimoTecho,
+            margenDeAnchura.get(), descartadas());
+    }
+
+    /**
+     * La coletilla de las muestras descartadas por pasarse del techo. Se enseña porque es la
+     * explicación de por qué la medida es la que es: un servidor con mucho retraso descarta muchas, y
+     * sin verlo el jugador solo ve que la anchura tarda en salir.
+     */
+    private String descartadas() {
+        int descartadas = probe.discardedSamples();
+        if (descartadas == 0) return "";
+        return String.format("; he descartado %d chunks que llegaron tarde -por encima de la distancia de "
+            + "renderizado, así que no medían el alcance del servidor-", descartadas);
     }
 
     // --- La cobertura que ya existe (spec §5.1) -----------------------------------------------
@@ -1357,9 +1423,24 @@ public class NetherSweep extends Module {
     /**
      * Lo que salió de leer los cinco ficheros de {@code NewerNewChunks}: la cobertura unida y de
      * cuántos ficheros salió, para poder decirlo sin fingir que se leyó más de lo que había.
+     *
+     * <p><b>«No he podido saber dónde mirar» y «no había nada registrado» son cosas distintas</b> y
+     * llevan campo propio. Las dos dan la misma cobertura vacía y el mismo plan -el rectángulo
+     * entero-, pero significan lo contrario para el jugador: una es «empiezas de cero», que es
+     * correcto y no cuesta nada; la otra es «ni he mirado», y entonces las tres horas de vuelo van a
+     * repetir terreno que lleva meses acumulando. Contarlas como la misma cosa es dejarle despegar
+     * creyendo lo primero cuando pasa lo segundo.
      */
-    private record LecturaDeCobertura(Coverage cobertura, int leidos, int rotos) {
+    private record LecturaDeCobertura(Coverage cobertura, int leidos, int rotos, boolean servidorDesconocido) {
+        /** La lectura que no llegó a hacerse porque no se supo en qué carpeta mirar. */
+        static LecturaDeCobertura sinSaberDondeMirar() {
+            return new LecturaDeCobertura(Coverage.empty(), 0, 0, true);
+        }
+
         String resumen() {
+            if (servidorDesconocido) {
+                return "NO he leído la cobertura: no he podido saber en qué servidor estás";
+            }
             if (leidos == 0 && rotos == 0) {
                 return "ningún fichero de NewerNewChunks para este servidor y dimensión: se empieza de cero";
             }
@@ -1382,10 +1463,16 @@ public class NetherSweep extends Module {
      * <p>Se lee en {@code ISO-8859-1} y no en UTF-8 a propósito: el contenido son dígitos, comas y
      * saltos de línea, y ese juego de caracteres no puede lanzar {@code MalformedInputException}
      * sobre un fichero que el otro mod haya dejado a medio escribir al cerrarse el cliente de golpe.
+     *
+     * <p>Y se lee el fichero <b>entero</b> con {@code readString}, no línea a línea, porque
+     * {@link Coverage#ofFileContent} necesita ver si termina en salto de línea: es lo único que
+     * distingue un fichero cerrado de uno cortado a mitad de escritura, y una línea cortada puede
+     * parsear como un chunk perfectamente válido que nunca se vio. El porqué entero está en su
+     * javadoc.
      */
     private LecturaDeCobertura leerCobertura() {
         Path carpeta = carpetaDeCobertura();
-        if (carpeta == null) return new LecturaDeCobertura(Coverage.empty(), 0, 0);
+        if (carpeta == null) return LecturaDeCobertura.sinSaberDondeMirar();
 
         List<Coverage> partes = new ArrayList<>(FICHEROS_DE_COBERTURA.length);
         int leidos = 0;
@@ -1394,7 +1481,7 @@ public class NetherSweep extends Module {
             Path ruta = carpeta.resolve(fichero);
             if (!Files.isRegularFile(ruta)) continue;
             try {
-                partes.add(Coverage.ofLines(Files.readAllLines(ruta, StandardCharsets.ISO_8859_1)));
+                partes.add(Coverage.ofFileContent(Files.readString(ruta, StandardCharsets.ISO_8859_1)));
                 leidos++;
             } catch (IOException | RuntimeException e) {
                 rotos++;
@@ -1403,7 +1490,7 @@ public class NetherSweep extends Module {
                     + "no se hubiera visto.");
             }
         }
-        return new LecturaDeCobertura(Coverage.merge(partes), leidos, rotos);
+        return new LecturaDeCobertura(Coverage.merge(partes), leidos, rotos, false);
     }
 
     /**

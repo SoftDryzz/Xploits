@@ -17,9 +17,26 @@ package com.xploits.sweep.core;
  * de pasada: lo que importa es hasta dónde ha llegado a mandar el servidor, no el promedio de lo
  * que ha llegado hasta ahora.
  *
- * <p>Esta clase no toca Minecraft ni Meteor: recibe posiciones ya convertidas a {@link ChunkPos},
- * no consulta ningún evento ni ningún chunk. Quien la alimenta es el adaptador, suscrito al evento
- * de recepción de chunks del cliente.
+ * <p><b>Y por eso mismo hace falta un techo.</b> Que el máximo no baje nunca es lo correcto frente a
+ * una ráfaga lenta y es exactamente lo que convierte <b>un solo chunk tardío</b> en un barrido con
+ * agujeros: el servidor encola un lote cuando el jugador está en un sitio y se lo entrega cuando ya
+ * está diez chunks más allá, así que esa muestra mide radio real + 10 y se queda de máximo el resto
+ * de la sesión. Con un radio real de 8 chunks, un máximo de 18 da pasadas de 28 chunks -448
+ * bloques- sobre un servidor que cubre 256: una franja de 12 chunks entre cada dos pasadas que nunca
+ * pasa por delante del cliente y que el barrido anuncia como peinada. Es la mentira de spec §9, y
+ * además persistente: mientras el máximo siga ahí, cada relanzamiento repite los mismos huecos en el
+ * mismo sitio.
+ *
+ * <p>La spec ya da el techo en §3: <i>«la distancia de renderizado del cliente en esta instancia es
+ * 16 chunks… el límite lo pone el menor de los dos»</i>. El servidor no puede mandar más allá de la
+ * distancia que el cliente le declaró, así que <b>toda muestra por encima de ella es demostrablemente
+ * un artefacto</b> y {@link #sample} la descarta al entrar, sin contarla siquiera como muestra: no es
+ * una observación del alcance del servidor, es una observación de cuánto se ha movido el jugador
+ * mientras el paquete estaba en cola.
+ *
+ * <p>Esta clase no toca Minecraft ni Meteor: recibe posiciones ya convertidas a {@link ChunkPos} y
+ * el techo ya leído, no consulta ningún evento ni ningún chunk. Quien la alimenta es el adaptador,
+ * suscrito al evento de recepción de chunks del cliente.
  */
 public final class WidthProbe {
     /**
@@ -35,18 +52,54 @@ public final class WidthProbe {
     public static final int MUESTRAS_MINIMAS = 8;
 
     private int muestras = 0;
+    private int muestrasDescartadas = 0;
     private int radioMaximoObservado = 0;
 
     /**
-     * Registra un chunk recibido del servidor.
+     * Registra un chunk recibido del servidor, <b>salvo que sea un artefacto</b>.
      *
-     * @param player   la posición del jugador, en chunks, en el instante en que se recibió
-     * @param received el chunk que acaba de llegar
+     * <p>Una muestra por encima de {@code maxRadiusInChunks} no dice hasta dónde manda el servidor
+     * -no puede mandar más allá de lo que el cliente le declaró-, dice cuánto se ha movido el jugador
+     * mientras ese paquete estaba encolado. Se descarta entera: ni fija el máximo ni cuenta para
+     * {@link #hasEnoughSamples()}, porque contarla sería dar por medido algo que no se ha medido.
+     * Ver el javadoc de la clase para el vuelo completo del fallo que esto cierra.
+     *
+     * <p>El techo va por muestra y no en el constructor a propósito: puede cambiar a mitad de sesión
+     * -el jugador toca su distancia de renderizado, o el servidor declara otra-, y entonces cada
+     * observación tiene que juzgarse contra el techo que había cuando llegó.
+     *
+     * @param player             la posición del jugador, en chunks, en el instante en que se recibió
+     * @param received           el chunk que acaba de llegar
+     * @param maxRadiusInChunks  el radio más grande que el servidor puede estar mandando ahora mismo,
+     *                           en chunks; por encima de él la muestra es un artefacto
+     * @throws IllegalArgumentException si {@code maxRadiusInChunks} es menor que 1: un techo así
+     *                                  descartaría absolutamente todo y la sonda se quedaría muda
+     *                                  para siempre sin que nadie supiera por qué
      */
-    public void sample(ChunkPos player, ChunkPos received) {
+    public void sample(ChunkPos player, ChunkPos received, int maxRadiusInChunks) {
+        if (maxRadiusInChunks < 1) {
+            throw new IllegalArgumentException(
+                "el techo de la sonda tiene que ser de 1 chunk o más (recibido " + maxRadiusInChunks
+                    + "): con menos se descartaría toda muestra y la sonda no llegaría a medir nunca");
+        }
+
         int distancia = Math.max(Math.abs(received.x() - player.x()), Math.abs(received.z() - player.z()));
+        if (distancia > maxRadiusInChunks) {
+            muestrasDescartadas++;
+            return;
+        }
         radioMaximoObservado = Math.max(radioMaximoObservado, distancia);
         muestras++;
+    }
+
+    /** Cuántas muestras se han descartado por pasarse del techo, para poder decirlo. */
+    public int discardedSamples() {
+        return muestrasDescartadas;
+    }
+
+    /** Cuántas muestras buenas lleva la sonda. */
+    public int sampleCount() {
+        return muestras;
     }
 
     /**
