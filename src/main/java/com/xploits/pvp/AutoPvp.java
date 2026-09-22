@@ -5,8 +5,10 @@ import com.xploits.autotpy.AutoTpy;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.core.AllyPolicy;
 import com.xploits.pvp.core.CombatDirector;
+import com.xploits.pvp.core.CombatPosture;
 import com.xploits.pvp.core.CombatSnapshot;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.DefensivePolicy;
 import com.xploits.pvp.core.FriendLedger;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
@@ -16,6 +18,7 @@ import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
+import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
@@ -30,6 +33,9 @@ import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -37,10 +43,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,8 +57,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Dirige los módulos de combate de Meteor según la fase de la pelea (spec §1). No ejecuta ninguna
- * acción de combate: solo enciende y apaga, y solo apaga lo que encendió él (spec §7).
+ * Dirige los módulos de combate de Meteor (spec §1, rediseñado en
+ * {@code 2026-09-22-autopvp-decide-bien}). No ejecuta ninguna acción de combate: solo enciende y
+ * apaga, y solo apaga lo que encendió él (spec §7).
+ *
+ * <p>Es el <b>adaptador</b>: mide el mundo y ejecuta lo que decide el núcleo, que es puro y va con
+ * tests. Aquí no se decide nada. Lo que mide son la fase del enemigo, la mitad tuya del snapshot -la
+ * que sostiene el eje defensivo del rediseño §5- y los ajustes ajenos de Meteor de los que depende
+ * una decisión del núcleo, hoy solo el {@code anti-suicide} de {@code crystal-aura}.
  */
 public class AutoPvp extends Module {
     private static final int FIRST_SLOT = 0;
@@ -69,6 +83,13 @@ public class AutoPvp extends Module {
     /** Tope de nombres recordados para no repetir el aviso de "no ataco a"; al llenarse se vacía. */
     private static final int MAX_ANNOUNCED_ALLIES = 64;
 
+    /**
+     * Resistencia a explosiones a partir de la cual un bloque protege de un cristal (rediseño §4.1).
+     * Es el mismo umbral que usa {@code PlayerUtils.isInHole(boolean)} de Meteor para decidir si un
+     * vecino te protege, así que "enterrado" y "en un agujero" se miden con la misma vara.
+     */
+    private static final float PROTECTIVE_BLAST_RESISTANCE = 600f;
+
     /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
     private static final List<String> ALWAYS_YOURS = List.of("auto-totem", "auto-armor", "offhand", "auto-weapon");
 
@@ -76,7 +97,9 @@ public class AutoPvp extends Module {
 
     private final Setting<Integer> targetRange = sgGeneral.add(new IntSetting.Builder()
         .name("target-range")
-        .description("A cuántos bloques se busca un objetivo.")
+        .description("A cuántos bloques se busca un objetivo. Clasificar en fase es otra cosa y va a 10 fijo: "
+            + "ningún módulo dirigido llega más lejos, así que un objetivo más allá de 10 se ve y se informa, "
+            + "pero no enciende nada.")
         .defaultValue(16)
         .range(4, 64)
         .sliderRange(4, 64)
@@ -85,12 +108,36 @@ public class AutoPvp extends Module {
 
     private final Setting<Integer> approachDistance = sgGeneral.add(new IntSetting.Builder()
         .name("approach-distance")
-        .description("Más lejos de esta distancia la fase es de acercamiento; más cerca, de superficie. "
-            + "Tope en 6: EntityUtils.getCityBlock() de Meteor no ve rodeado más allá de esa distancia (spec §4.2), "
-            + "y un approach-distance mayor dejaría una franja donde nunca se detecta RODEADO.")
+        .description("Frontera entre acercamiento y superficie, con una banda de un bloque a cada lado: "
+            + "se entra en ACERCAMIENTO por encima de esta distancia más 1 y se vuelve a SUPERFICIE por debajo "
+            + "de esta menos 1, para que un objetivo parado justo en el umbral no haga oscilar la fase. "
+            + "Tope en 6: EntityUtils.getCityBlock() de Meteor no ve rodeado más allá de esa distancia, "
+            + "y un approach-distance mayor dejaría una franja donde nunca se detecta RODEADO. Suelo en 2: por debajo "
+            + "de 3 ya no hay fase que pida el aura, y de 3 al rango de cristal (4,5) la mantiene encendida la cuenta "
+            + "de hostiles, no la fase.")
         .defaultValue(6)
         .range(2, 6)
         .sliderRange(2, 6)
+        .build()
+    );
+
+    /**
+     * El umbral del eje defensivo (rediseño §5). El núcleo lo deja abierto y como ajuste; su
+     * constante {@link com.xploits.pvp.core.DefensivePolicy#THREAT_MARGIN} es solo el valor de
+     * fábrica, y es el que se pone aquí.
+     */
+    private final Setting<Double> threatMargin = sgGeneral.add(new DoubleSetting.Builder()
+        .name("threat-margin")
+        .description("Cuánta vida te tiene que quedar, descontando el daño que YA te apunta (cristales puestos, "
+            + "alguien con espada pegado a ti, camas en el Nether, la caída), para seguir tranquilo. Por debajo "
+            + "se encienden hole-filler, anti-anvil, anti-bed y anti-anchor, y además surround si estás en un "
+            + "agujero, pisando suelo y con la altura quieta -mientras tu Y se mueva, surround se apagaría solo-. "
+            + "No es 'estoy bajo de vida': es lo que ya está colocado contra ti. "
+            + "Subirlo salta antes y cuesta poco -ninguno de esos módulos te inmoviliza y solo hole-filler gasta-; "
+            + "bajarlo te deja reaccionar más tarde.")
+        .defaultValue(DefensivePolicy.THREAT_MARGIN)
+        .range(0, 40)
+        .sliderRange(0, 20)
         .build()
     );
 
@@ -115,8 +162,10 @@ public class AutoPvp extends Module {
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al cambiar de fase, al no atacar a uno de los nuestros y al tocar tu lista "
-            + "de amigos de Meteor. SIN_RECURSOS avisa siempre, lo apagues o no (spec §4.1).")
+        .description("Aviso local al cambiar de fase ofensiva o de postura defensiva, al no encender algo que "
+            + "la situación pedía, al no atacar a uno de los nuestros y al tocar tu lista de amigos de Meteor. "
+            + "Cada aviso se dice una vez, cuando aparece, no en cada tick. SIN_RECURSOS avisa siempre, lo "
+            + "apagues o no.")
         .defaultValue(true)
         .build()
     );
@@ -140,12 +189,31 @@ public class AutoPvp extends Module {
     private Set<String> lastSynced;
 
     private Plan lastPlan;
+    private CombatSnapshot lastSnapshot;
     private String lastTargetName;
     private Double lastTargetDistance;
     private CombatState lastReported = CombatState.SIN_COMBATE;
+    private CombatPosture lastPosture = CombatPosture.TRANQUILO;
+    /**
+     * Si tu Y cambió en el tick <b>anterior</b> (rediseño §5, crítico C2). Se guarda porque
+     * {@code Surround} comprueba {@code prevY != getY()} en {@code TickEvent.Pre} y este módulo mide
+     * en {@code TickEvent.Post}: lo que el módulo castigará al principio del tick siguiente es el
+     * movimiento que aquí se ve al final de este. Juntando los dos ticks, la postura deja de pedir
+     * {@code surround} en cualquiera de los dos y el autoapagado no llega a dispararse nunca
+     * mientras el director lo quiera encendido.
+     */
+    private boolean yChangedLastTick;
     private SkippedAlly skippedAlly;
     /** Nombres de los nuestros ya anunciados en esta activación: cada uno se dice una sola vez. */
     private final Set<String> announcedAllies = new LinkedHashSet<>();
+    /**
+     * Los avisos y las omisiones que ya estaban dichos el tick anterior. Es lo que convierte "esto
+     * pasa veinte veces por segundo" en una línea de chat: solo se dice lo que aparece, y solo
+     * cuando aparece. Las dos fuentes están protegidas río arriba -la histéresis de recursos del
+     * núcleo para las omisiones, la cuenta de cristales para el aviso del aura-, así que una entrada
+     * que entra y sale no rebota.
+     */
+    private Set<String> announcedNotes = Set.of();
 
     public AutoPvp() {
         super(XploitsAddon.CATEGORY, "auto-pvp", "Dirige los módulos de combate según la fase de la pelea.");
@@ -156,11 +224,15 @@ public class AutoPvp extends Module {
         director.reset();
         ledger.reset();
         lastPlan = null;
+        lastSnapshot = null;
         lastTargetName = null;
         lastTargetDistance = null;
         lastReported = CombatState.SIN_COMBATE;
+        lastPosture = CombatPosture.TRANQUILO;
+        yChangedLastTick = false;
         skippedAlly = null;
         announcedAllies.clear();
+        announcedNotes = Set.of();
         // La lista de amigos no se toca aquí: la primera reconciliación es la del primer tick, que
         // ya exige estar en el mundo. Encender el módulo desde la ClickGUI en el menú principal no
         // escribe nada en el disco del jugador.
@@ -194,15 +266,19 @@ public class AutoPvp extends Module {
         PlayerEntity target = findTarget(couriers, tpyUsers);
         lastTargetName = target == null ? null : nameOf(target);
 
-        CombatSnapshot snapshot = snapshot(target);
+        CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
+        lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get());
+        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get());
         lastPlan = plan;
 
         apply(plan);
         reportPhaseChange(plan);
+        reportPostureChange(plan);
+        reportNotes(plan);
         reportSkippedAlly();
         lastReported = plan.state();
+        lastPosture = plan.posture();
     }
 
     /** Uno de los nuestros que estaba a tiro y no se atacó: quién, por qué y a qué distancia. */
@@ -372,21 +448,86 @@ public class AutoPvp extends Module {
         }
     }
 
-    @SuppressWarnings("deprecation") // Uso de AbstractBlock.AbstractBlockState#blocksMovement, igual que EntityUtils.isAboveWater en meteor-client
-    private CombatSnapshot snapshot(PlayerEntity target) {
-        Inventory inventory = inventory();
-        if (target == null) {
-            return new CombatSnapshot(false, 0, false, 0, false, false,
-                mc.player.isGliding(), inventory.totems(), inventory.resources());
+    /**
+     * Avisa del otro eje (rediseño §3). Va en su propia línea, y no pegado a la fase, porque son
+     * ortogonales: la postura cambia sin que la fase se mueva -te cristalean mientras sigues en
+     * SUPERFICIE- y al revés. Solo se dice cuando cambia, que con el umbral de §5 son un par de
+     * líneas por pelea, no veinte por segundo.
+     */
+    private void reportPostureChange(Plan plan) {
+        if (plan.posture() == lastPosture || !notify.get()) return;
+
+        if (plan.posture() == CombatPosture.AMENAZADO) {
+            info("AMENAZADO · %s de daño ya te apunta y te quedan %s de vida.",
+                number(lastSnapshot.incomingDamage()), number(lastSnapshot.selfTotalHealth()));
+        } else {
+            info("TRANQUILO · ya no hay nada colocado que te deje bajo el margen.");
         }
-        // "Enterrado" exige que el bloque bloquee el movimiento, no solo que no sea aire (spec
-        // §4.3): !isAir() también es verdadero con agua, hierba alta, nieve, alfombras o
-        // carteles, y sobre todo con la telaraña que pone auto-web en esta misma posición -que es
-        // exactamente el módulo que RODEADO/SUPERFICIE encienden justo antes-. blocksMovement() lo
-        // distingue: la obsidiana y el bedrock de un burrow lo cumplen, la telaraña no (verificado
-        // contra AbstractBlock.AbstractBlockState#blocksMovement en las fuentes de Yarn 1.21.11:
-        // excluye COBWEB explícitamente y en general solo es true para bloques "solid").
-        boolean burrowed = mc.world.getBlockState(target.getBlockPos()).blocksMovement();
+    }
+
+    /**
+     * Dice una sola vez lo que el plan no va a encender y por qué, y los avisos que no son
+     * omisiones (rediseño §7: el aura sin cristales se enciende igual, pero el jugador tiene que
+     * enterarse). Sin esta memoria serían veinte líneas por segundo; con ella, una por cosa nueva.
+     *
+     * <p>Queda fuera el aviso fuerte de {@code SIN_RECURSOS}, que tiene su propio camino y suena
+     * aunque {@code notify} esté apagado.
+     */
+    private void reportNotes(Plan plan) {
+        // La clave de una omisión es el nombre del módulo, NO su motivo: el motivo lleva dentro
+        // cuánto te queda ("tienes 2, necesita 8"), y eso baja con cada bloque que gastas, así que
+        // comparar motivos enteros volvería a ser una línea por tick. Lo que el jugador necesita
+        // saber es que auto-trap no va a subir, no el número exacto de este tick -que sí sale, y
+        // actualizado, en .xploits pvp-.
+        Map<String, String> notes = new LinkedHashMap<>();
+        for (String warning : plan.warnings()) notes.put(warning, warning);
+        for (Skipped skipped : plan.skipped()) {
+            notes.put(skipped.module().name(),
+                "No enciendo " + skipped.module().name() + ": " + skipped.reason() + ".");
+        }
+
+        if (notify.get() && plan.state() != CombatState.SIN_RECURSOS) {
+            for (Map.Entry<String, String> note : notes.entrySet()) {
+                if (!announcedNotes.contains(note.getKey())) warning("%s", note.getValue());
+            }
+        }
+        announcedNotes = Set.copyOf(notes.keySet());
+    }
+
+    /** Un número de vida o de daño como se lee en español, con un decimal. */
+    private static String number(double value) {
+        return String.format(Locale.forLanguageTag("es"), "%.1f", value);
+    }
+
+    private CombatSnapshot snapshot(PlayerEntity target, Set<String> couriers, Set<String> tpyUsers) {
+        Inventory inventory = inventory();
+        // La mitad tuya del snapshot se lee siempre, haya objetivo o no: el eje defensivo (§5) se
+        // deriva de ti y no depende de que el director haya elegido a alguien. Son los mismos dos
+        // datos que usan AutoTotem, Offhand y AutoLog para decidir lo mismo, y el cliente los sabe
+        // en todos los servidores: getTotalHealth() es vida + absorción y possibleHealthReductions()
+        // es el daño que YA te apunta (cristales colocados, jugadores con espada a <=5, camas en el
+        // Nether y caída). isInHole(false) es el agujero sin dobles, el único sitio del surround.
+        double totalHealth = PlayerUtils.getTotalHealth();
+        double incomingDamage = PlayerUtils.possibleHealthReductions();
+        boolean inHole = PlayerUtils.isInHole(false);
+        boolean onGround = mc.player.isOnGround();
+        boolean antiSuicide = crystalAuraAntiSuicide();
+        int hostiles = hostilesInCrystalRange(couriers, tpyUsers);
+        // La misma comparación que hace Surround en su toggle-on-y-change -field_6036 es lastY en
+        // yarn 1.21.11+build.3, comprobado en las mappings, no supuesto-, más la del tick anterior:
+        // el módulo la evalúa en TickEvent.Pre y aquí se mide en Post, así que el movimiento que le
+        // hará apagarse al principio del tick que viene es el que se ve al final de este, y con los
+        // dos ticks juntos la postura no lo pide en ninguno de los dos.
+        boolean movedNow = mc.player.lastY != mc.player.getY();
+        boolean yChanged = movedNow || yChangedLastTick;
+        yChangedLastTick = movedNow;
+
+        if (target == null) {
+            return new CombatSnapshot(false, 0, 0, 0, false, false,
+                mc.player.isGliding(), inventory.totems(), inventory.resources(),
+                null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+        }
+
         // RODEADO exige el alcance real de auto-city al bloque, no al objetivo (spec §4.2.1,
         // corregido): el bloque es un vecino horizontal del objetivo y puede caer al lado contrario
         // de donde estás tú. Se mide exactamente como lo hace AutoCity.java de Meteor
@@ -395,8 +536,134 @@ public class AutoPvp extends Module {
         BlockPos cityBlock = EntityUtils.getCityBlock(target);
         double cityBlockDistance = cityBlock != null ? Math.sqrt(PlayerUtils.squaredDistanceTo(cityBlock)) : 0;
         return new CombatSnapshot(true, mc.player.distanceTo(target),
-            cityBlock != null, cityBlockDistance, burrowed, target.isGliding(),
-            mc.player.isGliding(), inventory.totems(), inventory.resources());
+            surroundSides(target), cityBlockDistance, protectedFromCrystals(target), target.isGliding(),
+            mc.player.isGliding(), inventory.totems(), inventory.resources(),
+            nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+    }
+
+    /**
+     * Cuántos de los cuatro vecinos horizontales del objetivo, a la altura de sus pies, son de los
+     * que {@code EntityUtils.getCityBlock()} considera minables (menor M1).
+     *
+     * <p>El director usaba {@code getCityBlock(target) != null} como "tiene surround", y no lo es:
+     * verificado en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}, ese método recorre las
+     * cuatro direcciones horizontales y devuelve <b>la más cercana</b> que sea de esta lista, o
+     * {@code null}; nunca cuenta cuántas hay. Un enemigo de pie junto al muro de obsidiana de
+     * cualquier base -o junto a la obsidiana que tu propio {@code auto-trap} acaba de colocar- daba
+     * bloque, clasificaba {@code RODEADO} y el director se ponía a minar la pared.
+     *
+     * <p>La lista es la misma que la de Meteor, y no incluye bedrock (spec §2): obsidiana, bloque
+     * de netherita, obsidiana llorosa, ancla de reaparición y escombros antiguos. Cuántos lados
+     * hacen falta lo decide el núcleo ({@code CombatDirector.SURROUND_MIN_SIDES}), que es donde se
+     * puede probar; aquí solo se cuenta.
+     */
+    private int surroundSides(PlayerEntity target) {
+        BlockPos feet = target.getBlockPos();
+        int sides = 0;
+        for (Direction direction : Direction.values()) {
+            if (direction.getAxis().isVertical()) continue;
+            if (isCityBlock(mc.world.getBlockState(feet.offset(direction)).getBlock())) sides++;
+        }
+        return sides;
+    }
+
+    /** Los cinco bloques que {@code EntityUtils.getCityBlock()} acepta, verificados en sus fuentes. */
+    private static boolean isCityBlock(Block block) {
+        return block == Blocks.OBSIDIAN || block == Blocks.CRYING_OBSIDIAN
+            || block == Blocks.NETHERITE_BLOCK || block == Blocks.RESPAWN_ANCHOR
+            || block == Blocks.ANCIENT_DEBRIS;
+    }
+
+    /**
+     * ¿Le protege un cristal de lo que hay en sus pies? (rediseño §4.1). Es la pregunta que decide
+     * {@code ENTERRADO}, y no es la que se hacía antes.
+     *
+     * <p>Antes se preguntaba {@code blocksMovement()}, que es "¿hay algo sólido ahí?". En el
+     * bytecode de 1.21.11 eso es {@code !COBWEB && !BAMBOO_SAPLING && isSolid()}, y {@code isSolid()}
+     * solo exige un lado medio de 0,7291666666666666: una losa inferior da 0,833 y pasaba. Es decir
+     * que estar de pie sobre una losa, una escalera, un cofre o una trampilla se clasificaba
+     * ENTERRADO, el director apagaba el aura y se plantaba a poner yunques contra alguien que no
+     * estaba protegido de nada.
+     *
+     * <p>La pregunta correcta tiene dos mitades y las dos hacen falta:
+     * <ul>
+     *   <li><b>Resistencia a explosiones &ge; 600</b> ({@code Block#getBlastResistance()}). Es el
+     *       umbral que ya usa {@code PlayerUtils.isInHole(boolean)} de Meteor para decidir si un
+     *       bloque te protege, así que la clasificación y lo que Meteor considera un agujero dicen
+     *       lo mismo. La obsidiana, la obsidiana llorosa, el bloque de netherita, los escombros
+     *       antiguos y el bedrock lo cumplen; la piedra, la tierra y la telaraña no.</li>
+     *   <li><b>Cubo completo</b> ({@code AbstractBlockState#isFullCube}, que es
+     *       {@code Block.isShapeFullCube(getCollisionShape(...))}). Sin esto, bloques con 1200 de
+     *       resistencia y forma parcial -una mesa de encantamientos, un ancla a medio uso- darían
+     *       por enterrado a quien esté de pie encima, que es el mismo fallo de la losa por la otra
+     *       puerta.</li>
+     * </ul>
+     *
+     * <p>Los dos nombres están comprobados con {@code javap} sobre el jar de Minecraft remapeado de
+     * este proyecto (yarn 1.21.11+build.3), no supuestos.
+     */
+    private boolean protectedFromCrystals(PlayerEntity player) {
+        BlockPos pos = player.getBlockPos();
+        BlockState state = mc.world.getBlockState(pos);
+        return state.getBlock().getBlastResistance() >= PROTECTIVE_BLAST_RESISTANCE
+            && state.isFullCube(mc.world, pos);
+    }
+
+    /**
+     * Cuántos hostiles hay a rango de cristal, <b>protegidos o no</b> (rediseño §4.4, corregido por
+     * el crítico C1). Es lo que impide el cebo obvio: uno se entierra, el otro te cristalea, y el
+     * director te apaga el aura contra el segundo porque la fase es de un solo jugador.
+     *
+     * <p>El filtro es el mismo que el de {@link #findTarget} —los nuestros fuera, supervivencia,
+     * vivos—, con una sola diferencia: el rango es el de cristal, no el {@code target-range} del
+     * módulo.
+     *
+     * <p><b>Ya no se descarta al protegido</b>, y ese descarte era el crítico. Preguntaba "¿puedo yo
+     * cristalear a alguien?" para decidir "¿necesito el aura?", que son dos preguntas distintas: el
+     * aura coloca y rompe, y romper no gasta ningún cristal tuyo (§2). Que el otro esté enterrado o
+     * rodeado le salva a él de tus cristales; no te salva a ti de los suyos. Con el descarte puesto,
+     * un enemigo que se entierra a 3,5 y te sigue cristaleando desde dentro del burrow hacía que la
+     * cuenta fuera cero y el ledger te apagaba el autobreak contra el único que podía matarte.
+     *
+     * <p>Con él se va también el uso de {@code EntityUtils.getCityBlock()} para esto, que además
+     * agravaba el fallo: ese método no comprueba si alguien tiene surround, sino si hay un bloque
+     * minable pegado a él, así que un enemigo junto a un muro de obsidiana -o junto a la que tu
+     * propio {@code auto-trap} acababa de colocar- contaba como "protegido" y desaparecía de la
+     * cuenta.
+     */
+    private int hostilesInCrystalRange(Set<String> couriers, Set<String> tpyUsers) {
+        int hostiles = 0;
+        for (PlayerEntity player : mc.world.getPlayers()) {
+            if (player == mc.player || player.isDead() || player.getHealth() <= 0) continue;
+            if (!PlayerUtils.isWithin(player, CombatDirector.CRYSTAL_RANGE)) continue;
+            if (AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers).isOurs()) continue;
+            if (player instanceof FakePlayerEntity fakePlayer) {
+                if (fakePlayer.noHit) continue;
+            } else if (EntityUtils.getGameMode(player) != GameMode.SURVIVAL) {
+                continue;
+            }
+            hostiles++;
+        }
+        return hostiles;
+    }
+
+    /**
+     * Si el {@code anti-suicide} de {@code crystal-aura} está encendido (rediseño §7, por la puerta
+     * de §10). Es lo único que decide si el suelo de tótems sigue en pie.
+     *
+     * <p>Se lee por el API público de ajustes de Meteor —{@code Module.settings} es
+     * {@code public final} y {@code Settings#get(String, Class)} devuelve el {@code Setting<Boolean>}
+     * ya tipado, comparando el nombre sin distinguir mayúsculas—, no por reflexión ni por un mixin:
+     * el campo {@code antiSuicide} de {@code CrystalAura} es privado, pero el ajuste no.
+     *
+     * <p>Si el módulo no está cargado o el ajuste no aparece, se responde <b>apagado</b>, que es el
+     * valor prudente: sin poder demostrar que la protección existe, el suelo de tótems se queda.
+     */
+    private static boolean crystalAuraAntiSuicide() {
+        Module crystalAura = byName(ManagedModules.CRYSTAL_AURA.name());
+        if (crystalAura == null) return false;
+        Setting<Boolean> antiSuicide = crystalAura.settings.get("anti-suicide", Boolean.class);
+        return antiSuicide != null && antiSuicide.get();
     }
 
     /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para todo. */
@@ -447,7 +714,7 @@ public class AutoPvp extends Module {
             if (m != null && m.isActive()) active.add(module.name());
         }
 
-        ModuleLedger.Result result = ledger.apply(director.state(), wanted, active);
+        ModuleLedger.Result result = ledger.apply(director.state(), plan.posture(), wanted, active);
 
         for (String name : result.toDisable()) {
             Module module = byName(name);
@@ -486,9 +753,13 @@ public class AutoPvp extends Module {
         ledger.reset();
         director.reset();
         lastPlan = null;
+        lastSnapshot = null;
         lastReported = CombatState.SIN_COMBATE;
+        lastPosture = CombatPosture.TRANQUILO;
+        yChangedLastTick = false;
         skippedAlly = null;
         announcedAllies.clear();
+        announcedNotes = Set.of();
     }
 
     private static Module byName(String name) {
@@ -523,24 +794,45 @@ public class AutoPvp extends Module {
 
         Set<String> owned = ledger.owned();
 
+        // Los dos ejes, en la primera línea y en este orden (rediseño §3): la fase la impone el
+        // enemigo y la postura eres tú, y las dos son verdad a la vez. Debajo, el detalle de cada
+        // una, para que se vea de un vistazo por qué está encendido lo que está encendido.
         StringBuilder sb = new StringBuilder();
         sb.append(lastPlan.state()).append(" desde hace ").append(director.ticksInState() / 20L).append(" s");
+        sb.append(" · ").append(lastPlan.posture());
         if (lastTargetName != null) {
             sb.append(" · objetivo ").append(lastTargetName);
             if (lastTargetDistance != null) {
-                sb.append(" a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", lastTargetDistance)).append(" bloques");
+                sb.append(" a ").append(number(lastTargetDistance)).append(" bloques");
+            }
+        }
+        if (lastSnapshot != null) {
+            sb.append("\n  tú:           ").append(number(lastSnapshot.selfTotalHealth()))
+                .append(" de vida con ").append(number(lastSnapshot.incomingDamage()))
+                .append(" de daño ya apuntándote (margen ").append(number(threatMargin.get())).append(")");
+            if (lastSnapshot.selfInHole()) sb.append(", en un agujero");
+            if (lastSnapshot.selfGliding()) sb.append(", planeando");
+            int hostiles = lastSnapshot.hostilesInCrystalRange();
+            if (hostiles > 0) {
+                sb.append("\n  cristales:    ").append(hostiles)
+                    .append(hostiles == 1 ? " hostil" : " hostiles")
+                    .append(" a rango de cristal (el aura se queda encendida por ellos, pase lo que pase con la fase: ")
+                    .append("estén protegidos o no, sus cristales te entran igual y romper no te cuesta ninguno)");
             }
         }
         if (skippedAlly != null) {
             sb.append("\n  no ataco:     ").append(skippedAlly.name())
                 .append(" — ").append(skippedAlly.allegiance().reason())
-                .append(", a ").append(String.format(Locale.forLanguageTag("es"), "%.1f", skippedAlly.distance()))
+                .append(", a ").append(number(skippedAlly.distance()))
                 .append(" bloques");
         }
         sb.append("\n  en amigos:    ").append(syncedFriendsLine());
         sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
         for (Skipped skipped : lastPlan.skipped()) {
             sb.append("\n  no encendido: ").append(skipped.module().name()).append(" — ").append(skipped.reason());
+        }
+        for (String warning : lastPlan.warnings()) {
+            sb.append("\n  aviso:        ").append(warning);
         }
         List<String> yours = yourActiveModules(owned);
         sb.append("\n  tuyos:        ").append(yours.isEmpty() ? "ninguno" : String.join(", ", yours)).append(" (no los toco)");

@@ -55,7 +55,7 @@ public final class FriendLedger {
     /**
      * Nombres que no se vuelven a intentar en esta activación: o los quitó el jugador a mano después
      * de que los pusiéramos nosotros, o Meteor se negó a añadirlos. Es la misma memoria que
-     * {@code releasedThisPhase} de {@code ModuleLedger}, y se olvida igual, con {@link #reset()}.
+     * {@code released} de {@code ModuleLedger}, y se olvida igual, con {@link #reset()}.
      */
     private final Set<String> abandoned = new LinkedHashSet<>();
 
