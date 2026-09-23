@@ -45,6 +45,7 @@ public final class ConsoleMain {
     private static final long REPINTAR_SIEMPRE_MS = 1_000;
     private static final long MEDIR_MS = 2_000;
     private static final int CAPACIDAD = 2_000;
+    private static final int FALLOS_DE_LECTURA_PARA_AVISAR = 10;
 
     private final Path carpeta;
     private final long pidJuego;
@@ -69,6 +70,7 @@ public final class ConsoleMain {
     private Latido.EstadoJuego juego;
     private boolean sucio = true;
     private boolean reponerPrompt;
+    private int fallosDeLecturaSeguidos;
 
     private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, PrintStream out, String codificacion, Teclado teclado) {
         this.carpeta = carpeta;
@@ -145,13 +147,23 @@ public final class ConsoleMain {
         }
     }
 
-    /** Lee lo nuevo de vivo.log. Devuelve false si ha llegado la orden de cerrar este lanzamiento. */
-    private boolean leerFlujo() throws IOException {
+    /**
+     * Lee lo nuevo de vivo.log. Devuelve false si ha llegado la orden de cerrar este lanzamiento.
+     *
+     * <p>Un fallo de E/S al leer es normal durante una rotación (por ejemplo, abrir {@code vivo.log}
+     * entre el {@code move} y la cabecera nueva): se ignora y se reintenta en la vuelta siguiente. Solo
+     * si falla {@value #FALLOS_DE_LECTURA_PARA_AVISAR} veces seguidas (un segundo) se dice.
+     */
+    private boolean leerFlujo() {
         List<String> lineas;
         try {
             lineas = seguidor.leer();
+            fallosDeLecturaSeguidos = 0;
         } catch (IllegalArgumentException e) {
             avisar("no puedo leer vivo.log: " + e.getMessage());
+            return true;
+        } catch (IOException e) {
+            if (++fallosDeLecturaSeguidos == FALLOS_DE_LECTURA_PARA_AVISAR) avisar("no puedo leer vivo.log: " + e.getMessage());
             return true;
         }
         for (String linea : lineas) {
