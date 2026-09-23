@@ -1,5 +1,8 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -13,9 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CicloTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+    private static final Catalog EN = Catalog.load(Language.EN, p -> {
+        throw new AssertionError(p);
+    });
     private static final Predicate<Ciclo.Pid> VIVOS = p -> true;
     private static final Predicate<Ciclo.Pid> MUERTOS = p -> false;
     private static final Ciclo.Pid PID = new Ciclo.Pid(99, 1, "l1");
+
+    /** The actions with each notice rendered in Spanish: the text moved to the catalog verbatim. */
+    private static List<Object> es(List<Ciclo.Accion> acciones) {
+        return acciones.stream().map(a -> a instanceof Ciclo.Avisar v ? (Object) (v.nivel() + " " + ES.render(v.texto())) : a).toList();
+    }
 
     private static Ciclo ciclo() {
         Iterator<String> ids = List.of("l1", "l2", "l3").iterator();
@@ -57,8 +71,8 @@ class CicloTest {
         c.lanzado("cmd /c algo", 0);
         assertEquals(List.of(), c.tick(obs(9_999, null, VIVOS, null)));
         // El F va aunque no haya ventana: si arranca tarde, lo encuentra y se cierra en vez de quedarse huérfana.
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.ERROR, "La consola no ha arrancado en 10 s. Se intentó: cmd /c algo"),
-            new Ciclo.EscribirFin("l1"), new Ciclo.ApagarModulo()), c.tick(obs(10_000, null, VIVOS, null)));
+        assertEquals(List.of("ERROR " + "La consola no ha arrancado en 10 s. Se intentó: cmd /c algo",
+            new Ciclo.EscribirFin("l1"), new Ciclo.ApagarModulo()), es(c.tick(obs(10_000, null, VIVOS, null))));
         assertFalse(c.activo());
     }
 
@@ -73,19 +87,19 @@ class CicloTest {
         assertEquals(3, c.tick(obs(10_000, ajeno, VIVOS, null)).size());
 
         Ciclo abierta = viva();
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.INFO, "La ventana de la consola se cerró (con la X o desde fuera)."),
-            new Ciclo.ApagarModulo()), abierta.tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.USUARIO, "otro", ""))));
+        assertEquals(List.of("INFO " + "La ventana de la consola se cerró (con la X o desde fuera).",
+            new Ciclo.ApagarModulo()), es(abierta.tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.USUARIO, "otro", "")))));
     }
 
     @Test
     void lasTresFormasDeCerrarseSeDicenDistinto() {
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.INFO, "Consola cerrada desde su menú."), new Ciclo.ApagarModulo()),
-            viva().tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.USUARIO, "l1", ""))));
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.ERROR, "La consola se cerró por un error: NullPointerException: x"),
+        assertEquals(List.of("INFO " + "Consola cerrada desde su menú.", new Ciclo.ApagarModulo()),
+            es(viva().tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.USUARIO, "l1", "")))));
+        assertEquals(List.of("ERROR " + "La consola se cerró por un error: NullPointerException: x",
                 new Ciclo.ApagarModulo()),
-            viva().tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.ERROR, "l1", "NullPointerException: x"))));
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.INFO, "La ventana de la consola se cerró (con la X o desde fuera)."),
-            new Ciclo.ApagarModulo()), viva().tick(obs(600, PID, MUERTOS, null)));
+            es(viva().tick(obs(600, PID, MUERTOS, new Ciclo.Salida(Ciclo.Salida.ERROR, "l1", "NullPointerException: x")))));
+        assertEquals(List.of("INFO " + "La ventana de la consola se cerró (con la X o desde fuera).",
+            new Ciclo.ApagarModulo()), es(viva().tick(obs(600, PID, MUERTOS, null))));
     }
 
     @Test
@@ -93,8 +107,8 @@ class CicloTest {
         Ciclo c = ciclo();
         c.encender();
         c.tick(obs(0, null, VIVOS, null));
-        assertEquals(List.of(new Ciclo.Avisar(Nivel.ERROR, "No se puede abrir la consola: la ruta tiene &."),
-            new Ciclo.ApagarModulo()), c.rechazado("la ruta tiene &"));
+        assertEquals(List.of("ERROR " + "No se puede abrir la consola: no encuentro el jar del addon en disco, y la ventana se ejecuta desde él.",
+            new Ciclo.ApagarModulo()), es(c.rechazado(Msg.of(ConsoleText.NO_JAR))));
         assertFalse(c.activo());
     }
 
@@ -131,7 +145,7 @@ class CicloTest {
     @Test
     void decirQueSeLanzoSinEstarLanzandoEsUnFalloDelAdaptador() {
         assertThrows(IllegalStateException.class, () -> ciclo().lanzado("x", 0));
-        assertThrows(IllegalStateException.class, () -> ciclo().rechazado("x"));
+        assertThrows(IllegalStateException.class, () -> ciclo().rechazado(Msg.of(ConsoleText.NO_JAR)));
     }
 
     @Test

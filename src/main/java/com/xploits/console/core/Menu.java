@@ -1,13 +1,19 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Msg;
+
 /**
  * El menú de la ventana, como el de CustomCLI pero con números: la entrada de línea normal basta y
  * no hace falta poner la consola en modo tecla a tecla (spec consola §6).
  */
 public final class Menu {
-    public static final String LINEA = "[1] todo  [2] pvp  [3] travel  [4] sweep  [5] solo avisos  [6] pausar  [0] salir";
-
     private Menu() {
+    }
+
+    /** The menu line: the digits and their order are fixed, the words come from the catalog. */
+    public static String linea(Catalog textos) {
+        return textos.render(WindowText.MENU_LINE);
     }
 
     public sealed interface Orden {
@@ -22,7 +28,7 @@ public final class Menu {
     public record Salir() implements Orden {
     }
 
-    public record Desconocida(String motivo) implements Orden {
+    public record Desconocida(Msg motivo) implements Orden {
     }
 
     public static Orden interpretar(String linea) {
@@ -35,8 +41,8 @@ public final class Menu {
             case "5" -> new CambiarFiltro(Filtro.AVISOS);
             case "6" -> new AlternarPausa();
             case "0" -> new Salir();
-            case "" -> new Desconocida("escribe el número de una opción del menú");
-            default -> new Desconocida("«" + Texto.recortar(Texto.limpiar(limpia), 20) + "» no es una opción del menú");
+            case "" -> new Desconocida(Msg.of(WindowText.MENU_EMPTY));
+            default -> new Desconocida(Msg.of(WindowText.MENU_UNKNOWN, "input", Texto.recortar(Texto.limpiar(limpia), 20)));
         };
     }
 }

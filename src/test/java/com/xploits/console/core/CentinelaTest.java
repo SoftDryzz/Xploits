@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -9,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CentinelaTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+    private static final Catalog EN = Catalog.load(Language.EN, p -> {
+        throw new AssertionError(p);
+    });
     @Test
     void laClaveDeUnContenedorSeRetiene() {
         assertTrue(Centinela.sospecha("obsidian x64 · minecraft:overworld@1234,64,-5678 · visto hace 2 h"));
@@ -59,9 +67,9 @@ class CentinelaTest {
     }
 
     @Test
-    void revisarSustituyeYDiceDeQuienVenia() {
-        assertEquals(new Centinela.Veredicto("[retenido: parecía llevar coordenadas · fuente auto-travel]", true),
-            Centinela.revisar("auto-travel", "waypoint 1 de 2 en 1200, -800"));
-        assertEquals(new Centinela.Veredicto("hola", false), Centinela.revisar("auto-pvp", "hola"));
+    void loRetenidoDiceDeQuienVenia() {
+        assertEquals("[retenido: parecía llevar coordenadas · fuente auto-travel]", ES.render(Centinela.retenido("auto-travel")));
+        assertEquals("[held back: looked like coordinates · source auto-travel]", EN.render(Centinela.retenido("auto-travel")));
+        assertFalse(Centinela.sospecha(ES.render(Centinela.retenido("auto-travel"))));
     }
 }

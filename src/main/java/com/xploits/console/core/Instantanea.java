@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Language;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,7 +31,8 @@ public record Instantanea(
     Integer cristales,
     Integer telas,
     Integer yunques,
-    List<EstadoModulo> modulos) {
+    List<EstadoModulo> modulos,
+    Language idioma) {
 
     /** Por dónde va un viaje o un barrido: {@code actual} de {@code total}, y los bloques que faltan. */
     public record Progreso(int actual, int total, long restantes) {
@@ -38,28 +41,29 @@ public record Instantanea(
     /** Un módulo de Xploits: si está encendido y qué hace ahora, en pocas palabras. */
     public record EstadoModulo(String nombre, boolean activo, String ahora) {
         public EstadoModulo {
-            Objects.requireNonNull(nombre, "un módulo sin nombre");
-            Objects.requireNonNull(ahora, "ahora vacío es \"\", no null");
+            Objects.requireNonNull(nombre, "un módulo sin nombre"); // i18n: allowed: exception message
+            Objects.requireNonNull(ahora, "ahora vacío es \"\", no null"); // i18n: allowed: exception message
         }
     }
 
     private static final String DESCONOCIDO = "-";
     private static final List<String> CLAVES =
-        List.of("dim", "jug", "nue", "coh", "ely", "via", "bar", "vid", "arm", "obs", "cri", "tel", "yun", "mod");
+        List.of("dim", "jug", "nue", "coh", "ely", "via", "bar", "vid", "arm", "obs", "cri", "tel", "yun", "mod", "lng");
 
     public Instantanea {
-        modulos = List.copyOf(Objects.requireNonNull(modulos, "la lista de módulos puede estar vacía, no ser null"));
+        modulos = List.copyOf(Objects.requireNonNull(modulos, "la lista de módulos puede estar vacía, no ser null")); // i18n: allowed: exception message
+        Objects.requireNonNull(idioma, "a snapshot says which language the window speaks");
     }
 
     /** Sin jugador en el mundo: todo desconocido salvo los módulos. */
-    public static Instantanea sinJugador(List<EstadoModulo> modulos) {
-        return new Instantanea(null, null, null, null, null, null, null, null, null, null, null, null, null, modulos);
+    public static Instantanea sinJugador(List<EstadoModulo> modulos, Language idioma) {
+        return new Instantanea(null, null, null, null, null, null, null, null, null, null, null, null, null, modulos, idioma);
     }
 
     /** La misma foto con otra lista de módulos: el centinela la usa para retener un "ahora" sospechoso. */
     public Instantanea conModulos(List<EstadoModulo> otros) {
         return new Instantanea(dimension, jugadores, nuestros, cohetes, elytraPct, viaje, barrido, vida, armadura,
-            obsidiana, cristales, telas, yunques, otros);
+            obsidiana, cristales, telas, yunques, otros, idioma);
     }
 
     public String codificar() {
@@ -82,6 +86,7 @@ public record Instantanea(
             mods.add(Escape.escapar(m.nombre()) + "," + (m.activo() ? "1" : "0") + "," + Escape.escapar(m.ahora()));
         }
         sj.add("mod=" + mods);
+        sj.add("lng=" + idioma.code());
         return sj.toString();
     }
 
@@ -111,7 +116,8 @@ public record Instantanea(
             entero(valores.get("cri")),
             entero(valores.get("tel")),
             entero(valores.get("yun")),
-            modulos(valores.get("mod")));
+            modulos(valores.get("mod")),
+            Language.fromCode(valores.get("lng")).orElse(Language.EN));
     }
 
     private static String numero(Integer n) {

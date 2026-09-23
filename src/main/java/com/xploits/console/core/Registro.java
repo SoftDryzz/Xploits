@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
  * un salto es un registro perdido.
  */
 public sealed interface Registro permits Registro.Mensaje, Registro.Foto, Registro.Juego, Registro.Fin, Registro.Perdida {
-    int VERSION = 1;
+    int VERSION = 2;
     String PREFIJO_CABECERA = "#xploits-consola";
 
     long seq();

@@ -15,6 +15,10 @@ import com.xploits.console.core.Registro;
 import com.xploits.console.core.Secuencia;
 import com.xploits.console.core.Tamano;
 import com.xploits.console.core.Texto;
+import com.xploits.console.core.WindowText;
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -33,12 +37,16 @@ import java.util.List;
 
 /**
  * La ventana de la consola (spec consola §4 y §6). Se ejecuta fuera del juego con
- * {@code java -cp <jar del mod> com.xploits.console.ventana.ConsoleMain <carpeta> <pid del juego> <lanzamiento> <sesion>},
+ * {@code java -cp <jar del mod> com.xploits.console.ventana.ConsoleMain <carpeta> <pid del juego> <lanzamiento> <sesion> <idioma>},
  * así que solo toca el JDK y {@code console/core}.
  *
  * <p>{@code sesion} es la del juego que la abrió: solo el {@code J} de esa sesión dice si su juego se
  * despidió, y cuando su juego muere deja de leer {@code vivo.log}, así que la partida siguiente no
  * aparece en esta ventana ni la pone en rojo.
+ *
+ * <p>{@code idioma} is the language the window starts in; every snapshot says the current one, and
+ * the window switches as soon as a snapshot brings another. A catalog problem goes to
+ * {@code consola-errores.log}, never to the screen.
  *
  * <p>Si revienta no desaparece: escribe por qué en {@code consola.salida} -para que el juego lo diga
  * en el chat- y en {@code consola-errores.log}, lo enseña en rojo y espera a que el jugador lo lea.
@@ -70,7 +78,9 @@ public final class ConsoleMain {
     private boolean pausa;
     private List<Registro.Mensaje> congelado = List.of();
     private int nuevas;
-    private String aviso;
+    private Msg aviso;
+    private Catalog textos;
+    private Language idiomaFallido;
     private Tamano tamano = Tamano.PEDIDO;
     private Latido.EstadoJuego juego;
     private boolean sucio = true;
@@ -78,7 +88,8 @@ public final class ConsoleMain {
     private int fallosDeLecturaSeguidos;
 
     private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, String sesion, PrintStream out, String codificacion,
-                        Teclado teclado) {
+                        Teclado teclado, Catalog textos) {
+        this.textos = textos;
         this.carpeta = carpeta;
         this.pidJuego = pidJuego;
         this.lanzamiento = lanzamiento;
@@ -93,19 +104,24 @@ public final class ConsoleMain {
     public static void main(String[] args) {
         String codificacion = System.getProperty("stdout.encoding", "UTF-8");
         PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), false, Charset.forName(codificacion));
-        if (args.length != 4) {
-            out.println("uso: ConsoleMain <carpeta> <pid del juego> <lanzamiento> <sesion>");
+        if (args.length != 5) {
+            // The language is not known yet: English is the fallback.
+            out.println(Catalog.load(Language.EN, p -> { }).render(WindowText.USAGE));
             out.flush();
             System.exit(2);
             return;
         }
         Path carpeta = Path.of(args[0]);
         String lanzamiento = args[2];
+        Language inicial = Language.fromCode(args[4]).orElse(Language.EN);
         Teclado teclado = Teclado.arrancar();
+        ConsoleMain ventana = null;
         try {
-            new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, args[3], out, codificacion, teclado).correr();
+            ventana = new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, args[3], out, codificacion, teclado,
+                cargar(carpeta, inicial));
+            ventana.correr();
         } catch (Throwable t) {
-            reventar(carpeta, lanzamiento, out, teclado, t);
+            reventar(carpeta, lanzamiento, out, teclado, t, ventana == null ? null : ventana.textos);
         }
     }
 
@@ -118,7 +134,7 @@ public final class ConsoleMain {
 
         // chcp 65001 pone la salida en UTF-8 (verificado). Si no llegó a aplicarse, se dibuja en ASCII y se dice.
         Glifos glifos = "UTF-8".equalsIgnoreCase(codificacion) ? Glifos.UNICODE : Glifos.ASCII;
-        if (glifos == Glifos.ASCII) aviso = "la consola no está en UTF-8: dibujo el marco en ASCII";
+        if (glifos == Glifos.ASCII) aviso = Msg.of(WindowText.NOT_UTF8);
         List<String> arte = Banner.cargar();
 
         out.print(Ansi.titulo(Arranque.TITULO) + Ansi.tamano(Tamano.PEDIDO.filas(), Tamano.PEDIDO.cols()));
@@ -174,10 +190,12 @@ public final class ConsoleMain {
             lineas = seguidor.leer();
             fallosDeLecturaSeguidos = 0;
         } catch (IllegalArgumentException e) {
-            avisar("no puedo leer vivo.log: " + e.getMessage());
+            avisar(Msg.of(WindowText.CANNOT_READ_LOG, "error", String.valueOf(e.getMessage())));
             return true;
         } catch (IOException e) {
-            if (++fallosDeLecturaSeguidos == FALLOS_DE_LECTURA_PARA_AVISAR) avisar("no puedo leer vivo.log: " + e.getMessage());
+            if (++fallosDeLecturaSeguidos == FALLOS_DE_LECTURA_PARA_AVISAR) {
+                avisar(Msg.of(WindowText.CANNOT_READ_LOG, "error", String.valueOf(e.getMessage())));
+            }
             return true;
         }
         for (String linea : lineas) {
@@ -185,14 +203,14 @@ public final class ConsoleMain {
             try {
                 r = Registro.decodificar(linea);
             } catch (IllegalArgumentException e) {
-                avisar("línea ilegible en vivo.log: " + e.getMessage());
+                avisar(Msg.of(WindowText.UNREADABLE_LINE, "error", String.valueOf(e.getMessage())));
                 continue;
             }
             try {
                 long perdidos = secuencia.hueco(r.sesion(), r.seq());
-                if (perdidos > 0) avisar("se perdieron " + perdidos + " registros");
+                if (perdidos > 0) avisar(Msg.of(WindowText.RECORDS_LOST, "count", perdidos));
             } catch (IllegalStateException e) {
-                avisar(e.getMessage());
+                avisar(Msg.of(WindowText.PROBLEM, "problem", String.valueOf(e.getMessage())));
             }
             switch (r) {
                 case Registro.Mensaje m -> {
@@ -202,6 +220,7 @@ public final class ConsoleMain {
                 case Registro.Foto f -> {
                     foto = f.instantanea();
                     latidoMs = f.epochMs();
+                    if (foto.idioma() != textos.language()) cambiarIdioma(foto.idioma());
                 }
                 case Registro.Juego j -> {
                     if (j.sesion().equals(sesion)) vistoFin = j.motivo().equals("fin");
@@ -213,7 +232,7 @@ public final class ConsoleMain {
                         return false;
                     }
                 }
-                case Registro.Perdida p -> avisar("el juego perdió " + p.cuantos() + " mensajes: su cola se llenó");
+                case Registro.Perdida p -> avisar(Msg.of(WindowText.GAME_LOST_MESSAGES, "count", p.cuantos()));
             }
             sucio = true;
         }
@@ -252,7 +271,7 @@ public final class ConsoleMain {
         List<Registro.Mensaje> mensajes = pausa ? congelado : anillo.ultimos(CAPACIDAD, m -> true);
         Latido.EstadoJuego estado = juego == null ? new Latido.EstadoJuego.SinDatos() : juego;
         List<String> filas = Marco.componer(new Marco.Entrada(tamano, arte, foto, estado, mensajes, filtro, pausa, nuevas,
-            aviso, glifos, ZoneId.systemDefault()));
+            aviso == null ? null : textos.render(aviso), glifos, ZoneId.systemDefault(), textos));
         out.print(Ansi.fotograma(filas, tamano.filas(), reponerPrompt));
         out.flush();
         reponerPrompt = false;
@@ -277,12 +296,42 @@ public final class ConsoleMain {
         return ProcessHandle.of(pidJuego).map(ProcessHandle::isAlive).orElse(false);
     }
 
-    private void avisar(String texto) {
+    private void avisar(Msg texto) {
         aviso = texto;
         sucio = true;
     }
 
-    private static void reventar(Path carpeta, String lanzamiento, PrintStream out, Teclado teclado, Throwable t) {
+    /** The game changed language: the next frame is drawn in the new one. A catalog that fails to load keeps the old one. */
+    private void cambiarIdioma(Language idioma) {
+        if (idioma == idiomaFallido) return;
+        try {
+            textos = cargar(carpeta, idioma);
+            idiomaFallido = null;
+        } catch (RuntimeException e) {
+            // Said once, not on every snapshot: the window keeps speaking the old language.
+            idiomaFallido = idioma;
+            anotarError(carpeta, "cannot load the " + idioma.code() + " texts: " + e);
+        }
+        sucio = true;
+    }
+
+    private static Catalog cargar(Path carpeta, Language idioma) {
+        return Catalog.load(idioma, problema -> anotarError(carpeta, problema));
+    }
+
+    /** Appends to consola-errores.log; if even that fails there is nowhere left to say it. */
+    private static void anotarError(Path carpeta, String texto) {
+        try {
+            Files.createDirectories(carpeta);
+            Files.writeString(carpeta.resolve("consola-errores.log"), Instant.now() + "  " + texto + "\n",
+                StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException ignorada) {
+            // Nada más que hacer: el problema es de un texto, no de la ventana.
+        }
+    }
+
+    private static void reventar(Path carpeta, String lanzamiento, PrintStream out, Teclado teclado, Throwable t,
+                                 Catalog textos) {
         String detalle = t.getClass().getSimpleName() + ": " + t.getMessage();
         try {
             Files.createDirectories(carpeta);
@@ -295,9 +344,21 @@ public final class ConsoleMain {
             // Ya no queda dónde dejarlo escrito: se enseña en pantalla, que es lo que sí se puede.
         }
         out.print(Ansi.REGION_TODA + Ansi.RESET + Ansi.BORRAR_PANTALLA + Ansi.irA(1, 1));
-        out.println(Ansi.color(Ansi.ROJO) + "La consola de Xploits se ha caído: " + Texto.limpiar(detalle) + Ansi.RESET);
-        out.println("El detalle está en " + carpeta.resolve("consola-errores.log"));
-        out.println("Pulsa Enter para cerrar.");
+        Catalog t2 = textos;
+        if (t2 == null) {
+            try {
+                t2 = cargar(carpeta, Language.EN);
+            } catch (RuntimeException sinTextos) {
+                t2 = null;
+            }
+        }
+        if (t2 == null) {
+            out.println(Ansi.color(Ansi.ROJO) + Texto.limpiar(detalle) + Ansi.RESET);
+        } else {
+            out.println(Ansi.color(Ansi.ROJO) + t2.render(WindowText.CRASHED, "detail", Texto.limpiar(detalle)) + Ansi.RESET);
+            out.println(t2.render(WindowText.CRASH_DETAIL_AT, "file", carpeta.resolve("consola-errores.log").toString()));
+            out.println(t2.render(WindowText.PRESS_ENTER));
+        }
         out.flush();
         teclado.esperarLinea();
         System.exit(1);

@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -78,7 +80,7 @@ public final class Ciclo {
     public record VigilarCierre(String lanzamiento, Long pid, long esperaMs) implements Accion {
     }
 
-    public record Avisar(Nivel nivel, String texto) implements Accion {
+    public record Avisar(Nivel nivel, Msg texto) implements Accion {
     }
 
     public record ApagarModulo() implements Accion {
@@ -171,10 +173,10 @@ public final class Ciclo {
         return List.of();
     }
 
-    public List<Accion> rechazado(String motivo) {
+    public List<Accion> rechazado(Msg motivo) {
         exigirLanzando();
         olvidar();
-        return List.of(new Avisar(Nivel.ERROR, "No se puede abrir la consola: " + motivo + "."), new ApagarModulo());
+        return List.of(new Avisar(Nivel.ERROR, Msg.of(ConsoleText.CANNOT_OPEN, "reason", motivo)), new ApagarModulo());
     }
 
     private List<Accion> esperandoPid(Observacion o) {
@@ -189,7 +191,7 @@ public final class Ciclo {
         }
         if (o.ahoraMs() >= plazo) {
             // El F va igualmente: una ventana que arranque tarde lo encuentra y se cierra, en vez de quedarse huérfana.
-            String texto = "La consola no ha arrancado en " + ESPERA_PID_MS / 1000 + " s. Se intentó: " + orden;
+            Msg texto = Msg.of(ConsoleText.NOT_STARTED, "seconds", ESPERA_PID_MS / 1000, "command", orden);
             String lanz = lanzamiento;
             olvidar();
             return List.of(new Avisar(Nivel.ERROR, texto), new EscribirFin(lanz), new ApagarModulo());
@@ -203,11 +205,11 @@ public final class Ciclo {
         boolean nuestra = s != null && s.lanzamiento().equals(lanz);
         Avisar aviso;
         if (nuestra && s.tipo().equals(Salida.USUARIO)) {
-            aviso = new Avisar(Nivel.INFO, "Consola cerrada desde su menú.");
+            aviso = new Avisar(Nivel.INFO, Msg.of(ConsoleText.CLOSED_FROM_MENU));
         } else if (nuestra && s.tipo().equals(Salida.ERROR)) {
-            aviso = new Avisar(Nivel.ERROR, "La consola se cerró por un error: " + s.detalle());
+            aviso = new Avisar(Nivel.ERROR, Msg.of(ConsoleText.CLOSED_BY_ERROR, "detail", s.detalle()));
         } else {
-            aviso = new Avisar(Nivel.INFO, "La ventana de la consola se cerró (con la X o desde fuera).");
+            aviso = new Avisar(Nivel.INFO, Msg.of(ConsoleText.WINDOW_CLOSED));
         }
         return List.of(aviso, new ApagarModulo());
     }

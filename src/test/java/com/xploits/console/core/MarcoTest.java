@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZoneOffset;
@@ -10,15 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MarcoTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+    private static final Catalog EN = Catalog.load(Language.EN, p -> {
+        throw new AssertionError(p);
+    });
     private static final List<String> ARTE = Collections.nCopies(13, "X".repeat(99) + Ansi.RESET);
     private static final Instantanea FOTO = new Instantanea("minecraft:overworld", 2, 1, 64, 90, null, null,
-        20.0, 20, 64, 12, 4, 1, List.of(new Instantanea.EstadoModulo("auto-pvp", true, "SUPERFICIE")));
+        20.0, 20, 64, 12, 4, 1, List.of(new Instantanea.EstadoModulo("auto-pvp", true, "SUPERFICIE")), Language.ES);
     private static final Latido.EstadoJuego VIVO = new Latido.EstadoJuego.Vivo();
 
     private static Marco.Entrada entrada(int cols, int filas, Instantanea foto, Latido.EstadoJuego juego,
                                          List<Registro.Mensaje> mensajes, Filtro filtro, boolean pausa, int nuevas) {
+        return entrada(cols, filas, foto, juego, mensajes, filtro, pausa, nuevas, ES);
+    }
+
+    private static Marco.Entrada entrada(int cols, int filas, Instantanea foto, Latido.EstadoJuego juego,
+                                         List<Registro.Mensaje> mensajes, Filtro filtro, boolean pausa, int nuevas,
+                                         Catalog textos) {
         return new Marco.Entrada(new Tamano(cols, filas), ARTE, foto, juego, mensajes, filtro, pausa, nuevas, null,
-            Glifos.UNICODE, ZoneOffset.UTC);
+            Glifos.UNICODE, ZoneOffset.UTC, textos);
     }
 
     private static List<String> pintar(int cols, int filas) {
@@ -41,7 +55,7 @@ class MarcoTest {
         assertEquals("─".repeat(110), f.get(18));
         assertEquals("", f.get(41));
         assertEquals("─".repeat(110), f.get(42));
-        assertEquals(Menu.LINEA, f.get(43));
+        assertEquals(Menu.linea(ES), f.get(43));
         assertEquals("filtro: todo · juego conectado", f.get(44));
     }
 
@@ -79,7 +93,7 @@ class MarcoTest {
         assertEquals("XTO2002", f.get(0));
         assertEquals("─".repeat(80), f.get(1));
         assertEquals("─".repeat(80), f.get(8));
-        assertEquals(Menu.LINEA, f.get(9));
+        assertEquals(Menu.linea(ES), f.get(9));
         assertEquals("filtro: todo · juego conectado · ocultas: logo, módulos, entorno, vuelo, combate", f.get(10));
     }
 
@@ -93,7 +107,7 @@ class MarcoTest {
 
     @Test
     void unDatoDesconocidoEsInterrogacionNuncaCero() {
-        List<String> f = sinColor(Marco.componer(entrada(110, 46, Instantanea.sinJugador(List.of()), VIVO, List.of(),
+        List<String> f = sinColor(Marco.componer(entrada(110, 46, Instantanea.sinJugador(List.of(), Language.ES), VIVO, List.of(),
             Filtro.TODO, false, 0)));
         assertEquals("dimensión ? · jugadores cargados ? · nuestros ?", f.get(14));
         assertEquals("vida ? · armadura ? · en barra: obsidiana ? · cristales ? · telarañas ? · yunques ?", f.get(16));
@@ -143,5 +157,12 @@ class MarcoTest {
             Filtro.TODO, false, 0));
         assertTrue(f.get(44).startsWith(Ansi.color(Ansi.ROJO)));
         assertEquals("filtro: todo · EL JUEGO NO RESPONDE (20 s)", Ansi.sinColor(f.get(44)));
+    }
+
+    @Test
+    void theStatusLineInEnglish() {
+        List<String> f = sinColor(Marco.componer(entrada(110, 46, FOTO, VIVO, List.of(), Filtro.AVISOS, true, 3, EN)));
+        assertEquals("[1] all  [2] pvp  [3] travel  [4] sweep  [5] warnings only  [6] pause  [0] exit", f.get(43));
+        assertEquals("filter: warnings only · PAUSED (3 new) · game connected", f.get(44));
     }
 }

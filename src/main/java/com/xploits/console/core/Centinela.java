@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -34,15 +36,7 @@ public final class Centinela {
     }
 
     /** Lo que queda de un texto retenido: que se retuvo y de quién venía, nada más. */
-    public static String retenido(String fuente) {
-        return "[retenido: parecía llevar coordenadas · fuente " + fuente + "]";
-    }
-
-    /** El texto que se puede escribir, y si hubo que retenerlo. */
-    public record Veredicto(String texto, boolean retenido) {
-    }
-
-    public static Veredicto revisar(String fuente, String texto) {
-        return sospecha(texto) ? new Veredicto(retenido(fuente), true) : new Veredicto(texto, false);
+    public static Msg retenido(String fuente) {
+        return Msg.of(ConsoleText.HELD, "source", fuente);
     }
 }

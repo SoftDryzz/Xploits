@@ -1,5 +1,6 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Language;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -18,7 +19,7 @@ class RegistroTest {
 
     @Test
     void cadaTipoVaYVuelve() {
-        Instantanea foto = Instantanea.sinJugador(List.of(new Instantanea.EstadoModulo("auto-pvp", true, "x;y")));
+        Instantanea foto = Instantanea.sinJugador(List.of(new Instantanea.EstadoModulo("auto-pvp", true, "x;y")), Language.EN);
         for (Registro r : List.of(
                 new Registro.Mensaje(1, 2, "s", Nivel.ERROR, "xploits", "50% \\ fin\\"),
                 new Registro.Foto(3, 4, "s", foto),
@@ -61,7 +62,7 @@ class RegistroTest {
 
     @Test
     void laCabeceraLlevaVersionYGeneracion() {
-        assertEquals("#xploits-consola\t1\tabc", Registro.cabecera("abc"));
+        assertEquals("#xploits-consola\t2\tabc", Registro.cabecera("abc"));
         assertEquals("abc", Registro.generacionDe(Registro.cabecera("abc")));
         assertTrue(Registro.esCabecera(Registro.cabecera("abc")));
         assertFalse(Registro.esCabecera("R\t1\t2\ts\tI\tf\tt"));
@@ -70,8 +71,14 @@ class RegistroTest {
     @Test
     void unaCabeceraDeOtraVersionSeRechazaDiciendoCual() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Registro.generacionDe("#xploits-consola\t2\tabc"));
-        assertTrue(e.getMessage().contains("2"));
+            () -> Registro.generacionDe("#xploits-consola\t3\tabc"));
+        assertTrue(e.getMessage().contains("3"));
         assertThrows(IllegalArgumentException.class, () -> Registro.generacionDe("hola"));
+    }
+
+    @Test
+    void versionOneHeaderIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> Registro.generacionDe("#xploits-consola\t1\tabc"));
+        assertEquals("abc", Registro.generacionDe("#xploits-consola\t2\tabc"));
     }
 }

@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -28,7 +30,7 @@ public final class Marco {
 
     public record Entrada(Tamano tamano, List<String> arte, Instantanea instantanea, Latido.EstadoJuego juego,
                           List<Registro.Mensaje> mensajes, Filtro filtro, boolean pausa, int nuevas,
-                          String aviso, Glifos glifos, ZoneId zona) {
+                          String aviso, Glifos glifos, ZoneId zona, Catalog textos) {
     }
 
     /** Exactamente {@code tamano.filas() - 1} filas. */
@@ -38,25 +40,25 @@ public final class Marco {
         List<String> filas = new ArrayList<>();
         if (alto <= 0) return filas;
         if (!e.tamano().cabeElMinimo()) {
-            filas.add(Texto.recortar("ventana demasiado pequeña: " + cols + "x" + e.tamano().filas()
-                + ", mínimo " + Tamano.MINIMO.cols() + "x" + Tamano.MINIMO.filas(), cols));
+            filas.add(Texto.recortar(e.textos().render(WindowText.TOO_SMALL, "cols", cols, "rows", e.tamano().filas(),
+                "minCols", Tamano.MINIMO.cols(), "minRows", Tamano.MINIMO.filas()), cols));
             while (filas.size() < alto) filas.add("");
             return filas;
         }
 
         List<String> ocultas = new ArrayList<>();
         List<String> logo = Banner.elegir(e.arte(), cols, e.tamano().filas());
-        if (!Banner.cabe(cols, e.tamano().filas())) ocultas.add("logo");
+        if (!Banner.cabe(cols, e.tamano().filas())) ocultas.add(e.textos().render(WindowText.SECTION_LOGO));
 
         List<String> datos = e.instantanea() == null
-            ? List.of("sin datos del juego todavía", "", "", "")
-            : Cabecera.filas(e.instantanea(), e.glifos());
+            ? List.of(e.textos().render(WindowText.NO_GAME_DATA), "", "", "")
+            : Cabecera.filas(e.instantanea(), e.glifos(), e.textos());
         boolean[] visible = {true, true, true, true};
         int quedan = 4;
         int cuerpo = filasDelRegistro(alto, logo.size(), quedan);
         for (int i = 0; i < ORDEN_DE_QUITAR.length && cuerpo < FILAS_MINIMAS_DEL_REGISTRO; i++) {
             visible[ORDEN_DE_QUITAR[i]] = false;
-            ocultas.add(Cabecera.NOMBRES.get(ORDEN_DE_QUITAR[i]));
+            ocultas.add(e.textos().render(Cabecera.NOMBRES.get(ORDEN_DE_QUITAR[i])));
             quedan--;
             cuerpo = filasDelRegistro(alto, logo.size(), quedan);
         }
@@ -72,7 +74,7 @@ public final class Marco {
         }
         filas.addAll(registro(e, cols, cuerpo));
         filas.add(separador);
-        filas.add(Texto.recortar(Menu.LINEA, cols));
+        filas.add(Texto.recortar(Menu.linea(e.textos()), cols));
         filas.add(estado(e, cols, ocultas));
         return filas;
     }
@@ -112,10 +114,11 @@ public final class Marco {
 
     private static String estado(Entrada e, int cols, List<String> ocultas) {
         StringJoiner sj = new StringJoiner(" · ");
-        sj.add("filtro: " + e.filtro().etiqueta());
-        if (e.pausa()) sj.add("PAUSA (" + e.nuevas() + " nuevas)");
-        sj.add(Latido.describir(e.juego()));
-        if (!ocultas.isEmpty()) sj.add("ocultas: " + String.join(", ", ocultas));
+        Catalog t = e.textos();
+        sj.add(t.render(WindowText.STATUS_FILTER, "filter", e.filtro().etiqueta(t)));
+        if (e.pausa()) sj.add(t.render(WindowText.STATUS_PAUSED, "count", e.nuevas()));
+        sj.add(Latido.texto(e.juego(), t));
+        if (!ocultas.isEmpty()) sj.add(t.render(WindowText.STATUS_HIDDEN, "sections", String.join(", ", ocultas)));
         if (e.aviso() != null) sj.add(Texto.limpiar(e.aviso()).replace('\n', ' '));
         String texto = Texto.recortar(sj.toString(), cols);
         int color = Latido.color(e.juego());

@@ -98,7 +98,8 @@ class FronteraTest {
         "com/xploits/shared/Languages.java",
         "com/xploits/shared/LanguageStore.java",
         "com/xploits/shared/XploitsSettings.java",
-        "com/xploits/shared/core/i18n/");
+        "com/xploits/shared/core/i18n/",
+        "com/xploits/console/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
     // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches
@@ -106,8 +107,9 @@ class FronteraTest {
     // and warning(prefix + "texto") — but a scan through the call is blocked wherever it crosses a
     // MessageKey reference (an enum constant of some *Text type, e.g. LanguageText.X or "...Text.")
     // or a Msg.of(...) call: those are the values a named argument carries, not the message itself.
+    // A logger call (LOG.info/warn/error) is developer text, not player text, and is not matched.
     private static final Pattern LITERAL_TO_PLAYER = Pattern.compile(
-        "\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)"
+        "(?<!LOG\\.)\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)"
             + "\\s*\\((?:(?!Text\\.|Msg\\.of\\()[^;])*?\"[^\"]*\\p{L}{2}");
     private static final Pattern LITERAL_TO_UI = Pattern.compile(
         "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\"|TextoConPosicion\\.igual\\(\\s*\"|new TextoConPosicion\\(\\s*\")");

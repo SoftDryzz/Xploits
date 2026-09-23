@@ -75,7 +75,7 @@ public abstract class ComandoBase extends Command {
     }
 
     private void anotar(Nivel nivel, String plantilla, Object[] args) {
-        Formato.Resultado r = Formato.aplicar(plantilla, args);
+        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), plantilla, args);
         Salida.mensaje(r.roto() ? Nivel.ERROR : nivel, getName(), r.texto());
     }
 }

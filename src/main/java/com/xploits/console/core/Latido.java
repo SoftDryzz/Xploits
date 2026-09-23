@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+
 /**
  * El estado del juego visto desde la ventana (spec consola §8). Dos señales: las fotos, que el
  * juego escribe al menos una vez por segundo, y si su proceso sigue vivo. El PID manda: un latido
@@ -42,14 +44,14 @@ public final class Latido {
         return new EstadoJuego.NoResponde(edad / 1000);
     }
 
-    public static String describir(EstadoJuego e) {
+    public static String texto(EstadoJuego e, Catalog t) {
         return switch (e) {
-            case EstadoJuego.SinDatos s -> "esperando al juego";
-            case EstadoJuego.Vivo v -> "juego conectado";
-            case EstadoJuego.Lento l -> "sin latido del juego hace " + l.segundos() + " s";
-            case EstadoJuego.NoResponde n -> "EL JUEGO NO RESPONDE (" + n.segundos() + " s)";
-            case EstadoJuego.Cerrado c -> "juego cerrado";
-            case EstadoJuego.CerradoSinDespedirse c -> "EL JUEGO TERMINÓ SIN DESPEDIRSE";
+            case EstadoJuego.SinDatos s -> t.render(WindowText.HEARTBEAT_WAITING);
+            case EstadoJuego.Vivo v -> t.render(WindowText.HEARTBEAT_ALIVE);
+            case EstadoJuego.Lento l -> t.render(WindowText.HEARTBEAT_SLOW, "seconds", l.segundos());
+            case EstadoJuego.NoResponde n -> t.render(WindowText.HEARTBEAT_NOT_RESPONDING, "seconds", n.segundos());
+            case EstadoJuego.Cerrado c -> t.render(WindowText.GAME_CLOSED);
+            case EstadoJuego.CerradoSinDespedirse c -> t.render(WindowText.GAME_ENDED_WITHOUT_GOODBYE);
         };
     }
 

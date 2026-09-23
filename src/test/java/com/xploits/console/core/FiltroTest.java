@@ -1,11 +1,20 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FiltroTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+    private static final Catalog EN = Catalog.load(Language.EN, p -> {
+        throw new AssertionError(p);
+    });
     private static Registro.Mensaje m(Nivel nivel, String fuente) {
         return new Registro.Mensaje(0, 0, "s", nivel, fuente, "x");
     }
@@ -22,5 +31,11 @@ class FiltroTest {
         assertTrue(Filtro.AVISOS.acepta(m(Nivel.AVISO, "auto-pvp")));
         assertTrue(Filtro.AVISOS.acepta(m(Nivel.ERROR, "xploits")));
         assertFalse(Filtro.AVISOS.acepta(m(Nivel.INFO, "auto-pvp")));
+    }
+
+    @Test
+    void theLabelsComeFromTheCatalog() {
+        assertEquals("solo avisos", Filtro.AVISOS.etiqueta(ES));
+        assertEquals("warnings only", Filtro.AVISOS.etiqueta(EN));
     }
 }

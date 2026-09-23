@@ -3,8 +3,11 @@ package com.xploits.console;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.Arranque;
 import com.xploits.console.core.Ciclo;
+import com.xploits.console.core.ConsoleText;
 import com.xploits.console.core.Nivel;
+import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
@@ -43,9 +46,7 @@ public class Consola extends XploitsModule {
     private int ticks;
 
     public Consola() {
-        super(XploitsAddon.CATEGORY, "consola",
-            "Abre una ventana de terminal con el logo, el estado del juego y el registro de lo que hace Xploits. "
-                + "Sin coordenadas: en la ventana y en su fichero salen sin posición.");
+        super(XploitsAddon.CATEGORY, "consola", Texts.startupText(ConsoleText.MODULE_DESC));
         runInMainMenu = true;
         Salida.instalarGanchoDeApagado();
         MeteorClient.EVENT_BUS.subscribe(repartidor);
@@ -55,8 +56,7 @@ public class Consola extends XploitsModule {
     public void onActivate() {
         Path carpeta = Lanzamiento.carpeta();
         if (!tomarCerrojo(carpeta)) {
-            avisar(Nivel.ERROR, "Otro juego abierto ya usa la consola de esta carpeta (" + carpeta
-                + "). Apaga su consola o ciérralo.");
+            avisar(Nivel.ERROR, Msg.of(ConsoleText.IN_USE, "folder", carpeta.toString()));
             toggle();
             return;
         }
@@ -64,7 +64,7 @@ public class Consola extends XploitsModule {
         try {
             nuevo.arrancar();
         } catch (IOException e) {
-            avisar(Nivel.ERROR, "No puedo preparar el registro de la consola en " + carpeta + ": " + e.getMessage());
+            avisar(Nivel.ERROR, Msg.of(ConsoleText.CANNOT_PREPARE_LOG, "folder", carpeta.toString(), "error", String.valueOf(e.getMessage())));
             soltarCerrojo();
             toggle();
             return;
@@ -99,7 +99,7 @@ public class Consola extends XploitsModule {
             if (sumidero != null) Salida.instantanea(Colector.tomar());
         } catch (RuntimeException e) {
             XploitsAddon.LOG.error("La consola ha fallado", e);
-            avisar(Nivel.ERROR, "La consola ha fallado y se apaga: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            avisar(Nivel.ERROR, Msg.of(ConsoleText.FAILED, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
             if (isActive()) toggle();
         }
     }
@@ -137,7 +137,7 @@ public class Consola extends XploitsModule {
                 try {
                     Lanzamiento.lanzar(o.argv());
                 } catch (IOException e) {
-                    ejecutar(ciclo.rechazado("Windows no dejó ejecutar la orden (" + e.getMessage() + ")"));
+                    ejecutar(ciclo.rechazado(Msg.of(ConsoleText.WINDOWS_REFUSED, "error", String.valueOf(e.getMessage()))));
                     return;
                 } catch (RuntimeException e) {
                     ejecutar(ciclo.rechazado(falloInesperado(e)));
@@ -148,9 +148,9 @@ public class Consola extends XploitsModule {
         }
     }
 
-    private static String falloInesperado(RuntimeException e) {
+    private static Msg falloInesperado(RuntimeException e) {
         XploitsAddon.LOG.error("Fallo inesperado al preparar la ventana de la consola", e);
-        return "fallo inesperado al preparar la ventana: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        return Msg.of(ConsoleText.UNEXPECTED_FAILURE, "error", e.getClass().getSimpleName() + ": " + e.getMessage());
     }
 
     private boolean tomarCerrojo(Path carpeta) {
@@ -176,16 +176,17 @@ public class Consola extends XploitsModule {
         canalDelCerrojo = null;
     }
 
-    private void avisar(Nivel nivel, String texto) {
+    private void avisar(Nivel nivel, Msg msg) {
+        String texto = Texts.render(msg);
         switch (nivel) {
             case INFO -> XploitsAddon.LOG.info("[consola] {}", texto);
             case AVISO -> XploitsAddon.LOG.warn("[consola] {}", texto);
             case ERROR -> XploitsAddon.LOG.error("[consola] {}", texto);
         }
-        repartidor.encolar(nivel, texto);
+        repartidor.encolar(nivel, msg);
     }
 
-    private record Aviso(Nivel nivel, String texto) {
+    private record Aviso(Nivel nivel, Msg texto) {
     }
 
     /**
@@ -197,7 +198,7 @@ public class Consola extends XploitsModule {
         private final List<Aviso> porTostar = new ArrayList<>();
         private final List<Aviso> porChat = new ArrayList<>();
 
-        void encolar(Nivel nivel, String texto) {
+        void encolar(Nivel nivel, Msg texto) {
             if (nivel != Nivel.INFO) porTostar.add(new Aviso(nivel, texto));
             porChat.add(new Aviso(nivel, texto));
         }
@@ -209,10 +210,10 @@ public class Consola extends XploitsModule {
         @EventHandler
         private void onTick(TickEvent.Post event) {
             try {
-                String alerta;
+                Msg alerta;
                 while ((alerta = Salida.alertaPendiente()) != null) avisar(Nivel.ERROR, alerta);
                 for (Aviso a : porTostar) {
-                    mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(a.texto()).icon(Items.COMMAND_BLOCK).build());
+                    mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(Texts.render(a.texto())).icon(Items.COMMAND_BLOCK).build());
                 }
                 porTostar.clear();
                 if (mc.world == null || porChat.isEmpty()) return;
@@ -220,9 +221,9 @@ public class Consola extends XploitsModule {
                 porChat.clear();
                 for (Aviso a : copia) {
                     switch (a.nivel()) {
-                        case INFO -> info("%s", a.texto());
-                        case AVISO -> warning("%s", a.texto());
-                        case ERROR -> error("%s", a.texto());
+                        case INFO -> info(a.texto());
+                        case AVISO -> warning(a.texto());
+                        case ERROR -> error(a.texto());
                     }
                 }
             } catch (RuntimeException e) {
