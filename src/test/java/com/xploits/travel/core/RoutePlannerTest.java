@@ -827,4 +827,15 @@ class RoutePlannerTest {
         // Route.of(List.of()) producía una ruta aceptada y vacía que nadie sabría interpretar.
         assertThrows(IllegalArgumentException.class, () -> Route.of(List.of()));
     }
+
+    @Test
+    void loQueQuedaPorVolarDesdeDondeEstasHastaElFinal() {
+        List<Waypoint> ruta = List.of(new Waypoint(0, 0), new Waypoint(300, 400), new Waypoint(300, 1000));
+        assertEquals(1100.0, RoutePlanner.bloquesRestantes(ruta, 0, new Waypoint(0, 0)), 1e-9);
+        assertEquals(1100.0, RoutePlanner.bloquesRestantes(ruta, 1, new Waypoint(0, 0)), 1e-9);
+        assertEquals(600.0, RoutePlanner.bloquesRestantes(ruta, 2, new Waypoint(300, 400)), 1e-9);
+        assertThrows(IndexOutOfBoundsException.class, () -> RoutePlanner.bloquesRestantes(ruta, 3, new Waypoint(0, 0)));
+        assertThrows(IndexOutOfBoundsException.class, () -> RoutePlanner.bloquesRestantes(ruta, -1, new Waypoint(0, 0)));
+        assertThrows(NullPointerException.class, () -> RoutePlanner.bloquesRestantes(ruta, 0, null));
+    }
 }

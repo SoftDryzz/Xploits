@@ -91,6 +91,11 @@ public class AutoTpy extends XploitsModule {
         return Set.copyOf(users.get());
     }
 
+    @Override
+    public String ahora() {
+        return users().size() + " en lista";
+    }
+
     private Set<String> kitRequesterCouriers() {
         KitRequester kitRequester = Modules.get().get(KitRequester.class);
         return kitRequester != null && kitRequester.isActive() ? kitRequester.knownCouriers() : Set.of();

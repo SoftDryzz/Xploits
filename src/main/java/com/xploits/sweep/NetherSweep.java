@@ -1,6 +1,7 @@
 package com.xploits.sweep;
 
 import com.xploits.XploitsAddon;
+import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.core.TextoConPosicion;
@@ -59,6 +60,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
@@ -1374,6 +1376,18 @@ public class NetherSweep extends XploitsModule {
 
     public boolean isSweeping() {
         return sweeping;
+    }
+
+    /** Por dónde va el barrido: pasada, total y bloques que faltan, regreso incluido si se cuenta. */
+    public Optional<Instantanea.Progreso> progreso() {
+        if (!sweeping || route == null) return Optional.empty();
+        return Optional.of(new Instantanea.Progreso(Math.min(index / 2 + 1, pasadasDelPlan), pasadasDelPlan,
+            Math.round(bloquesRestantes())));
+    }
+
+    @Override
+    public String ahora() {
+        return sweeping ? "pasada " + Math.min(index / 2 + 1, pasadasDelPlan) + "/" + pasadasDelPlan : "armado";
     }
 
     /**

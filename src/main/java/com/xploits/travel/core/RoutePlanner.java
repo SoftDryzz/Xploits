@@ -179,6 +179,23 @@ public final class RoutePlanner {
     }
 
     /**
+     * Lo que le queda por volar al jugador: de donde está hasta el waypoint al que va, más el resto
+     * de la ruta. Es la cuenta de {@code SweepRoute.remainingFrom}, para la cabecera de la consola.
+     *
+     * @throws IndexOutOfBoundsException si {@code index} no es un waypoint de la ruta
+     * @throws NullPointerException      si {@code aqui} es nulo
+     */
+    public static double bloquesRestantes(List<Waypoint> ruta, int index, Waypoint aqui) {
+        if (aqui == null) throw new NullPointerException("hace falta saber dónde está el jugador");
+        if (index < 0 || index >= ruta.size()) {
+            throw new IndexOutOfBoundsException("el waypoint " + index + " no existe en una ruta de " + ruta.size());
+        }
+        double total = aqui.distanceTo(ruta.get(index));
+        for (int i = index; i < ruta.size() - 1; i++) total += ruta.get(i).distanceTo(ruta.get(i + 1));
+        return total;
+    }
+
+    /**
      * A qué distancia del waypoint {@code index} de una ruta de {@code waypointCount} puntos se da
      * por alcanzado. <b>No es el mismo número para todos</b>, y ahí está el arreglo.
      *

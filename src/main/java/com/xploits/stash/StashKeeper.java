@@ -355,4 +355,9 @@ public class StashKeeper extends XploitsModule {
         return String.format("%d contenedores indexados, %d shulkers dentro. Recuerda: los cofres solo entran al abrirlos; los shulkers, con verlos.",
             index.size(), index.totalShulkers());
     }
+
+    @Override
+    public String ahora() {
+        return index.size() + " contenedores";
+    }
 }

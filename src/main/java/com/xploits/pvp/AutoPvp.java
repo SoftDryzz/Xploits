@@ -55,6 +55,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -678,6 +679,39 @@ public class AutoPvp extends XploitsModule {
         if (crystalAura == null) return false;
         Setting<Boolean> antiSuicide = crystalAura.settings.get("anti-suicide", Boolean.class);
         return antiSuicide != null && antiSuicide.get();
+    }
+
+    /** Jugadores cargados y cuántos son de los tuyos, con la misma definición que el objetivo. Funciona con auto-pvp apagado. */
+    public record Vecindario(int cargados, int nuestros) {
+    }
+
+    public Optional<Vecindario> vecindario() {
+        if (mc.world == null || mc.player == null) return Optional.empty();
+        Set<String> couriers = AllyPolicy.names(kitRequesterCouriers());
+        Set<String> tpyUsers = AllyPolicy.names(autoTpyUsers());
+        int cargados = 0;
+        int nuestros = 0;
+        for (PlayerEntity player : mc.world.getPlayers()) {
+            if (player == mc.player) continue;
+            cargados++;
+            if (AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers).isOurs()) nuestros++;
+        }
+        return Optional.of(new Vecindario(cargados, nuestros));
+    }
+
+    /** La munición de la hotbar, que es la que usan los módulos que dirige. El pico no es munición. */
+    public Optional<Map<Resource, Integer>> recursosEnBarra() {
+        if (mc.player == null) return Optional.empty();
+        Map<Resource, Integer> recursos = new EnumMap<>(Resource.class);
+        recursos.putAll(inventory().resources());
+        recursos.remove(Resource.PICKAXE);
+        return Optional.of(recursos);
+    }
+
+    @Override
+    public String ahora() {
+        if (lastPlan == null) return "leyendo";
+        return lastPlan.state() + (lastTargetName == null ? "" : " · " + lastTargetName);
     }
 
     /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para todo. */

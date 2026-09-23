@@ -1,6 +1,7 @@
 package com.xploits.travel;
 
 import com.xploits.XploitsAddon;
+import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.core.TextoConPosicion;
@@ -47,6 +48,7 @@ import net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Adaptador de AutoTravel (spec §3): fija un destino, le pide al núcleo la ruta con patrón de
@@ -882,6 +884,19 @@ public class AutoTravel extends XploitsModule {
 
     public boolean isTravelling() {
         return travelling;
+    }
+
+    /** Por dónde va el viaje, sin coordenadas: waypoint, total y bloques que faltan. */
+    public Optional<Instantanea.Progreso> progreso() {
+        if (!travelling || mc.player == null || waypoints.isEmpty()) return Optional.empty();
+        Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
+        return Optional.of(new Instantanea.Progreso(index + 1, waypoints.size(),
+            Math.round(RoutePlanner.bloquesRestantes(waypoints, index, here))));
+    }
+
+    @Override
+    public String ahora() {
+        return travelling ? "waypoint " + (index + 1) + "/" + waypoints.size() : "armado";
     }
 
     /**

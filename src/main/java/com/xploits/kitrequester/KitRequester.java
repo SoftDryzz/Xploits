@@ -171,6 +171,11 @@ public class KitRequester extends XploitsModule {
         return machine == null ? "KitRequester está desactivado." : machine.status(System.currentTimeMillis());
     }
 
+    @Override
+    public String ahora() {
+        return machine == null ? "" : machine.state().name();
+    }
+
     /** Couriers configurados; AutoTPY los deja en manos de este módulo mientras esté activo. */
     public Set<String> knownCouriers() {
         return Set.copyOf(knownCouriers.get());
