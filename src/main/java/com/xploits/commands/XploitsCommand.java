@@ -40,11 +40,11 @@ public class XploitsCommand extends ComandoBase {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, TextoConPosicion.igual(kr.status())));
+            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, TextoConPosicion.igual(kr.reload())));
+            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.reload())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
