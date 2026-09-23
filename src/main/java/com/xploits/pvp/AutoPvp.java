@@ -486,7 +486,7 @@ public class AutoPvp extends XploitsModule {
 
     /** La fase y, si lo hay, el objetivo: lo que se anuncia al cambiar y lo que enseña la consola. */
     private Msg phase(Plan plan) {
-        return Msg.of(PvpText.PHASE, "state", plan.state().name(), "target", targetSuffix());
+        return Msg.of(PvpText.PHASE, "state", PvpText.of(plan.state()), "target", targetSuffix());
     }
 
     private Msg targetSuffix() {
@@ -886,8 +886,8 @@ public class AutoPvp extends XploitsModule {
             warningLines = append(warningLines, Msg.of(PvpText.STATUS_WARNING, "warning", warning));
         }
         List<String> yours = yourActiveModules(owned);
-        return Msg.of(PvpText.STATUS, "state", lastPlan.state().name(),
-            "seconds", director.ticksInState() / TICKS_PER_SECOND, "posture", lastPlan.posture().name(),
+        return Msg.of(PvpText.STATUS, "state", PvpText.of(lastPlan.state()),
+            "seconds", director.ticksInState() / TICKS_PER_SECOND, "posture", PvpText.of(lastPlan.posture()),
             "target", target, "self", self, "ally", ally,
             "friends", syncedFriendsLine(),
             "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),

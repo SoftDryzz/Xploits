@@ -48,8 +48,17 @@ class PvpTextTest {
     }
 
     @Test
+    void aPhaseIsNamedInEnglishAndStaysAsBeforeInSpanish() {
+        Msg phase = Msg.of(PvpText.PHASE, "state", PvpText.of(CombatState.SIN_RECURSOS),
+            "target", Msg.of(PvpText.TARGET_SUFFIX, "name", "Steve"));
+        assertEquals("OUT OF RESOURCES · Steve", EN.render(phase));
+        assertEquals("SIN_RECURSOS · Steve", ES.render(phase));
+        assertEquals("CALM", EN.render(Msg.of(PvpText.of(CombatPosture.TRANQUILO))));
+    }
+
+    @Test
     void theThreatNoticeReadsInEnglishWithADot() {
-        assertEquals("AMENAZADO · 12.5 damage is already aimed at you and you have 7.0 health left.",
+        assertEquals("THREATENED · 12.5 damage is already aimed at you and you have 7.0 health left.",
             EN.render(Msg.of(PvpText.THREATENED, "damage", 12.5, "health", 7.0)));
         assertEquals("AMENAZADO · 12,5 de daño ya te apunta y te quedan 7,0 de vida.",
             ES.render(Msg.of(PvpText.THREATENED, "damage", 12.5, "health", 7.0)));

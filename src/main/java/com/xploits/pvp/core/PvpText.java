@@ -79,7 +79,26 @@ public enum PvpText implements MessageKey {
     IDLE_NONE,
     IDLE_LINE,
     IDLE_PART,
-    IDLE_JOINT;
+    IDLE_JOINT,
+    STATE_SIN_COMBATE,
+    STATE_ACERCAMIENTO,
+    STATE_SUPERFICIE,
+    STATE_RODEADO,
+    STATE_ENTERRADO,
+    STATE_PERSECUCION,
+    STATE_SIN_RECURSOS,
+    POSTURE_TRANQUILO,
+    POSTURE_AMENAZADO;
+
+    /** How a phase of the fight is named to the player. */
+    public static PvpText of(CombatState state) {
+        return valueOf("STATE_" + state.name());
+    }
+
+    /** How a defensive posture is named to the player. */
+    public static PvpText of(CombatPosture posture) {
+        return valueOf("POSTURE_" + posture.name());
+    }
 
     @Override
     public String area() {
