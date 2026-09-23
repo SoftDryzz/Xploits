@@ -18,7 +18,9 @@ public final class Centinela {
         Pattern.compile("(?<![\\p{L}\\p{N}])[^\\s\\p{L}\\p{N}]?(?:goal|goto)\\s+-?\\d+(?:\\s+-?\\d+){1,2}(?!\\d)",
             Pattern.CASE_INSENSITIVE),
         // El fragmento antiguo de AutoTravel.status(): "en 1200, -800".
-        Pattern.compile("(?<![\\p{L}\\p{N}])en -?\\d{3,}, -?\\d{3,}(?!\\d)"));
+        Pattern.compile("(?<![\\p{L}\\p{N}])en -?\\d{3,}, -?\\d{3,}(?!\\d)"),
+        // Su equivalente en inglés: "at 1200, -800".
+        Pattern.compile("(?<![\\p{L}\\p{N}])at -?\\d{3,}, -?\\d{3,}(?!\\d)"));
 
     private Centinela() {
     }

@@ -1,0 +1,16 @@
+# Xploits — English texts. key=value, value verbatim after the first '='.
+# Placeholders {name} or {name,decimals}; {{ and }} are literal braces; escapes \n \t \\.
+
+language.module-desc=General Xploits settings. It does not need to be on.
+language.setting-language=Language of Xploits in chat and the console. Auto follows Minecraft's language.
+language.only-settings=This module only holds settings; it does not need to be on.
+language.now=Language: {language}.
+language.now-restart=Language: {language}. ClickGUI descriptions change after a restart.
+language.already=The language is already {choice}.
+language.current=Language: {choice}.
+language.current-auto=Language: Auto → {language} (Minecraft is in {minecraft}).
+language.name-es=Spanish
+language.name-en=English
+language.file-unreadable=language.txt says "{content}", which is not auto, es or en: using Auto until you choose with .xploits language.
+language.file-unwritable=Could not save the language to language.txt ({reason}): the previous one comes back after a restart.
+language.command-desc=Addon status, stash search, language and reload.

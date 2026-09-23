@@ -51,6 +51,14 @@ class CentinelaTest {
     }
 
     @Test
+    void englishPositionIsHeldToo() {
+        assertTrue(Centinela.sospecha("Destination at 1234, -5678"));
+        assertTrue(Centinela.sospecha("at -1234, 5678."));
+        assertFalse(Centinela.sospecha("that 1234, 5678"));
+        assertFalse(Centinela.sospecha("at 12, 34"));
+    }
+
+    @Test
     void revisarSustituyeYDiceDeQuienVenia() {
         assertEquals(new Centinela.Veredicto("[retenido: parecía llevar coordenadas · fuente auto-travel]", true),
             Centinela.revisar("auto-travel", "waypoint 1 de 2 en 1200, -800"));
