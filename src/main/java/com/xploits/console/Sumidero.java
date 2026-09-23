@@ -32,10 +32,12 @@ import java.util.stream.Stream;
  * Escribe {@code vivo.log} y el historial desde un hilo propio (spec consola §10), el primero del
  * código de Xploits.
  *
- * <p>Las reglas: el hilo del juego nunca espera ni recibe una excepción de aquí; la cola es acotada
- * y lo que no cabe se cuenta y se dice; {@code seq} se asigna al escribir, bajo el mismo cerrojo que
- * la escritura, así que en el fichero siempre crece; y un error de este hilo nunca vuelve a entrar
- * por el sumidero, o se alimentaría a sí mismo.
+ * <p>Las reglas: el hilo del juego nunca espera aquí -salvo al apagar la consola, cuando
+ * {@link #cerrar()} espera como mucho medio segundo a que el escritor termine su lote (el bucle sale
+ * a los 200 ms de ver {@code parando})- ni recibe una excepción de aquí; la cola es acotada y lo que
+ * no cabe se cuenta y se dice; {@code seq} se asigna al escribir, bajo el mismo cerrojo que la
+ * escritura, así que en el fichero siempre crece; y un error de este hilo nunca vuelve a entrar por
+ * el sumidero, o se alimentaría a sí mismo.
  */
 final class Sumidero {
     private static final int CAPACIDAD = 4_096;
@@ -101,7 +103,7 @@ final class Sumidero {
         parando = true;
         if (hilo != null) {
             try {
-                hilo.join(2_000);
+                hilo.join(500);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -109,8 +111,16 @@ final class Sumidero {
         vaciar();
     }
 
-    /** Desde el gancho de apagado del juego: lo pendiente y la despedida, sin esperar al hilo. */
+    /** Desde el gancho de apagado del juego: para al escritor, lo pendiente y la despedida. */
     void despedirDelJuego() {
+        parando = true;
+        if (hilo != null) {
+            try {
+                hilo.join(1_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         long ms = System.currentTimeMillis();
         vaciar();
         escribir(List.of(seq -> new Registro.Juego(seq, ms, Salida.SESION, "fin")));
