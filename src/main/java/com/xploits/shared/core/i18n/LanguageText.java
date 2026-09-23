@@ -4,6 +4,7 @@ package com.xploits.shared.core.i18n;
 public enum LanguageText implements MessageKey {
     MODULE_DESC,
     SETTING_LANGUAGE,
+    SETTING_HIDE_COORDINATES_IN_LOG,
     ONLY_SETTINGS,
     NOW,
     NOW_RESTART,

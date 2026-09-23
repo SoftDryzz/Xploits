@@ -62,6 +62,20 @@ class BaritoneScriptTest {
     }
 
     @Test
+    void preparationCensorsCoordinatesBeforeAnyGoalIsSent() {
+        List<String> commands = BaritoneScript.preparation(PREFIX, flying());
+        assertEquals("#set censorCoordinates true", commands.get(0));
+        assertEquals("#set censorRanCommands true", commands.get(1));
+    }
+
+    @Test
+    void restorationTurnsTheCensorsBackOff() {
+        List<String> restoration = BaritoneScript.restoration(PREFIX, flying());
+        assertTrue(restoration.contains("#set censorCoordinates false"));
+        assertTrue(restoration.contains("#set censorRanCommands false"));
+    }
+
+    @Test
     void anEmptySeedIsNotWritten() {
         assertFalse(any(BaritoneScript.preparation(PREFIX, flying()), "elytraNetherSeed"));
     }

@@ -60,6 +60,10 @@ public final class BaritoneScript {
     public static List<String> preparation(String prefix, FlightSettings settings) {
         requirePrefix(prefix);
         List<String> commands = new ArrayList<>();
+        // First, before any goal: Baritone echoes goals and commands to chat, and Minecraft copies
+        // chat to latest.log. Censored, they never carry the destination.
+        commands.add(set(prefix, "censorCoordinates", "true"));
+        commands.add(set(prefix, "censorRanCommands", "true"));
         commands.add(set(prefix, "elytraAutoSwap", "false"));
         commands.add(set(prefix, "elytraTermsAccepted", "true"));
         commands.add(set(prefix, "elytraPredictTerrain", "false"));
@@ -99,6 +103,8 @@ public final class BaritoneScript {
         commands.add(set(prefix, "elytraAllowEmergencyLand", bool(resting.allowEmergencyLand())));
         commands.add(set(prefix, "elytraConserveFireworks", bool(resting.conserveFireworks())));
         commands.add(set(prefix, "elytraFireworkSpeed", number(resting.fireworkSpeed())));
+        commands.add(set(prefix, "censorCoordinates", "false"));
+        commands.add(set(prefix, "censorRanCommands", "false"));
         return List.copyOf(commands);
     }
 

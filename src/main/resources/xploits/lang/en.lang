@@ -3,6 +3,7 @@
 
 language.module-desc=General Xploits settings. It does not need to be on.
 language.setting-language=Language of Xploits in chat and the console. Auto follows Minecraft's language.
+language.setting-hide-coordinates-in-log=Hides chat coordinates in Minecraft's log (latest.log); the chat on screen still shows them. Baritone: only its lines. All: every line. All but Baritone: every line except its own.
 language.only-settings=This module only holds settings; it does not need to be on.
 language.now=Language: {language}.
 language.now-restart=Language: {language}. ClickGUI descriptions change after a restart.
