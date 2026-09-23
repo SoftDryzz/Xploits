@@ -48,7 +48,7 @@ final class Sumidero {
     private final Path historial;
     private final ZoneId zona = ZoneId.systemDefault();
     private final BlockingQueue<LongFunction<Registro>> cola = new ArrayBlockingQueue<>(CAPACIDAD);
-    private final AtomicReference<Instantanea> foto = new AtomicReference<>();
+    private final AtomicReference<Ofrecida> foto = new AtomicReference<>();
     private final Perdidas perdidas = new Perdidas();
     private Thread hilo;
     private volatile boolean parando;
@@ -56,6 +56,7 @@ final class Sumidero {
     private long ultimaFotoMs;
     private LocalDate diaPodado;
     private boolean falloAvisado;
+    private boolean vueltaFallidaAvisada;
 
     Sumidero(Path carpeta) {
         vivo = carpeta.resolve("vivo.log");
@@ -87,8 +88,16 @@ final class Sumidero {
         ofrecer(seq -> new Registro.Fin(seq, ms, Salida.SESION, lanzamiento, motivo));
     }
 
+    /**
+     * Desde el hilo del juego: guarda la foto con la hora a la que el juego la ofrece. Esa hora es la
+     * que lleva la {@code S}, así que el latido mide al juego y no al escritor.
+     */
     void foto(Instantanea instantanea) {
-        foto.set(instantanea);
+        foto.set(new Ofrecida(instantanea, System.currentTimeMillis()));
+    }
+
+    /** Una foto ofrecida por el juego y la hora a la que la ofreció. */
+    private record Ofrecida(Instantanea instantanea, long ms) {
     }
 
     private void ofrecer(LongFunction<Registro> registro) {
@@ -139,6 +148,14 @@ final class Sumidero {
                 escribir(lote);
             } catch (InterruptedException e) {
                 return;
+            } catch (RuntimeException e) {
+                // El escritor no puede morir en silencio: se dice una vez y se sigue con la vuelta siguiente.
+                XploitsAddon.LOG.error("El escritor de la consola ha fallado", e);
+                if (!vueltaFallidaAvisada) {
+                    vueltaFallidaAvisada = true;
+                    Salida.alertar("El escritor de la consola ha fallado: " + e.getClass().getSimpleName() + ": "
+                        + e.getMessage());
+                }
             }
         }
     }
@@ -150,14 +167,21 @@ final class Sumidero {
         escribir(lote);
     }
 
-    /** La foto va si cambió o si pasó un segundo: además de cabecera, es el latido del juego. */
+    /**
+     * La foto es, además de cabecera, el latido del juego. Se consume la última que ofreció el juego y
+     * va solo si cambió o si pasó un segundo desde la anterior, con la hora a la que el juego la
+     * ofreció. Si el juego deja de ofrecer, no sale ninguna {@code S} y la ventana ve envejecer el
+     * latido. Una oferta que no cumple se descarta: la siguiente llega en unos 250 ms.
+     */
     private synchronized void sumarFotoYPerdidas(List<LongFunction<Registro>> lote) {
         long ahora = System.currentTimeMillis();
-        Instantanea f = foto.get();
-        if (f != null && (!f.equals(ultimaFoto) || ahora - ultimaFotoMs >= LATIDO_MS)) {
+        Ofrecida oferta = foto.getAndSet(null);
+        if (oferta != null && (!oferta.instantanea().equals(ultimaFoto) || oferta.ms() - ultimaFotoMs >= LATIDO_MS)) {
+            Instantanea f = oferta.instantanea();
+            long ms = oferta.ms();
             ultimaFoto = f;
-            ultimaFotoMs = ahora;
-            lote.add(seq -> new Registro.Foto(seq, ahora, Salida.SESION, f));
+            ultimaFotoMs = ms;
+            lote.add(seq -> new Registro.Foto(seq, ms, Salida.SESION, f));
         }
         perdidas.drenar().ifPresent(n -> lote.add(seq -> new Registro.Perdida(seq, ahora, Salida.SESION, n)));
     }
