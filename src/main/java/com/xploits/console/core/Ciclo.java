@@ -188,9 +188,11 @@ public final class Ciclo {
             return muerta(o.salida());
         }
         if (o.ahoraMs() >= plazo) {
+            // El F va igualmente: una ventana que arranque tarde lo encuentra y se cierra, en vez de quedarse huérfana.
             String texto = "La consola no ha arrancado en " + ESPERA_PID_MS / 1000 + " s. Se intentó: " + orden;
+            String lanz = lanzamiento;
             olvidar();
-            return List.of(new Avisar(Nivel.ERROR, texto), new ApagarModulo());
+            return List.of(new Avisar(Nivel.ERROR, texto), new EscribirFin(lanz), new ApagarModulo());
         }
         return List.of();
     }

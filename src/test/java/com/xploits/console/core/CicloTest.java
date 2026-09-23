@@ -56,8 +56,9 @@ class CicloTest {
         c.tick(obs(0, null, VIVOS, null));
         c.lanzado("cmd /c algo", 0);
         assertEquals(List.of(), c.tick(obs(9_999, null, VIVOS, null)));
+        // El F va aunque no haya ventana: si arranca tarde, lo encuentra y se cierra en vez de quedarse huérfana.
         assertEquals(List.of(new Ciclo.Avisar(Nivel.ERROR, "La consola no ha arrancado en 10 s. Se intentó: cmd /c algo"),
-            new Ciclo.ApagarModulo()), c.tick(obs(10_000, null, VIVOS, null)));
+            new Ciclo.EscribirFin("l1"), new Ciclo.ApagarModulo()), c.tick(obs(10_000, null, VIVOS, null)));
         assertFalse(c.activo());
     }
 
@@ -69,7 +70,7 @@ class CicloTest {
         c.lanzado("orden", 0);
         Ciclo.Pid ajeno = new Ciclo.Pid(77, 1, "otro");
         assertEquals(List.of(), c.tick(obs(500, ajeno, VIVOS, null)));
-        assertEquals(2, c.tick(obs(10_000, ajeno, VIVOS, null)).size());
+        assertEquals(3, c.tick(obs(10_000, ajeno, VIVOS, null)).size());
 
         Ciclo abierta = viva();
         assertEquals(List.of(new Ciclo.Avisar(Nivel.INFO, "La ventana de la consola se cerró (con la X o desde fuera)."),
