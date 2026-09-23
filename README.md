@@ -1,7 +1,7 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Siete módulos que se encienden por separado.
+otros servidores anarchy. Ocho módulos que se encienden por separado.
 
 La idea de fondo: **ningún módulo hace algo a medias sin decirlo**. Si no puede cumplir lo que
 promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido y callar.
@@ -10,8 +10,10 @@ promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido 
 
 ## Antes de instalar
 
-**Copia `xploits-0.1.0.jar` a la carpeta `mods/` de tu instancia**, junto a Meteor. Reinicia el
-juego. Los módulos salen en la ClickGUI, categoría **Xploits**.
+**Copia `xploits-<versión>.jar` a la carpeta `mods/` de tu instancia**, junto a Meteor, y **borra
+cualquier `xploits-*.jar` anterior**: el nombre lleva la versión, y con dos a la vez el addon se carga
+dos veces. Reinicia el juego. Los módulos salen en la ClickGUI, categoría **Xploits**. Qué cambia en
+cada versión: [CHANGELOG](CHANGELOG.md).
 
 ### Qué necesitas instalado, y qué deja de funcionar si falta
 
@@ -260,4 +262,4 @@ Lo más habitual:
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | El diseño de cada módulo y el porqué de cada decisión |
 | [Construir un cliente propio](docs/cliente-propio/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
 
-**Compilar:** `./gradlew build` → `build/libs/xploits-0.1.0.jar`.
+**Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.

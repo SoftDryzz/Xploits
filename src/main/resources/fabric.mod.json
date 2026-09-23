@@ -3,7 +3,7 @@
   "id": "xploits",
   "version": "${version}",
   "name": "Xploits",
-  "description": "Addon de Meteor Client con módulos para 6b6t: kit-requester y auto-tpy.",
+  "description": "Meteor Client addon for 6b6t and other anarchy servers: elytra travel with evasion patterns, Nether sweeping, combat module direction, elytra replacement, a stash index, kit and TPA helpers, and an external log console.",
   "authors": ["xto2002"],
   "environment": "client",
   "entrypoints": {

@@ -7,8 +7,14 @@ costó una ronda de revisión.
 
 ## Idioma
 
-**Todo en español**: código, comentarios, javadoc, mensajes al jugador, documentación y mensajes de
-commit.
+**El repo está pasando a inglés por fases** (versionado, selector de idioma, código, documentación e
+historial). Mientras dure:
+
+- **Los mensajes de commit, en inglés**, desde la 0.2.0. Ver [Versionado](VERSIONING.md).
+- **Todo lo nuevo, en inglés**: código, comentarios, javadoc y documentación que se creen a partir de
+  ahora.
+- **Lo que ya existe sigue en español** hasta que su fase lo traduzca. No se traduce de paso al tocar
+  un fichero: se traduce entero, en su fase, para no dejar ficheros mitad y mitad.
 
 **Excepción: los identificadores de los ajustes de Meteor van en inglés** (`waypoint-margin`,
 `lane-width`, `spiral-radius`). No es incoherencia: son parte de la interfaz de Meteor, que el
