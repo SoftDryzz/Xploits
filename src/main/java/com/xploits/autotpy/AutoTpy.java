@@ -3,6 +3,7 @@ package com.xploits.autotpy;
 import com.xploits.XploitsAddon;
 import com.xploits.autotpy.core.AutoTpyPolicy;
 import com.xploits.kitrequester.KitRequester;
+import com.xploits.shared.XploitsModule;
 import com.xploits.shared.chat.ChatEvent;
 import com.xploits.shared.chat.ChatPatterns;
 import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
@@ -26,7 +27,7 @@ import java.util.Set;
  * lista que llegue mientras KitRequester espera courier la acepta AutoTPY aunque KitRequester avise de que la
  * ignora (el pedido no se ve afectado).
  */
-public class AutoTpy extends Module {
+public class AutoTpy extends XploitsModule {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<List<String>> users = sgGeneral.add(new StringListSetting.Builder()
@@ -88,6 +89,11 @@ public class AutoTpy extends Module {
      */
     public Set<String> users() {
         return Set.copyOf(users.get());
+    }
+
+    @Override
+    public String ahora() {
+        return users().size() + " en lista";
     }
 
     private Set<String> kitRequesterCouriers() {

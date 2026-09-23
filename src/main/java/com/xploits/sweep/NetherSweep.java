@@ -1,7 +1,10 @@
 package com.xploits.sweep;
 
 import com.xploits.XploitsAddon;
+import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.sweep.core.ChunkPos;
 import com.xploits.sweep.core.Coverage;
 import com.xploits.sweep.core.FuelBudget;
@@ -57,6 +60,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
@@ -90,7 +94,7 @@ import java.util.OptionalDouble;
  * al chat público de un servidor anarchy. Es el mismo arreglo que {@code travel/AutoTravel}, y está
  * razonado entero en su javadoc.
  */
-public class NetherSweep extends Module {
+public class NetherSweep extends XploitsModule {
     /** El id con el que Baritone se registra en el cargador de mods. */
     private static final String BARITONE_MOD_ID = "baritone";
 
@@ -728,7 +732,10 @@ public class NetherSweep extends Module {
 
         String message = "Baritone NO está interceptando sus comandos: he cancelado \"" + text
             + "\" antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
-        warning("%s", message);
+        // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
+        String sinArgumentos = "Baritone NO está interceptando sus comandos: he cancelado un «" + SafetyNet.verbo(text)
+            + "» antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
+        warningPrivado(new TextoConPosicion(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -1369,6 +1376,18 @@ public class NetherSweep extends Module {
 
     public boolean isSweeping() {
         return sweeping;
+    }
+
+    /** Por dónde va el barrido: pasada, total y bloques que faltan, regreso incluido si se cuenta. */
+    public Optional<Instantanea.Progreso> progreso() {
+        if (!sweeping || route == null) return Optional.empty();
+        return Optional.of(new Instantanea.Progreso(Math.min(index / 2 + 1, pasadasDelPlan), pasadasDelPlan,
+            Math.round(bloquesRestantes())));
+    }
+
+    @Override
+    public String ahora() {
+        return sweeping ? "pasada " + Math.min(index / 2 + 1, pasadasDelPlan) + "/" + pasadasDelPlan : "armado";
     }
 
     /**

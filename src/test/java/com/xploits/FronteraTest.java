@@ -1,0 +1,91 @@
+package com.xploits;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+/**
+ * Las tres fronteras que la consola necesita y que ningún test de un núcleo ve (spec consola §13).
+ * Lee el código fuente: es la única forma de impedir que un módulo nuevo se salte el registro.
+ */
+class FronteraTest {
+    private static final Path FUENTES = Path.of("src", "main", "java");
+    private static final Set<String> BASES = Set.of("com/xploits/shared/XploitsModule.java", "com/xploits/shared/ComandoBase.java");
+    private static final Pattern EXTIENDE_METEOR = Pattern.compile("\\bextends\\s+(Module|Command)\\b");
+    private static final Pattern CHAT_DIRECTO = Pattern.compile("ChatUtils\\.(info|warning|error)\\(");
+    private static final String MARCA = "// consola: registrado aparte";
+    private static final List<String> DEL_JUEGO =
+        List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.");
+
+    private static Map<String, List<String>> fuentes() throws IOException {
+        Map<String, List<String>> todas = new TreeMap<>();
+        try (Stream<Path> s = Files.walk(FUENTES)) {
+            for (Path p : s.filter(f -> f.toString().endsWith(".java")).toList()) {
+                todas.put(FUENTES.relativize(p).toString().replace('\\', '/'), Files.readAllLines(p, StandardCharsets.UTF_8));
+            }
+        }
+        return todas;
+    }
+
+    @Test
+    void soloLasBasesExtiendenModuleOCommandDeMeteor() throws IOException {
+        List<String> fuera = new ArrayList<>();
+        fuentes().forEach((ruta, lineas) -> {
+            if (BASES.contains(ruta)) return;
+            for (String l : lineas) {
+                if (EXTIENDE_METEOR.matcher(l).find()) fuera.add(ruta);
+            }
+        });
+        assertEquals(List.of(), fuera, "estas clases se saltarían el registro de la consola");
+    }
+
+    @Test
+    void ningunChatDirectoSinMarca() throws IOException {
+        List<String> sinMarca = new ArrayList<>();
+        fuentes().forEach((ruta, lineas) -> {
+            for (int i = 0; i < lineas.size(); i++) {
+                if (!CHAT_DIRECTO.matcher(lineas.get(i)).find()) continue;
+                boolean marcada = lineas.get(i).contains(MARCA) || (i > 0 && lineas.get(i - 1).contains(MARCA));
+                if (!marcada) sinMarca.add(ruta + ":" + (i + 1));
+            }
+        });
+        assertEquals(List.of(), sinMarca, "ChatUtils directo no llega a la consola: registra aparte y marca la línea");
+    }
+
+    @Test
+    void losNucleosYLaVentanaNoTocanElJuego() throws IOException {
+        List<String> malas = new ArrayList<>();
+        fuentes().forEach((ruta, lineas) -> {
+            boolean nucleo = ruta.contains("/core/");
+            boolean ventana = ruta.startsWith("com/xploits/console/ventana/");
+            if (!nucleo && !ventana) return;
+            boolean deLaConsola = ruta.startsWith("com/xploits/console/");
+            for (String l : lineas) {
+                if (!l.startsWith("import ")) continue;
+                String importado = l.replace("import static ", "").replace("import ", "").trim();
+                for (String prefijo : DEL_JUEGO) {
+                    if (importado.startsWith(prefijo)) malas.add(ruta + " importa " + importado);
+                }
+                if (deLaConsola && importado.startsWith("com.xploits.")
+                    && !importado.startsWith("com.xploits.console.core.")
+                    && !importado.startsWith("com.xploits.console.ventana.")
+                    && !importado.startsWith("com.xploits.shared.core.")) {
+                    malas.add(ruta + " importa " + importado);
+                }
+            }
+        });
+        assertEquals(List.of(), malas, "esto no se puede ejecutar fuera del juego");
+    }
+}

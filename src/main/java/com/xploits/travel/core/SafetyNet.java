@@ -38,6 +38,18 @@ public final class SafetyNet {
     }
 
     /**
+     * El comando de un texto de Baritone sin sus argumentos: {@code "#goal 1200 -800"} da
+     * {@code "#goal"}. Es lo que puede ir a la consola al avisar de que la red cortó algo: los
+     * argumentos pueden ser coordenadas (spec consola §7).
+     */
+    public static String verbo(String texto) {
+        if (texto == null) throw new IllegalArgumentException("un texto saliente no puede ser nulo");
+        String limpio = texto.strip();
+        if (limpio.isEmpty()) return "(vacío)";
+        return limpio.split("\\s+", 2)[0];
+    }
+
+    /**
      * Si este texto saliente es un comando de Baritone del prefijo con el que se lanzó el viaje, y
      * por tanto la red tiene que matarlo antes de que llegue al servidor.
      *

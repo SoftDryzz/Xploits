@@ -171,4 +171,15 @@ class SafetyNetTest {
             assertEquals(outcome.arrived(), outcome.warning(PREFIX) == null, outcome.name());
         }
     }
+
+    // El verbo de un comando saliente, sin sus argumentos (spec consola §7)
+
+    @Test
+    void elVerboDeUnComandoSinSusArgumentos() {
+        assertEquals("#goal", SafetyNet.verbo("#goal 1200 -800"));
+        assertEquals("#set", SafetyNet.verbo("  #set elytraAutoJump true"));
+        assertEquals("#elytra", SafetyNet.verbo("#elytra"));
+        assertEquals("(vacío)", SafetyNet.verbo("   "));
+        assertThrows(IllegalArgumentException.class, () -> SafetyNet.verbo(null));
+    }
 }

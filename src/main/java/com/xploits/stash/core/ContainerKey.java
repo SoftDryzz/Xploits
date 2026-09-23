@@ -28,4 +28,17 @@ public record ContainerKey(String dimension, int x, int y, int z) {
     public String id() {
         return isEnder() ? "ender" : dimension + "@" + x + "," + y + "," + z;
     }
+
+    /**
+     * Dónde está, sin coordenadas (spec consola §7): la dimensión y, si el jugador está en la misma,
+     * a cuántos bloques en el plano. Para la consola y su fichero, que no pueden llevar posiciones.
+     */
+    public String sinPosicion(String dimensionActual, Double jugadorX, Double jugadorZ) {
+        if (isEnder()) return "ender";
+        String corta = dimension.startsWith("minecraft:") ? dimension.substring("minecraft:".length()) : dimension;
+        if (jugadorX == null || jugadorZ == null || !dimension.equals(dimensionActual)) return corta;
+        double dx = x - jugadorX;
+        double dz = z - jugadorZ;
+        return corta + " a " + Math.round(Math.sqrt(dx * dx + dz * dz)) + " bloques";
+    }
 }

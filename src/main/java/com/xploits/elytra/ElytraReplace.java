@@ -3,6 +3,7 @@ package com.xploits.elytra;
 import com.xploits.XploitsAddon;
 import com.xploits.elytra.core.ElytraCandidate;
 import com.xploits.elytra.core.ElytraPolicy;
+import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
@@ -26,7 +27,7 @@ import java.util.List;
  * Cambia la elytra puesta por una de repuesto antes de que se rompa (spec §4), y avisa cuando no
  * hay ninguna válida (spec §5). Funciona vueles como vueles: no depende de ElytraFly.
  */
-public class ElytraReplace extends Module {
+public class ElytraReplace extends XploitsModule {
     private static final int FIRST_SLOT = 0;
     private static final int LAST_SLOT = 35;
     private static final int CHEST_ARMOR_INDEX = 2;
