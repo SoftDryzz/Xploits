@@ -26,7 +26,7 @@ class CabeceraTest {
         assertEquals(List.of(
             "dimensión the_nether · jugadores cargados 3 · nuestros 1",
             "cohetes 64 · elytra 87 % · viaje waypoint 3/12 · faltan 850 bloques",
-            "vida 18.5 · armadura 20 · en barra: obsidiana 128 · cristales 7 · telarañas 0 · yunques ?",
+            "vida 18,5 · armadura 20 · en barra: obsidiana 128 · cristales 7 · telarañas 0 · yunques ?",
             "● auto-pvp SUPERFICIE · Foo  ○ auto-travel"), Cabecera.filas(i, Glifos.UNICODE, ES));
     }
 

@@ -3,7 +3,6 @@ package com.xploits.console.core;
 import com.xploits.shared.core.i18n.Catalog;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.StringJoiner;
 
 /** Las cuatro filas de datos de la cabecera (spec consola §9). Desconocido es {@code ?}; nunca 0. */
@@ -42,8 +41,8 @@ public final class Cabecera {
     }
 
     private static String combate(Instantanea i, Catalog t) {
-        // Formatted here, with a point in both languages, as the header always showed it.
-        String vida = i.vida() == null ? DESCONOCIDO : String.format(Locale.ROOT, "%.1f", i.vida());
+        // The catalog formats the number in its language ({health,1}): 18,5 in Spanish, 18.5 in English.
+        Object vida = i.vida() == null ? DESCONOCIDO : i.vida();
         return t.render(WindowText.COMBAT_ROW, "health", vida, "armor", n(i.armadura()), "obsidian", n(i.obsidiana()),
             "crystals", n(i.cristales()), "webs", n(i.telas()), "anvils", n(i.yunques()));
     }

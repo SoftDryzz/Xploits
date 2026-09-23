@@ -82,7 +82,7 @@ class MarcoTest {
         List<String> f = pintar(80, 14);
         assertEquals(13, f.size());
         assertTrue(f.get(2).startsWith("cohetes 64"), f.get(2));
-        assertTrue(f.get(3).startsWith("vida 20.0"), f.get(3));
+        assertTrue(f.get(3).startsWith("vida 20,0"), f.get(3));
         assertEquals("filtro: todo · juego conectado · ocultas: logo, módulos, entorno", f.get(12));
     }
 

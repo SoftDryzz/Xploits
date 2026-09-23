@@ -118,7 +118,7 @@ public final class ConsoleMain {
         ConsoleMain ventana = null;
         try {
             ventana = new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, args[3], out, codificacion, teclado,
-                cargar(carpeta, inicial));
+                primerCatalogo(carpeta, inicial));
             ventana.correr();
         } catch (Throwable t) {
             reventar(carpeta, lanzamiento, out, teclado, t, ventana == null ? null : ventana.textos);
@@ -313,6 +313,16 @@ public final class ConsoleMain {
             anotarError(carpeta, "cannot load the " + idioma.code() + " texts: " + e);
         }
         sucio = true;
+    }
+
+    /** The starting language's texts; if they fail to load, it is logged and English is used. If English fails too, it throws. */
+    private static Catalog primerCatalogo(Path carpeta, Language idioma) {
+        try {
+            return cargar(carpeta, idioma);
+        } catch (RuntimeException e) {
+            anotarError(carpeta, "cannot load the " + idioma.code() + " texts, using English: " + e);
+            return cargar(carpeta, Language.EN);
+        }
     }
 
     private static Catalog cargar(Path carpeta, Language idioma) {
