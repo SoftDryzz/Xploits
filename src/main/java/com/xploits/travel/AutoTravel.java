@@ -2,6 +2,8 @@ package com.xploits.travel;
 
 import com.xploits.XploitsAddon;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.core.Axis;
 import com.xploits.travel.core.BaritoneScript;
@@ -71,7 +73,7 @@ import java.util.List;
  * restauración emite sus seis comandos-. Y la decisión de qué texto es comando nuestro está en
  * {@link SafetyNet}, en el núcleo y con tests.
  */
-public class AutoTravel extends Module {
+public class AutoTravel extends XploitsModule {
     /** El id con el que Baritone se registra en el cargador de mods. */
     private static final String BARITONE_MOD_ID = "baritone";
 
@@ -504,7 +506,9 @@ public class AutoTravel extends Module {
         // decirlo. Se repite al entrar al mundo a propósito: si el módulo sigue encendido, saber
         // que está armado y con qué destino vale más que ahorrar una línea de chat.
         info("Armado, pero no vuela solo: lanza el viaje con .xploits travel go");
-        info("Patrón %s · destino %s", pattern.get(), describeDestination());
+        infoPrivado(new TextoConPosicion(
+            String.format("Patrón %s · destino %s", pattern.get(), describeDestination()),
+            String.format("Patrón %s · destino %s", pattern.get(), describeDestinationSinPosicion())));
     }
 
     @Override
@@ -600,7 +604,10 @@ public class AutoTravel extends Module {
 
         String message = "Baritone NO está interceptando sus comandos: he cancelado \"" + text
             + "\" antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
-        warning("%s", message);
+        // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
+        String sinArgumentos = "Baritone NO está interceptando sus comandos: he cancelado un «" + SafetyNet.verbo(text)
+            + "» antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
+        warningPrivado(new TextoConPosicion(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -687,52 +694,52 @@ public class AutoTravel extends Module {
      * enseñar, sea el del lanzamiento o el motivo por el que no se vuela. Ningún fallo es silencioso
      * y, ante la duda, no se manda un solo comando (spec §9).
      */
-    public String start() {
-        if (!isActive()) return "auto-travel está apagado: enciéndelo antes de lanzar un viaje.";
-        if (travelling) return "Ya hay un viaje en marcha: córtalo antes de lanzar otro.";
+    public TextoConPosicion start() {
+        if (!isActive()) return TextoConPosicion.igual("auto-travel está apagado: enciéndelo antes de lanzar un viaje.");
+        if (travelling) return TextoConPosicion.igual("Ya hay un viaje en marcha: córtalo antes de lanzar otro.");
         String barridoEnMarcha = rechazoPorNetherSweep();
-        if (barridoEnMarcha != null) return barridoEnMarcha;
-        if (mc.player == null || mc.world == null) return "No hay mundo cargado: no se lanza nada.";
+        if (barridoEnMarcha != null) return TextoConPosicion.igual(barridoEnMarcha);
+        if (mc.player == null || mc.world == null) return TextoConPosicion.igual("No hay mundo cargado: no se lanza nada.");
         if (!mc.player.isAlive()) {
             // Sin esto, desde la pantalla de muerte pasan todas las demás guardas: se arma la red, se
             // emiten los diez comandos de la preparación, y al tick siguiente onTick ve al muerto y
             // emite los seis de la restauración. Catorce comandos y un "Viaje lanzado" para nada.
-            return "Estás muerto: reaparece antes de lanzar un viaje, que desde la pantalla de muerte no se vuela.";
+            return TextoConPosicion.igual("Estás muerto: reaparece antes de lanzar un viaje, que desde la pantalla de muerte no se vuela.");
         }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
             // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
             // Class.forName("baritone.api.BaritoneAPI") sobre una clase que el jar ofuscado no
             // expone, así que ahí vale false aunque Baritone esté perfectamente instalado (spec §2).
-            return "Baritone no está cargado: este módulo vuela con sus comandos y sin él no hay nada que dirigir.";
+            return TextoConPosicion.igual("Baritone no está cargado: este módulo vuela con sus comandos y sin él no hay nada que dirigir.");
         }
         if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) {
             // Y además es lo que hace honesto al aviso de checkFireworks(): despegando siempre con
             // alguno, "te has quedado SIN fuegos a mitad de vuelo" solo puede decirse cuando de
             // verdad se han acabado a mitad de vuelo.
-            return "No llevas ningún fuego artificial: Baritone se impulsa con ellos y sin ninguno no despega. "
-                + "No se lanza nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.";
+            return TextoConPosicion.igual("No llevas ningún fuego artificial: Baritone se impulsa con ellos y sin ninguno no despega. "
+                + "No se lanza nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.");
         }
         if (!wearsElytra()) {
             // elytra-replace no tapa esto: su política contesta NOT_WEARING cuando la pechera no lleva
             // elytra y no hace nada, a propósito -ponerte una elytra por tu cuenta no es su trabajo-.
-            return "No llevas elytra puesta: Baritone vuela con ella, y elytra-replace cambia la que lleves pero "
-                + "no te pone ninguna. Ponte una antes de lanzar.";
+            return TextoConPosicion.igual("No llevas elytra puesta: Baritone vuela con ella, y elytra-replace cambia la que lleves pero "
+                + "no te pone ninguna. Ponte una antes de lanzar.");
         }
         String chestSwapRejection = chestSwapRejection();
-        if (chestSwapRejection != null) return chestSwapRejection;
+        if (chestSwapRejection != null) return TextoConPosicion.igual(chestSwapRejection);
 
         String launchPrefix = prefix.get();
         String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
         if (prefixRejection != null) {
             // Se comprueba aquí, antes de armar la red y antes del primer comando: armarla sobre un
             // prefijo inservible es tener red sin saber qué vigila.
-            return "No se vuela: " + prefixRejection + ".";
+            return TextoConPosicion.igual("No se vuela: " + prefixRejection + ".");
         }
 
         Waypoint origin = new Waypoint(mc.player.getX(), mc.player.getZ());
         Route route = RoutePlanner.plan(origin, destination(), pattern.get(), params(), highwayMaxAmplitude.get(),
             waypointMargin.get());
-        if (route.isRejected()) return "No se vuela: " + route.rejection() + ".";
+        if (route.isRejected()) return TextoConPosicion.igual("No se vuela: " + route.rejection() + ".");
 
         activePrefix = launchPrefix;
         waypoints = route.waypoints();
@@ -751,14 +758,17 @@ public class AutoTravel extends Module {
         // rechaza arriba, antes de tocar nada, así que aquí ya no debería poder pasar; esto es la red
         // por si algún otro módulo se lleva la elytra entre una línea y la siguiente. Lanzar ahora
         // sería decir "Viaje lanzado" y enterarse a los treinta segundos por el corte de atasco.
-        if (!wearsElytra()) return undoLaunch();
+        if (!wearsElytra()) return TextoConPosicion.igual(undoLaunch());
 
         aimAtCurrentWaypoint();
 
         Waypoint target = waypoints.get(waypoints.size() - 1);
-        return String.format("Viaje lanzado con patrón %s: %d waypoints hasta %d, %d, a %d bloques en línea recta.",
-            pattern.get(), waypoints.size(), Math.round(target.x()), Math.round(target.z()),
-            Math.round(origin.distanceTo(target)));
+        long distancia = Math.round(origin.distanceTo(target));
+        return new TextoConPosicion(
+            String.format("Viaje lanzado con patrón %s: %d waypoints hasta %d, %d, a %d bloques en línea recta.",
+                pattern.get(), waypoints.size(), Math.round(target.x()), Math.round(target.z()), distancia),
+            String.format("Viaje lanzado con patrón %s: %d waypoints, a %d bloques en línea recta.",
+                pattern.get(), waypoints.size(), distancia));
     }
 
     /**
@@ -1129,18 +1139,22 @@ public class AutoTravel extends Module {
         mc.getToastManager().add(toast.build());
     }
 
-    public String status() {
+    public TextoConPosicion status() {
+        return new TextoConPosicion(status(true), status(false));
+    }
+
+    private String status(boolean conPosicion) {
         if (!isActive()) return "auto-travel está apagado.";
         if (!travelling) {
             return String.format("auto-travel encendido, sin viaje en marcha. Patrón %s · destino %s.",
-                pattern.get(), describeDestination());
+                pattern.get(), conPosicion ? describeDestination() : describeDestinationSinPosicion());
         }
 
         Waypoint target = waypoints.get(index);
         StringBuilder sb = new StringBuilder();
         sb.append("Volando con patrón ").append(pattern.get())
-            .append(" · waypoint ").append(index + 1).append(" de ").append(waypoints.size())
-            .append(" en ").append(Math.round(target.x())).append(", ").append(Math.round(target.z()));
+            .append(" · waypoint ").append(index + 1).append(" de ").append(waypoints.size());
+        if (conPosicion) sb.append(" en ").append(Math.round(target.x())).append(", ").append(Math.round(target.z()));
         if (mc.player != null) {
             Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
             sb.append(" a ").append(Math.round(here.distanceTo(target))).append(" bloques");
@@ -1156,5 +1170,14 @@ public class AutoTravel extends Module {
             return String.format("%d bloques por %s", Math.round(highwayDistance.get()), axis.get());
         }
         return String.format("%d, %d", Math.round(destinationX.get()), Math.round(destinationZ.get()));
+    }
+
+    /** El destino sin coordenadas, para la consola: en autopista ya no las lleva; si no, la distancia. */
+    private String describeDestinationSinPosicion() {
+        if (destinationMode.get() == DestinationMode.AUTOPISTA) return describeDestination();
+        if (mc.player == null) return "por coordenadas";
+        Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
+        Waypoint target = new Waypoint(destinationX.get(), destinationZ.get());
+        return "por coordenadas, a " + Math.round(here.distanceTo(target)) + " bloques";
     }
 }

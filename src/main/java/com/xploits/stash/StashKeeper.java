@@ -1,6 +1,9 @@
 package com.xploits.stash;
 
 import com.xploits.XploitsAddon;
+import com.xploits.console.core.Nivel;
+import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.stash.core.ContainerKey;
 import com.xploits.stash.core.ContainerSnapshot;
 import com.xploits.stash.core.ContainerType;
@@ -41,7 +44,7 @@ import java.util.Map;
  * Apunta el contenido de los contenedores que abres y de los shulkers que ves (spec §5).
  * Es PASIVO: no toca el interactionManager y no puede mover un solo ítem.
  */
-public class StashKeeper extends Module {
+public class StashKeeper extends XploitsModule {
     private static final int SAVE_EVERY_TICKS = 100;
     /** Ticks mínimos observando una pantalla antes de aceptar como buena una lectura vacía. */
     private static final int MIN_OBSERVE_TICKS = 20;
@@ -102,7 +105,8 @@ public class StashKeeper extends Module {
             // No seguir con un índice vacío: eso es lo que borraría el archivo corrupto en el
             // próximo guardado. Se avisa, se deja el módulo sin store (saveNow() no hace nada sin
             // uno) y se apaga solo, igual que KitRequester.onActivate() ante el mismo problema.
-            error("No se pudo leer el índice: %s", e.getMessage());
+            errorPrivado(new TextoConPosicion(String.format("No se pudo leer el índice: %s", e.getMessage()),
+                "No se pudo leer el índice de stash: el fichero está corrupto o no se puede leer. El detalle, solo en el chat."));
             index = new StashIndex();
             store = null;
             toggle();
@@ -266,8 +270,11 @@ public class StashKeeper extends Module {
             index.put(new ContainerSnapshot(openKey, openType, System.currentTimeMillis(), openItems, openNested));
             dirty = true;
             if (notify.get()) {
+                // consola: registrado aparte
                 ChatUtils.info("Xploits", "Indexado %s (%d tipos, %d shulkers).",
                     openKey.id(), openItems.size(), openNested.size());
+                registrar(Nivel.INFO, String.format("Indexado un contenedor (%s, %d tipos, %d shulkers).",
+                    openKey.sinPosicion(null, null, null), openItems.size(), openNested.size()));
             }
         }
         clearOpen();
@@ -297,8 +304,11 @@ public class StashKeeper extends Module {
                 // nueva cada SAVE_EVERY_TICKS para siempre. Un solo aviso y se deja de intentar
                 // hasta la próxima activación.
                 saveDisabled = true;
-                error("No se pudo guardar el índice tras %d intentos seguidos (%s). Dejo de intentarlo hasta que reactives stash-keeper.",
-                    saveFailures, e.getMessage());
+                errorPrivado(new TextoConPosicion(
+                    String.format("No se pudo guardar el índice tras %d intentos seguidos (%s). Dejo de intentarlo hasta que reactives stash-keeper.",
+                        saveFailures, e.getMessage()),
+                    String.format("No se pudo guardar el índice de stash tras %d intentos seguidos. Dejo de intentarlo hasta que reactives stash-keeper. El detalle, solo en el chat.",
+                        saveFailures)));
             }
         }
     }

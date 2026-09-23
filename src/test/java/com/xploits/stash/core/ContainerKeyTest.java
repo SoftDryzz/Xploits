@@ -1,8 +1,10 @@
 package com.xploits.stash.core;
 
+import com.xploits.console.core.Centinela;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class ContainerKeyTest {
@@ -53,5 +55,15 @@ class ContainerKeyTest {
             ContainerKey.doubleChest("overworld", 4, 70, 9, 4, 71, 9));
         assertEquals(ContainerKey.block("overworld", 4, 70, 9),
             ContainerKey.doubleChest("overworld", 4, 71, 9, 4, 70, 9));
+    }
+
+    @Test
+    void sinPosicionDiceDimensionYDistanciaYNadaMas() {
+        ContainerKey cofre = ContainerKey.block("minecraft:overworld", 300, 64, 400);
+        assertEquals("overworld a 500 bloques", cofre.sinPosicion("minecraft:overworld", 0.0, 0.0));
+        assertEquals("overworld", cofre.sinPosicion("minecraft:the_nether", 0.0, 0.0));
+        assertEquals("overworld", cofre.sinPosicion(null, null, null));
+        assertEquals("ender", ContainerKey.ENDER.sinPosicion("minecraft:overworld", 0.0, 0.0));
+        assertFalse(Centinela.sospecha(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0)));
     }
 }

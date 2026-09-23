@@ -17,6 +17,7 @@ import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
+import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -67,7 +68,7 @@ import java.util.stream.Collectors;
  * que sostiene el eje defensivo del rediseño §5- y los ajustes ajenos de Meteor de los que depende
  * una decisión del núcleo, hoy solo el {@code anti-suicide} de {@code crystal-aura}.
  */
-public class AutoPvp extends Module {
+public class AutoPvp extends XploitsModule {
     private static final int FIRST_SLOT = 0;
     /** Ticks por segundo del juego: la única conversión que hace falta para informar de tiempos. */
     private static final int TICKS_PER_SECOND = 20;

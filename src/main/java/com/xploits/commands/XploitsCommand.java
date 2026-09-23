@@ -2,12 +2,16 @@ package com.xploits.commands;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.xploits.console.core.Nivel;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.shared.ComandoBase;
+import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.command.CommandSource;
@@ -20,7 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-public class XploitsCommand extends Command {
+public class XploitsCommand extends ComandoBase {
     private static final int MAX_HITS = 10;
 
     public XploitsCommand() {
@@ -30,11 +34,11 @@ public class XploitsCommand extends Command {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            kitRequester().ifPresent(kr -> info("%s", kr.status()));
+            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, TextoConPosicion.igual(kr.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            kitRequester().ifPresent(kr -> info("%s", kr.reload()));
+            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, TextoConPosicion.igual(kr.reload())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
@@ -46,12 +50,12 @@ public class XploitsCommand extends Command {
             return SINGLE_SUCCESS;
         })));
         builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> info("%s", module.status()));
+            pvp().ifPresent(module -> responder(Nivel.INFO, module.name, TextoConPosicion.igual(module.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("travel")
             .executes(context -> {
-                travel().ifPresent(module -> info("%s", module.status()));
+                travel().ifPresent(module -> responder(Nivel.INFO, module.name, module.status()));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -64,7 +68,7 @@ public class XploitsCommand extends Command {
             })));
         builder.then(literal("sweep")
             .executes(context -> {
-                sweep().ifPresent(module -> info("%s", module.status()));
+                sweep().ifPresent(module -> responder(Nivel.INFO, module.name, TextoConPosicion.igual(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -92,17 +96,15 @@ public class XploitsCommand extends Command {
      * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
      */
     private void travelGo(AutoTravel autoTravel) {
-        String message = autoTravel.start();
-        if (autoTravel.isTravelling()) info("%s", message);
-        else warning("%s", message);
+        TextoConPosicion message = autoTravel.start();
+        responder(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
     }
 
     /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void travelStop(AutoTravel autoTravel) {
         boolean travelling = autoTravel.isTravelling();
         String message = autoTravel.stop();
-        if (travelling) info("%s", message);
-        else warning("%s", message);
+        responder(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, TextoConPosicion.igual(message));
     }
 
     /**
@@ -118,16 +120,14 @@ public class XploitsCommand extends Command {
      */
     private void sweepGo(NetherSweep sweep) {
         String message = sweep.start();
-        if (sweep.isSweeping()) info("%s", message);
-        else warning("%s", message);
+        responder(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, TextoConPosicion.igual(message));
     }
 
     /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void sweepStop(NetherSweep sweep) {
         boolean sweeping = sweep.isSweeping();
         String message = sweep.stop();
-        if (sweeping) info("%s", message);
-        else warning("%s", message);
+        responder(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, TextoConPosicion.igual(message));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -135,7 +135,7 @@ public class XploitsCommand extends Command {
             warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para consultarlo.");
             return;
         }
-        info("%s", stashKeeper.status());
+        responder(Nivel.INFO, stashKeeper.name, TextoConPosicion.igual(stashKeeper.status()));
     }
 
     private void find(String query) {
@@ -165,11 +165,17 @@ public class XploitsCommand extends Command {
             return;
         }
 
+        String dimension = MeteorClient.mc.world == null ? null : MeteorClient.mc.world.getRegistryKey().getValue().toString();
+        Double x = MeteorClient.mc.player == null ? null : MeteorClient.mc.player.getX();
+        Double z = MeteorClient.mc.player == null ? null : MeteorClient.mc.player.getZ();
         info("%d %s con \"%s\":", hits.size(), hits.size() == 1 ? "sitio" : "sitios", query);
         for (StashIndex.Hit hit : hits.subList(0, Math.min(MAX_HITS, hits.size()))) {
             String where = hit.insideShulker() == null ? "" : " · en shulker \"" + hit.insideShulker() + "\"";
-            info("  %s x%d · %s%s · visto %s",
+            String chat = String.format("  %s x%d · %s%s · visto %s",
                 shortId(hit.itemId()), hit.count(), hit.key().id(), where, ago(hit.seenAt()));
+            String registro = String.format("  %s x%d · %s%s · visto %s",
+                shortId(hit.itemId()), hit.count(), hit.key().sinPosicion(dimension, x, z), where, ago(hit.seenAt()));
+            responder(Nivel.INFO, stashKeeper.name, new TextoConPosicion(chat, registro));
         }
         if (hits.size() > MAX_HITS) info("  ...y %d más.", hits.size() - MAX_HITS);
     }

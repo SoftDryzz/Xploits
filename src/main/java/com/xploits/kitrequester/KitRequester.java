@@ -7,7 +7,9 @@ import com.xploits.kitrequester.core.OrderMachine;
 import com.xploits.kitrequester.core.Progress;
 import com.xploits.kitrequester.core.ProgressStore;
 import com.xploits.kitrequester.inventory.EnderDepositor;
+import com.xploits.shared.XploitsModule;
 import com.xploits.shared.chat.ChatPatterns;
+import com.xploits.shared.core.TextoConPosicion;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.entity.player.InteractEntityEvent;
@@ -42,7 +44,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * servidor (aquí se guarda el progreso) y a {@link #onActivate()} al volver (aquí se recargan
  * kits-queue.txt y progress.json y se llama a {@code machine.onJoin}).
  */
-public class KitRequester extends Module {
+public class KitRequester extends XploitsModule {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Integer> intervalSeconds = sgGeneral.add(new IntSetting.Builder()
@@ -105,7 +107,8 @@ public class KitRequester extends Module {
             progress = store.load();
             machine = newMachine(queue);
         } catch (IOException e) {
-            error("%s", e.getMessage());
+            errorPrivado(new TextoConPosicion(String.valueOf(e.getMessage()),
+                "No se pudo cargar la cola de kits o su progreso. El detalle, solo en el chat."));
             progress = null;
             machine = null;
             toggle();
@@ -286,7 +289,8 @@ public class KitRequester extends Module {
         try {
             store.save(progress);
         } catch (IOException e) {
-            error("No se pudo guardar el progreso: %s", e.getMessage());
+            errorPrivado(new TextoConPosicion(String.format("No se pudo guardar el progreso: %s", e.getMessage()),
+                "No se pudo guardar el progreso de kits. El detalle, solo en el chat."));
         }
     }
 }
