@@ -1,5 +1,7 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 /**
  * El rectángulo a barrer, en coordenadas de chunk del Nether, con las esquinas ya normalizadas
  * (min ≤ max en cada eje). El jugador lo piensa en chunks del Nether porque ahí es donde vuela;
@@ -58,7 +60,7 @@ public record SweepArea(int minChunkX, int minChunkZ, int maxChunkX, int maxChun
         long total = (long) widthInChunks() * heightInChunks();
         if (total > Integer.MAX_VALUE) {
             throw new ArithmeticException(
-                "el área tiene " + total + " chunks, demasiados para contarlos en un entero");
+                "el área tiene " + total + " chunks, demasiados para contarlos en un entero"); // i18n: allowed (exception message, continuation line)
         }
         return (int) total;
     }
@@ -114,7 +116,7 @@ public record SweepArea(int minChunkX, int minChunkZ, int maxChunkX, int maxChun
      * <p>La cuenta se hace en {@code long} y no llamando a {@link #chunkCount()} a propósito: este
      * método tiene que poder contestar precisamente sobre las áreas que hacen que aquél lance.
      */
-    public String oversizeRejection() {
+    public Msg oversizeRejection() {
         long total = (long) widthInChunks() * heightInChunks();
         if (total <= MAXIMO_DE_CHUNKS) {
             return null;
@@ -124,26 +126,18 @@ public record SweepArea(int minChunkX, int minChunkZ, int maxChunkX, int maxChun
         long largoMaximo = MAXIMO_DE_CHUNKS / corto;
         // Si el largo que cabría es menor que el propio lado corto, ni un cuadrado de ese lado entra:
         // decirle "baja el largo a ese número" sería mandarle a un rectángulo que sigue sin caber.
-        String queBajar = largoMaximo < corto
-            ? "Ni manteniendo el lado corto, de " + corto + " chunks, cabe nada: acerca las dos"
-                + " esquinas por los dos ejes"
-            : "Manteniendo el lado corto en " + corto + " chunks, el otro no puede pasar de "
-                + largoMaximo;
+        Msg queBajar = largoMaximo < corto
+            ? Msg.of(SweepText.OVERSIZE_NOTHING_FITS, "short", corto)
+            : Msg.of(SweepText.OVERSIZE_KEEP_SHORT, "short", corto, "max", largoMaximo);
 
-        return "El área son " + widthInChunks() + "x" + heightInChunks() + " chunks, " + total
-            + " en total, y el tope está en " + MAXIMO_DE_CHUNKS + ". No se recorta a espaldas de"
-            + " nadie: un barrido que se guardara un trozo del rectángulo para sí y luego dijera"
-            + " «terminado» dejaría terreno sin mirar dado por peinado, que es justo lo que este"
-            + " módulo existe para no hacer. " + queBajar + ". Acerca chunk-x-1 a chunk-x-2, o"
-            + " chunk-z-1 a chunk-z-2. Para hacerse una idea: el tope son más de veinte horas de"
-            + " vuelo, y la caja entera que has cruzado en meses cabe veinte veces dentro de él, así"
-            + " que pasarse suele ser un dedo de más al teclear una coordenada.";
+        return Msg.of(SweepText.OVERSIZE, "width", widthInChunks(), "height", heightInChunks(), "total", total,
+            "max", MAXIMO_DE_CHUNKS, "fix", queBajar);
     }
 
     /** Tamaño del rectángulo en bloques del Overworld, para que el jugador vea qué área real cubre. */
-    public String overworldEquivalent() {
+    public Msg overworldEquivalent() {
         long anchoBloques = (long) widthInChunks() * BLOQUES_POR_CHUNK * RATIO_NETHER_OVERWORLD;
         long altoBloques = (long) heightInChunks() * BLOQUES_POR_CHUNK * RATIO_NETHER_OVERWORLD;
-        return anchoBloques + "x" + altoBloques + " bloques del Overworld";
+        return Msg.of(SweepText.OVERWORLD_EQUIVALENT, "width", anchoBloques, "height", altoBloques);
     }
 }

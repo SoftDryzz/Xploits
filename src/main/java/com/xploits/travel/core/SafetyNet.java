@@ -1,5 +1,7 @@
 package com.xploits.travel.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 /**
  * Las reglas puras de la red de seguridad (spec AutoTravel §7): qué prefijos se pueden vigilar, qué
  * texto saliente es un comando de Baritone de los que dirigimos, y qué se le dice al jugador cuando
@@ -45,7 +47,7 @@ public final class SafetyNet {
     public static String verbo(String texto) {
         if (texto == null) throw new IllegalArgumentException("un texto saliente no puede ser nulo");
         String limpio = texto.strip();
-        if (limpio.isEmpty()) return "(vacío)";
+        if (limpio.isEmpty()) return "(vacío)"; // i18n: allowed (SafetyNet.verbo output is not player text per the task-5 brief)
         return limpio.split("\\s+", 2)[0];
     }
 
@@ -84,25 +86,10 @@ public final class SafetyNet {
      * funcionando acotado; se rechaza lo que no</i>, y un prefijo con barra no funciona de ninguna
      * manera. Se rechaza al lanzar, antes de armar la red y antes de mandar un solo comando.
      */
-    public static String prefixRejection(String prefix) {
-        if (prefix == null || prefix.isEmpty()) {
-            return "el prefijo de Baritone está vacío: los comandos saldrían al servidor como chat plano "
-                + "-\"set elytraAutoJump true\" tal cual- y la red no tendría por dónde reconocerlos. "
-                + "Pon en baritone-prefix el prefijo que Baritone escucha, de fábrica \"#\"";
-        }
-        if (prefix.isBlank()) {
-            return "el prefijo de Baritone es solo espacios: no distingue un comando de una frase que empiece "
-                + "por espacio, así que ni Baritone lo reconocería como suyo ni la red podría vigilarlo. "
-                + "Pon en baritone-prefix el prefijo que Baritone escucha, de fábrica \"#\"";
-        }
-        if (prefix.startsWith("/")) {
-            return "el prefijo de Baritone empieza por barra (\"" + prefix + "\"), y con barra no funciona nada: "
-                + "el cliente manda por el camino de comando todo lo que empiece por \"/\", que es justo el que "
-                + "Baritone no engancha, así que los comandos irían al servidor en vez de a Baritone; y la red "
-                + "cancelaría de paso todos los demás comandos con barra mientras durase el viaje, el \"/tpy\" de "
-                + "auto-tpy y los susurros de kit-requester incluidos. "
-                + "Pon en baritone-prefix el prefijo que Baritone escucha, de fábrica \"#\"";
-        }
+    public static Msg prefixRejection(String prefix) {
+        if (prefix == null || prefix.isEmpty()) return Msg.of(TravelText.PREFIX_EMPTY);
+        if (prefix.isBlank()) return Msg.of(TravelText.PREFIX_BLANK);
+        if (prefix.startsWith("/")) return Msg.of(TravelText.PREFIX_SLASH, "prefix", prefix);
         return null;
     }
 
@@ -133,25 +120,11 @@ public final class SafetyNet {
          *
          * @param prefix el prefijo con el que se intentó hablarle a Baritone
          */
-        public String warning(String prefix) {
+        public Msg warning(String prefix) {
             return switch (this) {
                 case ENTREGADA -> null;
-                case CANCELADA -> "la restauración NO ha llegado a Baritone: la red ha tenido que cancelar mis "
-                    + "propios comandos, así que ni el \"" + prefix + "cancel\" ni los cinco ajustes han salido "
-                    + "de tu cliente. Baritone puede seguir volando por su cuenta, y ya sin vigilancia de atasco, "
-                    + "sin aviso de fuegos y sin nadie que le cambie el objetivo; y elytraAutoSwap, elytraAutoJump, "
-                    + "elytraAllowEmergencyLand, elytraConserveFireworks y elytraFireworkSpeed se han quedado con "
-                    + "los valores de vuelo, que Baritone guarda en disco para la sesión siguiente. Que la red "
-                    + "tuviera que actuar significa que \"" + prefix + "\" no es el prefijo que Baritone escucha "
-                    + "ahora, o que no hay instancia suya ligada a tu jugador: escribe \"cancel\" a mano con el "
-                    + "prefijo que Baritone tenga de verdad -de fábrica \"#cancel\"- y repasa esos cinco ajustes "
-                    + "con \"#set nombre valor\"";
-                case SIN_JUGADOR -> "la restauración no ha salido: ya no había jugador al que mandarle nada, así "
-                    + "que ni el \"cancel\" ni los cinco ajustes han llegado a Baritone. elytraAutoSwap, "
-                    + "elytraAutoJump, elytraAllowEmergencyLand, elytraConserveFireworks y elytraFireworkSpeed se "
-                    + "han quedado con los valores de vuelo, y Baritone los guarda en disco para la sesión "
-                    + "siguiente: al volver a entrar, repásalos a mano con \"" + prefix + "set nombre valor\" "
-                    + "antes de contar con ellos";
+                case CANCELADA -> Msg.of(TravelText.RESTORATION_CANCELLED, "prefix", prefix);
+                case SIN_JUGADOR -> Msg.of(TravelText.RESTORATION_NO_PLAYER, "prefix", prefix);
             };
         }
     }

@@ -1,5 +1,7 @@
 package com.xploits.travel.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.List;
 
 /**
@@ -9,12 +11,12 @@ import java.util.List;
  * <p>Una ruta rechazada lleva siempre la lista de waypoints vacía: nadie debe leer {@code
  * waypoints()} de una ruta rechazada esperando encontrar algo utilizable.
  */
-public record Route(List<Waypoint> waypoints, String rejection) {
+public record Route(List<Waypoint> waypoints, Msg rejection) {
     public Route {
         waypoints = List.copyOf(waypoints);
         if (rejection == null && waypoints.isEmpty()) {
             throw new IllegalArgumentException(
-                "una ruta aceptada no puede tener la lista de waypoints vacía: nadie sabría interpretarla");
+                "una ruta aceptada no puede tener la lista de waypoints vacía: nadie sabría interpretarla"); // i18n: allowed (exception message, continuation line)
         }
     }
 
@@ -24,7 +26,7 @@ public record Route(List<Waypoint> waypoints, String rejection) {
     }
 
     /** Una ruta rechazada: sin waypoints, con el motivo del rechazo. */
-    public static Route rejected(String reason) {
+    public static Route rejected(Msg reason) {
         return new Route(List.of(), reason);
     }
 

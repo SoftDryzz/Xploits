@@ -6,6 +6,26 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- A language selector: the `xploits` module's `language` setting (`Auto` / `Español` / `English`)
+  and `.xploits language auto|es|en` to read or change it. `Auto` follows Minecraft's language —
+  any `es_*` gives Spanish, anything else gives English. Chat, toasts and the console window switch
+  at once; ClickGUI descriptions after a restart. Every addon text now exists in both languages.
+
+### Changed
+
+- The console's `vivo.log` is format version 2. A console window left open from 0.2.0 must be
+  closed and reopened to pick up the new format; the window takes its language at launch and
+  follows later changes.
+- Numbers in addon text now use the active language's decimal separator (`18,5` in Spanish,
+  `18.5` in English).
+
+### Upgrade note
+
+With Minecraft in English, the addon now starts in English by default. If you want Spanish from
+the start, set it once with `.xploits language es`.
+
 ## [0.2.0] — 2026-09-23
 
 First numbered release. It describes everything Xploits does at this point.

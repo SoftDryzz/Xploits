@@ -1,5 +1,7 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,13 +48,13 @@ public final class SweepPlanner {
      * terminado. Lo que no puede existir es lo contrario -un plan rechazado que traiga pasadas-,
      * porque quien leyera solo la lista volaría un barrido que se había rechazado.
      */
-    public record SweepPlan(List<Lane> lanes, String rejection) {
+    public record SweepPlan(List<Lane> lanes, Msg rejection) {
         public SweepPlan {
             lanes = List.copyOf(lanes);
             if (rejection != null && !lanes.isEmpty()) {
                 throw new IllegalArgumentException(
-                    "un plan rechazado no puede traer pasadas: quien leyera solo la lista volaría"
-                        + " un barrido que se había rechazado");
+                    "un plan rechazado no puede traer pasadas: quien leyera solo la lista volaría" // i18n: allowed (exception message, continuation line)
+                        + " un barrido que se había rechazado"); // i18n: allowed (exception message, continuation line)
             }
         }
 
@@ -62,7 +64,7 @@ public final class SweepPlanner {
         }
 
         /** Un plan rechazado: sin pasadas, con el motivo. */
-        public static SweepPlan rejected(String reason) {
+        public static SweepPlan rejected(Msg reason) {
             return new SweepPlan(List.of(), reason);
         }
 
@@ -253,19 +255,8 @@ public final class SweepPlanner {
      * que el módulo se inventa deja franjas sin mirar y las marca como peinadas igual. Degradar aquí
      * sería contar en silencio la única mentira que este módulo no puede contar.
      */
-    private static String anchuraInservible(int laneWidthInChunks) {
-        String queHaria = laneWidthInChunks == 0
-            ? "no avanza ni una banda: cada pasada saldría encima de la anterior y el recorrido del"
-                + " área no terminaría nunca"
-            : "avanza hacia atrás: las bandas se irían saliendo del área por el borde contrario y el"
-                + " rectángulo no llegaría a recorrerse entero";
-        return "El barrido con la anchura de pasada -el ajuste lane-width- en " + laneWidthInChunks
-            + " chunks " + queHaria
-            + ". Degradarla a 1 chunk en silencio sería peor que pararse: el barrido volaría con una"
-            + " separación inventada, dejaría franjas sin mirar y las marcaría como peinadas igual."
-            + " Sube lane-width a 1 chunk o más. Normalmente no se teclea -se deja en 0 y sale medida"
-            + " del flujo de chunks que manda el servidor-, así que si ha llegado aquí en "
-            + laneWidthInChunks + " es que la medida todavía no tiene muestras o que"
-            + " lane-width-margin la ha dejado en eso.";
+    private static Msg anchuraInservible(int laneWidthInChunks) {
+        SweepText queHaria = laneWidthInChunks == 0 ? SweepText.LANE_WIDTH_ZERO : SweepText.LANE_WIDTH_NEGATIVE;
+        return Msg.of(SweepText.UNUSABLE_LANE_WIDTH, "width", laneWidthInChunks, "effect", queHaria);
     }
 }

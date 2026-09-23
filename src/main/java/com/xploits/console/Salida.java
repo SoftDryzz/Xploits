@@ -1,8 +1,11 @@
 package com.xploits.console;
 
 import com.xploits.console.core.Centinela;
+import com.xploits.console.core.ConsoleText;
 import com.xploits.console.core.Instantanea;
 import com.xploits.console.core.Nivel;
+import com.xploits.shared.Texts;
+import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +27,7 @@ public final class Salida {
     public static final String SESION = Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
 
     private static final AtomicLong SEQ = new AtomicLong();
-    private static final Queue<String> ALERTAS = new ConcurrentLinkedQueue<>();
+    private static final Queue<Msg> ALERTAS = new ConcurrentLinkedQueue<>();
     private static final AtomicBoolean CENTINELA_AVISADO = new AtomicBoolean();
     private static final AtomicBoolean GANCHO = new AtomicBoolean();
     private static volatile Sumidero activo;
@@ -47,9 +50,12 @@ public final class Salida {
     public static void mensaje(Nivel nivel, String fuente, String texto) {
         Sumidero s = activo;
         if (s == null) return;
-        Centinela.Veredicto v = Centinela.revisar(fuente, texto);
-        if (v.retenido()) avisarCentinela(fuente);
-        s.mensaje(nivel, fuente, v.texto());
+        String escrito = texto;
+        if (Centinela.sospecha(texto)) {
+            avisarCentinela(fuente);
+            escrito = Texts.render(Centinela.retenido(fuente));
+        }
+        s.mensaje(nivel, fuente, escrito);
     }
 
     public static void instantanea(Instantanea foto) {
@@ -59,7 +65,7 @@ public final class Salida {
         for (Instantanea.EstadoModulo m : foto.modulos()) {
             if (Centinela.sospecha(m.ahora())) {
                 avisarCentinela(m.nombre());
-                modulos.add(new Instantanea.EstadoModulo(m.nombre(), m.activo(), "[retenido]"));
+                modulos.add(new Instantanea.EstadoModulo(m.nombre(), m.activo(), Texts.render(ConsoleText.HELD_SHORT)));
             } else {
                 modulos.add(m);
             }
@@ -69,17 +75,16 @@ public final class Salida {
 
     private static void avisarCentinela(String fuente) {
         if (CENTINELA_AVISADO.compareAndSet(false, true)) {
-            alertar("Un mensaje de " + fuente + " parecía llevar coordenadas y no iba marcado: no ha llegado a la consola "
-                + "ni a su fichero. Es un fallo del addon; avisa.");
+            alertar(Msg.of(ConsoleText.UNMARKED_COORDINATES, "source", fuente));
         }
     }
 
-    static void alertar(String texto) {
+    static void alertar(Msg texto) {
         ALERTAS.add(texto);
     }
 
     /** La siguiente alerta por repartir, o null. Se reparte desde el hilo del juego. */
-    static String alertaPendiente() {
+    static Msg alertaPendiente() {
         return ALERTAS.poll();
     }
 

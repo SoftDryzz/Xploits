@@ -30,15 +30,15 @@ public final class AllyPolicy {
         /** No está en ninguna de las tres listas: objetivo válido. */
         AJENO(null),
         /** Amigo de Meteor (.friends add). */
-        AMIGO("es amigo de Meteor"),
+        AMIGO(PvpText.ALLY_FRIEND),
         /** Courier de la lista known-couriers de kit-requester. */
-        COURIER("es courier de kit-requester"),
+        COURIER(PvpText.ALLY_COURIER),
         /** Nombre de la lista users de auto-tpy. */
-        USUARIO_TPY("está en la lista users de auto-tpy");
+        USUARIO_TPY(PvpText.ALLY_TPY_USER);
 
-        private final String reason;
+        private final PvpText reason;
 
-        Allegiance(String reason) {
+        Allegiance(PvpText reason) {
             this.reason = reason;
         }
 
@@ -48,8 +48,8 @@ public final class AllyPolicy {
         }
 
         /** Por qué no se le ataca, para el aviso y para el estado. Vacío en {@link #AJENO}. */
-        public String reason() {
-            return reason == null ? "" : reason;
+        public PvpText reason() {
+            return reason == null ? PvpText.NOTHING : reason;
         }
     }
 

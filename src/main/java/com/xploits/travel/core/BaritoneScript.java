@@ -130,7 +130,7 @@ public final class BaritoneScript {
     private static void requirePrefix(String prefix) {
         if (prefix == null || prefix.isEmpty()) {
             throw new IllegalArgumentException(
-                "el prefijo de Baritone no puede estar vacío: los comandos saldrían como chat plano al servidor");
+                "el prefijo de Baritone no puede estar vacío: los comandos saldrían como chat plano al servidor"); // i18n: allowed (exception message, continuation line)
         }
     }
 

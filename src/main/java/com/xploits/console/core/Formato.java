@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+
 import java.util.IllegalFormatException;
 
 /**
@@ -15,11 +17,11 @@ public final class Formato {
     public record Resultado(String texto, boolean roto) {
     }
 
-    public static Resultado aplicar(String plantilla, Object... args) {
+    public static Resultado aplicar(Catalog textos, String plantilla, Object... args) {
         try {
             return new Resultado(String.format(plantilla, args), false);
         } catch (IllegalFormatException e) {
-            return new Resultado(plantilla + " [formato roto: " + e.getClass().getSimpleName() + "]", true);
+            return new Resultado(plantilla + " " + textos.render(ConsoleText.BROKEN_FORMAT, "error", e.getClass().getSimpleName()), true);
         }
     }
 }

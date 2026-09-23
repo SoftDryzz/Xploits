@@ -3,13 +3,16 @@ package com.xploits.stash;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.Nivel;
 import com.xploits.shared.XploitsModule;
-import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.Texts;
+import com.xploits.shared.core.PositionedMsg;
+import com.xploits.shared.core.i18n.Msg;
 import com.xploits.stash.core.ContainerKey;
 import com.xploits.stash.core.ContainerSnapshot;
 import com.xploits.stash.core.ContainerType;
 import com.xploits.stash.core.NestedShulker;
 import com.xploits.stash.core.StashIndex;
 import com.xploits.stash.core.StashStore;
+import com.xploits.stash.core.StashText;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
@@ -57,7 +60,7 @@ public class StashKeeper extends XploitsModule {
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local cada vez que se vuelca al índice el contenido de un contenedor, sea nuevo o ya conocido.")
+        .description(Texts.startupText(StashText.SETTING_NOTIFY))
         .defaultValue(false)
         .build()
     );
@@ -87,7 +90,7 @@ public class StashKeeper extends XploitsModule {
     private boolean saveDisabled;
 
     public StashKeeper() {
-        super(XploitsAddon.CATEGORY, "stash-keeper", "Apunta qué hay en tus contenedores. Nunca mueve nada.");
+        super(XploitsAddon.CATEGORY, "stash-keeper", Texts.startupText(StashText.MODULE_DESC));
     }
 
     public StashIndex index() {
@@ -105,8 +108,8 @@ public class StashKeeper extends XploitsModule {
             // No seguir con un índice vacío: eso es lo que borraría el archivo corrupto en el
             // próximo guardado. Se avisa, se deja el módulo sin store (saveNow() no hace nada sin
             // uno) y se apaga solo, igual que KitRequester.onActivate() ante el mismo problema.
-            errorPrivado(new TextoConPosicion(String.format("No se pudo leer el índice: %s", e.getMessage()),
-                "No se pudo leer el índice de stash: el fichero está corrupto o no se puede leer. El detalle, solo en el chat."));
+            errorPrivado(new PositionedMsg(Msg.of(StashText.READ_FAILED, "detail", String.valueOf(e.getMessage())),
+                Msg.of(StashText.READ_FAILED_LOG)));
             index = new StashIndex();
             store = null;
             toggle();
@@ -170,8 +173,7 @@ public class StashKeeper extends XploitsModule {
     private void warnUnindexed(int syncId) {
         if (unindexedWarnedSyncId != null && unindexedWarnedSyncId == syncId) return;
         unindexedWarnedSyncId = syncId;
-        warning("Este contenedor no se ha indexado. Si es un cofre o un barril, puedes volver a abrirlo; "
-            + "los dispensadores, goteros y cofres de minecart o barca no se indexan nunca.");
+        warning(StashText.NOT_INDEXED);
     }
 
     @EventHandler
@@ -271,10 +273,10 @@ public class StashKeeper extends XploitsModule {
             dirty = true;
             if (notify.get()) {
                 // consola: registrado aparte
-                ChatUtils.info("Xploits", "Indexado %s (%d tipos, %d shulkers).",
-                    openKey.id(), openItems.size(), openNested.size());
-                registrar(Nivel.INFO, String.format("Indexado un contenedor (%s, %d tipos, %d shulkers).",
-                    openKey.sinPosicion(null, null, null), openItems.size(), openNested.size()));
+                ChatUtils.info("Xploits", "%s", Texts.render(StashText.INDEXED, // i18n: allowed (chat prefix and format)
+                    "container", openKey.id(), "types", openItems.size(), "shulkers", openNested.size()));
+                registrar(Nivel.INFO, Msg.of(StashText.INDEXED_LOG,
+                    "where", openKey.sinPosicion(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
             }
         }
         clearOpen();
@@ -304,11 +306,9 @@ public class StashKeeper extends XploitsModule {
                 // nueva cada SAVE_EVERY_TICKS para siempre. Un solo aviso y se deja de intentar
                 // hasta la próxima activación.
                 saveDisabled = true;
-                errorPrivado(new TextoConPosicion(
-                    String.format("No se pudo guardar el índice tras %d intentos seguidos (%s). Dejo de intentarlo hasta que reactives stash-keeper.",
-                        saveFailures, e.getMessage()),
-                    String.format("No se pudo guardar el índice de stash tras %d intentos seguidos. Dejo de intentarlo hasta que reactives stash-keeper. El detalle, solo en el chat.",
-                        saveFailures)));
+                errorPrivado(new PositionedMsg(
+                    Msg.of(StashText.SAVE_FAILED, "attempts", saveFailures, "detail", String.valueOf(e.getMessage())),
+                    Msg.of(StashText.SAVE_FAILED_LOG, "attempts", saveFailures)));
             }
         }
     }
@@ -351,13 +351,12 @@ public class StashKeeper extends XploitsModule {
             .resolve("xploits").resolve("stash").resolve(Utils.getFileWorldName()).resolve("index.json");
     }
 
-    public String status() {
-        return String.format("%d contenedores indexados, %d shulkers dentro. Recuerda: los cofres solo entran al abrirlos; los shulkers, con verlos.",
-            index.size(), index.totalShulkers());
+    public Msg status() {
+        return Msg.of(StashText.STATUS, "containers", index.size(), "shulkers", index.totalShulkers());
     }
 
     @Override
     public String ahora() {
-        return index.size() + " contenedores";
+        return Texts.render(StashText.NOW_CONTAINERS, "count", index.size());
     }
 }

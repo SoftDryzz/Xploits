@@ -1,5 +1,7 @@
 package com.xploits.pvp.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -270,27 +272,23 @@ public final class ActionWatch {
      * los sospechosos. Con varios -solo puede pasar con la obsidiana- se dice además, con todas las
      * letras, que el veredicto es conjunto y por qué no se puede repartir.
      */
-    public static String reason(Idle idle) {
-        String material = material(idle.resource());
+    public static Msg reason(Idle idle) {
+        PvpText material = material(idle.resource());
         if (!idle.joint()) {
             ManagedModule module = idle.modules().getFirst();
-            return module.name() + " lleva " + seconds(idle) + " s encendido, con enemigo delante y "
-                + material + " de sobra, sin gastar nada. No lo apago -" + innocent(module)
-                + "-, pero si no es eso, los sospechosos son " + suspects(module) + ".";
+            return Msg.of(PvpText.IDLE_ALONE, "module", module.name(), "seconds", seconds(idle),
+                "material", material, "innocent", innocent(module), "suspects", suspects(module));
         }
 
         List<String> names = new ArrayList<>();
-        List<String> tails = new ArrayList<>();
+        Object tails = null;
         for (ManagedModule module : idle.modules()) {
             names.add(module.name());
-            tails.add(module.name() + ": " + suspects(module));
+            Msg tail = Msg.of(PvpText.SUSPECTS_OF, "module", module.name(), "suspects", suspects(module));
+            tails = tails == null ? tail : Msg.of(PvpText.JOIN_SEMICOLON, "first", tails, "rest", tail);
         }
-        return join(names) + " llevan " + seconds(idle) + " s encendidos, con enemigo delante y "
-            + material + " de sobra, y la pila no ha bajado. No puedo decirte cuál de los "
-            + idle.modules().size() + " falla, y con esta medida no se puede: el inventario dice "
-            + "cuánta " + material + " queda, no quién la colocó, así que lo único que esto afirma es "
-            + "que no ha colocado ninguno. No apago ninguno. Sospechosos — "
-            + String.join("; ", tails) + ".";
+        return Msg.of(PvpText.IDLE_TOGETHER, "modules", join(names), "seconds", seconds(idle),
+            "material", material, "count", idle.modules().size(), "suspects", tails);
     }
 
     /** Los segundos que lleva el veredicto, como se leen en el aviso. */
@@ -298,10 +296,14 @@ public final class ActionWatch {
         return idle.ticks() / TICKS_PER_SECOND;
     }
 
-    /** "a, b y c", como se enumera en español. */
-    private static String join(List<String> names) {
+    /** "a, b y c", como se enumera en el idioma del jugador. */
+    private static Object join(List<String> names) {
         if (names.size() == 1) return names.getFirst();
-        return String.join(", ", names.subList(0, names.size() - 1)) + " y " + names.getLast();
+        Object head = names.getFirst();
+        for (String name : names.subList(1, names.size() - 1)) {
+            head = Msg.of(PvpText.JOIN_COMMA, "first", head, "rest", name);
+        }
+        return Msg.of(PvpText.JOIN_AND, "first", head, "second", names.getLast());
     }
 
     /**
@@ -317,51 +319,36 @@ public final class ActionWatch {
      * alguien arrinconado que sigue contando como "se aleja", la casilla prevista no cambia y no
      * vuelve a gastar ni una-.
      */
-    private static String innocent(ManagedModule module) {
+    private static PvpText innocent(ManagedModule module) {
         return switch (module.name()) {
-            case "surround" -> "lo más probable es que el surround ya esté completo, y entonces no hay "
-                + "nada que colocar y está bien así";
-            case "hole-filler" -> "lo más probable es que no haya ningún hueco que tapar cerca del "
-                + "objetivo, y entonces está bien así";
-            case "auto-web" -> "lo más probable es que la casilla prevista ya tenga telaraña: una "
-                + "telaraña no se sustituye, así que contra alguien arrinconado que sigue alejándose "
-                + "la casilla no cambia y no hay nada más que colocar";
-            default -> "puede que no haya posición válida ahora mismo";
+            case "surround" -> PvpText.INNOCENT_SURROUND;
+            case "hole-filler" -> PvpText.INNOCENT_HOLE_FILLER;
+            case "auto-web" -> PvpText.INNOCENT_AUTO_WEB;
+            default -> PvpText.INNOCENT_DEFAULT;
         };
     }
 
     /** A qué ajustes mirar, sin afirmar que el culpable esté entre ellos. */
-    private static String suspects(ManagedModule module) {
+    private static PvpText suspects(ManagedModule module) {
         return switch (module.name()) {
-            case "crystal-aura" -> "min-damage (6 de fábrica: contra netherita con Protección IV casi "
-                + "ninguna posición llega a 6 de daño) y support (Disabled de fábrica: sin él no coloca "
-                + "donde no haya ya un bloque debajo)";
-            case "auto-trap" -> "whitelist (de fábrica trae obsidiana y obsidiana llorosa, y el bloque "
-                + "de netherita NO está en ella), place-range y walls-range (4 de fábrica, y manda el "
-                + "segundo en cuanto haya algo por medio) y top-blocks/bottom-blocks";
-            case "auto-web" -> "place-range y walls-range (4 de fábrica), ticks-to-predict (10 de "
-                + "fábrica: telaraña donde estará dentro de medio segundo, no donde está) y doubles "
-                + "(apagado de fábrica)";
-            case "auto-anvil" -> "height (2 de fábrica: el yunque va tres bloques por encima de sus "
-                + "pies, y esa casilla tiene que estar libre) y delay (10 ticks de fábrica entre yunque "
-                + "y yunque)";
-            case "surround" -> "blocks (de fábrica trae obsidiana, obsidiana llorosa y bloque de "
-                + "netherita, y yo solo te cuento la obsidiana) y only-on-ground";
-            case "hole-filler" -> "only-moving (encendido de fábrica, y en las fuentes descarta al que "
-                + "SE MUEVE, no al que está quieto), feet-range (1,5 de fábrica desde los pies del "
-                + "objetivo, ya predichos) e ignore-safe";
-            default -> "sus ajustes de rango y de posición";
+            case "crystal-aura" -> PvpText.SUSPECTS_CRYSTAL_AURA;
+            case "auto-trap" -> PvpText.SUSPECTS_AUTO_TRAP;
+            case "auto-web" -> PvpText.SUSPECTS_AUTO_WEB;
+            case "auto-anvil" -> PvpText.SUSPECTS_AUTO_ANVIL;
+            case "surround" -> PvpText.SUSPECTS_SURROUND;
+            case "hole-filler" -> PvpText.SUSPECTS_HOLE_FILLER;
+            default -> PvpText.SUSPECTS_DEFAULT;
         };
     }
 
-    /** Cómo se llama en español lo que sale de esa pila, para el aviso. */
-    private static String material(Resource resource) {
+    /** Cómo se llama lo que sale de esa pila, para el aviso. */
+    private static PvpText material(Resource resource) {
         return switch (resource) {
-            case CRYSTALS -> "cristales";
-            case OBSIDIAN -> "obsidiana";
-            case WEBS -> "telarañas";
-            case ANVILS -> "yunques";
-            default -> "material";
+            case CRYSTALS -> PvpText.MATERIAL_CRYSTALS;
+            case OBSIDIAN -> PvpText.MATERIAL_OBSIDIAN;
+            case WEBS -> PvpText.MATERIAL_WEBS;
+            case ANVILS -> PvpText.MATERIAL_ANVILS;
+            default -> PvpText.MATERIAL_OTHER;
         };
     }
 }

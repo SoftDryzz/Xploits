@@ -1,5 +1,7 @@
 package com.xploits.stash.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 /**
  * Identidad de un contenedor (spec §4.2). El ender chest tiene clave propia porque es uno solo
  * y viaja contigo; los cofres dobles usan siempre la menor de sus dos posiciones, para que las
@@ -33,12 +35,12 @@ public record ContainerKey(String dimension, int x, int y, int z) {
      * Dónde está, sin coordenadas (spec consola §7): la dimensión y, si el jugador está en la misma,
      * a cuántos bloques en el plano. Para la consola y su fichero, que no pueden llevar posiciones.
      */
-    public String sinPosicion(String dimensionActual, Double jugadorX, Double jugadorZ) {
-        if (isEnder()) return "ender";
+    public Msg sinPosicion(String dimensionActual, Double jugadorX, Double jugadorZ) {
+        if (isEnder()) return Msg.of(StashText.WHERE_ENDER);
         String corta = dimension.startsWith("minecraft:") ? dimension.substring("minecraft:".length()) : dimension;
-        if (jugadorX == null || jugadorZ == null || !dimension.equals(dimensionActual)) return corta;
+        if (jugadorX == null || jugadorZ == null || !dimension.equals(dimensionActual)) return Msg.of(StashText.WHERE_DIMENSION, "dimension", corta);
         double dx = x - jugadorX;
         double dz = z - jugadorZ;
-        return corta + " a " + Math.round(Math.sqrt(dx * dx + dz * dz)) + " bloques";
+        return Msg.of(StashText.WHERE_DISTANCE, "dimension", corta, "blocks", Math.round(Math.sqrt(dx * dx + dz * dz)));
     }
 }

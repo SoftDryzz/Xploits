@@ -1,5 +1,7 @@
 package com.xploits.pvp.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -590,7 +592,7 @@ public final class CombatDirector {
 
         List<ManagedModule> enable = new ArrayList<>();
         List<Skipped> skipped = new ArrayList<>();
-        List<String> warnings = new ArrayList<>();
+        List<Msg> warnings = new ArrayList<>();
         // El reparto de un recurso compartido (I3): lo que queda de cada recurso según se va
         // apartando, y quién se lo llevó, para poder decirlo en el motivo.
         Map<Resource, Integer> remaining = new HashMap<>();
@@ -608,8 +610,7 @@ public final class CombatDirector {
                 // protección no existe, y entonces -y solo entonces- el suelo sigue en pie. El
                 // motivo lo dice entero para que el jugador sepa qué apagar o qué encender.
                 if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraAntiSuicide()) {
-                    skipped.add(new Skipped(module,
-                        "no llevas tótems y el anti-suicide de crystal-aura está apagado"));
+                    skipped.add(new Skipped(module, Msg.of(PvpText.TOTEM_FLOOR)));
                     continue;
                 }
                 // §7: el aura queda fuera del filtro de recursos. Es la única de las dirigidas con
@@ -620,7 +621,7 @@ public final class CombatDirector {
                 belowMinimumTicks.remove(module);
                 enable.add(module);
                 if (snapshot.amountOf(Resource.CRYSTALS) < ManagedModules.CRYSTAL_AURA.minimum()) {
-                    warnings.add("crystal-aura sin cristales: solo romperá los que te pongan.");
+                    warnings.add(Msg.of(PvpText.AURA_NO_CRYSTALS));
                 }
                 continue;
             }
@@ -716,14 +717,17 @@ public final class CombatDirector {
      * lo dice y le pone nombre: aprobar más de lo que hay ya no vale, pero callarse que la pila es
      * compartida tampoco -el jugador no se enteraba de nada y {@code skipped} salía vacío-.
      */
-    private static String shortageReason(ManagedModule module, CombatSnapshot snapshot,
-                                         Map<Resource, Integer> remaining, Map<Resource, List<String>> claimedBy) {
+    private static Msg shortageReason(ManagedModule module, CombatSnapshot snapshot,
+                                      Map<Resource, Integer> remaining, Map<Resource, List<String>> claimedBy) {
         List<String> others = claimedBy.get(module.needs());
         if (others == null || others.isEmpty()) {
-            return "tienes " + snapshot.amountOf(module.needs()) + ", necesita " + module.minimum();
+            return Msg.of(PvpText.SHORTAGE, "have", snapshot.amountOf(module.needs()), "minimum", module.minimum());
         }
-        return "tienes " + snapshot.amountOf(module.needs()) + " y " + String.join(" y ", others)
-            + " ya han apartado: quedan " + left(module.needs(), snapshot, remaining)
-            + " y necesita " + module.minimum();
+        Object joined = others.getFirst();
+        for (String other : others.subList(1, others.size())) {
+            joined = Msg.of(PvpText.JOIN_AND, "first", joined, "second", other);
+        }
+        return Msg.of(PvpText.SHORTAGE_SHARED, "have", snapshot.amountOf(module.needs()), "others", joined,
+            "left", left(module.needs(), snapshot, remaining), "minimum", module.minimum());
     }
 }

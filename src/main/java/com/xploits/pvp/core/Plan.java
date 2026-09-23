@@ -1,5 +1,7 @@
 package com.xploits.pvp.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.List;
 
 /**
@@ -16,7 +18,7 @@ import java.util.List;
  *                 responder, así que no se apaga por quedarte sin cristales; se avisa
  */
 public record Plan(CombatState state, CombatPosture posture, List<ManagedModule> enable,
-                   List<Skipped> skipped, List<String> warnings) {
+                   List<Skipped> skipped, List<Msg> warnings) {
     public Plan {
         enable = List.copyOf(enable);
         skipped = List.copyOf(skipped);

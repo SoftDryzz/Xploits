@@ -3,6 +3,9 @@ package com.xploits.elytra;
 import com.xploits.XploitsAddon;
 import com.xploits.elytra.core.ElytraCandidate;
 import com.xploits.elytra.core.ElytraPolicy;
+import com.xploits.elytra.core.ElytraText;
+import com.xploits.shared.Texts;
+import com.xploits.shared.core.i18n.Msg;
 import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -36,7 +39,7 @@ public class ElytraReplace extends XploitsModule {
 
     private final Setting<Integer> swapBelow = sgGeneral.add(new IntSetting.Builder()
         .name("swap-below")
-        .description("Cambia la elytra puesta cuando su durabilidad sea igual o menor que este porcentaje.")
+        .description(Texts.startupText(ElytraText.SETTING_SWAP_BELOW))
         .defaultValue(10)
         .range(1, 99)
         .sliderRange(1, 99)
@@ -45,7 +48,7 @@ public class ElytraReplace extends XploitsModule {
 
     private final Setting<Integer> minSpare = sgGeneral.add(new IntSetting.Builder()
         .name("min-spare")
-        .description("Solo se pone una elytra de repuesto si tiene al menos este porcentaje.")
+        .description(Texts.startupText(ElytraText.SETTING_MIN_SPARE))
         .defaultValue(50)
         .range(1, 100)
         .sliderRange(1, 100)
@@ -54,14 +57,14 @@ public class ElytraReplace extends XploitsModule {
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al cambiar de elytra.")
+        .description(Texts.startupText(ElytraText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> notifySound = sgGeneral.add(new BoolSetting.Builder()
         .name("notify-sound")
-        .description("Sonido en el aviso de que no hay repuesto.")
+        .description(Texts.startupText(ElytraText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
@@ -80,7 +83,7 @@ public class ElytraReplace extends XploitsModule {
     private boolean pendingSwapStuckWarned;
 
     public ElytraReplace() {
-        super(XploitsAddon.CATEGORY, "elytra-replace", "Cambia la elytra antes de que se rompa y avisa si no hay repuesto.");
+        super(XploitsAddon.CATEGORY, "elytra-replace", Texts.startupText(ElytraText.MODULE_DESC));
     }
 
     @Override
@@ -134,7 +137,7 @@ public class ElytraReplace extends XploitsModule {
         if (wornPercent == null || wornPercent <= pendingSwapWornPercent) return;
 
         if (notify.get()) {
-            info("Elytra cambiada: la puesta estaba al %d %%.", pendingSwapWornPercent);
+            info(ElytraText.SWAPPED, "percent", pendingSwapWornPercent);
         }
         pendingSwapWornPercent = null;
         pendingSwapStuckWarned = false;
@@ -156,7 +159,7 @@ public class ElytraReplace extends XploitsModule {
         // sola vez de que no está prendiendo, antes de mandarlo otra vez.
         if (pendingSwapWornPercent != null && !pendingSwapStuckWarned) {
             pendingSwapStuckWarned = true;
-            warning("El cambio de elytra no está prendiendo: la pechera sigue al %d %%.", result.wornPercent());
+            warning(ElytraText.SWAP_NOT_TAKING, "percent", result.wornPercent());
         }
 
         InvUtils.move().from(result.slot()).toArmor(CHEST_ARMOR_INDEX);
@@ -170,10 +173,10 @@ public class ElytraReplace extends XploitsModule {
     private void warnNoSpare(int wornPercent, List<ElytraCandidate> candidates, long now) {
         if (!policy.shouldWarnNoSpare(wornPercent, now)) return;
 
-        String message = noSpareMessage(wornPercent, candidates);
-        warning("%s", message);
+        Msg message = noSpareMessage(wornPercent, candidates);
+        warning(message);
 
-        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(message).icon(Items.ELYTRA);
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(Items.ELYTRA);
         // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
         // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que KitRequester.
         if (!notifySound.get()) {
@@ -187,12 +190,11 @@ public class ElytraReplace extends XploitsModule {
      * candidato llegue al mínimo, o que alguno lo alcance pero ninguno esté estrictamente mejor
      * que la puesta (spec §4.3).
      */
-    private String noSpareMessage(int wornPercent, List<ElytraCandidate> candidates) {
+    private Msg noSpareMessage(int wornPercent, List<ElytraCandidate> candidates) {
         boolean anyReachesMinimum = candidates.stream().anyMatch(candidate -> candidate.percent() >= minSpare.get());
         if (!anyReachesMinimum) {
-            return String.format("Elytra al %d %% y ningún repuesto por encima del %d %%.", wornPercent, minSpare.get());
+            return Msg.of(ElytraText.NO_SPARE_ABOVE_MINIMUM, "worn", wornPercent, "minimum", minSpare.get());
         }
-        return String.format("Elytra al %d %% y ningún repuesto mejor que ella, aunque alguno sí llegue al %d %% mínimo.",
-            wornPercent, minSpare.get());
+        return Msg.of(ElytraText.NO_SPARE_BETTER, "worn", wornPercent, "minimum", minSpare.get());
     }
 }

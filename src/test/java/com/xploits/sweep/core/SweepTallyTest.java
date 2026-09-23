@@ -1,5 +1,8 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,6 +21,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * aritmética de rectángulos, no ningún sitio concreto del mundo.
  */
 class SweepTallyTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    /** A text as the player reads it in Spanish, for the tests that look for words and numbers in it. */
+    private static String es(Msg msg) {
+        return msg == null ? "null" : ES.render(msg);
+    }
+
     private static final SweepArea AREA = new SweepArea(0, 0, 9, 9);
 
     @Test
@@ -142,8 +154,8 @@ class SweepTallyTest {
 
         assertEquals(1.0, cuenta.coveredFraction(), 1e-9);
         assertFalse(cuenta.shortOfCoverage(1.0));
-        assertTrue(cuenta.summary().contains("100 %"));
-        assertTrue(cuenta.summary().contains("No falta ninguno"));
+        assertTrue(es(cuenta.summary()).contains("100 %"));
+        assertTrue(es(cuenta.summary()).contains("No falta ninguno"));
     }
 
     @Test
@@ -161,8 +173,8 @@ class SweepTallyTest {
         }
 
         assertEquals(1, cuenta.missing());
-        assertTrue(cuenta.summary().contains("99 %"), cuenta.summary());
-        assertFalse(cuenta.summary().contains("100 %"), cuenta.summary());
+        assertTrue(es(cuenta.summary()).contains("99 %"), es(cuenta.summary()));
+        assertFalse(es(cuenta.summary()).contains("100 %"), es(cuenta.summary()));
     }
 
     @Test
@@ -171,7 +183,7 @@ class SweepTallyTest {
         cuenta.record(5, 5);
         cuenta.record(5, 6);
 
-        String resumen = cuenta.summary();
+        String resumen = es(cuenta.summary());
 
         assertTrue(resumen.contains("12 de 100"), resumen);
         assertTrue(resumen.contains("12 %"), resumen);

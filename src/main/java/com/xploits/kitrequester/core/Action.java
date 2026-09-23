@@ -1,5 +1,7 @@
 package com.xploits.kitrequester.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 /** Lo que OrderMachine pide hacer. KitRequester las ejecuta en orden. */
 public sealed interface Action {
     /** Enviar al servidor: solo "/w SnifferBuddy !kit …" o "/tpy <courier>". */
@@ -7,7 +9,7 @@ public sealed interface Action {
     /** Empezar a vaciar shulkers en el ender chest al alcance. */
     record Deposit() implements Action {}
     /** Aviso local. {@code alert} = toast + sonido + warning; si no, solo info en el chat local. */
-    record Notify(String message, boolean alert) implements Action {}
+    record Notify(Msg message, boolean alert) implements Action {}
     /** Añadir un courier aceptado por confianza al ajuste known-couriers. */
     record LearnCourier(String name) implements Action {}
     /** Guardar progress.json. */

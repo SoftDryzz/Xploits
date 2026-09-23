@@ -2,6 +2,7 @@ package com.xploits.kitrequester.core;
 
 import com.xploits.shared.chat.ChatEvent;
 import com.xploits.shared.chat.ChatPatterns;
+import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -121,18 +122,18 @@ public final class OrderMachine {
                     batch = List.of();
                     state = State.IDLE;
                     progress.nextOrderAt = now + CONFIRM_RETRY_MS;
-                    out.add(new Action.Notify("SnifferBuddy no respondió; reintento en 60 s.", false));
+                    out.add(new Action.Notify(Msg.of(KitText.CONFIRM_TIMEOUT_NOTICE), false));
                     out.add(new Action.Save());
                 }
             }
             case AWAIT_COURIER -> {
                 if (pendingTpa != null && now >= pendingTpaUntil) decidePending(now, true, out);
-                if (state == State.AWAIT_COURIER && now >= deadline) fail(now, "El courier no llegó a tiempo.", out);
+                if (state == State.AWAIT_COURIER && now >= deadline) fail(now, KitText.FAIL_COURIER_LATE, out);
             }
             case AWAIT_DELIVERY -> {
                 if (now >= deadline) {
                     progress.unconfirmed.add(batch);
-                    endOrder(now, "Entrega sin confirmar (a revisar): " + batch, out);
+                    endOrder(now, Msg.of(KitText.DELIVERY_UNCONFIRMED, "batch", batch), out);
                 }
             }
             default -> {
@@ -162,19 +163,21 @@ public final class OrderMachine {
                 if (state == State.AWAIT_CONFIRM) {
                     batch = List.of();
                     state = State.IDLE;
-                    progress.nextOrderAt = now + cooldown.millis() + COOLDOWN_MARGIN_MS;
-                    out.add(new Action.Notify("SnifferBuddy en cooldown; siguiente intento en "
-                        + (cooldown.millis() + COOLDOWN_MARGIN_MS) / 1000 + " s.", false));
+                    long waitMs = cooldown.millis() + COOLDOWN_MARGIN_MS;
+                    progress.nextOrderAt = now + waitMs;
+                    out.add(new Action.Notify(Msg.of(KitText.COOLDOWN_NOTICE, "seconds", waitMs / 1000), false));
                     out.add(new Action.Save());
                 }
             }
             case ChatEvent.Unregistered unregistered -> {
-                if (state == State.AWAIT_CONFIRM) error("SnifferBuddy dice que la cuenta no está registrada.", out);
+                if (state == State.AWAIT_CONFIRM) error(Msg.of(KitText.UNREGISTERED), out);
             }
             case ChatEvent.Usage usage -> {
-                if (state == State.AWAIT_CONFIRM) error("SnifferBuddy no entendió el pedido: " + ChatPatterns.orderCommand(batch), out);
+                if (state == State.AWAIT_CONFIRM) {
+                    error(Msg.of(KitText.USAGE_ERROR, "command", ChatPatterns.orderCommand(batch)), out);
+                }
             }
-            case ChatEvent.UnknownKitbot unknown -> out.add(new Action.Notify("SnifferBuddy: " + unknown.text(), false));
+            case ChatEvent.UnknownKitbot unknown -> out.add(new Action.Notify(Msg.of(KitText.UNKNOWN_KITBOT, "text", unknown.text()), false));
             case ChatEvent.Ready ready -> {
                 if (state == State.AWAIT_COURIER) {
                     readySeen.put(ready.courier(), now);
@@ -191,11 +194,11 @@ public final class OrderMachine {
             case ChatEvent.NotFound notFound -> {
                 if (isFromCourier(notFound.courier())) {
                     progress.notFound.addAll(batch);
-                    endOrder(now, "Kits no encontrados: " + batch, out);
+                    endOrder(now, Msg.of(KitText.NOT_FOUND, "batch", batch), out);
                 }
             }
             case ChatEvent.TimedOut timedOut -> {
-                if (isFromCourier(timedOut.courier())) fail(now, "El courier canceló: la TPA caducó.", out);
+                if (isFromCourier(timedOut.courier())) fail(now, KitText.FAIL_COURIER_CANCELLED, out);
             }
         }
         return out;
@@ -207,13 +210,13 @@ public final class OrderMachine {
         if (ok && freeSlots >= nextBatch().size()) {
             state = State.IDLE;
             consecutiveDepositAborts = 0;
-            out.add(new Action.Notify("Shulkers guardados en el ender chest.", false));
+            out.add(new Action.Notify(Msg.of(KitText.DEPOSIT_SAVED), false));
         } else if (ok) {
             // Se usó el ender chest de verdad y aun así no hay huecos: reintentarlo no cambiaría
             // nada, así que aquí sí es un PAUSED de verdad (spec §6.1).
             state = State.PAUSED;
             consecutiveDepositAborts = 0;
-            out.add(new Action.Notify("No quedan huecos suficientes tras usar el ender chest: pausado.", true));
+            out.add(new Action.Notify(Msg.of(KitText.DEPOSIT_NO_ROOM), true));
         } else {
             // Un aborto (interacción ajena descartada por EnderDepositor, timeout, syncId que ya no
             // coincide...) no significa que sea imposible depositar, solo que este intento concreto
@@ -231,8 +234,7 @@ public final class OrderMachine {
             if (consecutiveDepositAborts >= MAX_DEPOSIT_ABORTS) {
                 consecutiveDepositAborts = 0;
                 state = State.PAUSED;
-                out.add(new Action.Notify("El depósito automático falló " + MAX_DEPOSIT_ABORTS
-                    + " veces seguidas (ender chest bloqueado o una interacción ajena constante): pausado.", true));
+                out.add(new Action.Notify(Msg.of(KitText.DEPOSIT_ABORTS_EXCEEDED, "max", MAX_DEPOSIT_ABORTS), true));
             } else {
                 state = State.IDLE;
             }
@@ -240,23 +242,26 @@ public final class OrderMachine {
         return out;
     }
 
-    public String status(long now) {
+    public Msg status(long now) {
         long waitSeconds = Math.max(0, progress.nextOrderAt - now) / 1000;
-        return "Estado: " + state
-            + " | pedido: " + (batch.isEmpty() ? "-" : batch)
-            + (courier != null ? " | courier: " + courier : "")
-            + " | pendientes: " + queue.pending(progress.resolved()).size()
-            + " | entregados: " + progress.delivered.size()
-            + " | siguiente pedido en: " + waitSeconds + " s";
+        Object batchArg = batch.isEmpty() ? "-" : batch;
+        Msg courierArg = courier != null ? Msg.of(KitText.STATUS_COURIER, "courier", courier) : Msg.of(KitText.NOTHING);
+        return Msg.of(KitText.STATUS,
+            "state", KitText.of(state),
+            "batch", batchArg,
+            "courier", courierArg,
+            "pending", queue.pending(progress.resolved()).size(),
+            "delivered", progress.delivered.size(),
+            "wait", waitSeconds);
     }
 
     private void idle(long now, Context ctx, List<Action> out) {
         List<Integer> next = nextBatch();
         if (next.isEmpty()) {
             state = State.FINISHED;
-            out.add(new Action.Notify("Cola terminada: no quedan kits pendientes.", true));
+            out.add(new Action.Notify(Msg.of(KitText.QUEUE_FINISHED), true));
             out.add(new Action.Save());
-            out.add(new Action.Disable("cola terminada"));
+            out.add(new Action.Disable("queue-finished"));
             return;
         }
         if (now < progress.nextOrderAt || !ctx.kitbotOnline()) return;
@@ -270,8 +275,7 @@ public final class OrderMachine {
                 // vez de que se está esperando, para que status() no calle en silencio (spec §6.1).
                 if (!screenOpenBlockNotified) {
                     screenOpenBlockNotified = true;
-                    out.add(new Action.Notify(
-                        "Inventario lleno y hay una pantalla abierta: espero a que la cierres para depositar.", false));
+                    out.add(new Action.Notify(Msg.of(KitText.SCREEN_OPEN_BLOCKING), false));
                 }
                 return;
             }
@@ -281,7 +285,7 @@ public final class OrderMachine {
                 out.add(new Action.Deposit());
             } else {
                 state = State.PAUSED;
-                out.add(new Action.Notify("Inventario lleno: pausado hasta tener " + next.size() + " huecos libres.", true));
+                out.add(new Action.Notify(Msg.of(KitText.INVENTORY_FULL_PAUSED, "slots", next.size()), true));
             }
             return;
         }
@@ -297,7 +301,7 @@ public final class OrderMachine {
 
     private void onTpa(String requester, long now, List<Action> out) {
         if (state != State.AWAIT_COURIER) {
-            out.add(new Action.Notify("TPA ignorada de " + requester + " (no hay pedido esperando courier).", false));
+            out.add(new Action.Notify(Msg.of(KitText.TPA_IGNORED_NO_ORDER, "requester", requester), false));
             return;
         }
         Config cfg = config.get();
@@ -306,7 +310,7 @@ public final class OrderMachine {
             accept(requester, now, out);
         } else if (!ready && !cfg.knownCouriers().contains(requester)) {
             if (pendingTpa != null && !pendingTpa.equals(requester)) {
-                out.add(new Action.Notify("TPA ignorada de " + pendingTpa + ".", false));
+                out.add(new Action.Notify(Msg.of(KitText.TPA_IGNORED, "requester", pendingTpa), false));
             }
             // Su READY puede llegar justo después de la TPA: se decide al llegar o a los 5 s.
             pendingTpa = requester;
@@ -331,10 +335,9 @@ public final class OrderMachine {
 
     private void rejectNotice(String requester, boolean ready, List<Action> out) {
         if (ready) {
-            out.add(new Action.Notify("Courier desconocido " + requester
-                + " no aceptado; añádelo a known-couriers si es legítimo.", true));
+            out.add(new Action.Notify(Msg.of(KitText.UNKNOWN_COURIER_REJECTED, "requester", requester), true));
         } else {
-            out.add(new Action.Notify("TPA ignorada de " + requester + ".", false));
+            out.add(new Action.Notify(Msg.of(KitText.TPA_IGNORED, "requester", requester), false));
         }
     }
 
@@ -346,8 +349,7 @@ public final class OrderMachine {
         out.add(new Action.SendCommand(ChatPatterns.acceptCommand(requester)));
         if (!config.get().knownCouriers().contains(requester)) {
             out.add(new Action.LearnCourier(requester));
-            out.add(new Action.Notify("Courier nuevo " + requester
-                + " aceptado y añadido a known-couriers (trust-unknown-couriers activo).", true));
+            out.add(new Action.Notify(Msg.of(KitText.NEW_COURIER_LEARNED, "requester", requester), true));
         }
         out.add(new Action.Save());
     }
@@ -362,21 +364,25 @@ public final class OrderMachine {
     }
 
     private void complete(long now, List<Action> out) {
-        if (partialSeen) progress.partial.add(batch);
-        else progress.delivered.addAll(batch);
-        endOrder(now, (partialSeen ? "Entrega parcial: " : "Entregado: ") + batch, out);
+        if (partialSeen) {
+            progress.partial.add(batch);
+            endOrder(now, Msg.of(KitText.DELIVERY_PARTIAL, "batch", batch), out);
+        } else {
+            progress.delivered.addAll(batch);
+            endOrder(now, Msg.of(KitText.DELIVERED, "batch", batch), out);
+        }
     }
 
     /** TIMED_OUT o timeout del courier: suma un fallo por ID; con MAX_FAILURES pasa a skipped. */
-    private void fail(long now, String message, List<Action> out) {
+    private void fail(long now, KitText reasonKey, List<Action> out) {
         for (int id : batch) {
             int failures = progress.failures.merge(id, 1, Integer::sum);
             if (failures >= MAX_FAILURES) progress.skipped.add(id);
         }
-        endOrder(now, message + " Lote " + batch + " de vuelta a la cola.", out);
+        endOrder(now, Msg.of(KitText.FAIL_NOTICE, "reason", Msg.of(reasonKey), "batch", batch), out);
     }
 
-    private void endOrder(long now, String message, List<Action> out) {
+    private void endOrder(long now, Msg message, List<Action> out) {
         long placedAt = progress.activeOrder != null ? progress.activeOrder.placedAt() : now;
         progress.nextOrderAt = placedAt + config.get().intervalMs() + jitterMs.getAsLong();
         progress.activeOrder = null;
@@ -394,12 +400,12 @@ public final class OrderMachine {
         out.add(new Action.Save());
     }
 
-    private void error(String message, List<Action> out) {
+    private void error(Msg message, List<Action> out) {
         batch = List.of();
         state = State.ERROR;
         out.add(new Action.Notify(message, true));
         out.add(new Action.Save());
-        out.add(new Action.Disable(message));
+        out.add(new Action.Disable(message.key().name()));
     }
 
     private List<Integer> nextBatch() {

@@ -3,8 +3,10 @@ package com.xploits.sweep;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
-import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.core.i18n.Msg;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.sweep.core.ChunkPos;
 import com.xploits.sweep.core.Coverage;
 import com.xploits.sweep.core.FuelBudget;
@@ -13,6 +15,7 @@ import com.xploits.sweep.core.SweepArea;
 import com.xploits.sweep.core.SweepPlanner;
 import com.xploits.sweep.core.SweepRoute;
 import com.xploits.sweep.core.SweepTally;
+import com.xploits.sweep.core.SweepText;
 import com.xploits.sweep.core.WidthProbe;
 import com.xploits.travel.AutoTravel;
 import com.xploits.travel.core.BaritoneScript;
@@ -197,7 +200,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Integer> chunkX1 = sgArea.add(new IntSetting.Builder()
         .name("chunk-x-1")
-        .description("Una esquina del rectángulo, coordenada X en CHUNKS del Nether (la de bloque dividida entre 16).")
+        .description(Texts.startupText(SweepText.SETTING_CHUNK_X_1))
         .defaultValue(0)
         .sliderRange(-10_000, 10_000)
         .build()
@@ -205,7 +208,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Integer> chunkZ1 = sgArea.add(new IntSetting.Builder()
         .name("chunk-z-1")
-        .description("Una esquina del rectángulo, coordenada Z en CHUNKS del Nether.")
+        .description(Texts.startupText(SweepText.SETTING_CHUNK_Z_1))
         .defaultValue(0)
         .sliderRange(-10_000, 10_000)
         .build()
@@ -213,7 +216,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Integer> chunkX2 = sgArea.add(new IntSetting.Builder()
         .name("chunk-x-2")
-        .description("La esquina opuesta, coordenada X en CHUNKS del Nether. El orden da igual: se normaliza.")
+        .description(Texts.startupText(SweepText.SETTING_CHUNK_X_2))
         .defaultValue(0)
         .sliderRange(-10_000, 10_000)
         .build()
@@ -221,7 +224,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Integer> chunkZ2 = sgArea.add(new IntSetting.Builder()
         .name("chunk-z-2")
-        .description("La esquina opuesta, coordenada Z en CHUNKS del Nether.")
+        .description(Texts.startupText(SweepText.SETTING_CHUNK_Z_2))
         .defaultValue(0)
         .sliderRange(-10_000, 10_000)
         .build()
@@ -234,10 +237,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Integer> anchuraDePasada = sgPasada.add(new IntSetting.Builder()
         .name("lane-width")
-        .description("Separación entre pasadas, en chunks. Déjalo en 0 y se MIDE del flujo de chunks que manda "
-            + "el servidor, que es lo correcto (spec §5). Cualquier otro valor la fija a mano y desactiva la "
-            + "medida: solo si sabes el alcance real del servidor, porque pasarse deja franjas sin mirar y el "
-            + "barrido las marca como peinadas igual.")
+        .description(Texts.startupText(SweepText.SETTING_LANE_WIDTH))
         .defaultValue(0)
         .min(0)
         .sliderRange(0, 64)
@@ -246,9 +246,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Double> margenDeAnchura = sgPasada.add(new DoubleSetting.Builder()
         .name("lane-width-margin")
-        .description("Qué fracción del radio medido se descuenta como margen. Volar rápido deja huecos aunque "
-            + "la distancia nominal sea correcta, porque los chunks tardan en llegar: 0.2 se queda con el 80 % "
-            + "del radio observado. No se usa si lane-width está fijada a mano.")
+        .description(Texts.startupText(SweepText.SETTING_LANE_WIDTH_MARGIN))
         .defaultValue(0.2)
         .range(0, 0.9)
         .sliderRange(0, 0.9)
@@ -258,9 +256,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Double> margenDeWaypoint = sgPasada.add(new DoubleSetting.Builder()
         .name("waypoint-margin")
-        .description("Cuántos bloques antes de cada vértice se le cambia el objetivo a Baritone, para que no le "
-            + "dé tiempo a aterrizar en él. Un barrido tiene dos vértices por pasada, así que sin esto serían "
-            + "decenas de aterrizajes.")
+        .description(Texts.startupText(SweepText.SETTING_WAYPOINT_MARGIN))
         .defaultValue(RoutePlanner.DEFAULT_WAYPOINT_MARGIN)
         .min(RoutePlanner.MIN_WAYPOINT_MARGIN)
         .sliderRange(RoutePlanner.MIN_WAYPOINT_MARGIN, 500)
@@ -272,8 +268,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Double> reservaDeCohetes = sgCohetes.add(new DoubleSetting.Builder()
         .name("firework-reserve")
-        .description("Margen sobre los cohetes que la proyección dice que hacen falta. 0.2 corta cuando quede un "
-            + "20 % menos de lo necesario, es decir con cohetes todavía en la mano y no al quedarse a cero.")
+        .description(Texts.startupText(SweepText.SETTING_FIREWORK_RESERVE))
         .defaultValue(0.2)
         .min(0)
         .sliderRange(0, 1)
@@ -283,18 +278,14 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Boolean> contarElRegreso = sgCohetes.add(new BoolSetting.Builder()
         .name("count-return-trip")
-        .description("Si el presupuesto de cohetes incluye la vuelta desde el final del barrido hasta donde "
-            + "despegaste. Apagarlo no te deja más cohetes: solo deja de contarlos, y te enteras de que no "
-            + "llegan cuando ya estás lejos.")
+        .description(Texts.startupText(SweepText.SETTING_COUNT_RETURN_TRIP))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> bloquesPorCohete = sgCohetes.add(new DoubleSetting.Builder()
         .name("blocks-per-firework")
-        .description("El gasto medido en barridos anteriores, que es de donde sale la estimación de ANTES de "
-            + "despegar (spec §6). Lo escribe el módulo al terminar cada barrido; en 0 significa que todavía no "
-            + "hay ninguna medida, y entonces se dice que no la hay en vez de enseñar un número inventado.")
+        .description(Texts.startupText(SweepText.SETTING_BLOCKS_PER_FIREWORK))
         .defaultValue(0)
         .min(0)
         .sliderRange(0, 400)
@@ -304,11 +295,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Double> graciaSinProyeccion = sgCohetes.add(new DoubleSetting.Builder()
         .name("no-projection-grace")
-        .description("Cuántos bloques se aguanta volando sin poder proyectar los cohetes antes de cortar. Pasa "
-            + "al principio -hasta la primera medida- y si repones cohetes más a menudo de lo que se mide, que "
-            + "hace caducar el dato. Seguir volando sin proyección es volar sin la protección de cohetes, así "
-            + "que se corta en vez de callarse. El mínimo son tres intervalos de muestreo porque una tasa "
-            + "necesita dos muestras: por debajo, el corte llega antes que la primera medida posible.")
+        .description(Texts.startupText(SweepText.SETTING_NO_PROJECTION_GRACE))
         .defaultValue(5_000)
         .min(GRACIA_MINIMA_SIN_PROYECCION)
         .sliderRange(GRACIA_MINIMA_SIN_PROYECCION, 50_000)
@@ -324,62 +311,56 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<String> prefijo = sgVuelo.add(new StringSetting.Builder()
         .name("baritone-prefix")
-        .description("El prefijo con el que Baritone lee sus comandos. Cámbialo solo si lo has cambiado en Baritone.")
+        .description(Texts.startupText(SweepText.SETTING_BARITONE_PREFIX))
         .defaultValue("#")
         .build()
     );
 
     private final Setting<Boolean> autoSalto = sgVuelo.add(new BoolSetting.Builder()
         .name("auto-jump")
-        .description("elytraAutoJump durante el barrido: que Baritone despegue solo.")
+        .description(Texts.startupText(SweepText.SETTING_AUTO_JUMP))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> autoSaltoEnReposo = sgVuelo.add(new BoolSetting.Builder()
         .name("auto-jump-resting")
-        .description("A qué valor se devuelve elytraAutoJump al terminar. Hay que declararlo: los ajustes de "
-            + "Baritone se pueden escribir pero no leer. De fábrica Baritone lo trae en false.")
+        .description(Texts.startupText(SweepText.SETTING_AUTO_JUMP_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().autoJump())
         .build()
     );
 
     private final Setting<Boolean> aterrizajeDeUrgencia = sgVuelo.add(new BoolSetting.Builder()
         .name("emergency-land")
-        .description("elytraAllowEmergencyLand durante el barrido: que aterrice de urgencia antes que estrellarse.")
+        .description(Texts.startupText(SweepText.SETTING_EMERGENCY_LAND))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> aterrizajeDeUrgenciaEnReposo = sgVuelo.add(new BoolSetting.Builder()
         .name("emergency-land-resting")
-        .description("A qué valor se devuelve elytraAllowEmergencyLand al terminar. De fábrica Baritone lo trae "
-            + "en true.")
+        .description(Texts.startupText(SweepText.SETTING_EMERGENCY_LAND_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().allowEmergencyLand())
         .build()
     );
 
     private final Setting<Boolean> ahorrarCohetes = sgVuelo.add(new BoolSetting.Builder()
         .name("conserve-fireworks")
-        .description("elytraConserveFireworks durante el barrido: gastar menos cohetes a cambio de ir más lento. "
-            + "En un barrido de horas suele compensar.")
+        .description(Texts.startupText(SweepText.SETTING_CONSERVE_FIREWORKS))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> ahorrarCohetesEnReposo = sgVuelo.add(new BoolSetting.Builder()
         .name("conserve-fireworks-resting")
-        .description("A qué valor se devuelve elytraConserveFireworks al terminar. De fábrica Baritone lo trae en "
-            + "false: ponlo en true solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
-            + "vuelos a mano irían más lentos a partir del primer barrido.")
+        .description(Texts.startupText(SweepText.SETTING_CONSERVE_FIREWORKS_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().conserveFireworks())
         .build()
     );
 
     private final Setting<Double> velocidadDeCohete = sgVuelo.add(new DoubleSetting.Builder()
         .name("firework-speed")
-        .description("elytraFireworkSpeed durante el barrido. Volar más rápido que cuando se midió la anchura de "
-            + "pasada abre huecos: para eso está lane-width-margin.")
+        .description(Texts.startupText(SweepText.SETTING_FIREWORK_SPEED))
         .defaultValue(1)
         .min(0)
         .sliderRange(0.5, 3)
@@ -389,7 +370,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Double> velocidadDeCoheteEnReposo = sgVuelo.add(new DoubleSetting.Builder()
         .name("firework-speed-resting")
-        .description("A qué valor se devuelve elytraFireworkSpeed al terminar. De fábrica Baritone lo trae en 1.2.")
+        .description(Texts.startupText(SweepText.SETTING_FIREWORK_SPEED_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().fireworkSpeed())
         .min(0)
         .sliderRange(0.5, 3)
@@ -399,8 +380,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<String> semillaDelNether = sgVuelo.add(new StringSetting.Builder()
         .name("nether-seed")
-        .description("La semilla del Nether, si se conoce. Vacía se deja en paz: sin semilla Baritone apaga la "
-            + "predicción de terreno él solo, que es lo correcto.")
+        .description(Texts.startupText(SweepText.SETTING_NETHER_SEED))
         .defaultValue("")
         .build()
     );
@@ -409,18 +389,14 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Boolean> avisos = sgAvisos.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al lanzar, al cambiar de pasada y al terminar. Los avisos fuertes -la red de "
-            + "seguridad, el atasco, los cohetes y los detectores apagados- salen siempre, lo apagues o no.")
+        .description(Texts.startupText(SweepText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> sueloDeCobertura = sgAvisos.add(new DoubleSetting.Builder()
         .name("coverage-floor")
-        .description("Qué fracción del área tiene que haber llegado de verdad para que el barrido se dé por "
-            + "bueno al terminar. Por debajo de esto el aviso final sale FUERTE en vez de en un info: un barrido "
-            + "que cubrió la mitad no puede parecerse a uno que cubrió todo, porque los dos terminan y solo uno "
-            + "hay que repetirlo. Relanzar el mismo rectángulo replanifica sobre los huecos que queden.")
+        .description(Texts.startupText(SweepText.SETTING_COVERAGE_FLOOR))
         .defaultValue(0.95)
         .range(0, 1)
         .sliderRange(0, 1)
@@ -430,7 +406,7 @@ public class NetherSweep extends XploitsModule {
 
     private final Setting<Boolean> sonidoEnAvisos = sgAvisos.add(new BoolSetting.Builder()
         .name("notify-sound")
-        .description("Sonido en los avisos fuertes.")
+        .description(Texts.startupText(SweepText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
@@ -572,11 +548,7 @@ public class NetherSweep extends XploitsModule {
     private FireworkWatch fireworkWatch = new FireworkWatch(0);
 
     public NetherSweep() {
-        super(XploitsAddon.CATEGORY, "nether-sweep",
-            "Barre un rectángulo del Nether con pasadas de cortacésped para que el terreno pase por delante del "
-                + "cliente, volando solo lo que NewerNewChunks todavía no ha registrado. No detecta nada: de eso "
-                + "se encargan BaseFinder, stash-finder y NewerNewChunks. Encenderlo no vuela: el barrido se "
-                + "lanza con .xploits sweep go.");
+        super(XploitsAddon.CATEGORY, "nether-sweep", Texts.startupText(SweepText.MODULE_DESC));
     }
 
     @Override
@@ -590,15 +562,15 @@ public class NetherSweep extends XploitsModule {
         ultimoTecho = 0;
         resetSweep();
 
-        info("Armado, pero no vuela solo: lanza el barrido con .xploits sweep go");
-        info("Mientras tanto voy midiendo hasta dónde manda chunks el servidor, que es de donde sale la anchura de pasada.");
+        info(SweepText.ARMED);
+        info(SweepText.MEASURING);
     }
 
     @Override
     public void onDeactivate() {
         // Al dejar el mundo también se pasa por aquí, pero para entonces onGameLeft ya ha cerrado el
         // barrido: corre antes por prioridad y finish() es idempotente.
-        finish("nether-sweep se ha apagado", false);
+        finish(SweepText.REASON_MODULE_OFF, false);
         // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin barrido en marcha
         // se comería en silencio todo comando con prefijo que el jugador escribiera a mano.
         disarmNet();
@@ -613,7 +585,7 @@ public class NetherSweep extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
         leavingWorld = true;
-        finish("se ha dejado el mundo", false);
+        finish(SweepText.REASON_LEFT_WORLD, false);
         probe = new WidthProbe();
         ultimoTecho = 0;
     }
@@ -655,8 +627,7 @@ public class NetherSweep extends XploitsModule {
             // manda ahora: exactamente el hueco que el techo existe para cerrar, entrando por la
             // otra puerta. Se tira la medida y se vuelve a medir.
             if (ultimoTecho > 0 && probe.sampleCount() > 0) {
-                info("La distancia de renderizado efectiva ha pasado de %d a %d chunks: tiro la medida de la "
-                    + "anchura de pasada y la vuelvo a tomar.", ultimoTecho, techo);
+                info(SweepText.RENDER_DISTANCE_CHANGED, "from", ultimoTecho, "to", techo);
             }
             ultimoTecho = techo;
             probe = new WidthProbe();
@@ -730,12 +701,10 @@ public class NetherSweep extends XploitsModule {
         if (netCaughtWarned) return;
         netCaughtWarned = true;
 
-        String message = "Baritone NO está interceptando sus comandos: he cancelado \"" + text
-            + "\" antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
+        Msg message = Msg.of(SweepText.NET_CAUGHT, "command", text);
         // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
-        String sinArgumentos = "Baritone NO está interceptando sus comandos: he cancelado un «" + SafetyNet.verbo(text)
-            + "» antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
-        warningPrivado(new TextoConPosicion(message, sinArgumentos));
+        Msg sinArgumentos = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
+        warningPrivado(new PositionedMsg(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -753,13 +722,13 @@ public class NetherSweep extends XploitsModule {
         if (!sweeping) return;
 
         if (mc.player == null || mc.world == null) {
-            finish("se ha perdido el mundo", true);
+            finish(SweepText.REASON_LOST_WORLD, true);
             return;
         }
         if (!mc.player.isAlive()) {
             // No hay evento de muerte en Meteor, así que se observa aquí; el jugador sigue existiendo
             // en la pantalla de muerte, así que la restauración todavía puede hablarle a Baritone.
-            finish("has muerto a mitad del barrido", true);
+            finish(SweepText.REASON_DIED, true);
             return;
         }
 
@@ -775,11 +744,11 @@ public class NetherSweep extends XploitsModule {
         if (distancia <= RoutePlanner.reachedMargin(index, route.size(), margenDeWaypoint.get())) {
             index++;
             if (index >= route.size()) {
-                finish("el barrido ha terminado", false);
+                finish(SweepText.REASON_DONE, false);
                 return;
             }
             if (avisos.get() && index % 2 == 0) {
-                info("Pasada %d de %d.", index / 2 + 1, pasadasDelPlan);
+                info(SweepText.LANE_PROGRESS, "lane", index / 2 + 1, "total", pasadasDelPlan);
             }
             aimAtCurrentWaypoint();
             return;
@@ -789,11 +758,11 @@ public class NetherSweep extends XploitsModule {
         // El índice va en la llamada a propósito: es lo que hace que el salto de distancia al cambiar
         // de waypoint no se lea como cuarenta y cinco segundos sin avanzar.
         if (stallWatch.tick(index, distancia)) {
-            String message = String.format("Sin acercarme al vértice %d en %d s, a %d bloques: corto y restauro.",
-                index + 1, stallWatch.limitSeconds(), Math.round(distancia));
-            warning("%s", message);
+            Msg message = Msg.of(SweepText.STALLED, "index", index + 1, "seconds", stallWatch.limitSeconds(),
+                "distance", Math.round(distancia));
+            warning(message);
             loudToast(message, Items.ELYTRA);
-            finish("atasco", false);
+            finish(SweepText.REASON_STALL, false);
         }
     }
 
@@ -845,11 +814,10 @@ public class NetherSweep extends XploitsModule {
         int cohetes = InvUtils.find(Items.FIREWORK_ROCKET).count();
         if (!fireworkWatch.observe(cohetes)) return;
 
-        String message = cohetes == 0
-            ? "Te has quedado SIN cohetes a mitad del barrido: Baritone no puede seguir impulsándose."
-            : String.format("Te quedan %d cohetes, el aviso está puesto en %d: repón o corta el barrido.",
-                cohetes, fireworkWatch.threshold());
-        warning("%s", message);
+        Msg message = cohetes == 0
+            ? Msg.of(SweepText.OUT_OF_FIREWORKS)
+            : Msg.of(SweepText.LOW_FIREWORKS, "count", cohetes, "threshold", fireworkWatch.threshold());
+        warning(message);
         loudToast(message, Items.FIREWORK_ROCKET);
     }
 
@@ -885,22 +853,17 @@ public class NetherSweep extends XploitsModule {
             if (bloquesSinProyeccion < graciaSinProyeccion.get()) {
                 if (!avisoSinProyeccionDado && bloquesSinProyeccion >= graciaSinProyeccion.get() / 2) {
                     avisoSinProyeccionDado = true;
-                    warning("%s", String.format("Llevo %d bloques sin poder medir el gasto de cohetes: o todavía no "
-                            + "ha bajado ninguno, o repones tan a menudo que la medida ha caducado. Vuelo SIN "
-                            + "proyección de cohetes; si sigo así %d bloques más, corto.",
-                        Math.round(bloquesSinProyeccion),
-                        Math.round(graciaSinProyeccion.get() - bloquesSinProyeccion)));
+                    warning(SweepText.NO_PROJECTION_WARNING, "flown", Math.round(bloquesSinProyeccion),
+                        "left", Math.round(graciaSinProyeccion.get() - bloquesSinProyeccion));
                 }
                 return false;
             }
 
-            String message = String.format("Llevo %d bloques sin poder proyectar los cohetes y no-projection-grace "
-                    + "está en %d: corto el barrido. Seguir sería volar sin la única protección que tienes contra "
-                    + "quedarte tirado lejos de casa, y callármelo sería peor que pararlo.",
-                Math.round(bloquesSinProyeccion), Math.round(graciaSinProyeccion.get()));
-            warning("%s", message);
+            Msg message = Msg.of(SweepText.NO_PROJECTION_CUT, "flown", Math.round(bloquesSinProyeccion),
+                "grace", Math.round(graciaSinProyeccion.get()));
+            warning(message);
             loudToast(message, Items.FIREWORK_ROCKET);
-            finish("no puedo proyectar los cohetes", false);
+            finish(SweepText.REASON_NO_PROJECTION, false);
             return true;
         }
 
@@ -914,19 +877,16 @@ public class NetherSweep extends XploitsModule {
         // Es el único mensaje de corte que llega con el jugador lejos de casa, así que nombra los
         // dos ajustes de los que salen sus números: sin ellos, "unos 420 cohetes" es una cifra que
         // no se sabe de dónde viene y el jugador no tiene qué tocar para la próxima vez.
-        String message = String.format("Los cohetes NO llegan: al ritmo medido de %d bloques por cohete te quedan "
-                + "%d bloques por delante%s, que con el %d %% de firework-reserve son unos %d cohetes, y llevas "
-                + "%d. Corto el barrido aquí en vez de dejarte tirado más lejos. Los dos ajustes que mandan en "
-                + "esta cuenta son firework-reserve, el margen sobre lo que hace falta, y count-return-trip, que "
-                + "ahora mismo %s el regreso hasta donde despegaste -apagarlo no te deja más cohetes, solo deja "
-                + "de contarlos-.",
-            Math.round(tasa.getAsDouble()), Math.round(restante),
-            contarElRegreso.get() ? " contando el regreso" : " SIN contar el regreso",
-            Math.round(reservaDeCohetes.get() * 100), necesarios, cohetes,
-            contarElRegreso.get() ? "SÍ cuenta" : "NO cuenta");
-        warning("%s", message);
+        Msg message = Msg.of(SweepText.FIREWORKS_SHORT, "rate", Math.round(tasa.getAsDouble()),
+            "remaining", Math.round(restante),
+            "return", contarElRegreso.get()
+                ? SweepText.FIREWORKS_SHORT_WITH_RETURN
+                : SweepText.FIREWORKS_SHORT_WITHOUT_RETURN,
+            "reserve", Math.round(reservaDeCohetes.get() * 100), "needed", necesarios, "count", cohetes,
+            "counts", contarElRegreso.get() ? SweepText.RETURN_COUNTED : SweepText.RETURN_NOT_COUNTED);
+        warning(message);
         loudToast(message, Items.FIREWORK_ROCKET);
-        finish("los cohetes no llegan", false);
+        finish(SweepText.REASON_OUT_OF_FIREWORKS, false);
         return true;
     }
 
@@ -948,48 +908,38 @@ public class NetherSweep extends XploitsModule {
      * <p>Los avisos de §8 -detectores apagados, anchura tecleada- salen por el chat <b>antes</b> del
      * despegue y no en el valor de vuelta, porque son varios y cada uno merece su línea.
      */
-    public String start() {
-        if (!isActive()) return "nether-sweep está apagado: enciéndelo antes de lanzar un barrido.";
-        if (sweeping) return "Ya hay un barrido en marcha: córtalo antes de lanzar otro.";
-        String viajeEnMarcha = rechazoPorAutoTravel();
+    public Msg start() {
+        if (!isActive()) return Msg.of(SweepText.START_MODULE_OFF);
+        if (sweeping) return Msg.of(SweepText.START_ALREADY_SWEEPING);
+        Msg viajeEnMarcha = rechazoPorAutoTravel();
         if (viajeEnMarcha != null) return viajeEnMarcha;
-        if (mc.player == null || mc.world == null) return "No hay mundo cargado: no se lanza nada.";
-        if (!mc.player.isAlive()) {
-            return "Estás muerto: reaparece antes de lanzar un barrido, que desde la pantalla de muerte no se vuela.";
-        }
+        if (mc.player == null || mc.world == null) return Msg.of(SweepText.START_NO_WORLD);
+        if (!mc.player.isAlive()) return Msg.of(SweepText.START_DEAD);
         if (!World.NETHER.equals(mc.world.getRegistryKey())) {
             // El módulo entero está construido sobre que un bloque del Nether cubre 64 veces más
             // superficie del Overworld: el área se teclea en chunks del Nether y lo que se anuncia
             // como cobertura equivalente sale de multiplicar por 8. Volarlo en otra dimensión no
             // rompe la geometría, pero convierte ese anuncio en mentira, y es el número por el que
             // el jugador decide si el barrido vale las horas que cuesta.
-            return "No estás en el Nether: este módulo barre el Nether porque ahí cada bloque volado cubre 64 "
-                + "veces más superficie del Overworld, y todo lo que anuncia -el área equivalente, el porqué de "
-                + "volar esto- se apoya en esa cuenta. Cruza un portal y vuelve a lanzarlo.";
+            return Msg.of(SweepText.START_NOT_NETHER);
         }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
             // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
             // Class.forName sobre una clase que el jar ofuscado no expone, así que ahí vale false
             // aunque Baritone esté perfectamente instalado.
-            return "Baritone no está cargado: este módulo vuela con sus comandos y sin él no hay nada que dirigir.";
+            return Msg.of(SweepText.START_NO_BARITONE);
         }
-        if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) {
-            return "No llevas ningún cohete: Baritone se impulsa con ellos y sin ninguno no despega. No se lanza "
-                + "nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.";
-        }
-        if (!wearsElytra()) {
-            return "No llevas elytra puesta: Baritone vuela con ella, y elytra-replace cambia la que lleves pero "
-                + "no te pone ninguna. Ponte una antes de lanzar.";
-        }
-        String chestSwapRejection = chestSwapRejection();
+        if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) return Msg.of(SweepText.START_NO_FIREWORKS);
+        if (!wearsElytra()) return Msg.of(SweepText.START_NO_ELYTRA);
+        Msg chestSwapRejection = chestSwapRejection();
         if (chestSwapRejection != null) return chestSwapRejection;
 
         String launchPrefix = prefijo.get();
-        String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
+        Msg prefixRejection = SafetyNet.prefixRejection(launchPrefix);
         if (prefixRejection != null) {
             // Antes de armar la red y antes del primer comando: armarla sobre un prefijo inservible
             // es tener red sin saber qué vigila.
-            return "No se barre: " + prefixRejection + ".";
+            return Msg.of(SweepText.NOT_SWEEPING_PREFIX, "reason", prefixRejection);
         }
 
         SweepArea area = SweepArea.ofChunks(chunkX1.get(), chunkZ1.get(), chunkX2.get(), chunkZ2.get());
@@ -998,11 +948,10 @@ public class NetherSweep extends XploitsModule {
         // dos recorren el rectángulo entero chunk a chunk en el hilo principal -Coverage.seenIn para
         // contar lo ya visto y SweepPlanner para decidir qué bandas saltarse-. Con un área tecleada
         // de más, el cliente se queda colgado dentro de un comando y ni siquiera llega el rechazo.
-        // El motivo va como argumento de un "%s", como todos.
-        String tamanoRechazo = area.oversizeRejection();
-        if (tamanoRechazo != null) return String.format("No se barre: %s", tamanoRechazo);
+        Msg tamanoRechazo = area.oversizeRejection();
+        if (tamanoRechazo != null) return Msg.of(SweepText.NOT_SWEEPING, "reason", tamanoRechazo);
 
-        String anchuraRechazo = resolverAnchura();
+        Msg anchuraRechazo = resolverAnchura();
         if (anchuraRechazo != null) return anchuraRechazo;
 
         LecturaDeCobertura lectura = leerCobertura();
@@ -1017,13 +966,10 @@ public class NetherSweep extends XploitsModule {
         SweepTally cuenta = SweepTally.of(area, vista);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, anchuraUsada);
-        // El motivo va como ARGUMENTO de un "%s" y nunca como cadena de formato: estos textos llevan
-        // porcentajes y acaban en String.format por el camino del comando.
-        if (plan.isRejected()) return String.format("No se barre: %s", plan.rejection());
+        if (plan.isRejected()) return Msg.of(SweepText.NOT_SWEEPING, "reason", plan.rejection());
         if (plan.lanes().isEmpty()) {
-            return String.format("No hay nada que barrer: los %d chunks del área ya están vistos enteros según "
-                    + "NewerNewChunks (%s). %s",
-                area.chunkCount(), lectura.resumen(), area.overworldEquivalent());
+            return Msg.of(SweepText.NOTHING_TO_SWEEP, "chunks", area.chunkCount(), "reading", lectura.resumen(),
+                "equivalent", area.overworldEquivalent());
         }
 
         Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
@@ -1032,7 +978,7 @@ public class NetherSweep extends XploitsModule {
         // "total" que no incluía la aproximación y que acabó decidiendo si había cohetes.
         SweepRoute ruta = SweepRoute.of(plan.lanes(), aqui, contarElRegreso.get());
 
-        String separacionRechazo = rechazoPorSeparacion(ruta);
+        Msg separacionRechazo = rechazoPorSeparacion(ruta);
         if (separacionRechazo != null) return separacionRechazo;
 
         avisarDeLosDetectores();
@@ -1041,18 +987,13 @@ public class NetherSweep extends XploitsModule {
             // No es "no hay nada registrado": es "ni he mirado". El plan sale igual que si empezara
             // de cero, así que sin decirlo el jugador vuela tres horas repitiendo terreno que lleva
             // meses acumulando sin enterarse de que su cobertura previa no ha entrado en la cuenta.
-            String message = "No he podido saber en qué servidor estás, así que NO he leído la cobertura de "
-                + "NewerNewChunks: esto NO es que no haya nada registrado, es que ni he mirado. Voy a planificar "
-                + "el rectángulo entero, así que si ya habías visto parte de él lo vas a repetir.";
-            warning("%s", message);
+            Msg message = Msg.of(SweepText.UNKNOWN_SERVER);
+            warning(message);
             loudToast(message, Items.BARRIER);
         }
         if (anchuraTecleada) {
-            String message = String.format("lane-width está tecleada a mano en %d chunks, así que el barrido NO "
-                    + "mide la anchura de pasada: si el servidor manda menos que eso, quedarán franjas sin ver y "
-                    + "este barrido las dará por peinadas igual. Pon lane-width en 0 para que se mida sola.",
-                anchuraUsada);
-            warning("%s", message);
+            Msg message = Msg.of(SweepText.TYPED_WIDTH, "width", anchuraUsada);
+            warning(message);
             loudToast(message, Items.BARRIER);
         }
 
@@ -1091,15 +1032,15 @@ public class NetherSweep extends XploitsModule {
         // que son unos segundos andando.
         probe = new WidthProbe();
 
-        return String.format("Barrido lanzado: %d pasadas de %d chunks de anchura (%s) sobre %d chunks del área, "
-                + "de los que %d ya estaban vistos (%s).\n  Vuelo: %d bloques de aproximación + %d de barrido%s "
-                + "= %d bloques.\n  Cobertura equivalente: %s.\n  %s",
-            plan.lanes().size(), anchuraUsada, anchuraTecleada ? "tecleada" : "medida", area.chunkCount(),
-            cuenta.alreadySeen(), lectura.resumen(), Math.round(ruta.approachBlocks()),
-            Math.round(ruta.sweepBlocks()),
-            contarElRegreso.get() ? String.format(" + %d de regreso", Math.round(ruta.returnBlocks())) : "",
-            Math.round(ruta.totalBlocks()), area.overworldEquivalent(),
-            estimacionDeCohetes(ruta.totalBlocks()));
+        return Msg.of(SweepText.LAUNCHED, "lanes", plan.lanes().size(), "width", anchuraUsada,
+            "how", anchuraTecleada ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED, "chunks", area.chunkCount(),
+            "seen", cuenta.alreadySeen(), "reading", lectura.resumen(), "approach", Math.round(ruta.approachBlocks()),
+            "sweep", Math.round(ruta.sweepBlocks()),
+            "return", contarElRegreso.get()
+                ? Msg.of(SweepText.LAUNCHED_RETURN, "blocks", Math.round(ruta.returnBlocks()))
+                : Msg.of(SweepText.NOTHING),
+            "total", Math.round(ruta.totalBlocks()), "equivalent", area.overworldEquivalent(),
+            "estimate", estimacionDeCohetes(ruta.totalBlocks()));
     }
 
     /**
@@ -1111,20 +1052,15 @@ public class NetherSweep extends XploitsModule {
      * sonda todavía no tiene muestras, <b>no se vuela</b>: inventarse la separación es exactamente la
      * forma de acabar con franjas sin mirar creyendo que la zona está limpia.
      */
-    private String resolverAnchura() {
+    private Msg resolverAnchura() {
         if (anchuraDePasada.get() > 0) {
             anchuraUsada = anchuraDePasada.get();
             anchuraTecleada = true;
             return null;
         }
         if (!probe.hasEnoughSamples()) {
-            return String.format("No se barre todavía: la anchura de pasada sale medida del flujo de chunks que "
-                    + "manda el servidor, y solo llevo %d de las %d muestras que hacen falta%s. Deja el módulo "
-                    + "encendido y date una vuelta ANDANDO para que el servidor te mande terreno -volando no "
-                    + "vale: a esa velocidad cada chunk llega cuando ya estás lejos de donde el servidor lo "
-                    + "encoló, y eso mide su cola y no su alcance-. Si sabes su alcance real, ponlo a mano en "
-                    + "lane-width, con el aviso de que ahí ya no se mide nada.",
-                probe.sampleCount(), WidthProbe.MUESTRAS_MINIMAS, descartadas());
+            return Msg.of(SweepText.NOT_ENOUGH_SAMPLES, "samples", probe.sampleCount(),
+                "needed", WidthProbe.MUESTRAS_MINIMAS, "discarded", descartadas());
         }
         anchuraUsada = probe.laneWidthInChunks(margenDeAnchura.get());
         anchuraTecleada = false;
@@ -1155,24 +1091,18 @@ public class NetherSweep extends XploitsModule {
      * lo único que se rechaza es lo que de verdad pierde terreno, y eso solo pasa en un área diminuta
      * por su eje largo, donde «agranda el área» sí es una salida.
      */
-    private String rechazoPorSeparacion(SweepRoute ruta) {
+    private Msg rechazoPorSeparacion(SweepRoute ruta) {
         double minima = SweepRoute.minimumGap(margenDeWaypoint.get());
         double pasada = ruta.shortestLane();
         if (pasada > minima) return null;
 
-        return String.format("No se barre: la pasada más corta del recorrido mide %d bloques y con waypoint-margin "
-                + "en %d hacen falta más de %d. Una pasada así se consume en cuanto se suelta el vértice que la "
-                + "arranca, o sea que NO se volaría nunca y el barrido la daría por peinada igual. Las pasadas van "
-                + "de punta a punta, así que la más corta mide el lado largo del área: agranda el rectángulo por "
-                + "ahí -acerca chunk-x-1 a chunk-x-2, o chunk-z-1 a chunk-z-2, el par que esté más junto- hasta "
-                + "pasar de %d bloques, que son %d chunks. También vale bajar waypoint-margin%s.",
-            Math.round(pasada), Math.round(margenDeWaypoint.get()), Math.round(minima),
-            Math.round(minima), (long) Math.ceil(minima / BLOQUES_POR_CHUNK),
-            pasada > RoutePlanner.MIN_WAYPOINT_MARGIN
-                ? String.format(" por debajo de %d, que su mínimo es %d", Math.round(pasada),
-                    Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN))
-                : String.format(", pero no basta: su mínimo es %d y la pasada ya está por debajo",
-                    Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN)));
+        return Msg.of(SweepText.LANE_TOO_SHORT, "lane", Math.round(pasada),
+            "margin", Math.round(margenDeWaypoint.get()), "minimum", Math.round(minima),
+            "chunks", (long) Math.ceil(minima / BLOQUES_POR_CHUNK),
+            "fix", pasada > RoutePlanner.MIN_WAYPOINT_MARGIN
+                ? Msg.of(SweepText.LANE_TOO_SHORT_LOWER_MARGIN, "lane", Math.round(pasada),
+                    "min", Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN))
+                : Msg.of(SweepText.LANE_TOO_SHORT_MARGIN_NOT_ENOUGH, "min", Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN)));
     }
 
     /**
@@ -1198,22 +1128,14 @@ public class NetherSweep extends XploitsModule {
     private void avisarDeEnlacesCortos(SweepRoute ruta) {
         double enlace = ruta.shortestLink();
         if (enlace <= SweepRoute.minimumGap(margenDeWaypoint.get())) {
-            warning("%s", String.format("El enlace más corto entre dos pasadas mide %d bloques y waypoint-margin "
-                    + "está en %d, así que ese vértice se consumirá sin volarlo: Baritone no hará la esquina, irá "
-                    + "en diagonal desde el final de una pasada hasta el final de la siguiente. La banda se cruza "
-                    + "igual -no se pierde ninguna pasada-, pero sus bordes pasarán más lejos del cliente de lo "
-                    + "previsto. Si quieres las esquinas limpias, baja waypoint-margin o baja lane-width-margin, "
-                    + "que ensancha las pasadas y separa las bandas.",
-                Math.round(enlace), Math.round(margenDeWaypoint.get())));
+            warning(SweepText.LINK_INSIDE_MARGIN, "link", Math.round(enlace),
+                "margin", Math.round(margenDeWaypoint.get()));
             return;
         }
         if (enlace >= RoutePlanner.MIN_WAYPOINT_SPACING) return;
 
-        warning("%s", String.format("El enlace más corto entre dos pasadas mide %d bloques, por debajo de los %d "
-                + "que una elytra vuela como tramo: ahí Baritone se pasará de largo y volverá a por el vértice, "
-                + "así que el barrido irá más lento y gastará más cohetes. No se pierde ninguna pasada, así que "
-                + "vuelo igual.",
-            Math.round(enlace), Math.round(RoutePlanner.MIN_WAYPOINT_SPACING)));
+        warning(SweepText.LINK_TOO_SHORT, "link", Math.round(enlace),
+            "spacing", Math.round(RoutePlanner.MIN_WAYPOINT_SPACING));
     }
 
     /**
@@ -1234,17 +1156,11 @@ public class NetherSweep extends XploitsModule {
      *
      * <p>Es simétrico: la misma guarda está en {@code AutoTravel.start()} mirando hacia aquí.
      */
-    private String rechazoPorAutoTravel() {
+    private Msg rechazoPorAutoTravel() {
         AutoTravel viaje = Modules.get().get(AutoTravel.class);
         if (viaje == null || !viaje.isTravelling()) return null;
 
-        return "auto-travel tiene un viaje en marcha, y los dos dirigen al mismo Baritone: el objetivo de "
-            + "#elytra es uno solo, así que el barrido se lo quitaría, auto-travel vería crecer su distancia y "
-            + "a los 45 s cortaría con su propia restauración -parando el barrido a mitad y devolviendo la "
-            + "velocidad de cohete a su valor de reposo-, y el barrido diagnosticaría un atasco que no existe. "
-            + "Además los dos se prestan elytra-fly y elytra-replace por su cuenta, así que el segundo anotaría "
-            + "como reposo tuyo lo que dejó el primero. Termina el viaje o córtalo con .xploits travel stop, y "
-            + "entonces lanza el barrido.";
+        return Msg.of(SweepText.AUTO_TRAVEL_RUNNING);
     }
 
     /**
@@ -1256,24 +1172,18 @@ public class NetherSweep extends XploitsModule {
      * {@code SweepPlan.totalBlocks()}: ese mide del arranque de la primera pasada al final de la
      * última, y en un barrido lejos de casa la aproximación es la pata más larga de todas.
      */
-    private String estimacionDeCohetes(double bloquesTotales) {
+    private Msg estimacionDeCohetes(double bloquesTotales) {
         int llevas = InvUtils.find(Items.FIREWORK_ROCKET).count();
         double tasa = bloquesPorCohete.get();
         if (tasa <= 0) {
-            return String.format("Cohetes estimados: no hay dato. Nunca he medido tu gasto por bloque, y "
-                    + "enseñarte un número inventado con aspecto de medida sería peor que decírtelo. Llevas %d "
-                    + "cohetes; la proyección real llega al minuto de vuelo, cuando la medición tenga con qué.",
-                llevas);
+            return Msg.of(SweepText.ESTIMATE_NO_DATA, "count", llevas);
         }
         long necesarios = (long) Math.ceil(bloquesTotales / tasa * (1 + reservaDeCohetes.get()));
         if (necesarios <= llevas) {
-            return String.format("Cohetes estimados: unos %d con la reserva, a %d bloques por cohete medidos en "
-                + "barridos anteriores. Llevas %d, que llegan.", necesarios, Math.round(tasa), llevas);
+            return Msg.of(SweepText.ESTIMATE_ENOUGH, "needed", necesarios, "rate", Math.round(tasa), "count", llevas);
         }
-        return String.format("Cohetes estimados: unos %d con la reserva, a %d bloques por cohete medidos en "
-                + "barridos anteriores, y llevas %d: TE FALTAN unos %d. Despego igual porque la estimación es "
-                + "vieja y la medición de este vuelo manda sobre ella, pero cortaré en cuanto la proyección real "
-                + "diga que no llegan.", necesarios, Math.round(tasa), llevas, necesarios - llevas);
+        return Msg.of(SweepText.ESTIMATE_SHORT, "needed", necesarios, "rate", Math.round(tasa), "count", llevas,
+            "missing", necesarios - llevas);
     }
 
     /**
@@ -1297,22 +1207,19 @@ public class NetherSweep extends XploitsModule {
      * reventar con un {@code NoClassDefFoundError} al cargar el módulo.
      */
     private void avisarDeLosDetectores() {
-        avisarDeUnDetector(MODULO_NEWER_NEW_CHUNKS,
-            "sin él ni aprovecho la cobertura que ya tienes -replanifico el área entera y repites terreno ya "
-                + "visto- ni queda rastro de este barrido para la próxima vez");
-        avisarDeUnDetector(MODULO_BASE_FINDER,
-            "sin él este barrido cubre terreno y no registra ninguna base: son horas de vuelo para nada");
-        avisarDeUnDetector(MODULO_STASH_FINDER,
-            "sin él este barrido cubre terreno y no registra ningún contenedor: son horas de vuelo para nada");
+        avisarDeUnDetector(MODULO_NEWER_NEW_CHUNKS, SweepText.DETECTOR_NEWER_NEW_CHUNKS);
+        avisarDeUnDetector(MODULO_BASE_FINDER, SweepText.DETECTOR_BASE_FINDER);
+        avisarDeUnDetector(MODULO_STASH_FINDER, SweepText.DETECTOR_STASH_FINDER);
     }
 
-    private void avisarDeUnDetector(String nombre, String consecuencia) {
+    private void avisarDeUnDetector(String nombre, SweepText consecuencia) {
         Module module = Modules.get().get(nombre);
         if (module != null && module.isActive()) return;
 
-        String estado = module == null ? "no está instalado" : "está apagado";
-        String message = nombre + " " + estado + ", y " + consecuencia + ". Este módulo vuela; no detecta nada.";
-        warning("%s", message);
+        Msg message = Msg.of(SweepText.DETECTOR_WARNING, "name", nombre,
+            "state", module == null ? SweepText.DETECTOR_NOT_INSTALLED : SweepText.DETECTOR_OFF,
+            "consequence", consecuencia);
+        warning(message);
         loudToast(message, Items.BARRIER);
     }
 
@@ -1329,49 +1236,40 @@ public class NetherSweep extends XploitsModule {
      * paso y manda {@code #elytra} dos líneas después. Se rechaza en vez de acotarse porque acotarlo
      * sería tocar a espaldas del jugador un ajuste que Meteor persiste a disco.
      */
-    private String chestSwapRejection() {
+    private Msg chestSwapRejection() {
         ElytraFly module = Modules.get().get(ElytraFly.class);
         if (module == null || !module.isActive()) return null;
 
         ElytraFly.ChestSwapMode mode = module.chestSwap.get();
         if (mode == ElytraFly.ChestSwapMode.Never) return null;
 
-        String consequence = mode == ElytraFly.ChestSwapMode.Always
-            ? "te pone la pechera en el sitio de la elytra en ese mismo instante, y el \"" + prefijo.get()
-                + "elytra\" sale dos líneas después: Baritone no despegaría, y te enterarías por el corte de atasco"
-            : "deja armado un oyente que te quita la elytra en cuanto toques suelo, que es justo el aterrizaje de "
-                + "Baritone: te la quitaría cuando el módulo cree haberlo restaurado todo";
+        Msg consequence = mode == ElytraFly.ChestSwapMode.Always
+            ? Msg.of(SweepText.CHEST_SWAP_ALWAYS, "prefix", prefijo.get())
+            : Msg.of(SweepText.CHEST_SWAP_WAIT_FOR_GROUND);
 
-        return "No se barre: elytra-fly está encendido con chest-swap en " + mode + ", y la preparación tiene que "
-            + "apagarlo porque Baritone declara que su vuelo no funciona con impulso no vanilla. Apagarlo "
-            + consequence + ". Pon chest-swap en Never dentro de elytra-fly, o apaga elytra-fly a mano antes de "
-            + "lanzar.";
+        return Msg.of(SweepText.CHEST_SWAP_REJECTED, "mode", mode.toString(), "consequence", consequence);
     }
 
     /**
      * Deshace una preparación que ya no puede terminar en vuelo y contesta por qué. No se llama a
-     * {@link #finish(String, boolean)} a propósito: aquí no hay ningún barrido que dar por terminado
+     * {@link #finish(SweepText, boolean)} a propósito: aquí no hay ningún barrido que dar por terminado
      * -no se ha mandado ni un {@code goal} ni un {@code elytra}-.
      */
-    private String undoLaunch() {
+    private Msg undoLaunch() {
         sweeping = false;
         SafetyNet.Restoration undone = restore();
-        String pending = undone.warning(activePrefix);
+        Msg pending = undone.warning(activePrefix);
+        if (pending == null) return Msg.of(SweepText.UNDONE);
 
-        String why = "No se barre: preparar el entorno te ha dejado sin elytra puesta, así que Baritone no podría "
-            + "despegar. He deshecho la preparación";
-        if (pending == null) return why + " y el entorno ha quedado como estaba.";
-
-        loudToast("La preparación se ha deshecho pero no ha llegado a Baritone: sus ajustes se han quedado en "
-            + "valores de vuelo. Lee el chat.", Items.BARRIER);
-        return why + ", pero " + pending + ".";
+        loudToast(Msg.of(SweepText.TOAST_UNDONE_NOT_RESTORED), Items.BARRIER);
+        return Msg.of(SweepText.UNDONE_NOT_RESTORED, "pending", pending);
     }
 
     /** Cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
-    public String stop() {
-        if (!sweeping) return "No hay ningún barrido en marcha.";
-        if (finish("lo has cancelado", false).arrived()) return "Barrido cortado y entorno restaurado.";
-        return "Barrido cortado, pero el entorno NO ha quedado restaurado: lee el aviso de arriba.";
+    public Msg stop() {
+        if (!sweeping) return Msg.of(SweepText.STOP_NOT_SWEEPING);
+        if (finish(SweepText.REASON_CANCELLED, false).arrived()) return Msg.of(SweepText.STOP_RESTORED);
+        return Msg.of(SweepText.STOP_NOT_RESTORED);
     }
 
     public boolean isSweeping() {
@@ -1387,7 +1285,9 @@ public class NetherSweep extends XploitsModule {
 
     @Override
     public String ahora() {
-        return sweeping ? "pasada " + Math.min(index / 2 + 1, pasadasDelPlan) + "/" + pasadasDelPlan : "armado";
+        return sweeping
+            ? Texts.render(SweepText.NOW_LANE, "lane", Math.min(index / 2 + 1, pasadasDelPlan), "total", pasadasDelPlan)
+            : Texts.render(SweepText.NOW_ARMED);
     }
 
     /**
@@ -1431,7 +1331,7 @@ public class NetherSweep extends XploitsModule {
      *
      * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después
      */
-    private SafetyNet.Restoration finish(String reason, boolean warn) {
+    private SafetyNet.Restoration finish(SweepText reason, boolean warn) {
         if (!sweeping) return SafetyNet.Restoration.ENTREGADA;
         sweeping = false;
 
@@ -1441,42 +1341,37 @@ public class NetherSweep extends XploitsModule {
         fuel.blocksPerRocket().ifPresent(tasa -> bloquesPorCohete.set(tasa));
 
         // Antes de restaurar: restore() llama a resetSweep() en un finally y ahí la cuenta se tira.
-        String cobertura = tally == null ? null : tally.summary();
+        Msg cobertura = tally == null ? null : tally.summary();
         boolean seQuedoCorto = tally != null && tally.shortOfCoverage(sueloDeCobertura.get());
         int faltan = tally == null ? 0 : tally.missing();
 
         SafetyNet.Restoration restoration = restore();
-        String pending = restoration.warning(activePrefix);
+        Msg pending = restoration.warning(activePrefix);
         warnPendingModules();
 
-        StringBuilder cierre = new StringBuilder("Barrido terminado: ").append(reason);
+        Msg coverage = cobertura == null
+            ? Msg.of(SweepText.NOTHING)
+            : Msg.of(SweepText.FINISHED_COVERAGE, "summary", cobertura);
+        SweepText relaunch = seQuedoCorto ? SweepText.FINISHED_RELAUNCH : SweepText.NOTHING;
         // Emitir no es llegar, y decir "entorno restaurado" sin que haya llegado nada es la mentira
         // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando.
-        cierre.append(pending == null
-            ? ". Entorno restaurado."
-            : ", pero el entorno NO ha quedado restaurado: " + pending + ".");
-        if (cobertura != null) cierre.append(' ').append(cobertura).append('.');
-        if (seQuedoCorto) {
-            cierre.append(" Relanza el mismo rectángulo cuando puedas: NewerNewChunks ha ido anotando lo que sí "
-                + "llegó, así que el barrido se replanifica solo sobre los huecos que queden.");
-        }
-        String message = cierre.toString();
+        Msg message = pending == null
+            ? Msg.of(SweepText.FINISHED, "reason", reason, "coverage", coverage, "relaunch", relaunch)
+            : Msg.of(SweepText.FINISHED_NOT_RESTORED, "reason", reason, "pending", pending, "coverage", coverage,
+                "relaunch", relaunch);
 
         if (pending != null) {
-            warning("%s", message);
-            loudToast("El barrido ha terminado pero la restauración no ha llegado a Baritone: puede seguir volando "
-                + "y sus ajustes se han quedado en valores de vuelo. Lee el chat.", Items.BARRIER);
+            warning(message);
+            loudToast(Msg.of(SweepText.TOAST_FINISHED_NOT_RESTORED), Items.BARRIER);
             return restoration;
         }
         if (seQuedoCorto) {
-            warning("%s", message);
-            loudToast(String.format("El barrido ha terminado sin que llegaran %d chunks del área: NO está peinada "
-                + "entera. Relánzalo sobre el mismo rectángulo y se volará solo lo que falta.", faltan),
-                Items.BARRIER);
+            warning(message);
+            loudToast(Msg.of(SweepText.TOAST_SHORT_OF_COVERAGE, "missing", faltan), Items.BARRIER);
             return restoration;
         }
-        if (warn) warning("%s", message);
-        else if (avisos.get()) info("%s", message);
+        if (warn) warning(message);
+        else if (avisos.get()) info(message);
         return restoration;
     }
 
@@ -1520,19 +1415,16 @@ public class NetherSweep extends XploitsModule {
      * y lo único que el jugador llega a leer es el toast.
      */
     private void warnPendingModules() {
-        StringBuilder names = new StringBuilder();
-        if (elytraFly.hasPending()) names.append(elytraFly.name());
-        if (elytraReplace.hasPending()) {
-            if (!names.isEmpty()) names.append(" y ");
-            names.append(elytraReplace.name());
+        Object names;
+        if (elytraFly.hasPending() && elytraReplace.hasPending()) {
+            names = Msg.of(SweepText.MODULES_BOTH, "first", elytraFly.name(), "second", elytraReplace.name());
         }
-        if (names.isEmpty()) return;
+        else if (elytraFly.hasPending()) names = elytraFly.name();
+        else if (elytraReplace.hasPending()) names = elytraReplace.name();
+        else return;
 
-        String message = "Al salir del mundo no se puede encender ni apagar un módulo de Meteor sin dejarlo "
-            + "suscrito dos veces al bus para el resto de la sesión, así que " + names + " se queda como estaba en "
-            + "vuelo. Se devuelve solo en el primer tick tras volver a entrar; si cierras el cliente antes, "
-            + "repásalo en la ClickGUI.";
-        warning("%s", message);
+        Msg message = Msg.of(SweepText.MODULES_LEFT_AS_IN_FLIGHT, "modules", names);
+        warning(message);
         loudToast(message, Items.ELYTRA);
     }
 
@@ -1651,8 +1543,8 @@ public class NetherSweep extends XploitsModule {
     }
 
     /** La mitad visual de un aviso fuerte: el toast que acompaña al chat. */
-    private void loudToast(String message, Item icon) {
-        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(message).icon(icon);
+    private void loudToast(Msg message, Item icon) {
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(icon);
         // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo
         // dereferencia: NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero.
         if (!sonidoEnAvisos.get()) {
@@ -1661,51 +1553,46 @@ public class NetherSweep extends XploitsModule {
         mc.getToastManager().add(toast.build());
     }
 
-    public String status() {
-        if (!isActive()) return "nether-sweep está apagado.";
+    public Msg status() {
+        if (!isActive()) return Msg.of(SweepText.STATUS_OFF);
 
-        StringBuilder sb = new StringBuilder();
         if (!sweeping) {
-            sb.append("nether-sweep encendido, sin barrido en marcha.");
-            sb.append("\n  anchura de pasada: ").append(descripcionDeLaAnchura());
-            sb.append("\n  gasto medido en barridos anteriores: ").append(bloquesPorCohete.get() > 0
-                ? Math.round(bloquesPorCohete.get()) + " bloques por cohete"
-                : "sin dato todavía");
-            return sb.toString();
+            return Msg.of(SweepText.STATUS_IDLE, "width", descripcionDeLaAnchura(),
+                "rate", bloquesPorCohete.get() > 0
+                    ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(bloquesPorCohete.get()))
+                    : Msg.of(SweepText.STATUS_NO_RATE));
         }
 
-        sb.append("Barriendo: pasada ").append(Math.min(index / 2 + 1, pasadasDelPlan))
-            .append(" de ").append(pasadasDelPlan)
-            .append(" · anchura ").append(anchuraUsada).append(" chunks (")
-            .append(anchuraTecleada ? "tecleada" : "medida").append(")");
-        if (tally != null) {
-            sb.append("\n  ").append(tally.summary());
-        }
-        sb.append("\n  volados ").append(Math.round(bloquesVolados())).append(" bloques");
-        if (mc.player != null) {
-            sb.append(", quedan ").append(Math.round(bloquesRestantes()))
-                .append(contarElRegreso.get() ? " contando el regreso" : " sin contar el regreso");
-        }
+        Msg coverage = tally == null
+            ? Msg.of(SweepText.NOTHING)
+            : Msg.of(SweepText.STATUS_COVERAGE, "summary", tally.summary());
+        Msg left = mc.player == null
+            ? Msg.of(SweepText.NOTHING)
+            : Msg.of(SweepText.STATUS_LEFT, "blocks", Math.round(bloquesRestantes()),
+                "return", contarElRegreso.get() ? SweepText.STATUS_WITH_RETURN : SweepText.STATUS_WITHOUT_RETURN);
         OptionalDouble tasa = fuel.blocksPerRocket();
-        sb.append("\n  gasto de este vuelo: ").append(tasa.isPresent()
-            ? Math.round(tasa.getAsDouble()) + " bloques por cohete"
-            : "sin medida ahora mismo, llevo " + Math.round(bloquesSinProyeccion) + " bloques sin poder proyectar");
-        sb.append("\n  red de seguridad: ").append(netArmed ? "armada" : "DESARMADA");
-        if (netCaughtWarned) sb.append(" y ya ha tenido que cancelar un comando: Baritone no está interceptando");
-        return sb.toString();
+        Msg rate = tasa.isPresent()
+            ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(tasa.getAsDouble()))
+            : Msg.of(SweepText.STATUS_NO_FLIGHT_RATE, "blocks", Math.round(bloquesSinProyeccion));
+        return Msg.of(SweepText.STATUS_SWEEPING, "lane", Math.min(index / 2 + 1, pasadasDelPlan),
+            "total", pasadasDelPlan, "width", anchuraUsada,
+            "how", anchuraTecleada ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED,
+            "coverage", coverage, "flown", Math.round(bloquesVolados()), "left", left, "rate", rate,
+            "net", netArmed ? SweepText.NET_ARMED : SweepText.NET_DISARMED,
+            "caught", netCaughtWarned ? SweepText.STATUS_NET_CAUGHT : SweepText.NOTHING);
     }
 
-    private String descripcionDeLaAnchura() {
+    private Msg descripcionDeLaAnchura() {
         if (anchuraDePasada.get() > 0) {
-            return anchuraDePasada.get() + " chunks, TECLEADA a mano (no se mide nada)";
+            return Msg.of(SweepText.WIDTH_TYPED_DESC, "width", anchuraDePasada.get());
         }
         if (!probe.hasEnoughSamples()) {
-            return String.format("midiéndose todavía, llevo %d de %d muestras del flujo de chunks%s",
-                probe.sampleCount(), WidthProbe.MUESTRAS_MINIMAS, descartadas());
+            return Msg.of(SweepText.WIDTH_MEASURING, "samples", probe.sampleCount(),
+                "needed", WidthProbe.MUESTRAS_MINIMAS, "discarded", descartadas());
         }
-        return String.format("%d chunks, medidos (radio observado %d chunks de un techo de %d, margen %.2f)%s",
-            probe.laneWidthInChunks(margenDeAnchura.get()), probe.observedRadiusInChunks(), ultimoTecho,
-            margenDeAnchura.get(), descartadas());
+        return Msg.of(SweepText.WIDTH_MEASURED_DESC, "width", probe.laneWidthInChunks(margenDeAnchura.get()),
+            "radius", probe.observedRadiusInChunks(), "ceiling", ultimoTecho, "margin", margenDeAnchura.get(),
+            "discarded", descartadas());
     }
 
     /**
@@ -1714,18 +1601,14 @@ public class NetherSweep extends XploitsModule {
      * con retraso y el otro es que el jugador está volando, que se arregla parando. Sin verlos, lo
      * único que se ve es que la anchura no sale.
      */
-    private String descartadas() {
-        StringBuilder coletilla = new StringBuilder();
-        if (probe.discardedSamples() > 0) {
-            coletilla.append(String.format("; he descartado %d chunks que llegaron tarde -por encima de la "
-                + "distancia de renderizado, así que no medían el alcance del servidor-", probe.discardedSamples()));
-        }
-        if (probe.movingSamples() > 0) {
-            coletilla.append(String.format("; y %d que llegaron contigo en movimiento -medían lo que te habías "
-                + "movido mientras el paquete estaba en cola, no hasta dónde manda el servidor-",
-                probe.movingSamples()));
-        }
-        return coletilla.toString();
+    private Msg descartadas() {
+        Msg tarde = probe.discardedSamples() > 0
+            ? Msg.of(SweepText.DISCARDED_LATE, "count", probe.discardedSamples())
+            : Msg.of(SweepText.NOTHING);
+        Msg enMovimiento = probe.movingSamples() > 0
+            ? Msg.of(SweepText.DISCARDED_MOVING, "count", probe.movingSamples())
+            : Msg.of(SweepText.NOTHING);
+        return Msg.of(SweepText.DISCARDED, "late", tarde, "moving", enMovimiento);
     }
 
     // --- La cobertura que ya existe (spec §5.1) -----------------------------------------------
@@ -1747,15 +1630,13 @@ public class NetherSweep extends XploitsModule {
             return new LecturaDeCobertura(Coverage.empty(), 0, 0, true);
         }
 
-        String resumen() {
-            if (servidorDesconocido) {
-                return "NO he leído la cobertura: no he podido saber en qué servidor estás";
-            }
-            if (leidos == 0 && rotos == 0) {
-                return "ningún fichero de NewerNewChunks para este servidor y dimensión: se empieza de cero";
-            }
-            String base = leidos + " de " + FICHEROS_DE_COBERTURA.length + " ficheros de NewerNewChunks";
-            return rotos == 0 ? base : base + ", " + rotos + " ilegibles";
+        Msg resumen() {
+            if (servidorDesconocido) return Msg.of(SweepText.READING_UNKNOWN_SERVER);
+            if (leidos == 0 && rotos == 0) return Msg.of(SweepText.READING_NONE);
+            return rotos == 0
+                ? Msg.of(SweepText.READING_FILES, "read", leidos, "total", FICHEROS_DE_COBERTURA.length)
+                : Msg.of(SweepText.READING_FILES_BROKEN, "read", leidos, "total", FICHEROS_DE_COBERTURA.length,
+                    "broken", rotos);
         }
     }
 
@@ -1795,9 +1676,7 @@ public class NetherSweep extends XploitsModule {
                 leidos++;
             } catch (IOException | RuntimeException e) {
                 rotos++;
-                warning("%s", "No he podido leer " + fichero + " de NewerNewChunks (" + e.getClass().getSimpleName()
-                    + "): sigo con los demás, pero el terreno que ese fichero registraba se replanificará como si "
-                    + "no se hubiera visto.");
+                warning(SweepText.UNREADABLE_FILE, "file", fichero, "error", e.getClass().getSimpleName());
             }
         }
         return new LecturaDeCobertura(Coverage.merge(partes), leidos, rotos, false);
@@ -1855,4 +1734,5 @@ public class NetherSweep extends XploitsModule {
     private static String limpiar(String nombre) {
         return nombre.replaceAll(CARACTERES_INVALIDOS, "_");
     }
+
 }

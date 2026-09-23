@@ -2,6 +2,8 @@ package com.xploits.autotpy;
 
 import com.xploits.XploitsAddon;
 import com.xploits.autotpy.core.AutoTpyPolicy;
+import com.xploits.autotpy.core.TpyText;
+import com.xploits.shared.Texts;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.chat.ChatEvent;
@@ -32,20 +34,20 @@ public class AutoTpy extends XploitsModule {
 
     private final Setting<List<String>> users = sgGeneral.add(new StringListSetting.Builder()
         .name("users")
-        .description("Jugadores cuya TPA se acepta al instante. Nombres exactos; distinguen mayúsculas.")
+        .description(Texts.startupText(TpyText.SETTING_USERS))
         .build()
     );
 
     private final Setting<Boolean> includeFriends = sgGeneral.add(new BoolSetting.Builder()
         .name("include-friends")
-        .description("Aceptar también a los amigos de Meteor (.friends add).")
+        .description(Texts.startupText(TpyText.SETTING_INCLUDE_FRIENDS))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al aceptar o ignorar una TPA.")
+        .description(Texts.startupText(TpyText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
@@ -53,7 +55,7 @@ public class AutoTpy extends XploitsModule {
     private final AutoTpyPolicy policy = new AutoTpyPolicy();
 
     public AutoTpy() {
-        super(XploitsAddon.CATEGORY, "auto-tpy", "Acepta al instante las TPA de tu lista y de tus amigos de Meteor.");
+        super(XploitsAddon.CATEGORY, "auto-tpy", Texts.startupText(TpyText.MODULE_DESC));
     }
 
     /** Prioridad máxima para ver el mensaje antes de que otros módulos lo modifiquen. */
@@ -70,10 +72,10 @@ public class AutoTpy extends XploitsModule {
             switch (decision) {
                 case ACCEPT -> {
                     ChatUtils.sendPlayerMsg(ChatPatterns.acceptCommand(name), false);
-                    if (notify.get()) info("TPA aceptada de %s.", name);
+                    if (notify.get()) info(TpyText.ACCEPTED, "name", name);
                 }
                 case NOT_ALLOWED -> {
-                    if (notify.get() && policy.shouldReportIgnored(name, now)) info("TPA ignorada de %s: no está en la lista.", name);
+                    if (notify.get() && policy.shouldReportIgnored(name, now)) info(TpyText.IGNORED, "name", name);
                 }
                 case DUPLICATE, HANDLED_BY_KIT_REQUESTER, INVALID -> {
                     // Sin aviso: repetición, courier gestionado por KitRequester o nombre vacío.
@@ -93,7 +95,7 @@ public class AutoTpy extends XploitsModule {
 
     @Override
     public String ahora() {
-        return users().size() + " en lista";
+        return Texts.render(TpyText.NOW_LISTED, "count", users().size());
     }
 
     private Set<String> kitRequesterCouriers() {

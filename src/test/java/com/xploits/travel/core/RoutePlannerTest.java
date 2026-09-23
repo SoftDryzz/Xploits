@@ -1,5 +1,8 @@
 package com.xploits.travel.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -23,6 +26,15 @@ class RoutePlannerTest {
     private static final double HIGHWAY_WIDE = 500;
     private static final double MARGIN = RoutePlanner.DEFAULT_WAYPOINT_MARGIN;
     private static final double TOLERANCE = 0.001;
+
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    /** A rejection as the player reads it in Spanish, for the tests that look for words and numbers in it. */
+    private static String es(Msg rejection) {
+        return rejection == null ? "null" : ES.render(rejection);
+    }
 
     private static Route plan(Destination destination, FlightPattern pattern) {
         return RoutePlanner.plan(ORIGIN, destination, pattern, PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
@@ -91,7 +103,7 @@ class RoutePlannerTest {
 
         // El motivo tiene que nombrar los dos números y la salida: un rechazo que no dice cómo
         // desatascarse es casi tan malo como el silencio.
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("2000"), "el motivo debe decir el periodo configurado: " + reason);
         assertTrue(reason.contains("500"), "el motivo debe decir la distancia del viaje: " + reason);
         assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
@@ -105,7 +117,7 @@ class RoutePlannerTest {
             PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
 
         assertTrue(route.isRejected());
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("tramo"), "el motivo del quiebro debe hablar de su tramo: " + reason);
         assertTrue(reason.contains("5000"), "el motivo debe decir el tramo configurado: " + reason);
         assertTrue(reason.contains("4000"), "el motivo debe decir la distancia del viaje: " + reason);
@@ -123,7 +135,7 @@ class RoutePlannerTest {
 
             assertTrue(route.isRejected(), pattern + " con amplitud efectiva 0 debe rechazarse");
             assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
-            String reason = route.rejection();
+            String reason = es(route.rejection());
             assertTrue(reason.contains("0"), "el motivo debe decir la amplitud efectiva: " + reason);
             assertTrue(reason.toLowerCase().contains("corredor"),
                 "el motivo debe señalar de dónde viene el cero: " + reason);
@@ -141,7 +153,7 @@ class RoutePlannerTest {
 
         assertTrue(route.isRejected(), "una espiral de radio 0 es una recta y debe rechazarse");
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("1500"), "el motivo debe decir el radio configurado: " + reason);
         assertTrue(reason.contains("RECTO"), "el motivo debe ofrecer una salida: " + reason);
     }
@@ -273,7 +285,7 @@ class RoutePlannerTest {
                 continue;
             }
 
-            assertFalse(route.isRejected(), pattern + " no debería rechazarse en autopista: " + route.rejection());
+            assertFalse(route.isRejected(), pattern + " no debería rechazarse en autopista: " + es(route.rejection()));
             for (Waypoint point : route.waypoints()) {
                 assertTrue(Math.abs(point.z()) <= HIGHWAY_WIDE + TOLERANCE,
                     pattern + " se salió del corredor: " + point.z());
@@ -303,7 +315,7 @@ class RoutePlannerTest {
                 }
 
                 assertFalse(route.isRejected(),
-                    pattern + " por " + axis + " no debería rechazarse: " + route.rejection());
+                    pattern + " por " + axis + " no debería rechazarse: " + es(route.rejection()));
 
                 // n = (-uz, ux), la normal al eje; el desvío es la proyección del waypoint sobre ella.
                 Waypoint end = destination.resolve(ORIGIN);
@@ -351,7 +363,7 @@ class RoutePlannerTest {
         Route absolute = RoutePlanner.plan(start, Destination.coordinates(21_000, 3_000),
             FlightPattern.QUIEBRO, PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
 
-        assertFalse(relative.isRejected(), relative.rejection());
+        assertFalse(relative.isRejected(), es(relative.rejection()));
         assertEquals(absolute.waypoints().size(), relative.waypoints().size());
         for (int i = 0; i < absolute.waypoints().size(); i++) {
             assertEquals(absolute.waypoints().get(i).x(), relative.waypoints().get(i).x(), TOLERANCE);
@@ -437,7 +449,7 @@ class RoutePlannerTest {
             assertTrue(route.isRejected(), quien + " debe rechazarse, no salir recto en silencio");
             assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
 
-            String reason = route.rejection();
+            String reason = es(route.rejection());
             assertTrue(reason.contains(caso.ajuste()),
                 "el motivo debe nombrar el ajuste propio del patrón: " + reason);
             assertTrue(reason.contains(caso.valor()), "el motivo debe decir el valor que tiene: " + reason);
@@ -454,8 +466,8 @@ class RoutePlannerTest {
             new PatternParams(200, 2000, 0, 800, 1500, 1.5, 30, 0.6), HIGHWAY_MAX, MARGIN);
 
         assertTrue(route.isRejected());
-        assertFalse(route.rejection().contains("periodo"),
-            "el quiebro no se configura con periodo: " + route.rejection());
+        assertFalse(es(route.rejection()).contains("periodo"),
+            "el quiebro no se configura con periodo: " + es(route.rejection()));
     }
 
     @Test
@@ -469,7 +481,7 @@ class RoutePlannerTest {
 
         assertTrue(route.isRejected(), "una espiral que no gira es una recta y debe rechazarse");
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("vueltas"), "el motivo debe nombrar el ajuste de la espiral: " + reason);
         assertTrue(reason.contains("0"), "el motivo debe decir el valor que tiene: " + reason);
         assertTrue(reason.contains("recta"), "el motivo debe decir la salida concreta: " + reason);
@@ -486,10 +498,10 @@ class RoutePlannerTest {
             zeroFraction, HIGHWAY_MAX, MARGIN);
         assertTrue(byFraction.isRejected(), "una fracción de 0 deja el señuelo en el origen");
         assertTrue(byFraction.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
-        assertTrue(byFraction.rejection().contains("fracción"),
-            "el motivo debe nombrar el ajuste: " + byFraction.rejection());
-        assertTrue(byFraction.rejection().contains("recta"),
-            "el motivo debe decir la salida concreta: " + byFraction.rejection());
+        assertTrue(es(byFraction.rejection()).contains("fracción"),
+            "el motivo debe nombrar el ajuste: " + es(byFraction.rejection()));
+        assertTrue(es(byFraction.rejection()).contains("recta"),
+            "el motivo debe decir la salida concreta: " + es(byFraction.rejection()));
 
         for (double degrees : new double[] {0, 180}) {
             PatternParams flatAngle = new PatternParams(200, 2000, 5000, 800, 1500, 1.5, degrees, 0.6);
@@ -497,7 +509,7 @@ class RoutePlannerTest {
                 flatAngle, HIGHWAY_MAX, MARGIN);
 
             assertTrue(byAngle.isRejected(), "un ángulo de " + degrees + " grados no aparta del eje");
-            String reason = byAngle.rejection();
+            String reason = es(byAngle.rejection());
             assertTrue(reason.contains("ángulo"), "el motivo debe nombrar el ajuste: " + reason);
             assertTrue(reason.contains(String.valueOf((long) degrees)),
                 "el motivo debe decir el valor que tiene: " + reason);
@@ -542,7 +554,7 @@ class RoutePlannerTest {
 
         // El motivo, con el mismo listón que los otros tres: el ajuste que el jugador puede tocar, su
         // valor actual, y el número concreto al que subirlo para desatascarse.
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("periodo"), "el motivo debe nombrar el ajuste: " + reason);
         assertTrue(reason.contains("100 bloques"), "el motivo debe decir el periodo que tiene: " + reason);
         assertTrue(reason.contains("100000"), "el motivo debe decir la distancia del viaje: " + reason);
@@ -559,7 +571,7 @@ class RoutePlannerTest {
             PatternParams.defaults(), HIGHWAY_MAX, MARGIN);
 
         assertTrue(route.isRejected(), "1000 tramos no caben bajo el tope");
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("tramo"), "el motivo del quiebro debe hablar de su tramo: " + reason);
         assertFalse(reason.contains("periodo"), "el quiebro no se configura con periodo: " + reason);
         assertTrue(reason.contains("10000 bloques"), "el motivo debe decir a cuánto subir el tramo: " + reason);
@@ -580,7 +592,7 @@ class RoutePlannerTest {
         Route route = RoutePlanner.plan(ORIGIN, Destination.coordinates(125_000, 0), FlightPattern.ZIGZAG,
             borderline, HIGHWAY_MAX, MARGIN);
 
-        assertFalse(route.isRejected(), "500 cambios de lado justos sí caben: " + route.rejection());
+        assertFalse(route.isRejected(), "500 cambios de lado justos sí caben: " + es(route.rejection()));
         List<Waypoint> points = route.waypoints();
         assertTrue(points.size() <= RoutePlanner.MAX_PATTERN_WAYPOINTS + 1,
             "el tope sigue vigente, el rechazo no lo deroga: " + points.size());
@@ -683,8 +695,8 @@ class RoutePlannerTest {
         Route route = plan(Destination.highway(Axis.X_PLUS, 50_000), FlightPattern.SENUELO);
 
         assertTrue(route.isRejected(), "el señuelo sacaría del eje y debe rechazarse");
-        assertTrue(route.rejection().toLowerCase().contains("autopista"),
-            "el motivo debe explicarlo: " + route.rejection());
+        assertTrue(es(route.rejection()).toLowerCase().contains("autopista"),
+            "el motivo debe explicarlo: " + es(route.rejection()));
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
     }
 
@@ -788,7 +800,7 @@ class RoutePlannerTest {
         assertTrue(route.isRejected(), "un zigzag que no se puede volar debe rechazarse, no estirarse");
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
 
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("periodo"), "el motivo debe nombrar el ajuste: " + reason);
         assertTrue(reason.contains("100 bloques"), "el motivo debe decir el periodo que tiene: " + reason);
         assertTrue(reason.contains("111"), "el motivo debe decir el hueco que deja: " + reason);
@@ -806,7 +818,7 @@ class RoutePlannerTest {
             tight, HIGHWAY_MAX, MARGIN);
 
         assertTrue(route.isRejected());
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("tramo"), "el motivo del quiebro debe hablar de su tramo: " + reason);
         assertTrue(reason.contains("desvío lateral"), "y de su desvío lateral: " + reason);
         assertFalse(reason.contains("periodo"), "el quiebro no se configura con periodo: " + reason);
@@ -822,7 +834,7 @@ class RoutePlannerTest {
             tight, 50, MARGIN);
 
         assertTrue(route.isRejected());
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.toLowerCase().contains("corredor"),
             "el motivo debe decir que el corredor acota el desvío: " + reason);
         assertTrue(reason.contains("50"), "y a cuánto lo acota: " + reason);
@@ -839,7 +851,7 @@ class RoutePlannerTest {
             narrow, HIGHWAY_MAX, MARGIN);
 
         assertTrue(route.isRejected(), "un desvío que Baritone convertiría en aterrizaje debe rechazarse");
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("desvío lateral"), "el motivo debe nombrar el ajuste: " + reason);
         assertTrue(reason.contains("100 bloques"), "el motivo debe decir el hueco que deja: " + reason);
         assertTrue(reason.contains("300"), "el motivo debe decir a cuánto subirlo: " + reason);
@@ -858,7 +870,7 @@ class RoutePlannerTest {
         assertTrue(route.isRejected(), "una espiral de radio 300 no la vuela ninguna elytra");
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
 
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("pasos de 8 bloques"), "el motivo debe decir el paso que deja: " + reason);
         assertTrue(reason.toLowerCase().contains("corredor"),
             "el motivo debe señalar quién acota el radio: " + reason);
@@ -868,7 +880,7 @@ class RoutePlannerTest {
         // verdad, no un "no se puede" con un número inventado.
         Route wider = RoutePlanner.plan(ORIGIN, Destination.highway(Axis.X_PLUS, 50_000), FlightPattern.ESPIRAL,
             PatternParams.defaults(), 338, MARGIN);
-        assertFalse(wider.isRejected(), "con el ancho que dice el motivo debe volar: " + wider.rejection());
+        assertFalse(wider.isRejected(), "con el ancho que dice el motivo debe volar: " + es(wider.rejection()));
     }
 
     @Test
@@ -882,7 +894,7 @@ class RoutePlannerTest {
         assertTrue(route.isRejected(), "un señuelo de 500 bloques no se puede volar");
         assertTrue(route.waypoints().isEmpty(), "una ruta rechazada no lleva puntos");
 
-        String reason = route.rejection();
+        String reason = es(route.rejection());
         assertTrue(reason.contains("283"), "el motivo debe decir el tramo que deja: " + reason);
         assertTrue(reason.contains("500"), "el motivo debe decir la distancia del viaje: " + reason);
         assertTrue(reason.contains("530"), "el motivo debe decir a cuánto alejar el destino: " + reason);
@@ -905,9 +917,9 @@ class RoutePlannerTest {
         Route tight = RoutePlanner.plan(ORIGIN, Destination.coordinates(20_000, 0), FlightPattern.ZIGZAG,
             modest, HIGHWAY_MAX, 500);
         assertTrue(tight.isRejected(), "con el margen a 500 ya no cabe");
-        assertTrue(tight.rejection().contains("waypoint-margin"),
-            "el motivo debe nombrar el ajuste que lo ha estrechado: " + tight.rejection());
-        assertTrue(tight.rejection().contains("500"), "y el valor que tiene: " + tight.rejection());
+        assertTrue(es(tight.rejection()).contains("waypoint-margin"),
+            "el motivo debe nombrar el ajuste que lo ha estrechado: " + es(tight.rejection()));
+        assertTrue(es(tight.rejection()).contains("500"), "y el valor que tiene: " + es(tight.rejection()));
     }
 
     @Test

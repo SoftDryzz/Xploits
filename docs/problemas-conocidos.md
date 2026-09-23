@@ -76,6 +76,17 @@ pudo cerrar, porque su autoapagado es medible desde fuera.
 
 **Qué hacer.** Apagar `auto-pvp` mientras los quieras para ti.
 
+### El aviso de pasada corta, en español, dice acercar las esquinas cuando hay que separarlas
+
+**Síntoma:** el rechazo `sweep.lane-too-short` en español dice «agranda el rectángulo por ahí
+-acerca chunk-x-1 a chunk-x-2, o chunk-z-1 a chunk-z-2-» cuando el rectángulo tiene que **crecer**.
+
+**Qué pasa.** El texto en inglés dice lo correcto -*move ... apart*, separar ese par de chunks-; el
+español quedó con «acerca», que es lo contrario de lo que hace falta para agrandar el área.
+
+**Qué hacer.** Ignora el verbo y separa el par de chunks que esté más junto, no lo acerques. Pendiente
+de corregir el texto en español.
+
 ### La consola necesita Windows Terminal con su configuración de ventanas por defecto
 
 La ventana pide su tamaño con una secuencia que Windows Terminal respeta. Si lo configuras para abrir
@@ -120,6 +131,15 @@ te falten recursos (obsidiana, cristales) o el objetivo sea de los tuyos. El com
 
 **«No puedo lanzar un barrido porque estoy viajando.»** Correcto: los dos dirigen al mismo Baritone
 y `#elytra` solo admite un objetivo. Corta el primero.
+
+**«Algunos rechazos de `auto-travel` en español terminan en "..".»** Es a propósito, se dejó tal
+cual está redactado. Afecta solo al español: en inglés esos mismos motivos se recortaron para que la
+frase termine con un único punto.
+
+**«Guardar `language.txt` falla y luego el idioma vuelve a ser el de antes.»** Al jugador se le avisa
+en el momento de que no se pudo guardar, pero si falla el proceso se reinicia con lo que hubiera en el
+archivo la última vez que sí se escribió con éxito: tras un reinicio gana el idioma anterior del
+archivo y la elección hecha en el ClickGUI se revierte.
 
 **«Cierro la consola con la X y dice "con la X o desde fuera".»** Windows no deja ejecutar nada a un
 programa cuando cierras su ventana con la X; se comprobó. Así que el juego no puede distinguir la X de

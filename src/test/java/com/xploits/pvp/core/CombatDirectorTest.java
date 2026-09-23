@@ -1,5 +1,7 @@
 package com.xploits.pvp.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -734,11 +736,13 @@ class CombatDirectorTest {
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(8));
 
         assertTrue(skips(plan, ManagedModules.AUTO_TRAP));
-        String reason = plan.skipped().stream()
+        Msg reason = plan.skipped().stream()
             .filter(skipped -> skipped.module().equals(ManagedModules.AUTO_TRAP))
-            .map(Skipped::reason).findFirst().orElse("");
-        assertTrue(reason.contains("hole-filler") && reason.contains("surround"),
-            "el motivo tiene que nombrar a quien se llevó la obsidiana, y dice: " + reason);
+            .map(Skipped::reason).findFirst().orElse(null);
+        assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 8,
+                "others", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
+                "left", 3, "minimum", 8), reason,
+            "el motivo tiene que nombrar a quien se llevó la obsidiana");
     }
 
     @Test
@@ -1045,7 +1049,7 @@ class CombatDirectorTest {
 
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA), "no es una omisión");
-        assertTrue(plan.warnings().stream().anyMatch(w -> w.contains("crystal-aura")), "se avisa");
+        assertTrue(plan.warnings().contains(Msg.of(PvpText.AURA_NO_CRYSTALS)), "se avisa");
         assertEquals(CombatState.SUPERFICIE, plan.state(), "y no se informa SIN_RECURSOS por eso");
     }
 
@@ -1077,7 +1081,7 @@ class CombatDirectorTest {
 
         assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(plan.skipped().stream().anyMatch(sk -> sk.reason().contains("anti-suicide")),
+        assertTrue(plan.skipped().stream().anyMatch(sk -> sk.reason().equals(Msg.of(PvpText.TOTEM_FLOOR))),
             "y el motivo dice por qué, no solo que faltan tótems");
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "y el resto sigue subiendo");
     }
@@ -1132,7 +1136,7 @@ class CombatDirectorTest {
 
         assertEquals(CombatState.SUPERFICIE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(plan.warnings().stream().anyMatch(w -> w.contains("crystal-aura")));
+        assertTrue(plan.warnings().contains(Msg.of(PvpText.AURA_NO_CRYSTALS)));
     }
 
     @Test

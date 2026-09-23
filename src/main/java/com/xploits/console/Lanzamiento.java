@@ -2,6 +2,7 @@ package com.xploits.console;
 
 import com.xploits.console.core.Arranque;
 import com.xploits.console.core.Ciclo;
+import com.xploits.shared.Texts;
 import meteordevelopment.meteorclient.MeteorClient;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -31,10 +32,10 @@ final class Lanzamiento {
     static Arranque.Resultado preparar(Path carpeta, String lanzamiento) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java.exe");
         if (!Files.exists(java)) {
-            java = ProcessHandle.current().info().command().map(c -> Path.of(c).resolveSibling("java.exe")).orElse(java);
+            java = ProcessHandle.current().info().command().map(c -> Path.of(c).resolveSibling("java.exe")).orElse(java); // i18n: allowed: a file name, not player text
         }
         return Arranque.preparar(java, Files.exists(java), classpath(), carpeta, ProcessHandle.current().pid(), lanzamiento,
-            Salida.SESION);
+            Salida.SESION, Texts.current());
     }
 
     /** El jar del mod, o sus carpetas en desarrollo. {@code getRootPaths()} no sirve: apunta dentro del zip. */

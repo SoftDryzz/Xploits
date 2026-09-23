@@ -1,6 +1,7 @@
 package com.xploits.kitrequester.core;
 
 import com.xploits.shared.chat.ChatEvent;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,8 +37,12 @@ class OrderMachineTest {
         return actions.stream().anyMatch(a -> a instanceof Action.SendCommand);
     }
 
-    private static boolean alerts(List<Action> actions, String fragment) {
-        return actions.stream().anyMatch(a -> a instanceof Action.Notify n && n.alert() && n.message().contains(fragment));
+    private static boolean alerts(List<Action> actions, Msg expected) {
+        return actions.stream().anyMatch(a -> a instanceof Action.Notify n && n.alert() && n.message().equals(expected));
+    }
+
+    private static boolean notifies(List<Action> actions, Msg expected) {
+        return actions.stream().anyMatch(a -> a instanceof Action.Notify n && !n.alert() && n.message().equals(expected));
     }
 
     /** Entra, espera el margen, pide el lote 1-5 y recibe PLACED. Devuelve el instante de PLACED. */
@@ -127,7 +132,7 @@ class OrderMachineTest {
         assertFalse(anySent(machine.onChat(new ChatEvent.Tpa("Coordlogger3000"), placedAt + 10_000)));
         List<Action> later = machine.tick(placedAt + 10_000 + OrderMachine.PENDING_TPA_MS, OK);
         assertFalse(anySent(later));
-        assertTrue(later.stream().anyMatch(a -> a instanceof Action.Notify n && n.message().contains("Coordlogger3000")));
+        assertTrue(notifies(later, Msg.of(KitText.TPA_IGNORED, "requester", "Coordlogger3000")));
         assertEquals(AWAIT_COURIER, machine.state());
     }
 
@@ -143,7 +148,7 @@ class OrderMachineTest {
         machine.onChat(new ChatEvent.Tpa("NewCourier1"), placedAt + 10_000);
         List<Action> out = machine.onChat(new ChatEvent.Ready("NewCourier1"), placedAt + 11_000);
         assertFalse(anySent(out));
-        assertTrue(alerts(out, "NewCourier1"));
+        assertTrue(alerts(out, Msg.of(KitText.UNKNOWN_COURIER_REJECTED, "requester", "NewCourier1")));
     }
 
     @Test
@@ -154,7 +159,7 @@ class OrderMachineTest {
         List<Action> out = machine.onChat(new ChatEvent.Ready("NewCourier1"), placedAt + 11_000);
         assertTrue(sent(out, "/tpy NewCourier1"));
         assertTrue(out.contains(new Action.LearnCourier("NewCourier1")));
-        assertTrue(alerts(out, "NewCourier1"));
+        assertTrue(alerts(out, Msg.of(KitText.NEW_COURIER_LEARNED, "requester", "NewCourier1")));
         assertEquals(AWAIT_DELIVERY, machine.state());
     }
 
@@ -164,8 +169,7 @@ class OrderMachineTest {
         assertFalse(anySent(machine.onChat(new ChatEvent.Tpa("First1"), placedAt + 1_000)));
         List<Action> out = machine.onChat(new ChatEvent.Tpa("Second2"), placedAt + 1_500);
         assertFalse(anySent(out));
-        assertTrue(out.stream().anyMatch(a -> a instanceof Action.Notify n
-            && !n.alert() && n.message().equals("TPA ignorada de First1.")));
+        assertTrue(notifies(out, Msg.of(KitText.TPA_IGNORED, "requester", "First1")));
     }
 
     @Test
@@ -356,7 +360,7 @@ class OrderMachineTest {
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
         List<Action> out = machine.tick(t, new OrderMachine.Context(true, true, 4, false, false));
         assertFalse(anySent(out));
-        assertTrue(alerts(out, "huecos"));
+        assertTrue(alerts(out, Msg.of(KitText.INVENTORY_FULL_PAUSED, "slots", 5)));
         assertEquals(PAUSED, machine.state());
         machine.tick(t + 1_000, OK);
         assertEquals(IDLE, machine.state());
@@ -428,7 +432,7 @@ class OrderMachineTest {
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true, false));
-        assertTrue(alerts(machine.onDepositResult(true, 3), "huecos"));
+        assertTrue(alerts(machine.onDepositResult(true, 3), Msg.of(KitText.DEPOSIT_NO_ROOM)));
         assertEquals(PAUSED, machine.state());
     }
 
@@ -463,20 +467,22 @@ class OrderMachineTest {
         machine.onJoin(T0);
         OrderMachine.Context reach = new OrderMachine.Context(true, true, 2, true, false);
 
+        Msg abortsExceeded = Msg.of(KitText.DEPOSIT_ABORTS_EXCEEDED, "max", OrderMachine.MAX_DEPOSIT_ABORTS);
+
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, reach);
         assertEquals(DEPOSIT, machine.state());
-        assertFalse(alerts(machine.onDepositResult(false, 2), "veces seguidas"), "primer aborto: sin aviso");
+        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "primer aborto: sin aviso");
         assertEquals(IDLE, machine.state());
 
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 10, reach);
         assertEquals(DEPOSIT, machine.state());
-        assertFalse(alerts(machine.onDepositResult(false, 2), "veces seguidas"), "segundo aborto: sin aviso");
+        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "segundo aborto: sin aviso");
         assertEquals(IDLE, machine.state());
 
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 20, reach);
         assertEquals(DEPOSIT, machine.state());
         List<Action> third = machine.onDepositResult(false, 2);
-        assertTrue(alerts(third, "veces seguidas"), "tercer aborto seguido: aviso fuerte");
+        assertTrue(alerts(third, abortsExceeded), "tercer aborto seguido: aviso fuerte");
         assertEquals(PAUSED, machine.state());
     }
 
@@ -501,7 +507,7 @@ class OrderMachineTest {
         machine.onDepositResult(false, 2);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 40, reach);
         List<Action> out = machine.onDepositResult(false, 2);
-        assertFalse(alerts(out, "veces seguidas"));
+        assertFalse(alerts(out, Msg.of(KitText.DEPOSIT_ABORTS_EXCEEDED, "max", OrderMachine.MAX_DEPOSIT_ABORTS)));
         assertEquals(IDLE, machine.state(), "el contador reinició tras el éxito, así que sigue reintentando");
     }
 
@@ -518,7 +524,7 @@ class OrderMachineTest {
         assertEquals(IDLE, machine.state());
 
         List<Action> out = machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 50, new OrderMachine.Context(true, true, 2, false, false));
-        assertTrue(alerts(out, "huecos"));
+        assertTrue(alerts(out, Msg.of(KitText.INVENTORY_FULL_PAUSED, "slots", 5)));
         assertEquals(PAUSED, machine.state());
     }
 

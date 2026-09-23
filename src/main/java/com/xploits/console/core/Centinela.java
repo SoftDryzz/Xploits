@@ -1,5 +1,7 @@
 package com.xploits.console.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -18,7 +20,9 @@ public final class Centinela {
         Pattern.compile("(?<![\\p{L}\\p{N}])[^\\s\\p{L}\\p{N}]?(?:goal|goto)\\s+-?\\d+(?:\\s+-?\\d+){1,2}(?!\\d)",
             Pattern.CASE_INSENSITIVE),
         // El fragmento antiguo de AutoTravel.status(): "en 1200, -800".
-        Pattern.compile("(?<![\\p{L}\\p{N}])en -?\\d{3,}, -?\\d{3,}(?!\\d)"));
+        Pattern.compile("(?<![\\p{L}\\p{N}])en -?\\d{3,}, -?\\d{3,}(?!\\d)"),
+        // Su equivalente en inglés: "at 1200, -800".
+        Pattern.compile("(?<![\\p{L}\\p{N}])at -?\\d{3,}, -?\\d{3,}(?!\\d)"));
 
     private Centinela() {
     }
@@ -32,15 +36,7 @@ public final class Centinela {
     }
 
     /** Lo que queda de un texto retenido: que se retuvo y de quién venía, nada más. */
-    public static String retenido(String fuente) {
-        return "[retenido: parecía llevar coordenadas · fuente " + fuente + "]";
-    }
-
-    /** El texto que se puede escribir, y si hubo que retenerlo. */
-    public record Veredicto(String texto, boolean retenido) {
-    }
-
-    public static Veredicto revisar(String fuente, String texto) {
-        return sospecha(texto) ? new Veredicto(retenido(fuente), true) : new Veredicto(texto, false);
+    public static Msg retenido(String fuente) {
+        return Msg.of(ConsoleText.HELD, "source", fuente);
     }
 }

@@ -3,13 +3,16 @@ package com.xploits.kitrequester;
 import com.xploits.XploitsAddon;
 import com.xploits.kitrequester.core.Action;
 import com.xploits.kitrequester.core.KitQueue;
+import com.xploits.kitrequester.core.KitText;
 import com.xploits.kitrequester.core.OrderMachine;
 import com.xploits.kitrequester.core.Progress;
 import com.xploits.kitrequester.core.ProgressStore;
 import com.xploits.kitrequester.inventory.EnderDepositor;
+import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.chat.ChatPatterns;
-import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.core.PositionedMsg;
+import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.InteractBlockEvent;
 import meteordevelopment.meteorclient.events.entity.player.InteractEntityEvent;
@@ -49,7 +52,7 @@ public class KitRequester extends XploitsModule {
 
     private final Setting<Integer> intervalSeconds = sgGeneral.add(new IntSetting.Builder()
         .name("interval-seconds")
-        .description("Segundos entre pedidos, contados desde que SnifferBuddy acepta el anterior. Mínimo 300.")
+        .description(Texts.startupText(KitText.SETTING_INTERVAL_SECONDS))
         .defaultValue(300)
         .min(300)
         .sliderRange(300, 1800)
@@ -58,33 +61,28 @@ public class KitRequester extends XploitsModule {
 
     private final Setting<List<String>> knownCouriers = sgGeneral.add(new StringListSetting.Builder()
         .name("known-couriers")
-        .description("Couriers de SnifferBuddy cuya TPA se acepta. Nombres exactos; distinguen mayúsculas.")
+        .description(Texts.startupText(KitText.SETTING_KNOWN_COURIERS))
         .defaultValue("StormAegis44", "ValorKnight27", "IronSentri08")
         .build()
     );
 
     private final Setting<Boolean> trustUnknownCouriers = sgGeneral.add(new BoolSetting.Builder()
         .name("trust-unknown-couriers")
-        .description("Aceptar un courier nuevo si envía READY y TPA durante la espera del pedido. "
-            + "Riesgo: cualquiera que imite el mensaje puede teletransportarse a ti y quedar en la lista. "
-            + "Mientras esté encendido, auto-pvp no sincroniza ningún courier con tu lista de amigos de "
-            + "Meteor, justo para que ese impostor no se cuele ahí. Si lo apagas después de haber aprendido "
-            + "a alguien, ese nombre ya es indistinguible de los que escribiste tú: repasa known-couriers "
-            + "antes de apagarlo.")
+        .description(Texts.startupText(KitText.SETTING_TRUST_UNKNOWN_COURIERS))
         .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> autoEnder = sgGeneral.add(new BoolSetting.Builder()
         .name("auto-ender")
-        .description("Con el inventario lleno, vaciar shulkers en un ender chest al alcance (no camina).")
+        .description(Texts.startupText(KitText.SETTING_AUTO_ENDER))
         .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> notifySound = sgGeneral.add(new BoolSetting.Builder()
         .name("notify-sound")
-        .description("Sonido en los avisos importantes: pausa, error y cola terminada.")
+        .description(Texts.startupText(KitText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
@@ -97,7 +95,7 @@ public class KitRequester extends XploitsModule {
     private OrderMachine machine;
 
     public KitRequester() {
-        super(XploitsAddon.CATEGORY, "kit-requester", "Pide kits a SnifferBuddy en lotes de 5 y acepta la TPA del courier.");
+        super(XploitsAddon.CATEGORY, "kit-requester", Texts.startupText(KitText.MODULE_DESC));
     }
 
     @Override
@@ -107,8 +105,8 @@ public class KitRequester extends XploitsModule {
             progress = store.load();
             machine = newMachine(queue);
         } catch (IOException e) {
-            errorPrivado(new TextoConPosicion(String.valueOf(e.getMessage()),
-                "No se pudo cargar la cola de kits o su progreso. El detalle, solo en el chat."));
+            errorPrivado(new PositionedMsg(Msg.of(KitText.LOAD_FAILED, "detail", String.valueOf(e.getMessage())),
+                Msg.of(KitText.LOAD_FAILED_LOG)));
             progress = null;
             machine = null;
             toggle();
@@ -167,13 +165,13 @@ public class KitRequester extends XploitsModule {
             .ifPresent(chatEvent -> run(machine.onChat(chatEvent, System.currentTimeMillis())));
     }
 
-    public String status() {
-        return machine == null ? "KitRequester está desactivado." : machine.status(System.currentTimeMillis());
+    public Msg status() {
+        return machine == null ? Msg.of(KitText.DISABLED) : machine.status(System.currentTimeMillis());
     }
 
     @Override
     public String ahora() {
-        return machine == null ? "" : machine.state().name();
+        return machine == null ? "" : Texts.render(KitText.of(machine.state()));
     }
 
     /** Couriers configurados; AutoTPY los deja en manos de este módulo mientras esté activo. */
@@ -190,18 +188,18 @@ public class KitRequester extends XploitsModule {
         return trustUnknownCouriers.get();
     }
 
-    public String reload() {
-        if (machine == null) return "KitRequester está desactivado.";
+    public Msg reload() {
+        if (machine == null) return Msg.of(KitText.DISABLED);
         OrderMachine.State state = machine.state();
         if (state != OrderMachine.State.IDLE && state != OrderMachine.State.PAUSED) {
-            return "Solo se puede recargar en IDLE o PAUSED (ahora: " + state + ").";
+            return Msg.of(KitText.RELOAD_WRONG_STATE, "state", KitText.of(state));
         }
         try {
             machine = newMachine(loadQueue());
         } catch (IOException e) {
-            return e.getMessage();
+            return Msg.of(KitText.RELOAD_FAILED, "detail", String.valueOf(e.getMessage()));
         }
-        return "Cola recargada. " + machine.status(System.currentTimeMillis());
+        return Msg.of(KitText.RELOAD_DONE, "status", machine.status(System.currentTimeMillis()));
     }
 
     private OrderMachine newMachine(KitQueue queue) {
@@ -251,7 +249,7 @@ public class KitRequester extends XploitsModule {
             switch (action) {
                 case Action.SendCommand command -> {
                     if (mc.player != null) ChatUtils.sendPlayerMsg(command.command(), false);
-                    else warning("No se pudo enviar %s: no hay jugador en el mundo.", command.command());
+                    else warning(KitText.SEND_FAILED_NO_PLAYER, "command", command.command());
                 }
                 case Action.Deposit deposit -> {
                     if (!depositor.start(mc, System.currentTimeMillis()) && machine != null) {
@@ -276,11 +274,11 @@ public class KitRequester extends XploitsModule {
 
     private void notifyUser(Action.Notify notify) {
         if (!notify.alert()) {
-            info("%s", notify.message());
+            info(notify.message());
             return;
         }
-        warning("%s", notify.message());
-        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(notify.message()).icon(Items.SHULKER_BOX);
+        warning(notify.message());
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(notify.message())).icon(Items.SHULKER_BOX);
         // Meteor build 86's MeteorToast.update() calls mc.getSoundManager().play(customSound) without a null
         // check, and vanilla dereferences it -> NPE on the render thread. Never pass null: mute with a
         // zero-volume instance built the same way Meteor builds its default toast sound (same pitch, volume 0).
@@ -294,8 +292,8 @@ public class KitRequester extends XploitsModule {
         try {
             store.save(progress);
         } catch (IOException e) {
-            errorPrivado(new TextoConPosicion(String.format("No se pudo guardar el progreso: %s", e.getMessage()),
-                "No se pudo guardar el progreso de kits. El detalle, solo en el chat."));
+            errorPrivado(new PositionedMsg(Msg.of(KitText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
+                Msg.of(KitText.SAVE_FAILED_LOG)));
         }
     }
 }

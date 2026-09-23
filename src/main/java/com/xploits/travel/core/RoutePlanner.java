@@ -1,5 +1,7 @@
 package com.xploits.travel.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -247,7 +249,7 @@ public final class RoutePlanner {
     public static Route plan(Waypoint origin, Destination destination, FlightPattern pattern,
                               PatternParams params, double highwayMaxAmplitude, double waypointMargin) {
         if (pattern == FlightPattern.SENUELO && destination.highway()) {
-            return Route.rejected("el señuelo se saldría del corredor de la autopista, se rechaza en vez de degradarse");
+            return Route.rejected(Msg.of(TravelText.DECOY_ON_HIGHWAY));
         }
 
         Waypoint destinationPoint = destination.resolve(origin);
@@ -266,7 +268,7 @@ public final class RoutePlanner {
             case RECTO -> Route.of(List.of(destinationPoint));
             case ZIGZAG -> {
                 double amplitude = effectiveAmplitude(params.amplitude(), destination, highwayMaxAmplitude);
-                String rejection = lateralRejection(pattern, distance, params.period(),
+                Msg rejection = lateralRejection(pattern, distance, params.period(),
                     params.amplitude(), amplitude, destination.highway(), spacing, waypointMargin);
                 yield rejection != null ? Route.rejected(rejection)
                     : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.period(),
@@ -274,7 +276,7 @@ public final class RoutePlanner {
             }
             case QUIEBRO -> {
                 double amplitude = effectiveAmplitude(params.lateralOffset(), destination, highwayMaxAmplitude);
-                String rejection = lateralRejection(pattern, distance, params.legLength(),
+                Msg rejection = lateralRejection(pattern, distance, params.legLength(),
                     params.lateralOffset(), amplitude, destination.highway(), spacing, waypointMargin);
                 yield rejection != null ? Route.rejected(rejection)
                     : Route.of(zigzag(origin, destinationPoint, ux, uz, nx, nz, distance, params.legLength(),
@@ -283,7 +285,7 @@ public final class RoutePlanner {
             case ESPIRAL -> {
                 double radiusCap = destination.highway() ? highwayMaxAmplitude : Double.POSITIVE_INFINITY;
                 double radius = Math.min(Math.min(params.spiralRadius(), distance / 2.0), radiusCap);
-                String rejection = spiralRejection(params.spiralRadius(), radius, params.spiralTurns(),
+                Msg rejection = spiralRejection(params.spiralRadius(), radius, params.spiralTurns(),
                     destination.highway());
                 if (rejection != null) yield Route.rejected(rejection);
 
@@ -295,7 +297,7 @@ public final class RoutePlanner {
                         params, radius, destination.highway(), highwayMaxAmplitude, spacing, waypointMargin));
             }
             case SENUELO -> {
-                String rejection = decoyRejection(params.decoyAngleDegrees(), params.decoyFraction());
+                Msg rejection = decoyRejection(params.decoyAngleDegrees(), params.decoyFraction());
                 if (rejection != null) yield Route.rejected(rejection);
 
                 List<Waypoint> points = decoy(origin, destinationPoint, ux, uz, distance, params);
@@ -370,25 +372,20 @@ public final class RoutePlanner {
      *
      * @return el motivo del rechazo, o {@code null} si el patrón se puede dibujar de verdad
      */
-    private static String lateralRejection(FlightPattern pattern, double distance, double step,
+    private static Msg lateralRejection(FlightPattern pattern, double distance, double step,
                                             double configuredAmplitude, double effectiveAmplitude,
                                             boolean highway, double minSpacing, double waypointMargin) {
         if (step <= 0) {
-            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques no deja ningún"
-                + " avance entre cambios de lado: no se dibujaría ni una ondulación y la ruta saldría recta"
-                + " hasta el destino sin avisar. Sube " + stepName(pattern) + " por encima de 0 bloques o"
-                + " elige RECTO.";
+            return Msg.of(TravelText.LATERAL_NO_STEP, "pattern", pattern.name(), "step", stepName(pattern),
+                "value", step);
         }
         if (distance < step) {
-            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques no cabe ni una vez"
-                + " en un viaje de " + number(distance) + " bloques: no se dibujaría ni una ondulación y la ruta"
-                + " saldría recta sin avisar. Baja " + stepName(pattern) + " por debajo de " + number(distance)
-                + " bloques o elige RECTO.";
+            return Msg.of(TravelText.LATERAL_STEP_OVER_TRIP, "pattern", pattern.name(), "step", stepName(pattern),
+                "value", step, "distance", distance);
         }
         if (effectiveAmplitude <= 0) {
-            return pattern + " con " + effectiveSideName(pattern) + " en " + number(effectiveAmplitude)
-                + " bloques no se aparta del eje: los waypoints saldrían todos sobre la recta, un patrón"
-                + " decorativo. " + howToWiden(sideName(pattern), configuredAmplitude, highway);
+            return Msg.of(TravelText.LATERAL_NO_SIDE, "pattern", pattern.name(), "side", effectiveSideName(pattern),
+                "amplitude", effectiveAmplitude, "fix", howToWiden(sideName(pattern), configuredAmplitude, highway));
         }
         double neededSteps = Math.floor(distance / step);
         if (neededSteps > MAX_PATTERN_WAYPOINTS) {
@@ -397,13 +394,9 @@ public final class RoutePlanner {
             // justo encima por un decimal.
             double minimumStep = Math.ceil(distance / MAX_PATTERN_WAYPOINTS);
             double covered = MAX_PATTERN_WAYPOINTS * step;
-            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques necesitaría "
-                + number(neededSteps) + " cambios de lado para ondular un viaje de " + number(distance)
-                + " bloques, y una ruta no admite más de " + MAX_PATTERN_WAYPOINTS + ": el patrón cubriría"
-                + " solo los primeros " + number(covered) + " bloques y los últimos "
-                + number(distance - covered) + " saldrían en línea recta hasta el destino sin avisar, justo"
-                + " el tramo que llega a casa. Sube " + stepName(pattern) + " a " + number(minimumStep)
-                + " bloques o más, que es donde el patrón vuelve a caber entero, o elige RECTO.";
+            return Msg.of(TravelText.LATERAL_TOO_MANY_SIDES, "pattern", pattern.name(), "step", stepName(pattern),
+                "value", step, "needed", neededSteps, "distance", distance, "max", MAX_PATTERN_WAYPOINTS,
+                "covered", covered, "rest", distance - covered, "minimum", minimumStep);
         }
         double firstGap = Math.hypot(step, effectiveAmplitude);
         if (firstGap < minSpacing) {
@@ -412,14 +405,11 @@ public final class RoutePlanner {
             // que el paso y la amplitud son los dos menores que la separación.
             double neededStep = Math.ceil(Math.sqrt(minSpacing * minSpacing - effectiveAmplitude * effectiveAmplitude));
             double neededAmplitude = Math.ceil(Math.sqrt(minSpacing * minSpacing - step * step));
-            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques y "
-                + effectiveSideName(pattern) + " en " + number(effectiveAmplitude) + " deja sus waypoints a "
-                + number(Math.floor(firstGap)) + " bloques unos de otros, y hacen falta " + number(minSpacing)
-                + ": " + whyThatSpacing(minSpacing, waypointMargin) + " Con huecos más cortos el módulo suelta"
-                + " un waypoint y el siguiente en el mismo tick, el patrón se consume sin volarse y la ruta"
-                + " sale recta sin avisar. Sube " + stepName(pattern) + " a " + number(neededStep)
-                + " bloques, o " + sideName(pattern) + " a " + number(neededAmplitude)
-                + cappedBySide(configuredAmplitude, effectiveAmplitude, highway) + ", o elige RECTO.";
+            return Msg.of(TravelText.LATERAL_TOO_CLOSE, "pattern", pattern.name(), "step", stepName(pattern),
+                "value", step, "side", effectiveSideName(pattern), "amplitude", effectiveAmplitude,
+                "gap", Math.floor(firstGap), "spacing", minSpacing, "why", whyThatSpacing(minSpacing, waypointMargin),
+                "neededStep", neededStep, "sideName", sideName(pattern), "neededSide", neededAmplitude,
+                "capped", cappedBySide(configuredAmplitude, effectiveAmplitude, highway));
         }
         if (omitsLastLateralPoint(distance, step, effectiveAmplitude, minSpacing)
             && Math.floor(distance / step) <= 1) {
@@ -427,12 +417,10 @@ public final class RoutePlanner {
             // de llegar a casa; y omitirlo dejaría la ruta completamente recta. No hay nada que
             // acotar: se rechaza.
             double lastGap = Math.hypot(distance - Math.floor(distance / step) * step, effectiveAmplitude);
-            return pattern + " con " + stepName(pattern) + " en " + number(step) + " bloques solo cabe una vez"
-                + " en un viaje de " + number(distance) + ", y su único desvío queda a " + number(Math.floor(lastGap))
-                + " bloques del destino, menos de los " + number(minSpacing) + " que hacen falta: "
-                + whyThatSpacing(minSpacing, waypointMargin) + " Omitirlo dejaría la ruta recta y conservarlo"
-                + " haría aterrizar a Baritone dos veces. Sube " + sideName(pattern) + " a "
-                + number(Math.ceil(minSpacing)) + " bloques o más, aleja el destino, o elige RECTO.";
+            return Msg.of(TravelText.LATERAL_SINGLE_TOO_CLOSE, "pattern", pattern.name(), "step", stepName(pattern),
+                "value", step, "distance", distance, "gap", Math.floor(lastGap), "spacing", minSpacing,
+                "why", whyThatSpacing(minSpacing, waypointMargin), "sideName", sideName(pattern),
+                "needed", Math.ceil(minSpacing));
         }
         return null;
     }
@@ -442,13 +430,12 @@ public final class RoutePlanner {
      * el que esté mandando sea el suelo físico: es el ajuste que el jugador puede mover para pedir
      * menos sitio, y un motivo que no lo nombra le deja sin esa salida.
      */
-    private static String whyThatSpacing(double minSpacing, double waypointMargin) {
-        String head = "es el doble de waypoint-margin, que está en " + number(waypointMargin) + " bloques,"
-            + " porque Baritone empieza a aterrizar a " + number(BARITONE_LANDING_DISTANCE) + " bloques de su"
-            + " objetivo y hay que cambiárselo antes de que llegue";
-        if (minSpacing > MIN_WAYPOINT_SPACING) return head + ".";
-        return head + ", y nunca menos de " + number(MIN_WAYPOINT_SPACING) + ", que es lo más corto que una"
-            + " elytra con cohetes vuela como tramo en vez de como bamboleo.";
+    private static Msg whyThatSpacing(double minSpacing, double waypointMargin) {
+        if (minSpacing > MIN_WAYPOINT_SPACING) {
+            return Msg.of(TravelText.WHY_SPACING, "margin", waypointMargin, "landing", BARITONE_LANDING_DISTANCE);
+        }
+        return Msg.of(TravelText.WHY_SPACING_FLOOR, "margin", waypointMargin, "landing", BARITONE_LANDING_DISTANCE,
+            "floor", MIN_WAYPOINT_SPACING);
     }
 
     /**
@@ -493,17 +480,14 @@ public final class RoutePlanner {
      *
      * @return el motivo del rechazo, o {@code null} si la espiral se puede dibujar de verdad
      */
-    private static String spiralRejection(double configuredRadius, double effectiveRadius, double turns,
+    private static Msg spiralRejection(double configuredRadius, double effectiveRadius, double turns,
                                            boolean highway) {
         if (effectiveRadius <= 0) {
-            return FlightPattern.ESPIRAL + " con el radio efectivo en " + number(effectiveRadius)
-                + " bloques no da ninguna vuelta: todos sus pasos caerían sobre el destino, así que la"
-                + " aproximación sería recta. " + howToWiden("el radio", configuredRadius, highway);
+            return Msg.of(TravelText.SPIRAL_NO_RADIUS, "pattern", FlightPattern.ESPIRAL.name(),
+                "radius", effectiveRadius, "fix", howToWiden(TravelText.NAME_RADIUS, configuredRadius, highway));
         }
         if (turns == 0) {
-            return FlightPattern.ESPIRAL + " con las vueltas en " + number(turns) + " no gira: sus pasos"
-                + " caerían todos sobre el eje, entre el destino y el punto a una radio antes, así que la"
-                + " aproximación sería recta. Sube las vueltas por encima de 0 o elige RECTO.";
+            return Msg.of(TravelText.SPIRAL_NO_TURNS, "pattern", FlightPattern.ESPIRAL.name(), "turns", turns);
         }
         return null;
     }
@@ -527,7 +511,7 @@ public final class RoutePlanner {
      * la combinación que se rechaza: una espiral que solo puede apartarse 300 bloques del eje deja
      * pasos de 8 bloques, y hacen falta 338 de radio para que vuelva a haber espiral.
      */
-    private static String spiralSpacingRejection(Waypoint origin, Waypoint destination, double ux, double uz,
+    private static Msg spiralSpacingRejection(Waypoint origin, Waypoint destination, double ux, double uz,
                                                   double nx, double nz, double distance, PatternParams params,
                                                   double effectiveRadius, boolean highway,
                                                   double highwayMaxAmplitude, double minSpacing,
@@ -548,23 +532,18 @@ public final class RoutePlanner {
             shortestStep = Math.min(shortestStep, raw.get(i).distanceTo(raw.get(i + 1)));
         }
 
-        String head = FlightPattern.ESPIRAL + " con el radio efectivo en " + number(effectiveRadius)
-            + " bloques y " + number(params.spiralTurns()) + " vueltas llega a dejar pasos de "
-            + number(Math.floor(shortestStep)) + " bloques, y hacen falta " + number(minSpacing) + ": "
-            + whyThatSpacing(minSpacing, waypointMargin) + " Quitando los pasos que no se pueden volar no"
-            + " queda ni uno fuera de la recta al destino, así que la ruta saldría recta sin avisar.";
-
+        Msg fix;
         if (neededRadius == 0) {
-            return head + " Un viaje de " + number(distance) + " bloques no da para ninguna espiral volable"
-                + " -el radio no puede pasar de la mitad del viaje-: aleja el destino, baja las vueltas, o"
-                + " elige otro patrón.";
+            fix = Msg.of(TravelText.SPIRAL_FIX_SHORT_TRIP, "distance", distance);
+        } else if (highway && params.spiralRadius() > highwayMaxAmplitude) {
+            fix = Msg.of(TravelText.SPIRAL_FIX_CORRIDOR, "radius", params.spiralRadius(), "max", highwayMaxAmplitude,
+                "needed", neededRadius);
+        } else {
+            fix = Msg.of(TravelText.SPIRAL_FIX_RADIUS, "needed", neededRadius);
         }
-        if (highway && params.spiralRadius() > highwayMaxAmplitude) {
-            return head + " El radio vale " + number(params.spiralRadius()) + " bloques, pero el ancho"
-                + " máximo del corredor de la autopista lo acota a " + number(highwayMaxAmplitude)
-                + ": sube ese ancho a " + number(neededRadius) + " bloques o más, o elige otro patrón.";
-        }
-        return head + " Sube el radio a " + number(neededRadius) + " bloques o más, o elige otro patrón.";
+        return Msg.of(TravelText.SPIRAL_TOO_CLOSE, "pattern", FlightPattern.ESPIRAL.name(), "radius", effectiveRadius,
+            "turns", params.spiralTurns(), "step", Math.floor(shortestStep), "spacing", minSpacing,
+            "why", whyThatSpacing(minSpacing, waypointMargin), "fix", fix);
     }
 
     /**
@@ -587,17 +566,12 @@ public final class RoutePlanner {
      *
      * @return el motivo del rechazo, o {@code null} si el señuelo despista de verdad
      */
-    private static String decoyRejection(double angleDegrees, double fraction) {
+    private static Msg decoyRejection(double angleDegrees, double fraction) {
         if (fraction == 0) {
-            return FlightPattern.SENUELO + " con la fracción en " + number(fraction) + " no recorre nada"
-                + " hacia el señuelo: el punto de corrección caería sobre el propio origen y la ruta sería la"
-                + " recta al destino. Sube la fracción por encima de 0 o elige RECTO.";
+            return Msg.of(TravelText.DECOY_NO_FRACTION, "pattern", FlightPattern.SENUELO.name(), "fraction", fraction);
         }
         if (angleDegrees % 180 == 0) {
-            return FlightPattern.SENUELO + " con el ángulo en " + number(angleDegrees) + " grados no apunta"
-                + " fuera del eje: el punto de corrección caería sobre la propia recta origen-destino y la"
-                + " ruta sería recta, sin despistar a nadie. Dale al ángulo un valor que no sea múltiplo de"
-                + " 180 grados o elige RECTO.";
+            return Msg.of(TravelText.DECOY_NO_ANGLE, "pattern", FlightPattern.SENUELO.name(), "angle", angleDegrees);
         }
         return null;
     }
@@ -614,16 +588,13 @@ public final class RoutePlanner {
      * fábrica el señuelo necesita un viaje de unos 530 bloques, y quien se lo encuentra es quien pide
      * un señuelo para ir a la vuelta de la esquina.
      */
-    private static String decoySpacingRejection(double distance, PatternParams params, double shortestGap,
+    private static Msg decoySpacingRejection(double distance, PatternParams params, double shortestGap,
                                                  double minSpacing, double waypointMargin) {
         double neededDistance = Math.ceil(distance * minSpacing / shortestGap);
-        return FlightPattern.SENUELO + " con el ángulo en " + number(params.decoyAngleDegrees())
-            + " grados y la fracción en " + number(params.decoyFraction()) + " deja un tramo de "
-            + number(Math.floor(shortestGap)) + " bloques en un viaje de " + number(distance)
-            + ", y hacen falta " + number(minSpacing) + ": " + whyThatSpacing(minSpacing, waypointMargin)
-            + " Con un tramo más corto Baritone aterrizaría en el punto de corrección en vez de pasar por"
-            + " él. Aleja el destino a " + number(neededDistance) + " bloques o más, sube la fracción, o"
-            + " elige RECTO.";
+        return Msg.of(TravelText.DECOY_TOO_CLOSE, "pattern", FlightPattern.SENUELO.name(),
+            "angle", params.decoyAngleDegrees(), "fraction", params.decoyFraction(), "gap", Math.floor(shortestGap),
+            "distance", distance, "spacing", minSpacing, "why", whyThatSpacing(minSpacing, waypointMargin),
+            "needed", neededDistance);
     }
 
     /**
@@ -631,42 +602,32 @@ public final class RoutePlanner {
      * corredor de la autopista lo está acotando. Sin ella, el motivo manda al jugador a mover un
      * deslizador que no cambia la ruta, que es peor que no decirle nada.
      */
-    private static String cappedBySide(double configuredAmplitude, double effectiveAmplitude, boolean highway) {
-        if (!highway || configuredAmplitude <= effectiveAmplitude) return "";
-        return " -que además pide subir el ancho del corredor de la autopista, que ahora la acota a "
-            + number(effectiveAmplitude) + "-";
+    private static Msg cappedBySide(double configuredAmplitude, double effectiveAmplitude, boolean highway) {
+        if (!highway || configuredAmplitude <= effectiveAmplitude) return Msg.of(TravelText.NOTHING);
+        return Msg.of(TravelText.CAPPED_BY_CORRIDOR, "amplitude", effectiveAmplitude);
     }
 
     /** La salida del atasco, que cambia según de dónde venga el cero: del corredor o del ajuste. */
-    private static String howToWiden(String settingName, double configured, boolean highway) {
+    private static Msg howToWiden(TravelText settingName, double configured, boolean highway) {
         if (highway && configured > 0) {
-            return "El ajuste vale " + number(configured) + " bloques, pero el ancho máximo del corredor de la"
-                + " autopista lo acota a 0: sube ese ancho por encima de 0 o elige RECTO.";
+            return Msg.of(TravelText.WIDEN_CORRIDOR, "configured", configured);
         }
-        return "Sube " + settingName + " por encima de 0 bloques o elige RECTO.";
+        return Msg.of(TravelText.WIDEN_SETTING, "setting", settingName);
     }
 
     /** Cómo se llama el paso de cada patrón lateral en los ajustes, para que el motivo sea accionable. */
-    private static String stepName(FlightPattern pattern) {
-        return pattern == FlightPattern.QUIEBRO ? "el tramo" : "el periodo";
+    private static TravelText stepName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? TravelText.NAME_LEG : TravelText.NAME_PERIOD;
     }
 
     /** Cómo se llama el desvío de cada patrón lateral en los ajustes. */
-    private static String sideName(FlightPattern pattern) {
-        return pattern == FlightPattern.QUIEBRO ? "el desvío lateral" : "la amplitud";
+    private static TravelText sideName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? TravelText.NAME_OFFSET : TravelText.NAME_AMPLITUDE;
     }
 
     /** El mismo nombre con el adjetivo concordado, que en español no sale de concatenar. */
-    private static String effectiveSideName(FlightPattern pattern) {
-        return pattern == FlightPattern.QUIEBRO ? "el desvío lateral efectivo" : "la amplitud efectiva";
-    }
-
-    /** Sin decimales cuando el valor es entero, para que un motivo no diga "5000.0 bloques". */
-    private static String number(double value) {
-        if (!Double.isInfinite(value) && !Double.isNaN(value) && value == Math.rint(value)) {
-            return Long.toString((long) value);
-        }
-        return Double.toString(value);
+    private static TravelText effectiveSideName(FlightPattern pattern) {
+        return pattern == FlightPattern.QUIEBRO ? TravelText.NAME_OFFSET_EFFECTIVE : TravelText.NAME_AMPLITUDE_EFFECTIVE;
     }
 
     /**

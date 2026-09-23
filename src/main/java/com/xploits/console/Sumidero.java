@@ -1,12 +1,16 @@
 package com.xploits.console;
 
 import com.xploits.XploitsAddon;
+import com.xploits.console.core.ConsoleText;
 import com.xploits.console.core.Historial;
 import com.xploits.console.core.Instantanea;
 import com.xploits.console.core.Nivel;
 import com.xploits.console.core.Perdidas;
 import com.xploits.console.core.Registro;
 import com.xploits.console.core.Rotacion;
+import com.xploits.shared.Texts;
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Msg;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -102,8 +106,7 @@ final class Sumidero {
 
     private void ofrecer(LongFunction<Registro> registro) {
         if (!cola.offer(registro) && perdidas.descartado()) {
-            Salida.alertar("La cola de la consola se ha llenado: algunos mensajes no llegarán a su registro. "
-                + "Se anotará cuántos.");
+            Salida.alertar(Msg.of(ConsoleText.QUEUE_FULL));
         }
     }
 
@@ -153,8 +156,8 @@ final class Sumidero {
                 XploitsAddon.LOG.error("El escritor de la consola ha fallado", e);
                 if (!vueltaFallidaAvisada) {
                     vueltaFallidaAvisada = true;
-                    Salida.alertar("El escritor de la consola ha fallado: " + e.getClass().getSimpleName() + ": "
-                        + e.getMessage());
+                    Salida.alertar(Msg.of(ConsoleText.WRITER_FAILED, "error", e.getClass().getSimpleName() + ": "
+                        + e.getMessage()));
                 }
             }
         }
@@ -191,10 +194,12 @@ final class Sumidero {
         try {
             StringBuilder crudo = new StringBuilder();
             StringBuilder legible = new StringBuilder();
+            // The history is read by the player: it is written in the language chosen now.
+            Catalog textos = Texts.catalog(Texts.current());
             for (LongFunction<Registro> pendiente : lote) {
                 Registro r = pendiente.apply(Salida.siguienteSeq());
                 crudo.append(r.codificar()).append('\n');
-                String linea = Historial.linea(r, zona);
+                String linea = Historial.linea(r, zona, textos);
                 if (linea != null) legible.append(linea).append('\n');
             }
             byte[] bytes = crudo.toString().getBytes(StandardCharsets.UTF_8);
@@ -211,7 +216,7 @@ final class Sumidero {
             if (!falloAvisado) {
                 falloAvisado = true;
                 XploitsAddon.LOG.error("La consola no puede escribir su registro", e);
-                Salida.alertar("La consola no puede escribir su registro: " + e.getMessage());
+                Salida.alertar(Msg.of(ConsoleText.CANNOT_WRITE_LOG, "error", String.valueOf(e.getMessage())));
             }
         }
     }
@@ -245,8 +250,7 @@ final class Sumidero {
             }
             for (String nombre : Rotacion.borrar(lista, hoy)) {
                 Files.deleteIfExists(historial.resolve(nombre));
-                mensaje(Nivel.INFO, "consola", "Borrado del historial: " + nombre + " (se guardan " + Rotacion.DIAS
-                    + " días o 64 MiB).");
+                mensaje(Nivel.INFO, "consola", Texts.render(ConsoleText.HISTORY_PRUNED, "file", nombre, "days", Rotacion.DIAS));
             }
         } catch (IOException e) {
             XploitsAddon.LOG.warn("No se pudo podar el historial de la consola", e);
