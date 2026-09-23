@@ -55,6 +55,24 @@ una recta que apunte a donde vives.
 
 **Encenderlo no vuela**: arma el viaje y espera. Se lanza con `.xploits travel go`.
 
+**El destino se pide de tres maneras** (`destination-mode`):
+
+| Modo | Qué pides | Ajustes |
+|---|---|---|
+| `COORDENADAS` | Un punto del mundo | `x`, `z` |
+| `RELATIVO` | Un desplazamiento desde donde estés: 5000 y −3000 es «5000 en X y −3000 en Z desde aquí» | `offset-x`, `offset-z` |
+| `AUTOPISTA` | Un eje y cuántos bloques volar por él | `axis`, `highway-distance` |
+
+**`RELATIVO` es el que menos rastro deja.** Meteor guarda los ajustes en
+`<instancia>/meteor-client/modules.nbt`: con `COORDENADAS` tu destino acaba escrito ahí; con un
+desplazamiento, solo cuánto te mueves, que no dice desde dónde. Si venías de usar coordenadas, pon
+`x` y `z` a 0: cambiar de modo no borra lo que ya se guardó.
+
+**Las autopistas son ocho:** las cuatro rectas (`X_PLUS`, `X_MINUS`, `Z_PLUS`, `Z_MINUS`) y las
+cuatro diagonales (`X_PLUS_Z_PLUS`, `X_PLUS_Z_MINUS`, `X_MINUS_Z_PLUS`, `X_MINUS_Z_MINUS`). En
+todas, `highway-distance` son **bloques volados**: 20 000 por una diagonal avanzan unos 14 142 en
+X y otros tantos en Z, y cuestan los mismos cohetes que 20 000 en recto.
+
 | Patrón | Qué hace | Cuándo |
 |---|---|---|
 | `RECTO` | Nada | **En autopista.** Ahí tu traza es una más entre miles; ondular solo gasta cohetes y te saca del corredor |
