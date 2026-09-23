@@ -63,4 +63,16 @@ class PvpTextTest {
         assertEquals("AMENAZADO · 12,5 de daño ya te apunta y te quedan 7,0 de vida.",
             ES.render(Msg.of(PvpText.THREATENED, "damage", 12.5, "health", 7.0)));
     }
+
+    @Test
+    void everyStateAndPostureHasAKeyInBothCatalogs() {
+        for (CombatState state : CombatState.values()) {
+            ES.render(Msg.of(PvpText.of(state)));
+            EN.render(Msg.of(PvpText.of(state)));
+        }
+        for (CombatPosture posture : CombatPosture.values()) {
+            ES.render(Msg.of(PvpText.of(posture)));
+            EN.render(Msg.of(PvpText.of(posture)));
+        }
+    }
 }

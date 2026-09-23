@@ -43,4 +43,12 @@ class KitTextTest {
         assertEquals("Unknown courier NewCourier1 not accepted; add it to known-couriers if legitimate.",
             EN.render(Msg.of(KitText.UNKNOWN_COURIER_REJECTED, "requester", "NewCourier1")));
     }
+
+    @Test
+    void everyOrderStateHasAKeyInBothCatalogs() {
+        for (OrderMachine.State state : OrderMachine.State.values()) {
+            ES.render(Msg.of(KitText.of(state)));
+            EN.render(Msg.of(KitText.of(state)));
+        }
+    }
 }

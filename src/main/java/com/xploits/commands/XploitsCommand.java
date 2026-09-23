@@ -9,7 +9,6 @@ import com.xploits.shared.ComandoBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
-import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.shared.core.i18n.LanguageChoice;
 import com.xploits.shared.core.i18n.LanguageText;
 import com.xploits.shared.core.i18n.Msg;
@@ -106,11 +105,9 @@ public class XploitsCommand extends ComandoBase {
      *
      * <p>El motivo de un rechazo de ruta es lo más valioso que sale por aquí -nombra el ajuste que
      * hay que tocar, su valor actual y la salida concreta-, así que llega al chat de una pieza: una
-     * sola llamada, sin recortar, sin partir en líneas y sin resumir. Y el texto va como
-     * <b>argumento</b> de un {@code "%s"}, nunca como cadena de formato: {@code ChatUtils} se lo pasa
-     * tal cual a {@code String.format}, así que un motivo que llevara un porcentaje reventaría la
-     * llamada y el jugador se quedaría sin ver justo el mensaje que tenía que leer. El mismo motivo
-     * por el que el resto de subcomandos de este archivo escriben {@code info("%s", ...)}.
+     * sola llamada, sin recortar, sin partir en líneas y sin resumir. Llega como {@link PositionedMsg}
+     * (las coordenadas solo en la mitad del chat) y {@link #responder} lo traduce y lo pasa como
+     * argumento, nunca como cadena de formato: un motivo con un porcentaje no puede romper la llamada.
      *
      * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
      */
@@ -131,11 +128,8 @@ public class XploitsCommand extends ComandoBase {
      * lanzamiento, o el motivo entero por el que no se vuela.
      *
      * <p>Igual que en {@link #travelGo}, el motivo de un rechazo aquí nombra el ajuste que hay que
-     * tocar y a cuánto ponerlo, y puede llevar un {@code %} -por ejemplo si el rechazo cita
-     * {@code baritone-prefix} tal como lo dejó el jugador-. Por eso va como <b>argumento</b> de un
-     * {@code "%s"}, nunca como cadena de formato: pasarlo directo a {@code info(mensaje)} acabaría en
-     * {@code String.format(mensaje)} y, con un motivo que llevara un porcentaje, en una excepción que
-     * se traga el mensaje justo cuando el jugador más lo necesita.
+     * tocar y a cuánto ponerlo, y llega entero: es un {@link Msg} que se traduce en el idioma del
+     * jugador, y el texto ya traducido nunca se usa como cadena de formato.
      */
     private void sweepGo(NetherSweep sweep) {
         Msg message = sweep.start();
@@ -151,7 +145,7 @@ public class XploitsCommand extends ComandoBase {
 
     private void stashStatus(StashKeeper stashKeeper) {
         if (!stashKeeper.isActive()) {
-            warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para consultarlo.");
+            warning(Msg.of(CommandText.STASH_OFF_STATUS));
             return;
         }
         responder(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
@@ -159,7 +153,7 @@ public class XploitsCommand extends ComandoBase {
 
     private void find(String query) {
         if (query.strip().length() < 2) {
-            warning("Hace falta al menos un par de letras para buscar, por ejemplo \"obsi\".");
+            warning(Msg.of(CommandText.FIND_TOO_SHORT));
             return;
         }
 
@@ -167,36 +161,35 @@ public class XploitsCommand extends ComandoBase {
         if (maybeKeeper.isEmpty()) return;
         StashKeeper stashKeeper = maybeKeeper.get();
         if (!stashKeeper.isActive()) {
-            warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para poder buscar.");
+            warning(Msg.of(CommandText.STASH_OFF_FIND));
             return;
         }
 
         Set<String> ids = resolve(query);
         if (ids.isEmpty()) {
-            warning("No conozco ningún ítem que se parezca a \"%s\".", query);
+            warning(Msg.of(CommandText.FIND_UNKNOWN_ITEM, "query", query));
             return;
         }
 
         List<StashIndex.Hit> hits = stashKeeper.index().find(ids);
         if (hits.isEmpty()) {
-            warning("No he visto \"%s\" en ningún contenedor. Recuerda que un cofre solo entra en el índice cuando lo abres, "
-                + "y que los shulkers que llevas encima tampoco están indexados.", query);
+            warning(Msg.of(CommandText.FIND_NOT_SEEN, "query", query));
             return;
         }
 
         String dimension = MeteorClient.mc.world == null ? null : MeteorClient.mc.world.getRegistryKey().getValue().toString();
         Double x = MeteorClient.mc.player == null ? null : MeteorClient.mc.player.getX();
         Double z = MeteorClient.mc.player == null ? null : MeteorClient.mc.player.getZ();
-        info("%d %s con \"%s\":", hits.size(), hits.size() == 1 ? "sitio" : "sitios", query);
+        info(Msg.of(hits.size() == 1 ? CommandText.FIND_HEADER_ONE : CommandText.FIND_HEADER_MANY, "count", hits.size(), "query", query));
         for (StashIndex.Hit hit : hits.subList(0, Math.min(MAX_HITS, hits.size()))) {
-            String where = hit.insideShulker() == null ? "" : " · en shulker \"" + hit.insideShulker() + "\"";
-            String chat = String.format("  %s x%d · %s%s · visto %s",
-                shortId(hit.itemId()), hit.count(), hit.key().id(), where, ago(hit.seenAt()));
-            String registro = String.format("  %s x%d · %s%s · visto %s",
-                shortId(hit.itemId()), hit.count(), Texts.render(hit.key().sinPosicion(dimension, x, z)), where, ago(hit.seenAt()));
-            responder(Nivel.INFO, stashKeeper.name, new TextoConPosicion(chat, registro));
+            Object where = hit.insideShulker() == null ? "" : Msg.of(CommandText.FIND_IN_SHULKER, "name", hit.insideShulker());
+            Msg chat = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
+                "place", hit.key().id(), "shulker", where, "ago", ago(hit.seenAt()));
+            Msg log = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
+                "place", hit.key().sinPosicion(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
+            responder(Nivel.INFO, stashKeeper.name, new PositionedMsg(chat, log));
         }
-        if (hits.size() > MAX_HITS) info("  ...y %d más.", hits.size() - MAX_HITS);
+        if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));
     }
 
     /** Casa la consulta contra el id del ítem y contra su nombre traducido, para que "obsidiana" funcione. */
@@ -215,20 +208,20 @@ public class XploitsCommand extends ComandoBase {
         return itemId.startsWith("minecraft:") ? itemId.substring("minecraft:".length()) : itemId;
     }
 
-    private static String ago(long seenAt) {
+    private static Msg ago(long seenAt) {
         Duration d = Duration.ofMillis(Math.max(0, System.currentTimeMillis() - seenAt));
-        if (d.toMinutes() < 1) return "hace un momento";
-        if (d.toHours() < 1) return "hace " + d.toMinutes() + " min";
-        if (d.toDays() < 1) return "hace " + d.toHours() + " h";
+        if (d.toMinutes() < 1) return Msg.of(CommandText.AGO_NOW);
+        if (d.toHours() < 1) return Msg.of(CommandText.AGO_MINUTES, "n", d.toMinutes());
+        if (d.toDays() < 1) return Msg.of(CommandText.AGO_HOURS, "n", d.toHours());
         long days = d.toDays();
-        return "hace " + days + (days == 1 ? " día" : " días");
+        return days == 1 ? Msg.of(CommandText.AGO_DAY) : Msg.of(CommandText.AGO_DAYS, "n", days);
     }
 
     /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
     private Optional<KitRequester> kitRequester() {
         KitRequester module = Modules.get().get(KitRequester.class);
         if (module == null) {
-            warning("El módulo kit-requester no está registrado.");
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "kit-requester"));
             return Optional.empty();
         }
         return Optional.of(module);
@@ -238,7 +231,7 @@ public class XploitsCommand extends ComandoBase {
     private Optional<StashKeeper> keeper() {
         StashKeeper module = Modules.get().get(StashKeeper.class);
         if (module == null) {
-            warning("El módulo stash-keeper no está registrado.");
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "stash-keeper"));
             return Optional.empty();
         }
         return Optional.of(module);
@@ -248,7 +241,7 @@ public class XploitsCommand extends ComandoBase {
     private Optional<AutoPvp> pvp() {
         AutoPvp module = Modules.get().get(AutoPvp.class);
         if (module == null) {
-            warning("El módulo auto-pvp no está registrado.");
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "auto-pvp"));
             return Optional.empty();
         }
         return Optional.of(module);
@@ -258,7 +251,7 @@ public class XploitsCommand extends ComandoBase {
     private Optional<AutoTravel> travel() {
         AutoTravel module = Modules.get().get(AutoTravel.class);
         if (module == null) {
-            warning("El módulo auto-travel no está registrado.");
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "auto-travel"));
             return Optional.empty();
         }
         return Optional.of(module);
@@ -268,7 +261,7 @@ public class XploitsCommand extends ComandoBase {
     private Optional<NetherSweep> sweep() {
         NetherSweep module = Modules.get().get(NetherSweep.class);
         if (module == null) {
-            warning("El módulo nether-sweep no está registrado.");
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "nether-sweep"));
             return Optional.empty();
         }
         return Optional.of(module);

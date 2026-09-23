@@ -4,7 +4,6 @@ import com.xploits.console.Salida;
 import com.xploits.console.core.Formato;
 import com.xploits.console.core.Nivel;
 import com.xploits.shared.core.PositionedMsg;
-import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.shared.core.i18n.MessageKey;
 import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.systems.modules.Category;
@@ -48,42 +47,22 @@ public abstract class XploitsModule extends Module {
         super.error(message, args);
     }
 
-    public void infoPrivado(TextoConPosicion texto) {
-        Salida.mensaje(Nivel.INFO, name, texto.registro());
-        super.info("%s", texto.chat());
-    }
-
-    public void warningPrivado(TextoConPosicion texto) {
-        Salida.mensaje(Nivel.AVISO, name, texto.registro());
-        super.warning("%s", texto.chat());
-    }
-
-    public void errorPrivado(TextoConPosicion texto) {
-        Salida.mensaje(Nivel.ERROR, name, texto.registro());
-        super.error("%s", texto.chat());
-    }
-
-    /** Solo a la consola, sin chat: para lo que ya se dijo por otro camino. */
-    public void registrar(Nivel nivel, String texto) {
-        Salida.mensaje(nivel, name, texto);
-    }
-
     public void info(Msg msg) {
         String text = Texts.render(msg);
         Salida.mensaje(Nivel.INFO, name, text);
-        super.info("%s", text);
+        super.info("%s", text); // i18n: allowed
     }
 
     public void warning(Msg msg) {
         String text = Texts.render(msg);
         Salida.mensaje(Nivel.AVISO, name, text);
-        super.warning("%s", text);
+        super.warning("%s", text); // i18n: allowed
     }
 
     public void error(Msg msg) {
         String text = Texts.render(msg);
         Salida.mensaje(Nivel.ERROR, name, text);
-        super.error("%s", text);
+        super.error("%s", text); // i18n: allowed
     }
 
     public void info(MessageKey key, Object... namesAndValues) {
@@ -100,19 +79,20 @@ public abstract class XploitsModule extends Module {
 
     public void infoPrivado(PositionedMsg msg) {
         Salida.mensaje(Nivel.INFO, name, Texts.render(msg.log()));
-        super.info("%s", Texts.render(msg.chat()));
+        super.info("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void warningPrivado(PositionedMsg msg) {
         Salida.mensaje(Nivel.AVISO, name, Texts.render(msg.log()));
-        super.warning("%s", Texts.render(msg.chat()));
+        super.warning("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void errorPrivado(PositionedMsg msg) {
         Salida.mensaje(Nivel.ERROR, name, Texts.render(msg.log()));
-        super.error("%s", Texts.render(msg.chat()));
+        super.error("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
+    /** Solo a la consola, sin chat: para lo que ya se dijo por otro camino. */
     public void registrar(Nivel nivel, Msg msg) {
         Salida.mensaje(nivel, name, Texts.render(msg));
     }

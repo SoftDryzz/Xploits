@@ -524,3 +524,21 @@ kits.state-deposit=DEPOSIT
 kits.state-paused=PAUSED
 kits.state-finished=FINISHED
 kits.state-error=ERROR
+
+# command
+command.module-not-registered=El módulo {module} no está registrado.
+command.stash-off-status=stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para consultarlo.
+command.stash-off-find=stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para poder buscar.
+command.find-too-short=Hace falta al menos un par de letras para buscar, por ejemplo "obsi".
+command.find-unknown-item=No conozco ningún ítem que se parezca a "{query}".
+command.find-not-seen=No he visto "{query}" en ningún contenedor. Recuerda que un cofre solo entra en el índice cuando lo abres, y que los shulkers que llevas encima tampoco están indexados.
+command.find-header-one={count} sitio con "{query}":
+command.find-header-many={count} sitios con "{query}":
+command.find-hit=  {item} x{count} · {place}{shulker} · visto {ago}
+command.find-in-shulker= · en shulker "{name}"
+command.find-more=  ...y {count} más.
+command.ago-now=hace un momento
+command.ago-minutes=hace {n} min
+command.ago-hours=hace {n} h
+command.ago-day=hace 1 día
+command.ago-days=hace {n} días

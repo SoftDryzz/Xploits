@@ -5,7 +5,7 @@ import com.xploits.shared.core.i18n.Msg;
 import java.util.Objects;
 
 /**
- * The i18n successor of {@link TextoConPosicion}: the chat half may carry coordinates, the log half
+ * A player message in two halves: the chat half may carry coordinates, the log half
  * (console window and its files) never does. Marked at the source, which is the only place that
  * knows what the text carries.
  */

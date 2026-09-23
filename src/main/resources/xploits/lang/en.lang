@@ -524,3 +524,21 @@ kits.state-deposit=DEPOSIT
 kits.state-paused=PAUSED
 kits.state-finished=FINISHED
 kits.state-error=ERROR
+
+# command
+command.module-not-registered=The {module} module is not registered.
+command.stash-off-status=stash-keeper is disabled: the index is not loaded in memory. Enable it to check it.
+command.stash-off-find=stash-keeper is disabled: the index is not loaded in memory. Enable it to search.
+command.find-too-short=Searching needs at least a couple of letters, for example "obsi".
+command.find-unknown-item=I don't know any item that looks like "{query}".
+command.find-not-seen=I haven't seen "{query}" in any container. Remember that a chest only enters the index when you open it, and that the shulkers you carry aren't indexed either.
+command.find-header-one={count} place with "{query}":
+command.find-header-many={count} places with "{query}":
+command.find-hit=  {item} x{count} · {place}{shulker} · seen {ago}
+command.find-in-shulker= · in shulker "{name}"
+command.find-more=  ...and {count} more.
+command.ago-now=a moment ago
+command.ago-minutes={n} min ago
+command.ago-hours={n} h ago
+command.ago-day=1 day ago
+command.ago-days={n} days ago

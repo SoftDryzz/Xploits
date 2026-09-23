@@ -93,20 +93,7 @@ class FronteraTest {
      * Packages whose player text is fully in the catalogs (language spec §6). Each migration task
      * adds its prefixes; the last one replaces the list with "com/xploits/".
      */
-    private static final List<String> MIGRATED = List.of(
-        "com/xploits/shared/Texts.java",
-        "com/xploits/shared/Languages.java",
-        "com/xploits/shared/LanguageStore.java",
-        "com/xploits/shared/XploitsSettings.java",
-        "com/xploits/shared/core/i18n/",
-        "com/xploits/console/",
-        "com/xploits/travel/",
-        "com/xploits/sweep/",
-        "com/xploits/pvp/",
-        "com/xploits/elytra/",
-        "com/xploits/autotpy/",
-        "com/xploits/stash/",
-        "com/xploits/kitrequester/");
+    private static final List<String> MIGRATED = List.of("com/xploits/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
     // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches
@@ -119,7 +106,7 @@ class FronteraTest {
         "(?<!LOG\\.)\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)"
             + "\\s*\\((?:(?!Text\\.|Msg\\.of\\()[^;])*?\"[^\"]*\\p{L}{2}");
     private static final Pattern LITERAL_TO_UI = Pattern.compile(
-        "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\"|TextoConPosicion\\.igual\\(\\s*\"|new TextoConPosicion\\(\\s*\")");
+        "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\")");
     private static final Pattern SPANISH_LITERAL = Pattern.compile("\"[^\"]*[áéíóúñÁÉÍÓÚÑ¿¡«»][^\"]*\"");
     private static final String ALLOWED = "// i18n: allowed";
 
