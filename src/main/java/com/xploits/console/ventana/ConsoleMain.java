@@ -50,6 +50,7 @@ public final class ConsoleMain {
     private final long pidJuego;
     private final String lanzamiento;
     private final PrintStream out;
+    private final String codificacion;
     private final Teclado teclado;
     private final Seguidor seguidor;
     private final Medidor medidor;
@@ -69,19 +70,20 @@ public final class ConsoleMain {
     private boolean sucio = true;
     private boolean reponerPrompt;
 
-    private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, PrintStream out, Teclado teclado) {
+    private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, PrintStream out, String codificacion, Teclado teclado) {
         this.carpeta = carpeta;
         this.pidJuego = pidJuego;
         this.lanzamiento = lanzamiento;
         this.out = out;
+        this.codificacion = codificacion;
         this.teclado = teclado;
         this.seguidor = new Seguidor(carpeta);
         this.medidor = new Medidor(carpeta);
     }
 
     public static void main(String[] args) {
-        Charset codificacion = Charset.forName(System.getProperty("stdout.encoding", "UTF-8"));
-        PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), false, codificacion);
+        String codificacion = System.getProperty("stdout.encoding", "UTF-8");
+        PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), false, Charset.forName(codificacion));
         if (args.length != 3) {
             out.println("uso: ConsoleMain <carpeta> <pid del juego> <lanzamiento>");
             out.flush();
@@ -92,7 +94,7 @@ public final class ConsoleMain {
         String lanzamiento = args[2];
         Teclado teclado = Teclado.arrancar();
         try {
-            new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, out, teclado).correr();
+            new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, out, codificacion, teclado).correr();
         } catch (Throwable t) {
             reventar(carpeta, lanzamiento, out, teclado, t);
         }
@@ -106,7 +108,7 @@ public final class ConsoleMain {
             StandardCharsets.UTF_8);
 
         // chcp 65001 pone la salida en UTF-8 (verificado). Si no llegó a aplicarse, se dibuja en ASCII y se dice.
-        Glifos glifos = "UTF-8".equalsIgnoreCase(System.getProperty("stdout.encoding")) ? Glifos.UNICODE : Glifos.ASCII;
+        Glifos glifos = "UTF-8".equalsIgnoreCase(codificacion) ? Glifos.UNICODE : Glifos.ASCII;
         if (glifos == Glifos.ASCII) aviso = "la consola no está en UTF-8: dibujo el marco en ASCII";
         List<String> arte = Banner.cargar();
 
