@@ -237,6 +237,21 @@ compartes un log para que te ayuden con algo, **límpialo antes**. Ver [Segurida
 
 ---
 
+## Idioma
+
+El módulo `xploits` tiene un ajuste `language`: `Auto`, `Español` o `English`. En `Auto` sigue el
+idioma de Minecraft —cualquier `es_*` da español, cualquier otro da inglés—; con `Español` o
+`English` se queda fijo ahí pase lo que pase con el juego.
+
+`.xploits language` dice cuál está activo ahora mismo. `.xploits language auto|es|en` lo cambia. El
+chat, los toasts y la ventana de la consola cambian al momento; las descripciones del ClickGUI, en
+el siguiente reinicio.
+
+⚠️ **Con Minecraft en inglés, el addon arranca en inglés.** Si quieres español desde el principio,
+pon `.xploits language es` la primera vez.
+
+---
+
 ## Si algo no funciona
 
 Lee **[Problemas conocidos](docs/problemas-conocidos.md)**: están los fallos que sabemos que existen,
