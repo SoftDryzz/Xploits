@@ -32,8 +32,9 @@ public final class Arranque {
     }
 
     public static Resultado preparar(Path java, boolean javaExiste, List<Path> classpath, Path carpeta,
-                                     long pidJuego, String lanzamiento) {
+                                     long pidJuego, String lanzamiento, String sesion) {
         if (!lanzamiento.matches("[0-9a-z]+")) throw new IllegalArgumentException("id de lanzamiento no válido: " + lanzamiento);
+        if (!sesion.matches("[0-9a-z]+")) throw new IllegalArgumentException("id de sesión no válido: " + sesion);
         if (!javaExiste) return new Rechazo("no encuentro java.exe en " + java + ", y sin él no se abre la ventana");
         if (classpath.isEmpty()) return new Rechazo("no encuentro el jar del addon en disco, y la ventana se ejecuta desde él");
         List<Path> rutas = new ArrayList<>();
@@ -51,7 +52,7 @@ public final class Arranque {
         }
         String cp = classpath.stream().map(Path::toString).collect(Collectors.joining(";"));
         String interna = "chcp 65001 >nul & \"" + java + "\" -cp \"" + cp + "\" " + CLASE
-            + " \"" + carpeta + "\" " + pidJuego + " " + lanzamiento;
+            + " \"" + carpeta + "\" " + pidJuego + " " + lanzamiento + " " + sesion;
         return new Orden(List.of("cmd.exe", "/c", "start", TITULO, "cmd.exe", "/c", interna), interna);
     }
 }

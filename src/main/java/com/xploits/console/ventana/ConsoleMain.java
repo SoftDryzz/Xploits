@@ -33,8 +33,12 @@ import java.util.List;
 
 /**
  * La ventana de la consola (spec consola §4 y §6). Se ejecuta fuera del juego con
- * {@code java -cp <jar del mod> com.xploits.console.ventana.ConsoleMain <carpeta> <pid del juego> <lanzamiento>},
+ * {@code java -cp <jar del mod> com.xploits.console.ventana.ConsoleMain <carpeta> <pid del juego> <lanzamiento> <sesion>},
  * así que solo toca el JDK y {@code console/core}.
+ *
+ * <p>{@code sesion} es la del juego que la abrió: solo el {@code J} de esa sesión dice si su juego se
+ * despidió, y cuando su juego muere deja de leer {@code vivo.log}, así que la partida siguiente no
+ * aparece en esta ventana ni la pone en rojo.
  *
  * <p>Si revienta no desaparece: escribe por qué en {@code consola.salida} -para que el juego lo diga
  * en el chat- y en {@code consola-errores.log}, lo enseña en rojo y espera a que el jugador lo lea.
@@ -50,6 +54,7 @@ public final class ConsoleMain {
     private final Path carpeta;
     private final long pidJuego;
     private final String lanzamiento;
+    private final String sesion;
     private final PrintStream out;
     private final String codificacion;
     private final Teclado teclado;
@@ -72,10 +77,12 @@ public final class ConsoleMain {
     private boolean reponerPrompt;
     private int fallosDeLecturaSeguidos;
 
-    private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, PrintStream out, String codificacion, Teclado teclado) {
+    private ConsoleMain(Path carpeta, long pidJuego, String lanzamiento, String sesion, PrintStream out, String codificacion,
+                        Teclado teclado) {
         this.carpeta = carpeta;
         this.pidJuego = pidJuego;
         this.lanzamiento = lanzamiento;
+        this.sesion = sesion;
         this.out = out;
         this.codificacion = codificacion;
         this.teclado = teclado;
@@ -86,8 +93,8 @@ public final class ConsoleMain {
     public static void main(String[] args) {
         String codificacion = System.getProperty("stdout.encoding", "UTF-8");
         PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), false, Charset.forName(codificacion));
-        if (args.length != 3) {
-            out.println("uso: ConsoleMain <carpeta> <pid del juego> <lanzamiento>");
+        if (args.length != 4) {
+            out.println("uso: ConsoleMain <carpeta> <pid del juego> <lanzamiento> <sesion>");
             out.flush();
             System.exit(2);
             return;
@@ -96,7 +103,7 @@ public final class ConsoleMain {
         String lanzamiento = args[2];
         Teclado teclado = Teclado.arrancar();
         try {
-            new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, out, codificacion, teclado).correr();
+            new ConsoleMain(carpeta, Long.parseLong(args[1]), lanzamiento, args[3], out, codificacion, teclado).correr();
         } catch (Throwable t) {
             reventar(carpeta, lanzamiento, out, teclado, t);
         }
@@ -122,9 +129,16 @@ public final class ConsoleMain {
 
         long ultimoPintado = 0;
         long ultimaMedida = System.currentTimeMillis();
+        boolean leyendo = true;
         while (true) {
             long ahora = System.currentTimeMillis();
-            if (!leerFlujo()) return;
+            // Muerto su juego, se lee una última vez -lo que escribió antes de morir, su J fin incluido- y
+            // se deja de leer: lo que se ve se congela en su partida. El teclado y el repintado siguen.
+            boolean vivo = juegoVivo();
+            if (leyendo) {
+                if (!leerFlujo()) return;
+                leyendo = vivo;
+            }
             if (!atenderTeclado()) return;
             if (ahora - ultimaMedida >= MEDIR_MS) {
                 ultimaMedida = ahora;
@@ -133,7 +147,7 @@ public final class ConsoleMain {
                     prepararPantalla();
                 });
             }
-            Latido.EstadoJuego estado = Latido.evaluar(latidoMs, ahora, juegoVivo(), vistoFin);
+            Latido.EstadoJuego estado = Latido.evaluar(latidoMs, ahora, vivo, vistoFin);
             if (!estado.equals(juego)) {
                 juego = estado;
                 sucio = true;
@@ -190,7 +204,7 @@ public final class ConsoleMain {
                     latidoMs = f.epochMs();
                 }
                 case Registro.Juego j -> {
-                    vistoFin = j.motivo().equals("fin");
+                    if (j.sesion().equals(sesion)) vistoFin = j.motivo().equals("fin");
                     latidoMs = j.epochMs();
                 }
                 case Registro.Fin f -> {

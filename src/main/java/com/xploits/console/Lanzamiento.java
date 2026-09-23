@@ -33,7 +33,8 @@ final class Lanzamiento {
         if (!Files.exists(java)) {
             java = ProcessHandle.current().info().command().map(c -> Path.of(c).resolveSibling("java.exe")).orElse(java);
         }
-        return Arranque.preparar(java, Files.exists(java), classpath(), carpeta, ProcessHandle.current().pid(), lanzamiento);
+        return Arranque.preparar(java, Files.exists(java), classpath(), carpeta, ProcessHandle.current().pid(), lanzamiento,
+            Salida.SESION);
     }
 
     /** El jar del mod, o sus carpetas en desarrollo. {@code getRootPaths()} no sirve: apunta dentro del zip. */
