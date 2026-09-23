@@ -76,6 +76,13 @@ pudo cerrar, porque su autoapagado es medible desde fuera.
 
 **Qué hacer.** Apagar `auto-pvp` mientras los quieras para ti.
 
+### La consola necesita Windows Terminal con su configuración de ventanas por defecto
+
+La ventana pide su tamaño con una secuencia que Windows Terminal respeta. Si lo configuras para abrir
+en pestañas (`windowingBehavior`), esa secuencia puede cambiar el tamaño de tu otra ventana o no hacer
+nada. Con el conhost clásico, seleccionar texto congela la ventana mientras dure la selección; el
+juego no se entera, porque solo se comunican por ficheros.
+
 ---
 
 ## Calibraciones sin medir
@@ -113,6 +120,11 @@ te falten recursos (obsidiana, cristales) o el objetivo sea de los tuyos. El com
 
 **«No puedo lanzar un barrido porque estoy viajando.»** Correcto: los dos dirigen al mismo Baritone
 y `#elytra` solo admite un objetivo. Corta el primero.
+
+**«Cierro la consola con la X y dice "con la X o desde fuera".»** Windows no deja ejecutar nada a un
+programa cuando cierras su ventana con la X; se comprobó. Así que el juego no puede distinguir la X de
+una ventana matada desde el administrador de tareas, y el aviso dice las dos cosas en vez de fingir.
+Salir con `0` sí se distingue.
 
 ---
 

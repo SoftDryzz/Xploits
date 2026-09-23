@@ -21,12 +21,18 @@ alimenta la proyección de cohetes, que decide si cortar el vuelo. Estaba en el 
 Bajarlo al núcleo costó una clase y quince tests; dejarlo arriba habría costado que alguien se
 quedara sin cohetes a cien mil bloques de casa sin que ningún test dijera nada.
 
+`FronteraTest` lee el código fuente y hace cumplir tres cosas que ningún test de un núcleo puede ver:
+que todo módulo y comando herede de las bases, que nadie escriba al chat por `ChatUtils` sin
+registrarlo aparte, y que ni los núcleos ni la ventana importen nada del juego.
+
 ## Qué hay dentro
 
 ```
 com/xploits/                    Registro de módulos y comando (XploitsAddon).
 com/xploits/commands/           El comando .xploits.
 com/xploits/shared/chat/        Protocolo de chat de SnifferBuddy, compartido.
+com/xploits/shared/XploitsModule.java   Base de todos los módulos; ComandoBase.java, de todos los
+                                        comandos. Lo que dicen por el chat va también a la consola.
 
 com/xploits/kitrequester/       Pedir kits y aceptar al courier.
       .../core/                 Máquina de estados, cola y progreso.
@@ -55,6 +61,14 @@ com/xploits/sweep/              Barrido del Nether.
       .../core/                 Rectángulo, planificador de pasadas, cobertura previa,
                                 recuento de lo que llega, presupuesto de cohetes,
                                 cuentakilómetros y sonda de anchura.
+
+com/xploits/console/            El adaptador: el módulo, el colector de la cabecera y el sumidero,
+                                que escribe desde el único hilo propio del addon.
+      .../core/                 Todo lo que decide la consola: formato de los ficheros, qué se pinta
+                                y cómo se degrada, la vida de la ventana, el centinela de coordenadas.
+                                Puro y con tests.
+      .../ventana/              La ventana. Se ejecuta en otro proceso, fuera del juego, con
+                                java -cp <jar del mod>; por eso solo puede tocar el JDK y console/core.
 ```
 
 ## Lo que sería portable a otro cliente

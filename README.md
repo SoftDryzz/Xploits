@@ -46,7 +46,7 @@ Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad
 
 ---
 
-## Los siete módulos
+## Los ocho módulos
 
 ### `auto-travel` — volar a algún sitio sin dejar una flecha hacia tu base
 
@@ -140,6 +140,25 @@ trae gente hacia ti, nunca te mueve a ti.
 Apunta el contenido de los contenedores que abres y de los shulkers que ves. **No mueve nada.**
 Luego `.xploits find <ítem>` te dice dónde estaba.
 
+### `consola` — ver lo que hace el addon en una ventana aparte
+
+Abre una ventana de terminal con el logo XTO2002 arriba, el estado del juego debajo y el registro de
+todo lo que dicen los módulos de Xploits. Para tenerla en la otra pantalla mientras juegas, o para
+leer después qué pasó.
+
+- **Se enciende y se apaga como cualquier módulo.** Si la dejas encendida, se abre sola al arrancar
+  el juego, y no se cierra al salir de un mundo ni al morir.
+- **El menú va por números:** escribe el número y pulsa Enter. `1` todo, `2` pvp, `3` travel,
+  `4` sweep, `5` solo avisos, `6` pausa, `0` salir.
+- **Nunca enseña coordenadas.** Lo que en el chat lleva una posición, en la ventana sale con la
+  distancia o sin nada. El chat no cambia.
+- **Lo que escribe se queda en disco** mientras está encendida: `meteor-client/xploits/consola/historial/`,
+  un fichero por día, 30 días como mucho.
+- Si el juego se cierra o se cuelga, la ventana **se queda abierta** y lo dice, para que puedas leer
+  lo último que pasó.
+
+Necesita Windows Terminal, que es la consola por defecto de Windows 11.
+
 ---
 
 ## Comandos
@@ -187,6 +206,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 ```
 <instancia>/meteor-client/xploits/        Cola de kits y progreso
 <instancia>/meteor-client/xploits/stash/  Índice de contenedores, por mundo
+<instancia>/meteor-client/xploits/consola/  Historial de la consola, 30 días como mucho
 <instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
 <instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
 ```
