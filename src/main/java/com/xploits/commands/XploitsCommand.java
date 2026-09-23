@@ -154,7 +154,7 @@ public class XploitsCommand extends ComandoBase {
             warning("stash-keeper está desactivado: el índice no está cargado en memoria. Actívalo para consultarlo.");
             return;
         }
-        responder(Nivel.INFO, stashKeeper.name, TextoConPosicion.igual(stashKeeper.status()));
+        responder(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
     }
 
     private void find(String query) {
@@ -193,7 +193,7 @@ public class XploitsCommand extends ComandoBase {
             String chat = String.format("  %s x%d · %s%s · visto %s",
                 shortId(hit.itemId()), hit.count(), hit.key().id(), where, ago(hit.seenAt()));
             String registro = String.format("  %s x%d · %s%s · visto %s",
-                shortId(hit.itemId()), hit.count(), hit.key().sinPosicion(dimension, x, z), where, ago(hit.seenAt()));
+                shortId(hit.itemId()), hit.count(), Texts.render(hit.key().sinPosicion(dimension, x, z)), where, ago(hit.seenAt()));
             responder(Nivel.INFO, stashKeeper.name, new TextoConPosicion(chat, registro));
         }
         if (hits.size() > MAX_HITS) info("  ...y %d más.", hits.size() - MAX_HITS);

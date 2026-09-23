@@ -102,7 +102,10 @@ class FronteraTest {
         "com/xploits/console/",
         "com/xploits/travel/",
         "com/xploits/sweep/",
-        "com/xploits/pvp/");
+        "com/xploits/pvp/",
+        "com/xploits/elytra/",
+        "com/xploits/autotpy/",
+        "com/xploits/stash/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
     // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches

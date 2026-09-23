@@ -438,3 +438,39 @@ pvp.state-persecucion=PERSECUCION
 pvp.state-sin-recursos=SIN_RECURSOS
 pvp.posture-tranquilo=TRANQUILO
 pvp.posture-amenazado=AMENAZADO
+
+# elytra
+elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.
+elytra.setting-swap-below=Cambia la elytra puesta cuando su durabilidad sea igual o menor que este porcentaje.
+elytra.setting-min-spare=Solo se pone una elytra de repuesto si tiene al menos este porcentaje.
+elytra.setting-notify=Aviso local al cambiar de elytra.
+elytra.setting-notify-sound=Sonido en el aviso de que no hay repuesto.
+elytra.swapped=Elytra cambiada: la puesta estaba al {percent} %.
+elytra.swap-not-taking=El cambio de elytra no está prendiendo: la pechera sigue al {percent} %.
+elytra.no-spare-above-minimum=Elytra al {worn} % y ningún repuesto por encima del {minimum} %.
+elytra.no-spare-better=Elytra al {worn} % y ningún repuesto mejor que ella, aunque alguno sí llegue al {minimum} % mínimo.
+
+# tpy
+tpy.module-desc=Acepta al instante las TPA de tu lista y de tus amigos de Meteor.
+tpy.setting-users=Jugadores cuya TPA se acepta al instante. Nombres exactos; distinguen mayúsculas.
+tpy.setting-include-friends=Aceptar también a los amigos de Meteor (.friends add).
+tpy.setting-notify=Aviso local al aceptar o ignorar una TPA.
+tpy.accepted=TPA aceptada de {name}.
+tpy.ignored=TPA ignorada de {name}: no está en la lista.
+tpy.now-listed={count} en lista
+
+# stash
+stash.module-desc=Apunta qué hay en tus contenedores. Nunca mueve nada.
+stash.setting-notify=Aviso local cada vez que se vuelca al índice el contenido de un contenedor, sea nuevo o ya conocido.
+stash.read-failed=No se pudo leer el índice: {detail}
+stash.read-failed-log=No se pudo leer el índice de stash: el fichero está corrupto o no se puede leer. El detalle, solo en el chat.
+stash.not-indexed=Este contenedor no se ha indexado. Si es un cofre o un barril, puedes volver a abrirlo; los dispensadores, goteros y cofres de minecart o barca no se indexan nunca.
+stash.indexed=Indexado {container} ({types} tipos, {shulkers} shulkers).
+stash.indexed-log=Indexado un contenedor ({where}, {types} tipos, {shulkers} shulkers).
+stash.save-failed=No se pudo guardar el índice tras {attempts} intentos seguidos ({detail}). Dejo de intentarlo hasta que reactives stash-keeper.
+stash.save-failed-log=No se pudo guardar el índice de stash tras {attempts} intentos seguidos. Dejo de intentarlo hasta que reactives stash-keeper. El detalle, solo en el chat.
+stash.status={containers} contenedores indexados, {shulkers} shulkers dentro. Recuerda: los cofres solo entran al abrirlos; los shulkers, con verlos.
+stash.now-containers={count} contenedores
+stash.where-ender=ender
+stash.where-dimension={dimension}
+stash.where-distance={dimension} a {blocks} bloques

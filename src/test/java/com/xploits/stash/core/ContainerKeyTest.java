@@ -1,6 +1,9 @@
 package com.xploits.stash.core;
 
 import com.xploits.console.core.Centinela;
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,10 +63,15 @@ class ContainerKeyTest {
     @Test
     void sinPosicionDiceDimensionYDistanciaYNadaMas() {
         ContainerKey cofre = ContainerKey.block("minecraft:overworld", 300, 64, 400);
-        assertEquals("overworld a 500 bloques", cofre.sinPosicion("minecraft:overworld", 0.0, 0.0));
-        assertEquals("overworld", cofre.sinPosicion("minecraft:the_nether", 0.0, 0.0));
-        assertEquals("overworld", cofre.sinPosicion(null, null, null));
-        assertEquals("ender", ContainerKey.ENDER.sinPosicion("minecraft:overworld", 0.0, 0.0));
-        assertFalse(Centinela.sospecha(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0)));
+        assertEquals(Msg.of(StashText.WHERE_DISTANCE, "dimension", "overworld", "blocks", 500L),
+            cofre.sinPosicion("minecraft:overworld", 0.0, 0.0));
+        assertEquals(Msg.of(StashText.WHERE_DIMENSION, "dimension", "overworld"),
+            cofre.sinPosicion("minecraft:the_nether", 0.0, 0.0));
+        assertEquals(Msg.of(StashText.WHERE_DIMENSION, "dimension", "overworld"), cofre.sinPosicion(null, null, null));
+        assertEquals(Msg.of(StashText.WHERE_ENDER), ContainerKey.ENDER.sinPosicion("minecraft:overworld", 0.0, 0.0));
+        Catalog es = Catalog.load(Language.ES, problem -> {
+            throw new AssertionError(problem);
+        });
+        assertFalse(Centinela.sospecha(es.render(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0))));
     }
 }

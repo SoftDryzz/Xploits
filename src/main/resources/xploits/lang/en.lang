@@ -438,3 +438,39 @@ pvp.state-persecucion=CHASE
 pvp.state-sin-recursos=OUT OF RESOURCES
 pvp.posture-tranquilo=CALM
 pvp.posture-amenazado=THREATENED
+
+# elytra
+elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.
+elytra.setting-swap-below=Swaps the worn elytra when its durability is at or below this percentage.
+elytra.setting-min-spare=A spare elytra is only put on if it has at least this percentage.
+elytra.setting-notify=Local notice when the elytra is swapped.
+elytra.setting-notify-sound=Sound on the no-spare warning.
+elytra.swapped=Elytra swapped: the worn one was at {percent}%.
+elytra.swap-not-taking=The elytra swap is not taking: the chest slot is still at {percent}%.
+elytra.no-spare-above-minimum=Elytra at {worn}% and no spare above {minimum}%.
+elytra.no-spare-better=Elytra at {worn}% and no spare better than it, even though some do reach the {minimum}% minimum.
+
+# tpy
+tpy.module-desc=Instantly accepts TPA requests from your list and your Meteor friends.
+tpy.setting-users=Players whose TPA is accepted instantly. Exact names; case-sensitive.
+tpy.setting-include-friends=Also accept your Meteor friends (.friends add).
+tpy.setting-notify=Local notice when a TPA is accepted or ignored.
+tpy.accepted=Accepted TPA from {name}.
+tpy.ignored=Ignored TPA from {name}: not on the list.
+tpy.now-listed={count} listed
+
+# stash
+stash.module-desc=Records what is in your containers. Never moves anything.
+stash.setting-notify=Local notice every time a container's contents are written to the index, whether new or already known.
+stash.read-failed=Could not read the index: {detail}
+stash.read-failed-log=Could not read the stash index: the file is corrupt or unreadable. The details are in chat only.
+stash.not-indexed=This container was not indexed. If it is a chest or a barrel, you can open it again; dispensers, droppers and minecart or boat chests are never indexed.
+stash.indexed=Indexed {container} ({types} kinds, {shulkers} shulkers).
+stash.indexed-log=Indexed a container ({where}, {types} kinds, {shulkers} shulkers).
+stash.save-failed=Could not save the index after {attempts} attempts in a row ({detail}). I will stop trying until you re-enable stash-keeper.
+stash.save-failed-log=Could not save the stash index after {attempts} attempts in a row. I will stop trying until you re-enable stash-keeper. The details are in chat only.
+stash.status={containers} containers indexed, {shulkers} shulkers inside. Remember: chests only get in when you open them; shulkers, when you see them.
+stash.now-containers={count} containers
+stash.where-ender=ender
+stash.where-dimension={dimension}
+stash.where-distance={dimension}, {blocks} blocks away
