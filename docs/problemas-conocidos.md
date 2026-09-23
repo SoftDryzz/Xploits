@@ -133,7 +133,13 @@ te falten recursos (obsidiana, cristales) o el objetivo sea de los tuyos. El com
 y `#elytra` solo admite un objetivo. Corta el primero.
 
 **«Algunos rechazos de `auto-travel` en español terminan en "..".»** Es a propósito, se dejó tal
-cual está redactado.
+cual está redactado. Afecta solo al español: en inglés esos mismos motivos se recortaron para que la
+frase termine con un único punto.
+
+**«Guardar `language.txt` falla y luego el idioma vuelve a ser el de antes.»** Al jugador se le avisa
+en el momento de que no se pudo guardar, pero si falla el proceso se reinicia con lo que hubiera en el
+archivo la última vez que sí se escribió con éxito: tras un reinicio gana el idioma anterior del
+archivo y la elección hecha en el ClickGUI se revierte.
 
 **«Cierro la consola con la X y dice "con la X o desde fuera".»** Windows no deja ejecutar nada a un
 programa cuando cierras su ventana con la X; se comprobó. Así que el juego no puede distinguir la X de

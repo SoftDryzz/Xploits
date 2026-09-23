@@ -91,6 +91,10 @@ public final class Languages {
 
         @EventHandler
         private void onTick(TickEvent.Post event) {
+            if (sync == null) {
+                MeteorClient.EVENT_BUS.unsubscribe(this);
+                return;
+            }
             if (!forced) {
                 XploitsSettings module = module();
                 if (module != null) module.language.set(sync.fileChoice());

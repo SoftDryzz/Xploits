@@ -6,6 +6,7 @@ import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /** The auto-travel texts moved to the catalogs verbatim, and read in English too. */
 class TravelTextTest {
@@ -47,13 +48,15 @@ class TravelTextTest {
 
     @Test
     void theSameRejectionReadsInEnglish() {
+        String rendered = EN.render(tightZigzag());
         assertEquals("Not flying: ZIGZAG with the period at 100 blocks and the effective amplitude at 50 leaves its"
             + " waypoints 111 blocks apart, and 300 are needed: it is twice waypoint-margin, which is at 150 blocks,"
             + " because Baritone starts landing 48 blocks from its goal and it has to be changed before it gets"
             + " there, and never less than 300, which is the shortest a rocket-powered elytra flies as a leg rather"
             + " than as a wobble. With shorter gaps the module drops a waypoint and the next one in the same tick,"
             + " the pattern is used up without being flown and the route goes straight without warning. Raise the"
-            + " period to 296 blocks, or the amplitude to 283, or choose RECTO..", EN.render(tightZigzag()));
+            + " period to 296 blocks, or the amplitude to 283, or choose RECTO.", rendered);
+        assertFalse(rendered.contains(".."), "English rejection should not end with a doubled period");
     }
 
     @Test
