@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-23
+
 ### Added
 
 - A language selector: the `xploits` module's `language` setting (`Auto` / `Español` / `English`)
