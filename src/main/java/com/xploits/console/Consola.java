@@ -87,14 +87,21 @@ public class Consola extends XploitsModule {
         soltarCerrojo();
     }
 
+    /** Orbit no captura: una excepción de aquí subiría al tick del juego. Se dice y la consola se apaga. */
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (++ticks % TICKS_ENTRE_VISTAZOS != 0) return;
-        Path carpeta = Lanzamiento.carpeta();
-        ejecutar(ciclo.tick(new Ciclo.Observacion(System.currentTimeMillis(),
-            Lanzamiento.leerPid(carpeta).orElse(null), Lanzamiento::vivo, Lanzamiento.leerSalida(carpeta).orElse(null))));
-        // Puede haberse apagado por lo que acaba de pasar: se vuelve a mirar.
-        if (sumidero != null) Salida.instantanea(Colector.tomar());
+        try {
+            if (++ticks % TICKS_ENTRE_VISTAZOS != 0) return;
+            Path carpeta = Lanzamiento.carpeta();
+            ejecutar(ciclo.tick(new Ciclo.Observacion(System.currentTimeMillis(),
+                Lanzamiento.leerPid(carpeta).orElse(null), Lanzamiento::vivo, Lanzamiento.leerSalida(carpeta).orElse(null))));
+            // Puede haberse apagado por lo que acaba de pasar: se vuelve a mirar.
+            if (sumidero != null) Salida.instantanea(Colector.tomar());
+        } catch (RuntimeException e) {
+            XploitsAddon.LOG.error("La consola ha fallado", e);
+            avisar(Nivel.ERROR, "La consola ha fallado y se apaga: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            if (isActive()) toggle();
+        }
     }
 
     private void ejecutar(List<Ciclo.Accion> acciones) {
@@ -113,20 +120,37 @@ public class Consola extends XploitsModule {
         }
     }
 
+    /** Un fallo inesperado al preparar o lanzar se resuelve como rechazo: el ciclo no puede quedarse en LANZANDO. */
     private void lanzar(String lanzamiento) {
         Path carpeta = Lanzamiento.carpeta();
         Lanzamiento.borrarRestos(carpeta);
-        switch (Lanzamiento.preparar(carpeta, lanzamiento)) {
+        Arranque.Resultado resultado;
+        try {
+            resultado = Lanzamiento.preparar(carpeta, lanzamiento);
+        } catch (RuntimeException e) {
+            ejecutar(ciclo.rechazado(falloInesperado(e)));
+            return;
+        }
+        switch (resultado) {
             case Arranque.Rechazo r -> ejecutar(ciclo.rechazado(r.motivo()));
             case Arranque.Orden o -> {
                 try {
                     Lanzamiento.lanzar(o.argv());
-                    ejecutar(ciclo.lanzado(o.descripcion(), System.currentTimeMillis()));
                 } catch (IOException e) {
                     ejecutar(ciclo.rechazado("Windows no dejó ejecutar la orden (" + e.getMessage() + ")"));
+                    return;
+                } catch (RuntimeException e) {
+                    ejecutar(ciclo.rechazado(falloInesperado(e)));
+                    return;
                 }
+                ejecutar(ciclo.lanzado(o.descripcion(), System.currentTimeMillis()));
             }
         }
+    }
+
+    private static String falloInesperado(RuntimeException e) {
+        XploitsAddon.LOG.error("Fallo inesperado al preparar la ventana de la consola", e);
+        return "fallo inesperado al preparar la ventana: " + e.getClass().getSimpleName() + ": " + e.getMessage();
     }
 
     private boolean tomarCerrojo(Path carpeta) {
@@ -178,23 +202,33 @@ public class Consola extends XploitsModule {
             porChat.add(new Aviso(nivel, texto));
         }
 
+        /**
+         * Orbit no captura: si repartir falla, se registra y se descarta lo pendiente, para no repetir
+         * el mismo fallo en cada tick. No se avisa desde aquí: el aviso podría fallar por lo mismo.
+         */
         @EventHandler
         private void onTick(TickEvent.Post event) {
-            String alerta;
-            while ((alerta = Salida.alertaPendiente()) != null) avisar(Nivel.ERROR, alerta);
-            for (Aviso a : porTostar) {
-                mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(a.texto()).icon(Items.COMMAND_BLOCK).build());
-            }
-            porTostar.clear();
-            if (mc.world == null || porChat.isEmpty()) return;
-            List<Aviso> copia = new ArrayList<>(porChat);
-            porChat.clear();
-            for (Aviso a : copia) {
-                switch (a.nivel()) {
-                    case INFO -> info("%s", a.texto());
-                    case AVISO -> warning("%s", a.texto());
-                    case ERROR -> error("%s", a.texto());
+            try {
+                String alerta;
+                while ((alerta = Salida.alertaPendiente()) != null) avisar(Nivel.ERROR, alerta);
+                for (Aviso a : porTostar) {
+                    mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(a.texto()).icon(Items.COMMAND_BLOCK).build());
                 }
+                porTostar.clear();
+                if (mc.world == null || porChat.isEmpty()) return;
+                List<Aviso> copia = new ArrayList<>(porChat);
+                porChat.clear();
+                for (Aviso a : copia) {
+                    switch (a.nivel()) {
+                        case INFO -> info("%s", a.texto());
+                        case AVISO -> warning("%s", a.texto());
+                        case ERROR -> error("%s", a.texto());
+                    }
+                }
+            } catch (RuntimeException e) {
+                XploitsAddon.LOG.error("La consola no ha podido repartir sus avisos; se descartan los pendientes", e);
+                porTostar.clear();
+                porChat.clear();
             }
         }
     }
