@@ -19,7 +19,7 @@ final class LanguageStore {
         return MeteorClient.FOLDER.toPath().resolve("xploits").resolve("language.txt");
     }
 
-    /** Empty when the file does not exist; an unreadable file is reported as its exception message. */
+    /** Empty when the file does not exist; throws {@link IOException} when the file exists but cannot be read. */
     static Optional<String> read() throws IOException {
         Path f = file();
         if (!Files.exists(f)) return Optional.empty();

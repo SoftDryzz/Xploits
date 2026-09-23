@@ -99,12 +99,16 @@ class FronteraTest {
         "com/xploits/shared/LanguageStore.java",
         "com/xploits/shared/XploitsSettings.java",
         "com/xploits/shared/core/i18n/");
-    // Note: tightened from the brief's version, which also matched the quoted argument *names* of
+    // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
-    // text. Requiring the quote to open the argument list keeps catching info("literal") while no
-    // longer flagging MessageKey calls with named arguments.
+    // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches
+    // registrar(Nivel.INFO, "texto"), responder(Nivel.INFO, fuente, "texto"), info("%s", "texto")
+    // and warning(prefix + "texto") — but a scan through the call is blocked wherever it crosses a
+    // MessageKey reference (an enum constant of some *Text type, e.g. LanguageText.X or "...Text.")
+    // or a Msg.of(...) call: those are the values a named argument carries, not the message itself.
     private static final Pattern LITERAL_TO_PLAYER = Pattern.compile(
-        "\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)\\s*\\(\\s*\"[^\"]*\\p{L}{2}");
+        "\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)"
+            + "\\s*\\((?:(?!Text\\.|Msg\\.of\\()[^;])*?\"[^\"]*\\p{L}{2}");
     private static final Pattern LITERAL_TO_UI = Pattern.compile(
         "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\"|TextoConPosicion\\.igual\\(\\s*\"|new TextoConPosicion\\(\\s*\")");
     private static final Pattern SPANISH_LITERAL = Pattern.compile("\"[^\"]*[áéíóúñÁÉÍÓÚÑ¿¡«»][^\"]*\"");

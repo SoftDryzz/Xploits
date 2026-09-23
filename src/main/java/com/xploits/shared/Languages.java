@@ -45,6 +45,7 @@ public final class Languages {
 
     /** {@code .xploits language <code>}. */
     public static void choose(LanguageChoice value) {
+        if (sync == null) return;
         XploitsSettings module = module();
         if (sync.choose(value) == LanguageSync.Change.UNCHANGED) {
             if (module != null) module.info(LanguageText.ALREADY, "choice", value.toString());
@@ -73,8 +74,7 @@ public final class Languages {
         }
         if (module == null) return;
         // Spec §5: mention the restart only when the resolved language actually changed.
-        LanguageText key = before != after ? LanguageText.NOW_RESTART : LanguageText.NOW;
-        module.info(key, "language", name(after));
+        module.info(before != after ? LanguageText.NOW_RESTART : LanguageText.NOW, "language", name(after));
     }
 
     private static LanguageText name(Language l) {

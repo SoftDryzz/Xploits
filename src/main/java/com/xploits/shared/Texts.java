@@ -24,7 +24,8 @@ public final class Texts {
     private Texts() {
     }
 
-    /** Called once from {@code XploitsAddon.onInitialize}, before any module is built. */
+    /** Called once from {@code Languages.start}, itself called from {@code XploitsAddon.onInitialize}
+     * before any module is built. */
     static void init(LanguageChoice fromFile) {
         choice = fromFile;
         startup = current();
