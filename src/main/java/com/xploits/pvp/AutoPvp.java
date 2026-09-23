@@ -15,9 +15,12 @@ import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
+import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
+import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -53,11 +56,9 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Dirige los módulos de combate de Meteor (spec §1, rediseñado en
@@ -102,9 +103,7 @@ public class AutoPvp extends XploitsModule {
 
     private final Setting<Integer> targetRange = sgGeneral.add(new IntSetting.Builder()
         .name("target-range")
-        .description("A cuántos bloques se busca un objetivo. Clasificar en fase es otra cosa y va a 10 fijo: "
-            + "ningún módulo dirigido llega más lejos, así que un objetivo más allá de 10 se ve y se informa, "
-            + "pero no enciende nada.")
+        .description(Texts.startupText(PvpText.SETTING_TARGET_RANGE))
         .defaultValue(16)
         .range(4, 64)
         .sliderRange(4, 64)
@@ -113,13 +112,7 @@ public class AutoPvp extends XploitsModule {
 
     private final Setting<Integer> approachDistance = sgGeneral.add(new IntSetting.Builder()
         .name("approach-distance")
-        .description("Frontera entre acercamiento y superficie, con una banda de un bloque a cada lado: "
-            + "se entra en ACERCAMIENTO por encima de esta distancia más 1 y se vuelve a SUPERFICIE por debajo "
-            + "de esta menos 1, para que un objetivo parado justo en el umbral no haga oscilar la fase. "
-            + "Tope en 6: EntityUtils.getCityBlock() de Meteor no ve rodeado más allá de esa distancia, "
-            + "y un approach-distance mayor dejaría una franja donde nunca se detecta RODEADO. Suelo en 2: por debajo "
-            + "de 3 ya no hay fase que pida el aura, y de 3 al rango de cristal (4,5) la mantiene encendida la cuenta "
-            + "de hostiles, no la fase.")
+        .description(Texts.startupText(PvpText.SETTING_APPROACH_DISTANCE))
         .defaultValue(6)
         .range(2, 6)
         .sliderRange(2, 6)
@@ -133,13 +126,7 @@ public class AutoPvp extends XploitsModule {
      */
     private final Setting<Double> threatMargin = sgGeneral.add(new DoubleSetting.Builder()
         .name("threat-margin")
-        .description("Cuánta vida te tiene que quedar, descontando el daño que YA te apunta (cristales puestos, "
-            + "alguien con espada pegado a ti, camas en el Nether, la caída), para seguir tranquilo. Por debajo "
-            + "se encienden hole-filler, anti-anvil, anti-bed y anti-anchor, y además surround si estás en un "
-            + "agujero, pisando suelo y con la altura quieta -mientras tu Y se mueva, surround se apagaría solo-. "
-            + "No es 'estoy bajo de vida': es lo que ya está colocado contra ti. "
-            + "Subirlo salta antes y cuesta poco -ninguno de esos módulos te inmoviliza y solo hole-filler gasta-; "
-            + "bajarlo te deja reaccionar más tarde.")
+        .description(Texts.startupText(PvpText.SETTING_THREAT_MARGIN))
         .defaultValue(DefensivePolicy.THREAT_MARGIN)
         .range(0, 40)
         .sliderRange(0, 20)
@@ -153,32 +140,21 @@ public class AutoPvp extends XploitsModule {
      */
     private final Setting<Boolean> syncFriends = sgGeneral.add(new BoolSetting.Builder()
         .name("sync-friends")
-        .description("ESCRIBE EN TU LISTA DE AMIGOS DE METEOR (.friends), que no es del addon: "
-            + "mientras auto-pvp esté encendido añade ahí a los couriers de kit-requester y a la lista users "
-            + "de auto-tpy, y los quita al apagarlo. Es la única forma de que crystal-aura, auto-trap, "
-            + "auto-web, auto-anvil y auto-city -que eligen su propio objetivo, y solo miran esa lista- "
-            + "tampoco les ataquen. Solo quita lo que añadió él: a un amigo que ya tuvieras no lo toca nunca, "
-            + "y si le quitas uno de los suyos a mano no lo vuelve a poner. Con trust-unknown-couriers "
-            + "encendido NO sincroniza ningún courier, porque entonces cualquiera que imite un READY entra "
-            + "solo en esa lista (spec §14.2).")
+        .description(Texts.startupText(PvpText.SETTING_SYNC_FRIENDS))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> notify = sgGeneral.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al cambiar de fase ofensiva o de postura defensiva, al no encender algo que "
-            + "la situación pedía, al no atacar a uno de los nuestros y al tocar tu lista de amigos de Meteor. "
-            + "Cada aviso se dice una vez, cuando aparece, no en cada tick. Los dos avisos de fallo silencioso "
-            + "-SIN_RECURSOS y 'lleva rato encendido sin gastar nada'- se dicen siempre, lo apagues o no: son "
-            + "justo los que no se pueden ver de ninguna otra manera.")
+        .description(Texts.startupText(PvpText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> notifySound = sgGeneral.add(new BoolSetting.Builder()
         .name("notify-sound")
-        .description("Sonido en el aviso fuerte de SIN_RECURSOS.")
+        .description(Texts.startupText(PvpText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
@@ -227,10 +203,10 @@ public class AutoPvp extends XploitsModule {
      * núcleo para las omisiones, la cuenta de cristales para el aviso del aura-, así que una entrada
      * que entra y sale no rebota.
      */
-    private Set<String> announcedNotes = Set.of();
+    private Set<Object> announcedNotes = Set.of();
 
     public AutoPvp() {
-        super(XploitsAddon.CATEGORY, "auto-pvp", "Dirige los módulos de combate según la fase de la pelea.");
+        super(XploitsAddon.CATEGORY, "auto-pvp", Texts.startupText(PvpText.MODULE_DESC));
     }
 
     @Override
@@ -357,7 +333,7 @@ public class AutoPvp extends XploitsModule {
         // dos veces, la segunda en cuanto volviera a estar a tiro.
         if (announcedAllies.size() >= MAX_ANNOUNCED_ALLIES) announcedAllies.clear();
         if (!announcedAllies.add(skippedAlly.name())) return;
-        info("No ataco a %s: %s.", skippedAlly.name(), skippedAlly.allegiance().reason());
+        info(PvpText.NOT_ATTACKING, "name", skippedAlly.name(), "reason", skippedAlly.allegiance().reason());
     }
 
     private static String nameOf(PlayerEntity player) {
@@ -444,11 +420,10 @@ public class AutoPvp extends XploitsModule {
 
         if (!notify.get()) return;
         if (!added.isEmpty()) {
-            info("Añado a tus amigos de Meteor: %s. Así los otros cinco módulos de combate tampoco les atacan.",
-                String.join(", ", added));
+            info(PvpText.FRIENDS_ADDED, "names", String.join(", ", added));
         }
         if (!removed.isEmpty()) {
-            info("Quito de tus amigos de Meteor: %s. Los había puesto yo.", String.join(", ", removed));
+            info(PvpText.FRIENDS_REMOVED, "names", String.join(", ", removed));
         }
     }
 
@@ -459,7 +434,7 @@ public class AutoPvp extends XploitsModule {
         if (plan.state() == CombatState.SIN_RECURSOS) {
             warnOutOfResources(plan);
         } else if (notify.get()) {
-            info("%s%s", plan.state(), lastTargetName == null ? "" : " · " + lastTargetName);
+            info(phase(plan));
         }
     }
 
@@ -473,10 +448,10 @@ public class AutoPvp extends XploitsModule {
         if (plan.posture() == lastPosture || !notify.get()) return;
 
         if (plan.posture() == CombatPosture.AMENAZADO) {
-            info("AMENAZADO · %s de daño ya te apunta y te quedan %s de vida.",
-                number(lastSnapshot.incomingDamage()), number(lastSnapshot.selfTotalHealth()));
+            info(PvpText.THREATENED, "damage", lastSnapshot.incomingDamage(),
+                "health", lastSnapshot.selfTotalHealth());
         } else {
-            info("TRANQUILO · ya no hay nada colocado que te deje bajo el margen.");
+            info(PvpText.CALM);
         }
     }
 
@@ -494,24 +469,28 @@ public class AutoPvp extends XploitsModule {
         // comparar motivos enteros volvería a ser una línea por tick. Lo que el jugador necesita
         // saber es que auto-trap no va a subir, no el número exacto de este tick -que sí sale, y
         // actualizado, en .xploits pvp-.
-        Map<String, String> notes = new LinkedHashMap<>();
-        for (String warning : plan.warnings()) notes.put(warning, warning);
+        Map<Object, Msg> notes = new LinkedHashMap<>();
+        for (Msg warning : plan.warnings()) notes.put(warning, warning);
         for (Skipped skipped : plan.skipped()) {
             notes.put(skipped.module().name(),
-                "No enciendo " + skipped.module().name() + ": " + skipped.reason() + ".");
+                Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
         }
 
         if (notify.get() && plan.state() != CombatState.SIN_RECURSOS) {
-            for (Map.Entry<String, String> note : notes.entrySet()) {
-                if (!announcedNotes.contains(note.getKey())) warning("%s", note.getValue());
+            for (Map.Entry<Object, Msg> note : notes.entrySet()) {
+                if (!announcedNotes.contains(note.getKey())) warning(note.getValue());
             }
         }
         announcedNotes = Set.copyOf(notes.keySet());
     }
 
-    /** Un número de vida o de daño como se lee en español, con un decimal. */
-    private static String number(double value) {
-        return String.format(Locale.forLanguageTag("es"), "%.1f", value);
+    /** La fase y, si lo hay, el objetivo: lo que se anuncia al cambiar y lo que enseña la consola. */
+    private Msg phase(Plan plan) {
+        return Msg.of(PvpText.PHASE, "state", plan.state().name(), "target", targetSuffix());
+    }
+
+    private Msg targetSuffix() {
+        return lastTargetName == null ? Msg.of(PvpText.NOTHING) : Msg.of(PvpText.TARGET_SUFFIX, "name", lastTargetName);
     }
 
     private CombatSnapshot snapshot(PlayerEntity target, Set<String> couriers, Set<String> tpyUsers) {
@@ -710,8 +689,8 @@ public class AutoPvp extends XploitsModule {
 
     @Override
     public String ahora() {
-        if (lastPlan == null) return "leyendo";
-        return lastPlan.state() + (lastTargetName == null ? "" : " · " + lastTargetName);
+        if (lastPlan == null) return Texts.render(PvpText.READING);
+        return Texts.render(phase(lastPlan));
     }
 
     /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para todo. */
@@ -780,7 +759,7 @@ public class AutoPvp extends XploitsModule {
         }
         if (notify.get()) {
             for (String name : result.newlyReleased()) {
-                info("%s ya no es mío: lo apagaste tú y no lo vuelvo a tomar en esta fase.", name);
+                info(PvpText.RELEASED, "module", name);
             }
         }
     }
@@ -798,7 +777,7 @@ public class AutoPvp extends XploitsModule {
      * haya posición válida.
      */
     private void reportIdle(List<ActionWatch.Idle> newlyIdle) {
-        for (ActionWatch.Idle idle : newlyIdle) warning("%s", ActionWatch.reason(idle));
+        for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle));
     }
 
     /** I1: si algo que dirige ya estaba encendido al activar auto-pvp, es del jugador y hay que decirlo. */
@@ -808,9 +787,9 @@ public class AutoPvp extends XploitsModule {
             if (module == null || !module.isActive()) continue;
 
             if (managed.equals(ManagedModules.CRYSTAL_AURA)) {
-                warning("crystal-aura ya estaba encendido: es tuyo, no lo apagaré ni contra un enterrado.");
+                warning(PvpText.CRYSTAL_AURA_ALREADY_ON);
             } else {
-                warning("%s ya estaba encendido: es tuyo, no lo tocaré mientras no lo sueltes tú.", managed.name());
+                warning(PvpText.ALREADY_ON, "module", managed.name());
             }
         }
     }
@@ -839,10 +818,10 @@ public class AutoPvp extends XploitsModule {
 
     /** I5: SIN_RECURSOS es el único aviso fuerte (spec §4.1, §6): chat en warning() y toast con sonido. */
     private void warnOutOfResources(Plan plan) {
-        String message = outOfResourcesMessage(plan);
-        warning("%s", message);
+        Msg message = outOfResourcesMessage(plan);
+        warning(message);
 
-        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(message).icon(Items.BARRIER);
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(Items.BARRIER);
         // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
         // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que ElytraReplace.
         if (!notifySound.get()) {
@@ -851,64 +830,71 @@ public class AutoPvp extends XploitsModule {
         mc.getToastManager().add(toast.build());
     }
 
-    private static String outOfResourcesMessage(Plan plan) {
-        String reasons = plan.skipped().stream()
-            .map(skipped -> skipped.module().name() + " (" + skipped.reason() + ")")
-            .collect(Collectors.joining(", "));
-        if (reasons.isEmpty()) return "Sin recursos: no hay ningún módulo de esta fase que puedas sostener.";
-        return "Sin recursos para pelear: " + reasons + ".";
+    private static Msg outOfResourcesMessage(Plan plan) {
+        Object reasons = null;
+        for (Skipped skipped : plan.skipped()) {
+            Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", skipped.module().name(), "reason", skipped.reason());
+            reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
+        }
+        if (reasons == null) return Msg.of(PvpText.OUT_OF_RESOURCES_NONE);
+        return Msg.of(PvpText.OUT_OF_RESOURCES, "reasons", reasons);
     }
 
-    public String status() {
-        if (!isActive()) return "auto-pvp está apagado.";
-        if (lastPlan == null) return "auto-pvp encendido, todavía sin leer la situación.";
+    /** Pega {@code line} detrás de {@code head}; con {@code head} nulo, la línea sola. */
+    private static Msg append(Msg head, Msg line) {
+        return head == null ? line : Msg.of(PvpText.CONCAT, "first", head, "second", line);
+    }
+
+    public Msg status() {
+        if (!isActive()) return Msg.of(PvpText.STATUS_OFF);
+        if (lastPlan == null) return Msg.of(PvpText.STATUS_UNREAD);
 
         Set<String> owned = ledger.owned();
 
         // Los dos ejes, en la primera línea y en este orden (rediseño §3): la fase la impone el
         // enemigo y la postura eres tú, y las dos son verdad a la vez. Debajo, el detalle de cada
         // una, para que se vea de un vistazo por qué está encendido lo que está encendido.
-        StringBuilder sb = new StringBuilder();
-        sb.append(lastPlan.state()).append(" desde hace ").append(director.ticksInState() / TICKS_PER_SECOND).append(" s");
-        sb.append(" · ").append(lastPlan.posture());
+        Msg target = Msg.of(PvpText.NOTHING);
         if (lastTargetName != null) {
-            sb.append(" · objetivo ").append(lastTargetName);
-            if (lastTargetDistance != null) {
-                sb.append(" a ").append(number(lastTargetDistance)).append(" bloques");
-            }
+            target = Msg.of(PvpText.STATUS_TARGET, "name", lastTargetName, "distance", lastTargetDistance == null
+                ? Msg.of(PvpText.NOTHING)
+                : Msg.of(PvpText.STATUS_TARGET_DISTANCE, "distance", lastTargetDistance));
         }
+        Msg self = Msg.of(PvpText.NOTHING);
         if (lastSnapshot != null) {
-            sb.append("\n  tú:           ").append(number(lastSnapshot.selfTotalHealth()))
-                .append(" de vida con ").append(number(lastSnapshot.incomingDamage()))
-                .append(" de daño ya apuntándote (margen ").append(number(threatMargin.get())).append(")");
-            if (lastSnapshot.selfInHole()) sb.append(", en un agujero");
-            if (lastSnapshot.selfGliding()) sb.append(", planeando");
             int hostiles = lastSnapshot.hostilesInCrystalRange();
-            if (hostiles > 0) {
-                sb.append("\n  cristales:    ").append(hostiles)
-                    .append(hostiles == 1 ? " hostil" : " hostiles")
-                    .append(" a rango de cristal (el aura se queda encendida por ellos, pase lo que pase con la fase: ")
-                    .append("estén protegidos o no, sus cristales te entran igual y romper no te cuesta ninguno)");
-            }
+            self = Msg.of(PvpText.STATUS_SELF, "health", lastSnapshot.selfTotalHealth(),
+                "damage", lastSnapshot.incomingDamage(), "margin", threatMargin.get(),
+                "hole", lastSnapshot.selfInHole() ? PvpText.STATUS_IN_HOLE : PvpText.NOTHING,
+                "gliding", lastSnapshot.selfGliding() ? PvpText.STATUS_GLIDING : PvpText.NOTHING,
+                "crystals", hostiles > 0
+                    ? Msg.of(PvpText.STATUS_CRYSTALS, "count", hostiles,
+                        "hostiles", hostiles == 1 ? PvpText.HOSTILE : PvpText.HOSTILES)
+                    : Msg.of(PvpText.NOTHING));
         }
-        if (skippedAlly != null) {
-            sb.append("\n  no ataco:     ").append(skippedAlly.name())
-                .append(" — ").append(skippedAlly.allegiance().reason())
-                .append(", a ").append(number(skippedAlly.distance()))
-                .append(" bloques");
-        }
-        sb.append("\n  en amigos:    ").append(syncedFriendsLine());
-        sb.append("\n  tomados:      ").append(owned.isEmpty() ? "ninguno" : String.join(", ", owned));
-        sb.append("\n  sin gastar:   ").append(idleLine());
+        Msg ally = skippedAlly == null
+            ? Msg.of(PvpText.NOTHING)
+            : Msg.of(PvpText.STATUS_ALLY, "name", skippedAlly.name(), "reason", skippedAlly.allegiance().reason(),
+                "distance", skippedAlly.distance());
+        Msg skippedLines = null;
         for (Skipped skipped : lastPlan.skipped()) {
-            sb.append("\n  no encendido: ").append(skipped.module().name()).append(" — ").append(skipped.reason());
+            skippedLines = append(skippedLines,
+                Msg.of(PvpText.STATUS_SKIPPED, "module", skipped.module().name(), "reason", skipped.reason()));
         }
-        for (String warning : lastPlan.warnings()) {
-            sb.append("\n  aviso:        ").append(warning);
+        Msg warningLines = null;
+        for (Msg warning : lastPlan.warnings()) {
+            warningLines = append(warningLines, Msg.of(PvpText.STATUS_WARNING, "warning", warning));
         }
         List<String> yours = yourActiveModules(owned);
-        sb.append("\n  tuyos:        ").append(yours.isEmpty() ? "ninguno" : String.join(", ", yours)).append(" (no los toco)");
-        return sb.toString();
+        return Msg.of(PvpText.STATUS, "state", lastPlan.state().name(),
+            "seconds", director.ticksInState() / TICKS_PER_SECOND, "posture", lastPlan.posture().name(),
+            "target", target, "self", self, "ally", ally,
+            "friends", syncedFriendsLine(),
+            "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),
+            "idle", idleLine(),
+            "skipped", skippedLines == null ? Msg.of(PvpText.NOTHING) : skippedLines,
+            "warnings", warningLines == null ? Msg.of(PvpText.NOTHING) : warningLines,
+            "yours", yours.isEmpty() ? PvpText.NONE : String.join(", ", yours));
     }
 
     /**
@@ -922,23 +908,28 @@ public class AutoPvp extends XploitsModule {
      * <p>Los que comparten pila salen juntos y marcados como veredicto conjunto, que es lo único
      * que la medida sostiene: el inventario dice cuánta obsidiana queda, no quién la colocó.
      */
-    private String idleLine() {
+    private Msg idleLine() {
         List<ActionWatch.Idle> idle = actionWatch.idle();
-        if (idle.isEmpty()) return "ninguno (lo que está encendido está gastando)";
+        if (idle.isEmpty()) return Msg.of(PvpText.IDLE_NONE);
 
-        List<String> parts = new ArrayList<>();
+        Object parts = null;
         for (ActionWatch.Idle verdict : idle) {
             List<String> names = new ArrayList<>();
             for (ManagedModule module : verdict.modules()) names.add(module.name());
             // El "+" no es decorativo: dice que esos nombres van juntos porque comparten pila y el
             // veredicto no se puede repartir entre ellos.
-            String joint = verdict.joint()
-                ? ", veredicto conjunto: los " + names.size() + " comparten pila y no sé cuál falla"
-                : "";
-            parts.add(String.join(" + ", names)
-                + " (" + verdict.ticks() / TICKS_PER_SECOND + " s" + joint + ")");
+            Msg joint = verdict.joint()
+                ? Msg.of(PvpText.IDLE_JOINT, "count", names.size())
+                : Msg.of(PvpText.NOTHING);
+            Object joined = names.getFirst();
+            for (String name : names.subList(1, names.size())) {
+                joined = Msg.of(PvpText.JOIN_PLUS, "first", joined, "rest", name);
+            }
+            Msg part = Msg.of(PvpText.IDLE_PART, "modules", joined,
+                "seconds", verdict.ticks() / TICKS_PER_SECOND, "joint", joint);
+            parts = parts == null ? part : Msg.of(PvpText.JOIN_COMMA, "first", parts, "rest", part);
         }
-        return String.join(", ", parts) + " — encendidos, con enemigo delante y material de sobra";
+        return Msg.of(PvpText.IDLE_LINE, "parts", parts);
     }
 
     /**
@@ -946,17 +937,13 @@ public class AutoPvp extends XploitsModule {
      * jugador tiene que poder ver en una línea que su configuración global está intervenida —o que
      * no lo está, y entonces los otros cinco módulos sí pueden atacar a los nuestros (spec §14.3).
      */
-    private String syncedFriendsLine() {
-        if (!syncFriends.get()) {
-            return "sincronización apagada — los otros cinco módulos de combate sí pueden atacarles";
-        }
+    private Msg syncedFriendsLine() {
+        if (!syncFriends.get()) return Msg.of(PvpText.FRIENDS_SYNC_OFF);
         Set<String> synced = friendLedger.added();
         if (synced.isEmpty()) {
-            return kitRequesterTrustsUnknownCouriers()
-                ? "ninguno (con trust-unknown-couriers encendido no se sincroniza ningún courier)"
-                : "ninguno";
+            return Msg.of(kitRequesterTrustsUnknownCouriers() ? PvpText.FRIENDS_NONE_TRUSTING : PvpText.NONE);
         }
-        return String.join(", ", synced) + " (los puse yo en tu lista de Meteor y los quitaré al apagarme)";
+        return Msg.of(PvpText.FRIENDS_SYNCED, "names", String.join(", ", synced));
     }
 
     /** I6: qué módulos de combate llevas activos que el director no controla, no una lista fija. */

@@ -56,7 +56,7 @@ public class XploitsCommand extends ComandoBase {
             return SINGLE_SUCCESS;
         })));
         builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> responder(Nivel.INFO, module.name, TextoConPosicion.igual(module.status())));
+            pvp().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("travel")

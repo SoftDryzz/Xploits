@@ -1,5 +1,9 @@
 package com.xploits.pvp.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+
+import com.xploits.shared.core.i18n.Language;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,6 +20,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * habla, y un gasto en el tick 30 vuelve a poner el aviso en el 90.
  */
 class ActionWatchTest {
+    /** El aviso tal y como lo lee un jugador en español: lo que estos tests ya comprobaban. */
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    private static String reason(ActionWatch.Idle idle) {
+        return ES.render(ActionWatch.reason(idle));
+    }
+
     private static final String AURA = ManagedModules.CRYSTAL_AURA.name();
     private static final String TRAP = ManagedModules.AUTO_TRAP.name();
     private static final String SURROUND = ManagedModules.SURROUND.name();
@@ -243,7 +256,7 @@ class ActionWatchTest {
         assertTrue(idle.joint());
         assertEquals(3, idle.modules().size());
 
-        String aviso = ActionWatch.reason(idle);
+        String aviso = reason(idle);
         assertTrue(aviso.startsWith("auto-trap, surround y hole-filler llevan 3 s encendidos"), aviso);
         assertTrue(aviso.contains("No puedo decirte cuál de los 3 falla"), aviso);
         assertTrue(aviso.contains("no quién la colocó"), aviso);
@@ -268,8 +281,8 @@ class ActionWatchTest {
         ActionWatch.Idle idle = veredictos.getFirst();
         assertFalse(idle.joint());
         assertEquals(List.of(ManagedModules.HOLE_FILLER), idle.modules());
-        assertTrue(ActionWatch.reason(idle).startsWith("hole-filler lleva 3 s encendido"),
-            ActionWatch.reason(idle));
+        assertTrue(reason(idle).startsWith("hole-filler lleva 3 s encendido"),
+            reason(idle));
     }
 
     @Test
@@ -308,19 +321,19 @@ class ActionWatchTest {
         for (ManagedModule module : ActionWatch.WATCHED) {
             ActionWatch.Idle idle =
                 new ActionWatch.Idle(module.needs(), List.of(module), ActionWatch.IDLE_TICKS);
-            String reason = ActionWatch.reason(idle);
+            String reason = reason(idle);
             assertTrue(reason.startsWith(module.name() + " lleva 3 s encendido"), reason);
             assertTrue(reason.contains("No lo apago"), reason);
             assertFalse(reason.contains("apágalo"), reason);
         }
 
-        String aura = ActionWatch.reason(
+        String aura = reason(
             new ActionWatch.Idle(Resource.CRYSTALS, List.of(ManagedModules.CRYSTAL_AURA), 60));
         assertTrue(aura.contains("cristales"), aura);
         assertTrue(aura.contains("min-damage"), aura);
         assertTrue(aura.contains("support"), aura);
 
-        String filler = ActionWatch.reason(
+        String filler = reason(
             new ActionWatch.Idle(Resource.OBSIDIAN, List.of(ManagedModules.HOLE_FILLER), 60));
         assertTrue(filler.contains("obsidiana"), filler);
         assertTrue(filler.contains("only-moving"), filler);
@@ -329,7 +342,7 @@ class ActionWatchTest {
 
     @Test
     void laWhitelistDeAutoTrapNoLlevaBloqueDeNetherita() {
-        String trap = ActionWatch.reason(
+        String trap = reason(
             new ActionWatch.Idle(Resource.OBSIDIAN, List.of(ManagedModules.AUTO_TRAP), 60));
         assertTrue(trap.contains("obsidiana llorosa"), trap);
         assertTrue(trap.contains("el bloque de netherita NO está en ella"), trap);
@@ -339,7 +352,7 @@ class ActionWatchTest {
     void autoWebNombraSuCausaInocente() {
         // Una telaraña no es reemplazable, así que en cuanto la casilla prevista tiene telaraña
         // auto-web deja de colocar ahí, legítimamente. Es su equivalente al surround completo.
-        String web = ActionWatch.reason(
+        String web = reason(
             new ActionWatch.Idle(Resource.WEBS, List.of(ManagedModules.AUTO_WEB), 60));
         assertTrue(web.contains("ya tenga telaraña"), web);
         assertTrue(web.contains("no se sustituye"), web);

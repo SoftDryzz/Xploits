@@ -27,7 +27,7 @@ class AllyPolicyTest {
         Allegiance allegiance = AllyPolicy.of("StormAegis44", false, Set.of("StormAegis44"), SIN_USUARIOS);
         assertEquals(Allegiance.COURIER, allegiance);
         assertTrue(allegiance.isOurs());
-        assertEquals("es courier de kit-requester", allegiance.reason());
+        assertEquals(PvpText.ALLY_COURIER, allegiance.reason());
     }
 
     @Test
@@ -35,7 +35,7 @@ class AllyPolicyTest {
         Allegiance allegiance = AllyPolicy.of("Dryzzical", false, SIN_COURIERS, Set.of("Dryzzical"));
         assertEquals(Allegiance.USUARIO_TPY, allegiance);
         assertTrue(allegiance.isOurs());
-        assertEquals("está en la lista users de auto-tpy", allegiance.reason());
+        assertEquals(PvpText.ALLY_TPY_USER, allegiance.reason());
     }
 
     @Test
@@ -43,13 +43,13 @@ class AllyPolicyTest {
         Allegiance allegiance = AllyPolicy.of("Dryzzical", true, SIN_COURIERS, SIN_USUARIOS);
         assertEquals(Allegiance.AMIGO, allegiance);
         assertTrue(allegiance.isOurs());
-        assertEquals("es amigo de Meteor", allegiance.reason());
+        assertEquals(PvpText.ALLY_FRIEND, allegiance.reason());
     }
 
     /** El trato es incondicional: da igual en qué fase o con qué provocación, sigue siendo nuestro. */
     @Test
     void elMotivoDeAjenoEstaVacio() {
-        assertEquals("", Allegiance.AJENO.reason());
+        assertEquals(PvpText.NOTHING, Allegiance.AJENO.reason());
         assertFalse(Allegiance.AJENO.isOurs());
     }
 
