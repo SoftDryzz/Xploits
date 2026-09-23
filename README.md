@@ -262,4 +262,4 @@ Lo más habitual:
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | El diseño de cada módulo y el porqué de cada decisión |
 | [Construir un cliente propio](docs/cliente-propio/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
 
-**Compilar:** `./gradlew build` → `build/libs/xploits-0.1.0.jar`.
+**Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.
