@@ -2,17 +2,26 @@ package com.xploits.travel.core;
 
 import com.xploits.travel.core.SafetyNet.Channel;
 import com.xploits.travel.core.SafetyNet.Restoration;
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SafetyNetTest {
     private static final String PREFIX = "#";
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    private static String es(Msg msg) {
+        return ES.render(msg);
+    }
 
     // El texto que el jugador habría escrito
 
@@ -92,23 +101,23 @@ class SafetyNetTest {
 
     @Test
     void anEmptyPrefixIsRejectedWithItsReason() {
-        assertNotNull(SafetyNet.prefixRejection(null));
-        String reason = SafetyNet.prefixRejection("");
-        assertNotNull(reason);
+        assertEquals(Msg.of(TravelText.PREFIX_EMPTY), SafetyNet.prefixRejection(null));
+        assertEquals(Msg.of(TravelText.PREFIX_EMPTY), SafetyNet.prefixRejection(""));
+        String reason = es(SafetyNet.prefixRejection(""));
         assertTrue(reason.contains("baritone-prefix"), reason);
     }
 
     @Test
     void aBlankPrefixIsRejectedWithItsReason() {
-        String reason = SafetyNet.prefixRejection("   ");
-        assertNotNull(reason);
+        assertEquals(Msg.of(TravelText.PREFIX_BLANK), SafetyNet.prefixRejection("   "));
+        String reason = es(SafetyNet.prefixRejection("   "));
         assertTrue(reason.contains("baritone-prefix"), reason);
     }
 
     @Test
     void aSlashPrefixIsRejectedAndTheReasonNamesWhatItWouldEat() {
-        String reason = SafetyNet.prefixRejection("/");
-        assertNotNull(reason);
+        assertEquals(Msg.of(TravelText.PREFIX_SLASH, "prefix", "/"), SafetyNet.prefixRejection("/"));
+        String reason = es(SafetyNet.prefixRejection("/"));
         assertTrue(reason.contains("/tpy"), reason);
         assertTrue(reason.contains("kit-requester"), reason);
         assertTrue(reason.contains("baritone-prefix"), reason);
@@ -130,14 +139,14 @@ class SafetyNetTest {
     @Test
     void aCancelledRestorationSaysBaritoneMayStillBeFlying() {
         assertFalse(Restoration.CANCELADA.arrived());
-        String warning = Restoration.CANCELADA.warning(PREFIX);
-        assertNotNull(warning);
+        assertEquals(Msg.of(TravelText.RESTORATION_CANCELLED, "prefix", PREFIX), Restoration.CANCELADA.warning(PREFIX));
+        String warning = es(Restoration.CANCELADA.warning(PREFIX));
         assertTrue(warning.contains("puede seguir volando"), warning);
     }
 
     @Test
     void aCancelledRestorationSaysTheSettingsStayedWritten() {
-        String warning = Restoration.CANCELADA.warning(PREFIX);
+        String warning = es(Restoration.CANCELADA.warning(PREFIX));
         assertTrue(warning.contains("elytraAutoSwap"), warning);
         assertTrue(warning.contains("elytraAutoJump"), warning);
         assertTrue(warning.contains("elytraAllowEmergencyLand"), warning);
@@ -148,7 +157,7 @@ class SafetyNetTest {
 
     @Test
     void aCancelledRestorationSaysWhatToTypeByHand() {
-        String warning = Restoration.CANCELADA.warning(">");
+        String warning = es(Restoration.CANCELADA.warning(">"));
         // El prefijo que falló se nombra, y a la vez se dice que hay que usar otro: el que Baritone
         // escuche de verdad. Decirle que reintente con ">" sería mandarlo al mismo agujero.
         assertTrue(warning.contains(">cancel"), warning);
@@ -159,8 +168,8 @@ class SafetyNetTest {
     @Test
     void aRestorationWithNoPlayerSaysTheSettingsStayedWritten() {
         assertFalse(Restoration.SIN_JUGADOR.arrived());
-        String warning = Restoration.SIN_JUGADOR.warning(PREFIX);
-        assertNotNull(warning);
+        assertEquals(Msg.of(TravelText.RESTORATION_NO_PLAYER, "prefix", PREFIX), Restoration.SIN_JUGADOR.warning(PREFIX));
+        String warning = es(Restoration.SIN_JUGADOR.warning(PREFIX));
         assertTrue(warning.contains("elytraFireworkSpeed"), warning);
         assertTrue(warning.contains("#set nombre valor"), warning);
     }

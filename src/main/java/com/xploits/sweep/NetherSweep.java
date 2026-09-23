@@ -3,7 +3,9 @@ package com.xploits.sweep;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.i18n.Msg;
 import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.sweep.core.ChunkPos;
 import com.xploits.sweep.core.Coverage;
@@ -985,7 +987,7 @@ public class NetherSweep extends XploitsModule {
         if (chestSwapRejection != null) return chestSwapRejection;
 
         String launchPrefix = prefijo.get();
-        String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
+        String prefixRejection = rendered(SafetyNet.prefixRejection(launchPrefix));
         if (prefixRejection != null) {
             // Antes de armar la red y antes del primer comando: armarla sobre un prefijo inservible
             // es tener red sin saber qué vigila.
@@ -1356,7 +1358,7 @@ public class NetherSweep extends XploitsModule {
     private String undoLaunch() {
         sweeping = false;
         SafetyNet.Restoration undone = restore();
-        String pending = undone.warning(activePrefix);
+        String pending = rendered(undone.warning(activePrefix));
 
         String why = "No se barre: preparar el entorno te ha dejado sin elytra puesta, así que Baritone no podría "
             + "despegar. He deshecho la preparación";
@@ -1446,7 +1448,7 @@ public class NetherSweep extends XploitsModule {
         int faltan = tally == null ? 0 : tally.missing();
 
         SafetyNet.Restoration restoration = restore();
-        String pending = restoration.warning(activePrefix);
+        String pending = rendered(restoration.warning(activePrefix));
         warnPendingModules();
 
         StringBuilder cierre = new StringBuilder("Barrido terminado: ").append(reason);
@@ -1854,5 +1856,10 @@ public class NetherSweep extends XploitsModule {
     /** El mismo saneado de nombres de carpeta que aplica {@code NewerNewChunks}, ni más ni menos. */
     private static String limpiar(String nombre) {
         return nombre.replaceAll(CARACTERES_INVALIDOS, "_");
+    }
+
+    /** Bridge until nether-sweep is translated: the shared safety-net texts now come as Msg. */
+    private static String rendered(Msg msg) {
+        return msg == null ? null : Texts.render(msg);
     }
 }

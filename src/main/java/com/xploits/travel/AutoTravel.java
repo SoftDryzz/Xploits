@@ -4,7 +4,9 @@ import com.xploits.XploitsAddon;
 import com.xploits.console.core.Instantanea;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
-import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.Texts;
+import com.xploits.shared.core.PositionedMsg;
+import com.xploits.shared.core.i18n.Msg;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.core.Axis;
 import com.xploits.travel.core.BaritoneScript;
@@ -17,6 +19,7 @@ import com.xploits.travel.core.Route;
 import com.xploits.travel.core.RoutePlanner;
 import com.xploits.travel.core.SafetyNet;
 import com.xploits.travel.core.StallWatch;
+import com.xploits.travel.core.TravelText;
 import com.xploits.travel.core.Waypoint;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
@@ -98,7 +101,7 @@ public class AutoTravel extends XploitsModule {
     }
 
     private final SettingGroup sgDestination = settings.getDefaultGroup();
-    private final SettingGroup sgPattern = settings.createGroup("Patrón");
+    private final SettingGroup sgPattern = settings.createGroup("Patrón"); // i18n: allowed (setting group name is a save key)
     private final SettingGroup sgFlight = settings.createGroup("Vuelo");
     private final SettingGroup sgNotify = settings.createGroup("Avisos");
 
@@ -106,17 +109,14 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<DestinationMode> destinationMode = sgDestination.add(new EnumSetting.Builder<DestinationMode>()
         .name("destination-mode")
-        .description("COORDENADAS: un punto del mundo. RELATIVO: un desplazamiento en X y en Z desde donde "
-            + "estés. AUTOPISTA: una distancia por uno de los ocho ejes, desde donde estés. Cada modo tiene "
-            + "sus propios ajustes: cambiar de modo no reinterpreta los números del anterior.")
+        .description(Texts.startupText(TravelText.SETTING_DESTINATION_MODE))
         .defaultValue(DestinationMode.COORDENADAS)
         .build()
     );
 
     private final Setting<Double> destinationX = sgDestination.add(new DoubleSetting.Builder()
         .name("x")
-        .description("Coordenada X del destino. Meteor guarda este valor en meteor-client/modules.nbt: si "
-            + "prefieres que el sitio al que vas no quede escrito en disco, usa el modo RELATIVO.")
+        .description(Texts.startupText(TravelText.SETTING_X))
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -126,7 +126,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> destinationZ = sgDestination.add(new DoubleSetting.Builder()
         .name("z")
-        .description("Coordenada Z del destino. Se guarda en disco igual que la X: ver el aviso de ese ajuste.")
+        .description(Texts.startupText(TravelText.SETTING_Z))
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -142,11 +142,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> offsetX = sgDestination.add(new DoubleSetting.Builder()
         .name("offset-x")
-        .description("Cuánto moverse en X desde donde arranque el viaje. Es un desplazamiento, no una coordenada, "
-            + "y eso también deja menos rastro: Meteor guarda los ajustes de sus módulos en "
-            + "meteor-client/modules.nbt -al salir del mundo y al cerrar el juego, y todo el que no esté en su "
-            + "valor de fábrica-, así que un destino puesto en COORDENADAS acaba escrito en disco con sus "
-            + "coordenadas exactas. Un desplazamiento no dice desde dónde.")
+        .description(Texts.startupText(TravelText.SETTING_OFFSET_X))
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -156,8 +152,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> offsetZ = sgDestination.add(new DoubleSetting.Builder()
         .name("offset-z")
-        .description("Cuánto moverse en Z desde donde arranque el viaje. Es un desplazamiento, no una coordenada, "
-            + "así que lo que queda guardado en disco es cuánto te mueves y no adónde vas (ver offset-x).")
+        .description(Texts.startupText(TravelText.SETTING_OFFSET_Z))
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
@@ -167,7 +162,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Axis> axis = sgDestination.add(new EnumSetting.Builder<Axis>()
         .name("axis")
-        .description("El eje de autopista por el que se viaja: los cuatro cardinales y las cuatro diagonales.")
+        .description(Texts.startupText(TravelText.SETTING_AXIS))
         .defaultValue(Axis.X_PLUS)
         .visible(() -> destinationMode.get() == DestinationMode.AUTOPISTA)
         .build()
@@ -175,9 +170,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> highwayDistance = sgDestination.add(new DoubleSetting.Builder()
         .name("highway-distance")
-        .description("Cuántos bloques recorrer por el eje, contados desde donde arranque el viaje. Son bloques "
-            + "VOLADOS, no bloques por coordenada: por una diagonal, 20 000 avanzan unos 14 142 en X y otros "
-            + "tantos en Z, y el vuelo mide 20 000. Así el número significa lo mismo en los ocho ejes.")
+        .description(Texts.startupText(TravelText.SETTING_HIGHWAY_DISTANCE))
         .defaultValue(10_000)
         .min(0)
         .sliderRange(0, 100_000)
@@ -188,9 +181,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> highwayMaxAmplitude = sgDestination.add(new DoubleSetting.Builder()
         .name("highway-max-amplitude")
-        .description("Lo más que el patrón puede apartarse del eje en modo autopista (spec §4.2). Con ESPIRAL "
-            + "necesita al menos 338: una espiral más estrecha deja los pasos tan juntos que Baritone aterrizaría "
-            + "en casi todos, y el módulo se niega a volar en vez de dejarte creer que giras.")
+        .description(Texts.startupText(TravelText.SETTING_HIGHWAY_MAX_AMPLITUDE))
         .defaultValue(300)
         .min(0)
         .sliderRange(0, 2_000)
@@ -201,8 +192,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> waypointMargin = sgDestination.add(new DoubleSetting.Builder()
         .name("waypoint-margin")
-        .description("Cuántos bloques antes de un waypoint intermedio se le cambia el objetivo a Baritone, para "
-            + "que no le dé tiempo a aterrizar en él. Cuanto más alto, más redondea las esquinas del patrón.")
+        .description(Texts.startupText(TravelText.SETTING_WAYPOINT_MARGIN))
         .defaultValue(RoutePlanner.DEFAULT_WAYPOINT_MARGIN)
         .min(RoutePlanner.MIN_WAYPOINT_MARGIN)
         .sliderRange(RoutePlanner.MIN_WAYPOINT_MARGIN, 500)
@@ -214,14 +204,14 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<FlightPattern> pattern = sgPattern.add(new EnumSetting.Builder<FlightPattern>()
         .name("pattern")
-        .description("El patrón de despiste. SENUELO se rechaza en modo autopista, no se degrada (spec §4.2).")
+        .description(Texts.startupText(TravelText.SETTING_PATTERN))
         .defaultValue(FlightPattern.RECTO)
         .build()
     );
 
     private final Setting<Double> amplitude = sgPattern.add(new DoubleSetting.Builder()
         .name("zigzag-amplitude")
-        .description("Cuánto se aparta el ZIGZAG a cada lado del rumbo, en bloques.")
+        .description(Texts.startupText(TravelText.SETTING_ZIGZAG_AMPLITUDE))
         .defaultValue(PatternParams.defaults().amplitude())
         .min(0)
         .sliderRange(0, 2_000)
@@ -232,7 +222,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> period = sgPattern.add(new DoubleSetting.Builder()
         .name("zigzag-period")
-        .description("Cada cuántos bloques de avance cambia de lado el ZIGZAG.")
+        .description(Texts.startupText(TravelText.SETTING_ZIGZAG_PERIOD))
         .defaultValue(PatternParams.defaults().period())
         .min(1)
         .sliderRange(100, 20_000)
@@ -243,7 +233,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> legLength = sgPattern.add(new DoubleSetting.Builder()
         .name("quiebro-leg")
-        .description("Cada cuántos bloques de avance quiebra el QUIEBRO.")
+        .description(Texts.startupText(TravelText.SETTING_QUIEBRO_LEG))
         .defaultValue(PatternParams.defaults().legLength())
         .min(1)
         .sliderRange(500, 40_000)
@@ -254,7 +244,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> lateralOffset = sgPattern.add(new DoubleSetting.Builder()
         .name("quiebro-offset")
-        .description("Cuánto se aparta el QUIEBRO a cada lado del rumbo, en bloques.")
+        .description(Texts.startupText(TravelText.SETTING_QUIEBRO_OFFSET))
         .defaultValue(PatternParams.defaults().lateralOffset())
         .min(0)
         .sliderRange(0, 5_000)
@@ -265,7 +255,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> spiralRadius = sgPattern.add(new DoubleSetting.Builder()
         .name("spiral-radius")
-        .description("A cuántos bloques del destino empieza la espiral final.")
+        .description(Texts.startupText(TravelText.SETTING_SPIRAL_RADIUS))
         .defaultValue(PatternParams.defaults().spiralRadius())
         .min(0)
         .sliderRange(100, 10_000)
@@ -276,7 +266,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> spiralTurns = sgPattern.add(new DoubleSetting.Builder()
         .name("spiral-turns")
-        .description("Cuántas vueltas da la espiral al cerrarse sobre el destino.")
+        .description(Texts.startupText(TravelText.SETTING_SPIRAL_TURNS))
         .defaultValue(PatternParams.defaults().spiralTurns())
         .min(0)
         .sliderRange(0.5, 6)
@@ -287,7 +277,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> decoyAngle = sgPattern.add(new DoubleSetting.Builder()
         .name("decoy-angle")
-        .description("Cuántos grados se aparta el señuelo del rumbo real.")
+        .description(Texts.startupText(TravelText.SETTING_DECOY_ANGLE))
         .defaultValue(PatternParams.defaults().decoyAngleDegrees())
         .range(0, 89)
         .sliderRange(0, 89)
@@ -298,7 +288,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> decoyFraction = sgPattern.add(new DoubleSetting.Builder()
         .name("decoy-fraction")
-        .description("Qué fracción del tramo hacia el señuelo se recorre antes de corregir.")
+        .description(Texts.startupText(TravelText.SETTING_DECOY_FRACTION))
         .defaultValue(PatternParams.defaults().decoyFraction())
         .range(0.05, 0.95)
         .sliderRange(0.05, 0.95)
@@ -320,60 +310,56 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<String> prefix = sgFlight.add(new StringSetting.Builder()
         .name("baritone-prefix")
-        .description("El prefijo con el que Baritone lee sus comandos. Cámbialo solo si lo has cambiado en Baritone.")
+        .description(Texts.startupText(TravelText.SETTING_BARITONE_PREFIX))
         .defaultValue("#")
         .build()
     );
 
     private final Setting<Boolean> autoJump = sgFlight.add(new BoolSetting.Builder()
         .name("auto-jump")
-        .description("elytraAutoJump durante el vuelo: que Baritone despegue solo.")
+        .description(Texts.startupText(TravelText.SETTING_AUTO_JUMP))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> autoJumpResting = sgFlight.add(new BoolSetting.Builder()
         .name("auto-jump-resting")
-        .description("A qué valor se devuelve elytraAutoJump al aterrizar. Hay que declararlo: los ajustes de "
-            + "Baritone se pueden escribir pero no leer (spec §6.1). De fábrica Baritone lo trae en false.")
+        .description(Texts.startupText(TravelText.SETTING_AUTO_JUMP_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().autoJump())
         .build()
     );
 
     private final Setting<Boolean> allowEmergencyLand = sgFlight.add(new BoolSetting.Builder()
         .name("emergency-land")
-        .description("elytraAllowEmergencyLand durante el vuelo: que aterrice de urgencia antes que estrellarse.")
+        .description(Texts.startupText(TravelText.SETTING_EMERGENCY_LAND))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> allowEmergencyLandResting = sgFlight.add(new BoolSetting.Builder()
         .name("emergency-land-resting")
-        .description("A qué valor se devuelve elytraAllowEmergencyLand al aterrizar. De fábrica Baritone lo "
-            + "trae en true.")
+        .description(Texts.startupText(TravelText.SETTING_EMERGENCY_LAND_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().allowEmergencyLand())
         .build()
     );
 
     private final Setting<Boolean> conserveFireworks = sgFlight.add(new BoolSetting.Builder()
         .name("conserve-fireworks")
-        .description("elytraConserveFireworks durante el vuelo: gastar menos fuegos a cambio de ir más lento.")
+        .description(Texts.startupText(TravelText.SETTING_CONSERVE_FIREWORKS))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> conserveFireworksResting = sgFlight.add(new BoolSetting.Builder()
         .name("conserve-fireworks-resting")
-        .description("A qué valor se devuelve elytraConserveFireworks al aterrizar. De fábrica Baritone lo trae "
-            + "en false: ponlo en true solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
-            + "vuelos a mano con #elytra irían más lentos a partir del primer viaje.")
+        .description(Texts.startupText(TravelText.SETTING_CONSERVE_FIREWORKS_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().conserveFireworks())
         .build()
     );
 
     private final Setting<Double> fireworkSpeed = sgFlight.add(new DoubleSetting.Builder()
         .name("firework-speed")
-        .description("elytraFireworkSpeed durante el vuelo.")
+        .description(Texts.startupText(TravelText.SETTING_FIREWORK_SPEED))
         .defaultValue(1)
         .min(0)
         .sliderRange(0.5, 3)
@@ -383,9 +369,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Double> fireworkSpeedResting = sgFlight.add(new DoubleSetting.Builder()
         .name("firework-speed-resting")
-        .description("A qué valor se devuelve elytraFireworkSpeed al aterrizar. De fábrica Baritone lo trae en "
-            + "1.2: ponlo en otra cosa solo si tú lo tenías así, porque Baritone lo guarda en disco y todos tus "
-            + "vuelos a mano con #elytra se quedarían con ese valor a partir del primer viaje.")
+        .description(Texts.startupText(TravelText.SETTING_FIREWORK_SPEED_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().fireworkSpeed())
         .min(0)
         .sliderRange(0.5, 3)
@@ -395,8 +379,7 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<String> netherSeed = sgFlight.add(new StringSetting.Builder()
         .name("nether-seed")
-        .description("La semilla del Nether, si se conoce. Vacía se deja en paz: sin semilla Baritone apaga la "
-            + "predicción de terreno él solo, que es lo correcto (spec §8.1).")
+        .description(Texts.startupText(TravelText.SETTING_NETHER_SEED))
         .defaultValue("")
         .build()
     );
@@ -405,23 +388,21 @@ public class AutoTravel extends XploitsModule {
 
     private final Setting<Boolean> notify = sgNotify.add(new BoolSetting.Builder()
         .name("notify")
-        .description("Aviso local al lanzar, al pasar de waypoint y al terminar. Los avisos fuertes -la red de "
-            + "seguridad, el atasco y los fuegos que se acaban- salen siempre, lo apagues o no.")
+        .description(Texts.startupText(TravelText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> notifySound = sgNotify.add(new BoolSetting.Builder()
         .name("notify-sound")
-        .description("Sonido en los avisos fuertes.")
+        .description(Texts.startupText(TravelText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Integer> fireworkThreshold = sgNotify.add(new IntSetting.Builder()
         .name("firework-warning")
-        .description("Con estos fuegos artificiales o menos sale el aviso fuerte (spec §8). Cero avisa solo al "
-            + "quedarse sin ninguno, que a 100 000 bloques suele ser tarde. No cuenta los que vayan dentro de shulkers.")
+        .description(Texts.startupText(TravelText.SETTING_FIREWORK_WARNING))
         .defaultValue(16)
         .min(0)
         .sliderRange(0, 128)
@@ -527,8 +508,7 @@ public class AutoTravel extends XploitsModule {
     private FireworkWatch fireworkWatch = new FireworkWatch(0);
 
     public AutoTravel() {
-        super(XploitsAddon.CATEGORY, "auto-travel",
-            "Prepara el entorno, lanza el vuelo con elytra de Baritone por una ruta con patrón de despiste, y lo restaura todo al aterrizar. Encenderlo no vuela: el viaje se lanza con .xploits travel go.");
+        super(XploitsAddon.CATEGORY, "auto-travel", Texts.startupText(TravelText.MODULE_DESC));
     }
 
     @Override
@@ -549,10 +529,10 @@ public class AutoTravel extends XploitsModule {
         // solos; éste es el único que espera una segunda orden, así que es el único que tiene que
         // decirlo. Se repite al entrar al mundo a propósito: si el módulo sigue encendido, saber
         // que está armado y con qué destino vale más que ahorrar una línea de chat.
-        info("Armado, pero no vuela solo: lanza el viaje con .xploits travel go");
-        infoPrivado(new TextoConPosicion(
-            String.format("Patrón %s · destino %s", pattern.get(), describeDestination()),
-            String.format("Patrón %s · destino %s", pattern.get(), describeDestinationSinPosicion())));
+        info(TravelText.ARMED);
+        infoPrivado(new PositionedMsg(
+            Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestination()),
+            Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestinationSinPosicion())));
     }
 
     @Override
@@ -562,7 +542,7 @@ public class AutoTravel extends XploitsModule {
         // el viaje: corre antes por prioridad (spec §6.4), y finish() es idempotente, así que este
         // segundo paso no restaura nada. Eso es justo lo que hace falta, porque aquí ya no se puede
         // distinguir un apagado normal del desmontaje.
-        finish("auto-travel se ha apagado", false);
+        finish(TravelText.REASON_MODULE_OFF, false);
         // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin viaje en marcha
         // se comería en silencio todo comando con prefijo que el jugador escribiera a mano, y con el
         // módulo apagado no habría ni quién lo desarmara ni quién lo dijera. Es idempotente.
@@ -590,7 +570,7 @@ public class AutoTravel extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
         leavingWorld = true;
-        finish("se ha dejado el mundo", false);
+        finish(TravelText.REASON_LEFT_WORLD, false);
     }
 
     /**
@@ -646,12 +626,10 @@ public class AutoTravel extends XploitsModule {
         if (netCaughtWarned) return;
         netCaughtWarned = true;
 
-        String message = "Baritone NO está interceptando sus comandos: he cancelado \"" + text
-            + "\" antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
+        Msg message = Msg.of(TravelText.NET_CAUGHT, "command", text);
         // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
-        String sinArgumentos = "Baritone NO está interceptando sus comandos: he cancelado un «" + SafetyNet.verbo(text)
-            + "» antes de que saliera al servidor. Lo que escribas a mano con ese prefijo SÍ se publicaría.";
-        warningPrivado(new TextoConPosicion(message, sinArgumentos));
+        Msg sinArgumentos = Msg.of(TravelText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
+        warningPrivado(new PositionedMsg(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -665,14 +643,14 @@ public class AutoTravel extends XploitsModule {
         if (!travelling) return;
 
         if (mc.player == null || mc.world == null) {
-            finish("se ha perdido el mundo", true);
+            finish(TravelText.REASON_LOST_WORLD, true);
             return;
         }
         // Salida 3: muerte. No hay evento de muerte en Meteor, así que se observa aquí; el jugador
         // sigue existiendo en la pantalla de muerte, así que la restauración todavía puede hablarle
         // a Baritone.
         if (!mc.player.isAlive()) {
-            finish("has muerto a mitad de viaje", true);
+            finish(TravelText.REASON_DIED, true);
             return;
         }
 
@@ -688,10 +666,10 @@ public class AutoTravel extends XploitsModule {
             index++;
             // Salida 1: llegada.
             if (index >= waypoints.size()) {
-                finish("has llegado al destino", false);
+                finish(TravelText.REASON_ARRIVED, false);
                 return;
             }
-            if (notify.get()) info("Waypoint %d de %d alcanzado.", index, waypoints.size());
+            if (notify.get()) info(TravelText.WAYPOINT_REACHED, "index", index, "total", waypoints.size());
             aimAtCurrentWaypoint();
             return;
         }
@@ -700,11 +678,11 @@ public class AutoTravel extends XploitsModule {
         // informa de nada más (spec §8). El índice va en la llamada a propósito: es lo que hace que
         // el salto de distancia al cambiar de waypoint no se lea como treinta segundos sin avanzar.
         if (stallWatch.tick(index, distance)) {
-            String message = String.format("Sin acercarme al waypoint %d en %d s, a %d bloques: corto y restauro.",
-                index + 1, stallWatch.limitSeconds(), Math.round(distance));
-            warning("%s", message);
+            Msg message = Msg.of(TravelText.STALLED, "index", index + 1, "seconds", stallWatch.limitSeconds(),
+                "distance", Math.round(distance));
+            warning(message);
             loudToast(message, Items.ELYTRA);
-            finish("atasco", false);
+            finish(TravelText.REASON_STALL, false);
         }
     }
 
@@ -725,11 +703,10 @@ public class AutoTravel extends XploitsModule {
         int fireworks = InvUtils.find(Items.FIREWORK_ROCKET).count();
         if (!fireworkWatch.observe(fireworks)) return;
 
-        String message = fireworks == 0
-            ? "Te has quedado SIN fuegos artificiales a mitad de vuelo: Baritone no puede seguir impulsándose."
-            : String.format("Te quedan %d fuegos artificiales, el aviso está puesto en %d: repón o aterriza.",
-                fireworks, fireworkWatch.threshold());
-        warning("%s", message);
+        Msg message = fireworks == 0
+            ? Msg.of(TravelText.OUT_OF_FIREWORKS)
+            : Msg.of(TravelText.LOW_FIREWORKS, "count", fireworks, "threshold", fireworkWatch.threshold());
+        warning(message);
         loudToast(message, Items.FIREWORK_ROCKET);
     }
 
@@ -738,52 +715,50 @@ public class AutoTravel extends XploitsModule {
      * enseñar, sea el del lanzamiento o el motivo por el que no se vuela. Ningún fallo es silencioso
      * y, ante la duda, no se manda un solo comando (spec §9).
      */
-    public TextoConPosicion start() {
-        if (!isActive()) return TextoConPosicion.igual("auto-travel está apagado: enciéndelo antes de lanzar un viaje.");
-        if (travelling) return TextoConPosicion.igual("Ya hay un viaje en marcha: córtalo antes de lanzar otro.");
-        String barridoEnMarcha = rechazoPorNetherSweep();
-        if (barridoEnMarcha != null) return TextoConPosicion.igual(barridoEnMarcha);
-        if (mc.player == null || mc.world == null) return TextoConPosicion.igual("No hay mundo cargado: no se lanza nada.");
+    public PositionedMsg start() {
+        if (!isActive()) return PositionedMsg.same(Msg.of(TravelText.START_MODULE_OFF));
+        if (travelling) return PositionedMsg.same(Msg.of(TravelText.START_ALREADY_TRAVELLING));
+        Msg barridoEnMarcha = rechazoPorNetherSweep();
+        if (barridoEnMarcha != null) return PositionedMsg.same(barridoEnMarcha);
+        if (mc.player == null || mc.world == null) return PositionedMsg.same(Msg.of(TravelText.START_NO_WORLD));
         if (!mc.player.isAlive()) {
             // Sin esto, desde la pantalla de muerte pasan todas las demás guardas: se arma la red, se
             // emiten los diez comandos de la preparación, y al tick siguiente onTick ve al muerto y
             // emite los seis de la restauración. Catorce comandos y un "Viaje lanzado" para nada.
-            return TextoConPosicion.igual("Estás muerto: reaparece antes de lanzar un viaje, que desde la pantalla de muerte no se vuela.");
+            return PositionedMsg.same(Msg.of(TravelText.START_DEAD));
         }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
             // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
             // Class.forName("baritone.api.BaritoneAPI") sobre una clase que el jar ofuscado no
             // expone, así que ahí vale false aunque Baritone esté perfectamente instalado (spec §2).
-            return TextoConPosicion.igual("Baritone no está cargado: este módulo vuela con sus comandos y sin él no hay nada que dirigir.");
+            return PositionedMsg.same(Msg.of(TravelText.START_NO_BARITONE));
         }
         if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) {
             // Y además es lo que hace honesto al aviso de checkFireworks(): despegando siempre con
             // alguno, "te has quedado SIN fuegos a mitad de vuelo" solo puede decirse cuando de
             // verdad se han acabado a mitad de vuelo.
-            return TextoConPosicion.igual("No llevas ningún fuego artificial: Baritone se impulsa con ellos y sin ninguno no despega. "
-                + "No se lanza nada. Los que vayan dentro de shulkers no cuentan: sácalos antes.");
+            return PositionedMsg.same(Msg.of(TravelText.START_NO_FIREWORKS));
         }
         if (!wearsElytra()) {
             // elytra-replace no tapa esto: su política contesta NOT_WEARING cuando la pechera no lleva
             // elytra y no hace nada, a propósito -ponerte una elytra por tu cuenta no es su trabajo-.
-            return TextoConPosicion.igual("No llevas elytra puesta: Baritone vuela con ella, y elytra-replace cambia la que lleves pero "
-                + "no te pone ninguna. Ponte una antes de lanzar.");
+            return PositionedMsg.same(Msg.of(TravelText.START_NO_ELYTRA));
         }
-        String chestSwapRejection = chestSwapRejection();
-        if (chestSwapRejection != null) return TextoConPosicion.igual(chestSwapRejection);
+        Msg chestSwapRejection = chestSwapRejection();
+        if (chestSwapRejection != null) return PositionedMsg.same(chestSwapRejection);
 
         String launchPrefix = prefix.get();
-        String prefixRejection = SafetyNet.prefixRejection(launchPrefix);
+        Msg prefixRejection = SafetyNet.prefixRejection(launchPrefix);
         if (prefixRejection != null) {
             // Se comprueba aquí, antes de armar la red y antes del primer comando: armarla sobre un
             // prefijo inservible es tener red sin saber qué vigila.
-            return TextoConPosicion.igual("No se vuela: " + prefixRejection + ".");
+            return PositionedMsg.same(Msg.of(TravelText.NOT_FLYING, "reason", prefixRejection));
         }
 
         Waypoint origin = new Waypoint(mc.player.getX(), mc.player.getZ());
         Route route = RoutePlanner.plan(origin, destination(), pattern.get(), params(), highwayMaxAmplitude.get(),
             waypointMargin.get());
-        if (route.isRejected()) return TextoConPosicion.igual("No se vuela: " + route.rejection() + ".");
+        if (route.isRejected()) return PositionedMsg.same(Msg.of(TravelText.NOT_FLYING, "reason", route.rejection()));
 
         activePrefix = launchPrefix;
         waypoints = route.waypoints();
@@ -802,17 +777,17 @@ public class AutoTravel extends XploitsModule {
         // rechaza arriba, antes de tocar nada, así que aquí ya no debería poder pasar; esto es la red
         // por si algún otro módulo se lleva la elytra entre una línea y la siguiente. Lanzar ahora
         // sería decir "Viaje lanzado" y enterarse a los treinta segundos por el corte de atasco.
-        if (!wearsElytra()) return TextoConPosicion.igual(undoLaunch());
+        if (!wearsElytra()) return PositionedMsg.same(undoLaunch());
 
         aimAtCurrentWaypoint();
 
         Waypoint target = waypoints.get(waypoints.size() - 1);
         long distancia = Math.round(origin.distanceTo(target));
-        return new TextoConPosicion(
-            String.format("Viaje lanzado con patrón %s: %d waypoints hasta %d, %d, a %d bloques en línea recta.",
-                pattern.get(), waypoints.size(), Math.round(target.x()), Math.round(target.z()), distancia),
-            String.format("Viaje lanzado con patrón %s: %d waypoints, a %d bloques en línea recta.",
-                pattern.get(), waypoints.size(), distancia));
+        return new PositionedMsg(
+            Msg.of(TravelText.LAUNCHED, "pattern", pattern.get().name(), "count", waypoints.size(),
+                "x", Math.round(target.x()), "z", Math.round(target.z()), "distance", distancia),
+            Msg.of(TravelText.LAUNCHED_NO_POSITION, "pattern", pattern.get().name(), "count", waypoints.size(),
+                "distance", distancia));
     }
 
     /**
@@ -833,17 +808,11 @@ public class AutoTravel extends XploitsModule {
      *
      * <p>Es simétrico: la misma guarda está en {@code NetherSweep.start()} mirando hacia aquí.
      */
-    private String rechazoPorNetherSweep() {
+    private Msg rechazoPorNetherSweep() {
         NetherSweep barrido = Modules.get().get(NetherSweep.class);
         if (barrido == null || !barrido.isSweeping()) return null;
 
-        return "nether-sweep tiene un barrido en marcha, y los dos dirigen al mismo Baritone: el objetivo de "
-            + "#elytra es uno solo, así que este viaje se lo quitaría, el barrido vería crecer su distancia y a "
-            + "los 45 s cortaría con su propia restauración -parando este viaje a mitad y devolviendo la "
-            + "velocidad de cohete a su valor de reposo-, y este viaje diagnosticaría un atasco que no existe. "
-            + "Además los dos se prestan elytra-fly y elytra-replace por su cuenta, así que el segundo anotaría "
-            + "como reposo tuyo lo que dejó el primero. Termina el barrido o córtalo con .xploits sweep stop, y "
-            + "entonces lanza el viaje.";
+        return Msg.of(TravelText.SWEEP_RUNNING);
     }
 
     /** Si la pechera lleva una elytra puesta, que es lo único con lo que Baritone puede volar. */
@@ -872,7 +841,7 @@ public class AutoTravel extends XploitsModule {
      * <p>De fábrica {@code chest-swap} es {@code Never}, así que esto solo le pasa a quien lo haya
      * configurado -que es justo el perfil que usa este módulo-.
      */
-    private String chestSwapRejection() {
+    private Msg chestSwapRejection() {
         ElytraFly module = Modules.get().get(ElytraFly.class);
         // Si no está encendido, la preparación no lo apaga, y sin apagarlo no hay cambio de armadura.
         if (module == null || !module.isActive()) return null;
@@ -880,48 +849,39 @@ public class AutoTravel extends XploitsModule {
         ElytraFly.ChestSwapMode mode = module.chestSwap.get();
         if (mode == ElytraFly.ChestSwapMode.Never) return null;
 
-        String consequence = mode == ElytraFly.ChestSwapMode.Always
-            ? "te pone la pechera en el sitio de la elytra en ese mismo instante, y el \"" + prefix.get()
-                + "elytra\" sale dos líneas después: Baritone no despegaría, y te enterarías treinta segundos "
-                + "más tarde por el corte de atasco"
-            : "deja armado un oyente que te quita la elytra en cuanto toques suelo, que es justo el aterrizaje "
-                + "de Baritone: te la quitaría cuando el módulo cree haberlo restaurado todo";
+        Msg consequence = mode == ElytraFly.ChestSwapMode.Always
+            ? Msg.of(TravelText.CHEST_SWAP_ALWAYS, "prefix", prefix.get())
+            : Msg.of(TravelText.CHEST_SWAP_WAIT_FOR_GROUND);
 
-        return "No se vuela: elytra-fly está encendido con chest-swap en " + mode + ", y la preparación tiene "
-            + "que apagarlo porque Baritone declara que su vuelo no funciona con impulso no vanilla. Apagarlo "
-            + consequence + ". Pon chest-swap en Never dentro de elytra-fly, o apaga elytra-fly a mano antes "
-            + "de lanzar.";
+        return Msg.of(TravelText.CHEST_SWAP_REJECTED, "mode", mode.toString(), "consequence", consequence);
     }
 
     /**
      * Deshace una preparación que ya no puede terminar en vuelo y contesta por qué. No se llama a
-     * {@link #finish(String, boolean)} a propósito: aquí no hay ningún viaje que dar por terminado
+     * {@link #finish(TravelText, boolean)} a propósito: aquí no hay ningún viaje que dar por terminado
      * -no se ha mandado ni un {@code goal} ni un {@code elytra}-, y decir "viaje terminado" por algo
      * que no llegó a empezar es la misma confusión que este módulo evita en la restauración.
      */
-    private String undoLaunch() {
+    private Msg undoLaunch() {
         // No hace falta mirar si algún módulo se ha quedado pendiente: esto solo se llega a ejecutar
         // desde start(), con el mundo cargado, que es exactamente cuando sí se pueden tocar.
         travelling = false;
         SafetyNet.Restoration undone = restore();
-        String pending = undone.warning(activePrefix);
+        Msg pending = undone.warning(activePrefix);
 
-        String why = "No se vuela: preparar el entorno te ha dejado sin elytra puesta, así que Baritone no "
-            + "podría despegar. He deshecho la preparación";
-        if (pending == null) return why + " y el entorno ha quedado como estaba.";
+        if (pending == null) return Msg.of(TravelText.UNDONE);
 
-        loudToast("La preparación se ha deshecho pero no ha llegado a Baritone: sus ajustes se han quedado en "
-            + "valores de vuelo. Lee el chat.", Items.BARRIER);
-        return why + ", pero " + pending + ".";
+        loudToast(Msg.of(TravelText.TOAST_UNDONE_NOT_RESTORED), Items.BARRIER);
+        return Msg.of(TravelText.UNDONE_NOT_RESTORED, "pending", pending);
     }
 
     /** Salida 2: cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
-    public String stop() {
-        if (!travelling) return "No hay ningún viaje en marcha.";
+    public Msg stop() {
+        if (!travelling) return Msg.of(TravelText.STOP_NOT_TRAVELLING);
         // Lo que conteste el comando no puede afirmar más que lo que acaba de pasar: si la
         // restauración no llegó, finish() ya lo ha dicho entero y aquí solo se remata sin repetirlo.
-        if (finish("lo has cancelado", false).arrived()) return "Viaje cortado y entorno restaurado.";
-        return "Viaje cortado, pero el entorno NO ha quedado restaurado: lee el aviso de arriba.";
+        if (finish(TravelText.REASON_CANCELLED, false).arrived()) return Msg.of(TravelText.STOP_RESTORED);
+        return Msg.of(TravelText.STOP_NOT_RESTORED);
     }
 
     public boolean isTravelling() {
@@ -938,7 +898,9 @@ public class AutoTravel extends XploitsModule {
 
     @Override
     public String ahora() {
-        return travelling ? "waypoint " + (index + 1) + "/" + waypoints.size() : "armado";
+        return travelling
+            ? Texts.render(TravelText.NOW_WAYPOINT, "index", index + 1, "total", waypoints.size())
+            : Texts.render(TravelText.NOW_ARMED);
     }
 
     /**
@@ -971,18 +933,18 @@ public class AutoTravel extends XploitsModule {
      *         Quien llega segundo no restaura nada y contesta {@code ENTREGADA}: el primero ya dijo
      *         lo que hubiera que decir, y repetirlo sería sacar dos veces el mismo aviso.
      */
-    private SafetyNet.Restoration finish(String reason, boolean warn) {
+    private SafetyNet.Restoration finish(TravelText reason, boolean warn) {
         if (!travelling) return SafetyNet.Restoration.ENTREGADA;
         travelling = false;
 
         SafetyNet.Restoration restoration = restore();
-        String pending = restoration.warning(activePrefix);
+        Msg pending = restoration.warning(activePrefix);
         warnPendingModules();
 
         if (pending == null) {
-            String message = "Viaje terminado: " + reason + ". Entorno restaurado.";
-            if (warn) warning("%s", message);
-            else if (notify.get()) info("%s", message);
+            Msg message = Msg.of(TravelText.FINISHED, "reason", reason);
+            if (warn) warning(message);
+            else if (notify.get()) info(message);
             return restoration;
         }
 
@@ -990,9 +952,8 @@ public class AutoTravel extends XploitsModule {
         // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando. Sale
         // siempre, se hayan pedido avisos o no, y fuerte: es el peor estado en que este módulo te
         // puede dejar.
-        warning("%s", "Viaje terminado: " + reason + ", pero el entorno NO ha quedado restaurado: " + pending + ".");
-        loudToast("El viaje ha terminado pero la restauración no ha llegado a Baritone: puede seguir volando y "
-            + "sus ajustes se han quedado en valores de vuelo. Lee el chat.", Items.BARRIER);
+        warning(TravelText.FINISHED_NOT_RESTORED, "reason", reason, "pending", pending);
+        loudToast(Msg.of(TravelText.TOAST_FINISHED_NOT_RESTORED), Items.BARRIER);
         return restoration;
     }
 
@@ -1043,19 +1004,19 @@ public class AutoTravel extends XploitsModule {
      * el jugador llega a leer es el toast.
      */
     private void warnPendingModules() {
-        StringBuilder names = new StringBuilder();
-        if (elytraFly.hasPending()) names.append(elytraFly.name());
-        if (elytraReplace.hasPending()) {
-            if (!names.isEmpty()) names.append(" y ");
-            names.append(elytraReplace.name());
+        Object names;
+        if (elytraFly.hasPending() && elytraReplace.hasPending()) {
+            names = Msg.of(TravelText.MODULES_BOTH, "first", elytraFly.name(), "second", elytraReplace.name());
+        } else if (elytraFly.hasPending()) {
+            names = elytraFly.name();
+        } else if (elytraReplace.hasPending()) {
+            names = elytraReplace.name();
+        } else {
+            return;
         }
-        if (names.isEmpty()) return;
 
-        String message = "Al salir del mundo no se puede encender ni apagar un módulo de Meteor sin dejarlo "
-            + "suscrito dos veces al bus para el resto de la sesión, así que " + names + " se queda como estaba "
-            + "en vuelo. Se devuelve solo en el primer tick tras volver a entrar; si cierras el cliente antes, "
-            + "repásalo en la ClickGUI.";
-        warning("%s", message);
+        Msg message = Msg.of(TravelText.MODULES_LEFT_AS_IN_FLIGHT, "modules", names);
+        warning(message);
         loudToast(message, Items.ELYTRA);
     }
 
@@ -1197,8 +1158,8 @@ public class AutoTravel extends XploitsModule {
     }
 
     /** La mitad visual de un aviso fuerte: el toast que acompaña al chat. */
-    private void loudToast(String message, Item icon) {
-        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(message).icon(icon);
+    private void loudToast(Msg message, Item icon) {
+        MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(icon);
         // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
         // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que ElytraReplace.
         if (!notifySound.get()) {
@@ -1207,58 +1168,61 @@ public class AutoTravel extends XploitsModule {
         mc.getToastManager().add(toast.build());
     }
 
-    public TextoConPosicion status() {
-        return new TextoConPosicion(status(true), status(false));
+    public PositionedMsg status() {
+        return new PositionedMsg(status(true), status(false));
     }
 
-    private String status(boolean conPosicion) {
-        if (!isActive()) return "auto-travel está apagado.";
+    private Msg status(boolean conPosicion) {
+        if (!isActive()) return Msg.of(TravelText.STATUS_OFF);
         if (!travelling) {
-            return String.format("auto-travel encendido, sin viaje en marcha. Patrón %s · destino %s.",
-                pattern.get(), conPosicion ? describeDestination() : describeDestinationSinPosicion());
+            return Msg.of(TravelText.STATUS_IDLE, "pattern", pattern.get().name(),
+                "destination", conPosicion ? describeDestination() : describeDestinationSinPosicion());
         }
 
         Waypoint target = waypoints.get(index);
-        StringBuilder sb = new StringBuilder();
-        sb.append("Volando con patrón ").append(pattern.get())
-            .append(" · waypoint ").append(index + 1).append(" de ").append(waypoints.size());
-        if (conPosicion) sb.append(" en ").append(Math.round(target.x())).append(", ").append(Math.round(target.z()));
+        Msg position = conPosicion
+            ? Msg.of(TravelText.STATUS_AT, "x", Math.round(target.x()), "z", Math.round(target.z()))
+            : Msg.of(TravelText.NOTHING);
+        Msg progress = Msg.of(TravelText.NOTHING);
         if (mc.player != null) {
             Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
-            sb.append(" a ").append(Math.round(here.distanceTo(target))).append(" bloques");
-            sb.append("\n  quedan ").append(waypoints.size() - index - 1).append(" waypoints después de este");
+            progress = Msg.of(TravelText.STATUS_PROGRESS, "distance", Math.round(here.distanceTo(target)),
+                "left", waypoints.size() - index - 1);
         }
-        sb.append("\n  red de seguridad: ").append(netArmed ? "armada" : "DESARMADA");
-        if (netCaughtWarned) sb.append(" y ya ha tenido que cancelar un comando: Baritone no está interceptando");
-        return sb.toString();
+        return Msg.of(TravelText.STATUS_FLYING, "pattern", pattern.get().name(), "index", index + 1,
+            "total", waypoints.size(), "position", position, "progress", progress,
+            "net", netArmed ? TravelText.NET_ARMED : TravelText.NET_DISARMED,
+            "caught", netCaughtWarned ? TravelText.STATUS_NET_CAUGHT : TravelText.NOTHING);
     }
 
-    private String describeDestination() {
+    private Msg describeDestination() {
         return switch (destinationMode.get()) {
-            case AUTOPISTA -> String.format("%d bloques por %s", Math.round(highwayDistance.get()), axis.get());
+            case AUTOPISTA -> Msg.of(TravelText.DESTINATION_HIGHWAY, "distance", Math.round(highwayDistance.get()),
+                "axis", axis.get().name());
             // El desplazamiento se dice tal cual, con su signo y diciendo que es un desplazamiento: si
             // se resolviera aquí a coordenadas, el modo que existe para no escribir el destino en
             // ningún sitio lo estaría escribiendo en el chat.
-            case RELATIVO -> String.format("%+d, %+d desde donde arranque",
-                Math.round(offsetX.get()), Math.round(offsetZ.get()));
-            case COORDENADAS -> String.format("%d, %d",
-                Math.round(destinationX.get()), Math.round(destinationZ.get()));
+            case RELATIVO -> Msg.of(TravelText.DESTINATION_RELATIVE,
+                "dx", String.format("%+d", Math.round(offsetX.get())), "dz", String.format("%+d", Math.round(offsetZ.get())));
+            case COORDENADAS -> Msg.of(TravelText.DESTINATION_COORDINATES,
+                "x", Math.round(destinationX.get()), "z", Math.round(destinationZ.get()));
         };
     }
 
     /** El destino sin coordenadas, para la consola: en autopista ya no las lleva; si no, la distancia. */
-    private String describeDestinationSinPosicion() {
+    private Msg describeDestinationSinPosicion() {
         return switch (destinationMode.get()) {
             case AUTOPISTA -> describeDestination();
             // Solo la distancia: el desplazamiento con su signo dice el rumbo desde un punto que se
             // puede adivinar (el spawn, una autopista), y a la consola solo van distancias.
-            case RELATIVO -> "relativo, a " + Math.round(Math.hypot(offsetX.get(), offsetZ.get()))
-                + " bloques de donde arranque";
+            case RELATIVO -> Msg.of(TravelText.DESTINATION_RELATIVE_DISTANCE,
+                "distance", Math.round(Math.hypot(offsetX.get(), offsetZ.get())));
             case COORDENADAS -> {
-                if (mc.player == null) yield "por coordenadas";
+                if (mc.player == null) yield Msg.of(TravelText.DESTINATION_BY_COORDINATES);
                 Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
                 Waypoint target = new Waypoint(destinationX.get(), destinationZ.get());
-                yield "por coordenadas, a " + Math.round(here.distanceTo(target)) + " bloques";
+                yield Msg.of(TravelText.DESTINATION_BY_COORDINATES_DISTANCE,
+                    "distance", Math.round(here.distanceTo(target)));
             }
         };
     }

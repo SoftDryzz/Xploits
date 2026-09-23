@@ -99,7 +99,8 @@ class FronteraTest {
         "com/xploits/shared/LanguageStore.java",
         "com/xploits/shared/XploitsSettings.java",
         "com/xploits/shared/core/i18n/",
-        "com/xploits/console/");
+        "com/xploits/console/",
+        "com/xploits/travel/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
     // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches

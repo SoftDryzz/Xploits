@@ -8,9 +8,11 @@ import com.xploits.pvp.AutoPvp;
 import com.xploits.shared.ComandoBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.TextoConPosicion;
 import com.xploits.shared.core.i18n.LanguageChoice;
 import com.xploits.shared.core.i18n.LanguageText;
+import com.xploits.shared.core.i18n.Msg;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
 import com.xploits.sweep.NetherSweep;
@@ -113,15 +115,15 @@ public class XploitsCommand extends ComandoBase {
      * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
      */
     private void travelGo(AutoTravel autoTravel) {
-        TextoConPosicion message = autoTravel.start();
+        PositionedMsg message = autoTravel.start();
         responder(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
     }
 
     /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void travelStop(AutoTravel autoTravel) {
         boolean travelling = autoTravel.isTravelling();
-        String message = autoTravel.stop();
-        responder(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, TextoConPosicion.igual(message));
+        Msg message = autoTravel.stop();
+        responder(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, PositionedMsg.same(message));
     }
 
     /**
