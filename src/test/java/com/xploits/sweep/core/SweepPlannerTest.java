@@ -1,5 +1,8 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,6 +20,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * geometría, no ningún sitio concreto del mundo.
  */
 class SweepPlannerTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    /** A text as the player reads it in Spanish, for the tests that look for words and numbers in it. */
+    private static String es(Msg msg) {
+        return msg == null ? "null" : ES.render(msg);
+    }
+
     private static final int BLOQUES_POR_CHUNK = 16;
 
     // ---------------------------------------------------------------------------------------
@@ -300,12 +312,12 @@ class SweepPlannerTest {
         // algo está mal.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
-        String motivoCero = SweepPlanner.plan(area, Coverage.empty(), 0).rejection();
+        String motivoCero = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
         assertTrue(motivoCero.contains("anchura de pasada"), motivoCero);
         assertTrue(motivoCero.contains("0"), motivoCero);
         assertTrue(motivoCero.contains("1 chunk"), motivoCero);
 
-        String motivoNegativo = SweepPlanner.plan(area, Coverage.empty(), -3).rejection();
+        String motivoNegativo = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
         assertTrue(motivoNegativo.contains("anchura de pasada"), motivoNegativo);
         assertTrue(motivoNegativo.contains("-3"), motivoNegativo);
         assertTrue(motivoNegativo.contains("1 chunk"), motivoNegativo);
@@ -318,11 +330,11 @@ class SweepPlannerTest {
         // de los ajustes del módulo sweep/NetherSweep, y tienen que moverse juntos.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
-        String motivoCero = SweepPlanner.plan(area, Coverage.empty(), 0).rejection();
+        String motivoCero = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
         assertTrue(motivoCero.contains("lane-width"), motivoCero);
         assertTrue(motivoCero.contains("lane-width-margin"), motivoCero);
 
-        String motivoNegativo = SweepPlanner.plan(area, Coverage.empty(), -3).rejection();
+        String motivoNegativo = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
         assertTrue(motivoNegativo.contains("lane-width"), motivoNegativo);
         assertTrue(motivoNegativo.contains("lane-width-margin"), motivoNegativo);
     }
@@ -384,7 +396,7 @@ class SweepPlannerTest {
         // leyera solo la lista volaría un barrido que se había rechazado.
         List<Lane> pasadas = List.of(new Lane(0, 0, 100, 0));
         assertThrows(IllegalArgumentException.class,
-            () -> new SweepPlanner.SweepPlan(pasadas, "un motivo cualquiera"));
+            () -> new SweepPlanner.SweepPlan(pasadas, Msg.of(SweepText.LANE_WIDTH_ZERO)));
     }
 
     @Test

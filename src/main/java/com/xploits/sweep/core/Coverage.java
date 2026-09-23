@@ -61,7 +61,7 @@ public final class Coverage {
     public static Coverage ofLines(Iterable<String> lines) {
         if (lines == null) {
             throw new NullPointerException("hacen falta las líneas que leer: una lista nula no es un"
-                + " fichero vacío, es no haber leído nada");
+                + " fichero vacío, es no haber leído nada"); // i18n: allowed (exception message, continuation line)
         }
 
         Set<ChunkPos> chunks = new HashSet<>();
@@ -190,7 +190,7 @@ public final class Coverage {
     public static Coverage merge(Collection<Coverage> coverages) {
         if (coverages == null) {
             throw new NullPointerException("hacen falta las lecturas que unir: una colección nula no"
-                + " es «ningún fichero», es no haber mirado");
+                + " es «ningún fichero», es no haber mirado"); // i18n: allowed (exception message, continuation line)
         }
 
         Set<ChunkPos> union = new HashSet<>();

@@ -77,7 +77,7 @@ public final class SweepRoute {
         if (origin == null) throw new NullPointerException("la ruta necesita saber desde dónde se despega");
         if (lanes.isEmpty()) {
             throw new IllegalArgumentException(
-                "un plan sin pasadas no produce ninguna ruta: significa que el área ya está vista"
+                "un plan sin pasadas no produce ninguna ruta: significa que el área ya está vista" // i18n: allowed (exception message, continuation line)
                     + " entera y que no hay nada que volar, no que el viaje sea corto");
         }
 
@@ -164,8 +164,8 @@ public final class SweepRoute {
     public double remainingFrom(int index) {
         if (index < 0 || index >= restanteDesde.length) {
             throw new IndexOutOfBoundsException(
-                "el vértice " + index + " no existe en una ruta de " + restanteDesde.length
-                    + " vértices");
+                "el vértice " + index + " no existe en una ruta de " + restanteDesde.length // i18n: allowed (exception message, continuation line)
+                    + " vértices"); // i18n: allowed (exception message, continuation line)
         }
         return restanteDesde[index];
     }

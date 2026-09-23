@@ -1,5 +1,7 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Msg;
+
 import java.util.BitSet;
 
 /**
@@ -64,7 +66,7 @@ public final class SweepTally {
         if (area == null) throw new NullPointerException("hace falta un área para contar dentro de ella");
         if (seen == null) {
             throw new NullPointerException("hace falta la cobertura previa: sin ella no se sabe qué"
-                + " chunks del área no hacía falta volver a ver");
+                + " chunks del área no hacía falta volver a ver"); // i18n: allowed (exception message, continuation line)
         }
 
         int chunksDelArea = area.chunkCount();
@@ -147,13 +149,14 @@ public final class SweepTally {
      * existe para no contar, solo que redactada por el redondeo. Así, un 100 % solo aparece cuando
      * de verdad no falta ninguno.
      */
-    public String summary() {
+    public Msg summary() {
         int porcentaje = (int) Math.floor(coveredFraction() * 100);
-        String base = String.format("Cobertura del área: %d de %d chunks (%d %%), %d que ya estaban"
-                + " vistos al planificar y %d que han llegado durante el barrido",
-            covered(), chunksDelArea, porcentaje, yaVistos, arrived());
-        if (missing() == 0) return base + ". No falta ninguno";
-        return base + String.format(". Quedan %d chunks del área que NO han llegado nunca", missing());
+        if (missing() == 0) {
+            return Msg.of(SweepText.COVERAGE_COMPLETE, "covered", covered(), "total", chunksDelArea,
+                "percent", porcentaje, "seen", yaVistos, "arrived", arrived());
+        }
+        return Msg.of(SweepText.COVERAGE_MISSING, "covered", covered(), "total", chunksDelArea,
+            "percent", porcentaje, "seen", yaVistos, "arrived", arrived(), "missing", missing());
     }
 
     private static int indice(SweepArea area, int chunkX, int chunkZ) {

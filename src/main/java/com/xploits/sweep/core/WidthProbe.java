@@ -130,8 +130,8 @@ public final class WidthProbe {
     public void sample(ChunkPos player, ChunkPos received, int maxRadiusInChunks, double blocksPerTick) {
         if (maxRadiusInChunks < 1) {
             throw new IllegalArgumentException(
-                "el techo de la sonda tiene que ser de 1 chunk o más (recibido " + maxRadiusInChunks
-                    + "): con menos se descartaría toda muestra y la sonda no llegaría a medir nunca");
+                "el techo de la sonda tiene que ser de 1 chunk o más (recibido " + maxRadiusInChunks // i18n: allowed (exception message, continuation line)
+                    + "): con menos se descartaría toda muestra y la sonda no llegaría a medir nunca"); // i18n: allowed (exception message, continuation line)
         }
         // Escrito en negativo para que un NaN -que compara falso contra todo- caiga aquí y no se
         // cuele como velocidad válida por la puerta de atrás.
@@ -139,7 +139,7 @@ public final class WidthProbe {
             throw new IllegalArgumentException(
                 "la velocidad del jugador tiene que ser cero o positiva (recibido " + blocksPerTick
                     + "): sin una velocidad de verdad no se puede saber si la muestra viene inflada"
-                    + " por la deriva, y dejarla pasar sería aceptarla sin comprobarla");
+                    + " por la deriva, y dejarla pasar sería aceptarla sin comprobarla"); // i18n: allowed (exception message, continuation line)
         }
 
         if (blocksPerTick > BLOQUES_POR_TICK_MAXIMOS) {
@@ -189,7 +189,7 @@ public final class WidthProbe {
     public int observedRadiusInChunks() {
         if (!hasEnoughSamples()) {
             throw new IllegalStateException(
-                "todavía no hay muestras suficientes (" + muestras + " de " + MUESTRAS_MINIMAS
+                "todavía no hay muestras suficientes (" + muestras + " de " + MUESTRAS_MINIMAS // i18n: allowed (exception message, continuation line)
                     + ") para dar un radio observado: comprueba hasEnoughSamples() antes de llamar"
                     + " a esto");
         }

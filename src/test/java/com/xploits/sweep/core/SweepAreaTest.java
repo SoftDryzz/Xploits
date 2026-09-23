@@ -1,5 +1,8 @@
 package com.xploits.sweep.core;
 
+import com.xploits.shared.core.i18n.Catalog;
+import com.xploits.shared.core.i18n.Language;
+import com.xploits.shared.core.i18n.Msg;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +13,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SweepAreaTest {
+    private static final Catalog ES = Catalog.load(Language.ES, p -> {
+        throw new AssertionError(p);
+    });
+
+    /** A text as the player reads it in Spanish, for the tests that look for words and numbers in it. */
+    private static String es(Msg msg) {
+        return msg == null ? "null" : ES.render(msg);
+    }
+
     @Test
     void widthAndHeightCountBothChunkEdgesInclusive() {
         SweepArea area = SweepArea.ofChunks(0, 0, 3, 3);
@@ -48,13 +60,13 @@ class SweepAreaTest {
     void overworldEquivalentMultipliesChunksBySixteenAndThenByEight() {
         // 4 chunks de ancho/alto en el Nether: 4 * 16 * 8 = 512 bloques en el Overworld.
         SweepArea area = SweepArea.ofChunks(0, 0, 3, 3);
-        assertEquals("512x512 bloques del Overworld", area.overworldEquivalent());
+        assertEquals(Msg.of(SweepText.OVERWORLD_EQUIVALENT, "width", 512L, "height", 512L), area.overworldEquivalent());
     }
 
     @Test
     void overworldEquivalentIsIndependentPerAxis() {
         SweepArea area = SweepArea.ofChunks(0, 0, 1, 3);
-        assertEquals("256x512 bloques del Overworld", area.overworldEquivalent());
+        assertEquals(Msg.of(SweepText.OVERWORLD_EQUIVALENT, "width", 256L, "height", 512L), area.overworldEquivalent());
     }
 
     @Test
@@ -161,7 +173,7 @@ class SweepAreaTest {
         // visitaban uno a uno en el hilo principal desde un comando.
         SweepArea area = SweepArea.ofChunks(-10_000, -10_000, 9_999, 9_999);
 
-        String motivo = area.oversizeRejection();
+        String motivo = es(area.oversizeRejection());
         assertNotNull(motivo);
         assertTrue(motivo.contains("400000000"), motivo);
     }
@@ -183,7 +195,7 @@ class SweepAreaTest {
         // con los ajustes nombrados como aparecen en la interfaz.
         SweepArea area = SweepArea.ofChunks(0, 0, 2_999, 2_999);
 
-        String motivo = area.oversizeRejection();
+        String motivo = es(area.oversizeRejection());
         assertTrue(motivo.contains("3000x3000"), motivo);
         assertTrue(motivo.contains("9000000"), motivo);
         assertTrue(motivo.contains(String.valueOf(SweepArea.MAXIMO_DE_CHUNKS)), motivo);
@@ -197,7 +209,7 @@ class SweepAreaTest {
         // pasar de 4.000.000 / 1.000 = 4.000. Ese es el número accionable.
         SweepArea area = SweepArea.ofChunks(0, 0, 7_999, 999);
 
-        String motivo = area.oversizeRejection();
+        String motivo = es(area.oversizeRejection());
         assertTrue(motivo.contains("no puede pasar de 4000"), motivo);
     }
 
@@ -208,7 +220,7 @@ class SweepAreaTest {
         // sigue sin caber, así que aquí el consejo es otro.
         SweepArea area = SweepArea.ofChunks(0, 0, 4_999, 4_999);
 
-        String motivo = area.oversizeRejection();
+        String motivo = es(area.oversizeRejection());
         assertTrue(motivo.contains("acerca las dos"), motivo);
         assertFalse(motivo.contains("no puede pasar de"), motivo);
     }

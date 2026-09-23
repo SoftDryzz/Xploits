@@ -74,7 +74,7 @@ public class XploitsCommand extends ComandoBase {
             })));
         builder.then(literal("sweep")
             .executes(context -> {
-                sweep().ifPresent(module -> responder(Nivel.INFO, module.name, TextoConPosicion.igual(module.status())));
+                sweep().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -138,15 +138,15 @@ public class XploitsCommand extends ComandoBase {
      * se traga el mensaje justo cuando el jugador más lo necesita.
      */
     private void sweepGo(NetherSweep sweep) {
-        String message = sweep.start();
-        responder(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, TextoConPosicion.igual(message));
+        Msg message = sweep.start();
+        responder(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
     }
 
     /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void sweepStop(NetherSweep sweep) {
         boolean sweeping = sweep.isSweeping();
-        String message = sweep.stop();
-        responder(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, TextoConPosicion.igual(message));
+        Msg message = sweep.stop();
+        responder(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {

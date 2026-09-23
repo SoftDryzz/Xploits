@@ -163,7 +163,7 @@ public final class FuelBudget {
             throw new IllegalArgumentException(
                 "reserveFraction tiene que ser >= 0 (recibido " + reserveFraction + "): una reserva"
                     + " negativa baja el umbral de cohetes necesarios en vez de ampliarlo e invierte"
-                    + " la garantía de seguridad de esta clase -ver el javadoc del método-");
+                    + " la garantía de seguridad de esta clase -ver el javadoc del método-"); // i18n: allowed (exception message, continuation line)
         }
         double tasa = blocksPerRocket().getAsDouble();
         double cohetesNecesarios = blocksRemaining / tasa;

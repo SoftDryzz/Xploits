@@ -67,8 +67,8 @@ public final class Odometer {
         if (!(blocks >= 0)) {
             throw new IllegalArgumentException(
                 "el desplazamiento de un tick tiene que ser cero o positivo (recibido " + blocks
-                    + "): no es una distancia, y sumarlo corrompería los bloques volados de los que"
-                    + " sale la proyección de cohetes");
+                    + "): no es una distancia, y sumarlo corrompería los bloques volados de los que" // i18n: allowed (exception message, continuation line)
+                    + " sale la proyección de cohetes"); // i18n: allowed (exception message, continuation line)
         }
 
         ultimoPaso = blocks;
