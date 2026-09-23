@@ -110,10 +110,10 @@ public final class Texto {
     /**
      * Parte el texto en filas de como mucho {@code cols} columnas, por saltos de línea y por ancho.
      * Si salen más de {@code maxFilas}, se enseñan las primeras y la última acaba en {@code (+N)}, con
-     * N las filas que no se ven.
+     * N las filas que no se ven. Si el sufijo no deja espacio para texto, la última fila es el sufijo truncado.
      */
     public static List<String> envolver(String s, int cols, int maxFilas) {
-        if (cols <= 0) throw new IllegalArgumentException("no se envuelve en " + cols + " columnas");
+        if (cols < 2) throw new IllegalArgumentException("no se envuelve en " + cols + " columnas: un carácter ancho necesita 2");
         if (maxFilas <= 0) throw new IllegalArgumentException("no se envuelve en " + maxFilas + " filas");
         String cuerpo = s.endsWith("\n") ? s.substring(0, s.length() - 1) : s;
         List<String> filas = new ArrayList<>();
@@ -123,7 +123,7 @@ public final class Texto {
             for (int i = 0; i < linea.length(); ) {
                 int cp = linea.codePointAt(i);
                 int w = anchoDe(cp);
-                if (usado + w > cols) {
+                if (usado > 0 && usado + w > cols) {
                     filas.add(actual.toString());
                     actual.setLength(0);
                     usado = 0;
@@ -138,7 +138,12 @@ public final class Texto {
         String sufijo = " (+" + (filas.size() - maxFilas) + ")";
         List<String> visibles = new ArrayList<>(filas.subList(0, maxFilas));
         String ultima = visibles.get(maxFilas - 1);
-        visibles.set(maxFilas - 1, recortar(ultima, cols - ancho(sufijo)) + sufijo);
+        int anchoSufijo = ancho(sufijo);
+        if (cols - anchoSufijo < 1) {
+            visibles.set(maxFilas - 1, recortar(sufijo.strip(), cols));
+        } else {
+            visibles.set(maxFilas - 1, recortar(ultima, cols - anchoSufijo) + sufijo);
+        }
         return visibles;
     }
 }

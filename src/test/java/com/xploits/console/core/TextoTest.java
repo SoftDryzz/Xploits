@@ -87,8 +87,19 @@ class TextoTest {
     }
 
     @Test
+    void envolverUnCaracterAnchoNoDejaFilaVacia() {
+        assertEquals(List.of("a", "字"), Texto.envolver("a字", 2, 5));
+    }
+
+    @Test
+    void envolverConUnSufijoMasAnchoQueLaVentanaNoSeDesborda() {
+        assertEquals(List.of("(+6)"), Texto.envolver("a".repeat(25), 4, 1));
+    }
+
+    @Test
     void envolverRechazaAnchosOFilasSinSentido() {
         assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 1, 1));
         assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 5, 0));
     }
 }
