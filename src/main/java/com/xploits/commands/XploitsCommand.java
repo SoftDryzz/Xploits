@@ -6,7 +6,11 @@ import com.xploits.console.core.Nivel;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.shared.ComandoBase;
+import com.xploits.shared.Languages;
+import com.xploits.shared.Texts;
 import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.core.i18n.LanguageChoice;
+import com.xploits.shared.core.i18n.LanguageText;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
 import com.xploits.sweep.NetherSweep;
@@ -28,7 +32,7 @@ public class XploitsCommand extends ComandoBase {
     private static final int MAX_HITS = 10;
 
     public XploitsCommand() {
-        super("xploits", "Estado del addon, búsqueda en el stash y recarga.");
+        super("xploits", Texts.startupText(LanguageText.COMMAND_DESC));
     }
 
     @Override
@@ -79,6 +83,19 @@ public class XploitsCommand extends ComandoBase {
                 sweep().ifPresent(this::sweepStop);
                 return SINGLE_SUCCESS;
             })));
+        builder.then(literal("language")
+            .executes(context -> {
+                info(Languages.describe());
+                return SINGLE_SUCCESS;
+            })
+            .then(literal("auto").executes(context -> choose(LanguageChoice.AUTO)))
+            .then(literal("es").executes(context -> choose(LanguageChoice.SPANISH)))
+            .then(literal("en").executes(context -> choose(LanguageChoice.ENGLISH))));
+    }
+
+    private int choose(LanguageChoice choice) {
+        Languages.choose(choice);
+        return SINGLE_SUCCESS;
     }
 
     /**

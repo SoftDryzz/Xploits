@@ -8,6 +8,8 @@ import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
+import com.xploits.shared.Languages;
+import com.xploits.shared.XploitsSettings;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
@@ -23,6 +25,8 @@ public class XploitsAddon extends MeteorAddon {
     @Override
     public void onInitialize() {
         LOG.info("Initializing Xploits");
+        Languages.start();
+        Modules.get().add(new XploitsSettings());
         Modules.get().add(new KitRequester());
         Modules.get().add(new AutoTpy());
         Modules.get().add(new StashKeeper());

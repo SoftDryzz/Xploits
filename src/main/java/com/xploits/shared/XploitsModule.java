@@ -3,7 +3,10 @@ package com.xploits.shared;
 import com.xploits.console.Salida;
 import com.xploits.console.core.Formato;
 import com.xploits.console.core.Nivel;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.core.i18n.MessageKey;
+import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.systems.modules.Category;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import net.minecraft.text.Text;
@@ -63,6 +66,55 @@ public abstract class XploitsModule extends Module {
     /** Solo a la consola, sin chat: para lo que ya se dijo por otro camino. */
     public void registrar(Nivel nivel, String texto) {
         Salida.mensaje(nivel, name, texto);
+    }
+
+    public void info(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.INFO, name, text);
+        super.info("%s", text);
+    }
+
+    public void warning(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.AVISO, name, text);
+        super.warning("%s", text);
+    }
+
+    public void error(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.ERROR, name, text);
+        super.error("%s", text);
+    }
+
+    public void info(MessageKey key, Object... namesAndValues) {
+        info(Msg.of(key, namesAndValues));
+    }
+
+    public void warning(MessageKey key, Object... namesAndValues) {
+        warning(Msg.of(key, namesAndValues));
+    }
+
+    public void error(MessageKey key, Object... namesAndValues) {
+        error(Msg.of(key, namesAndValues));
+    }
+
+    public void infoPrivado(PositionedMsg msg) {
+        Salida.mensaje(Nivel.INFO, name, Texts.render(msg.log()));
+        super.info("%s", Texts.render(msg.chat()));
+    }
+
+    public void warningPrivado(PositionedMsg msg) {
+        Salida.mensaje(Nivel.AVISO, name, Texts.render(msg.log()));
+        super.warning("%s", Texts.render(msg.chat()));
+    }
+
+    public void errorPrivado(PositionedMsg msg) {
+        Salida.mensaje(Nivel.ERROR, name, Texts.render(msg.log()));
+        super.error("%s", Texts.render(msg.chat()));
+    }
+
+    public void registrar(Nivel nivel, Msg msg) {
+        Salida.mensaje(nivel, name, Texts.render(msg));
     }
 
     /** Qué hace ahora, en 30 caracteres como mucho; vacío si nada. Solo desde el hilo del juego. */

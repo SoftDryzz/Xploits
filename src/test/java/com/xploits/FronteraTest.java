@@ -88,4 +88,51 @@ class FronteraTest {
         });
         assertEquals(List.of(), malas, "esto no se puede ejecutar fuera del juego");
     }
+
+    /**
+     * Packages whose player text is fully in the catalogs (language spec §6). Each migration task
+     * adds its prefixes; the last one replaces the list with "com/xploits/".
+     */
+    private static final List<String> MIGRATED = List.of(
+        "com/xploits/shared/Texts.java",
+        "com/xploits/shared/Languages.java",
+        "com/xploits/shared/LanguageStore.java",
+        "com/xploits/shared/XploitsSettings.java",
+        "com/xploits/shared/core/i18n/");
+    // Note: tightened from the brief's version, which also matched the quoted argument *names* of
+    // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
+    // text. Requiring the quote to open the argument list keeps catching info("literal") while no
+    // longer flagging MessageKey calls with named arguments.
+    private static final Pattern LITERAL_TO_PLAYER = Pattern.compile(
+        "\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)\\s*\\(\\s*\"[^\"]*\\p{L}{2}");
+    private static final Pattern LITERAL_TO_UI = Pattern.compile(
+        "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\"|TextoConPosicion\\.igual\\(\\s*\"|new TextoConPosicion\\(\\s*\")");
+    private static final Pattern SPANISH_LITERAL = Pattern.compile("\"[^\"]*[áéíóúñÁÉÍÓÚÑ¿¡«»][^\"]*\"");
+    private static final String ALLOWED = "// i18n: allowed";
+
+    private static String code(String line) {
+        String t = line.strip();
+        if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return "";
+        int comment = t.indexOf(" // ");
+        return comment >= 0 ? t.substring(0, comment) : t;
+    }
+
+    @Test
+    void migratedCodeSendsNoLiteralTextToThePlayer() throws IOException {
+        List<String> found = new ArrayList<>();
+        fuentes().forEach((ruta, lineas) -> {
+            if (MIGRATED.stream().noneMatch(ruta::startsWith)) return;
+            for (int i = 0; i < lineas.size(); i++) {
+                String raw = lineas.get(i);
+                if (raw.contains(ALLOWED)) continue;
+                String c = code(raw);
+                boolean exception = c.contains("Exception(") || c.contains("LOG.");
+                if (LITERAL_TO_PLAYER.matcher(c).find() || LITERAL_TO_UI.matcher(c).find()
+                    || (!exception && SPANISH_LITERAL.matcher(c).find())) {
+                    found.add(ruta + ":" + (i + 1) + "  " + c);
+                }
+            }
+        });
+        assertEquals(List.of(), found, "player text must come from the catalogs (xploits/lang/*.lang)");
+    }
 }

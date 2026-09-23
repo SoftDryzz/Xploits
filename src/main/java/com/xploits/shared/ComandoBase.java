@@ -3,7 +3,9 @@ package com.xploits.shared;
 import com.xploits.console.Salida;
 import com.xploits.console.core.Formato;
 import com.xploits.console.core.Nivel;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.TextoConPosicion;
+import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.commands.Command;
 import net.minecraft.text.Text;
 
@@ -48,6 +50,28 @@ public abstract class ComandoBase extends Command {
             case AVISO -> super.warning("%s", texto.chat());
             case ERROR -> super.error("%s", texto.chat());
         }
+    }
+
+    public void info(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.INFO, getName(), text);
+        super.info("%s", text);
+    }
+
+    public void warning(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.AVISO, getName(), text);
+        super.warning("%s", text);
+    }
+
+    public void error(Msg msg) {
+        String text = Texts.render(msg);
+        Salida.mensaje(Nivel.ERROR, getName(), text);
+        super.error("%s", text);
+    }
+
+    protected void responder(Nivel nivel, String fuente, PositionedMsg msg) {
+        responder(nivel, fuente, new TextoConPosicion(Texts.render(msg.chat()), Texts.render(msg.log())));
     }
 
     private void anotar(Nivel nivel, String plantilla, Object[] args) {

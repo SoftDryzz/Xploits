@@ -6,6 +6,7 @@ import com.xploits.elytra.core.ElytraPolicy;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.core.Resource;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.XploitsSettings;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -39,7 +40,7 @@ final class Colector {
         MinecraftClient mc = MeteorClient.mc;
         List<Instantanea.EstadoModulo> modulos = new ArrayList<>();
         for (Module m : Modules.get().getAll()) {
-            if (!(m instanceof XploitsModule x) || m instanceof Consola) continue;
+            if (!(m instanceof XploitsModule x) || m instanceof Consola || m instanceof XploitsSettings) continue;
             String ahora = m.isActive() ? Texto.recortar(x.ahora(), ANCHO_AHORA) : "";
             modulos.add(new Instantanea.EstadoModulo(m.name, m.isActive(), ahora));
         }
