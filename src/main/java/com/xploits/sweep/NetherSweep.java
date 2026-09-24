@@ -704,7 +704,7 @@ public class NetherSweep extends XploitsModule {
         Msg message = Msg.of(SweepText.NET_CAUGHT, "command", text);
         // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
         Msg sinArgumentos = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
-        warningPrivado(new PositionedMsg(message, sinArgumentos));
+        warningPrivate(new PositionedMsg(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -1284,7 +1284,7 @@ public class NetherSweep extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return sweeping
             ? Texts.render(SweepText.NOW_LANE, "lane", Math.min(index / 2 + 1, pasadasDelPlan), "total", pasadasDelPlan)
             : Texts.render(SweepText.NOW_ARMED);

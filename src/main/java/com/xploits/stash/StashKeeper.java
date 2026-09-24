@@ -108,7 +108,7 @@ public class StashKeeper extends XploitsModule {
             // No seguir con un índice vacío: eso es lo que borraría el archivo corrupto en el
             // próximo guardado. Se avisa, se deja el módulo sin store (saveNow() no hace nada sin
             // uno) y se apaga solo, igual que KitRequester.onActivate() ante el mismo problema.
-            errorPrivado(new PositionedMsg(Msg.of(StashText.READ_FAILED, "detail", String.valueOf(e.getMessage())),
+            errorPrivate(new PositionedMsg(Msg.of(StashText.READ_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(StashText.READ_FAILED_LOG)));
             index = new StashIndex();
             store = null;
@@ -272,10 +272,10 @@ public class StashKeeper extends XploitsModule {
             index.put(new ContainerSnapshot(openKey, openType, System.currentTimeMillis(), openItems, openNested));
             dirty = true;
             if (notify.get()) {
-                // consola: registrado aparte
+                // console: logged separately
                 ChatUtils.info("Xploits", "%s", Texts.render(StashText.INDEXED, // i18n: allowed (chat prefix and format)
                     "container", openKey.id(), "types", openItems.size(), "shulkers", openNested.size()));
-                registrar(Nivel.INFO, Msg.of(StashText.INDEXED_LOG,
+                logToConsole(Nivel.INFO, Msg.of(StashText.INDEXED_LOG,
                     "where", openKey.sinPosicion(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
             }
         }
@@ -306,7 +306,7 @@ public class StashKeeper extends XploitsModule {
                 // nueva cada SAVE_EVERY_TICKS para siempre. Un solo aviso y se deja de intentar
                 // hasta la próxima activación.
                 saveDisabled = true;
-                errorPrivado(new PositionedMsg(
+                errorPrivate(new PositionedMsg(
                     Msg.of(StashText.SAVE_FAILED, "attempts", saveFailures, "detail", String.valueOf(e.getMessage())),
                     Msg.of(StashText.SAVE_FAILED_LOG, "attempts", saveFailures)));
             }
@@ -356,7 +356,7 @@ public class StashKeeper extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return Texts.render(StashText.NOW_CONTAINERS, "count", index.size());
     }
 }

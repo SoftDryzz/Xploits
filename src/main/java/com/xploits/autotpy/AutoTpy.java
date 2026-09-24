@@ -94,7 +94,7 @@ public class AutoTpy extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return Texts.render(TpyText.NOW_LISTED, "count", users().size());
     }
 

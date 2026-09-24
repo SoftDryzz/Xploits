@@ -105,7 +105,7 @@ public class KitRequester extends XploitsModule {
             progress = store.load();
             machine = newMachine(queue);
         } catch (IOException e) {
-            errorPrivado(new PositionedMsg(Msg.of(KitText.LOAD_FAILED, "detail", String.valueOf(e.getMessage())),
+            errorPrivate(new PositionedMsg(Msg.of(KitText.LOAD_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(KitText.LOAD_FAILED_LOG)));
             progress = null;
             machine = null;
@@ -170,7 +170,7 @@ public class KitRequester extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return machine == null ? "" : Texts.render(KitText.of(machine.state()));
     }
 
@@ -292,7 +292,7 @@ public class KitRequester extends XploitsModule {
         try {
             store.save(progress);
         } catch (IOException e) {
-            errorPrivado(new PositionedMsg(Msg.of(KitText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
+            errorPrivate(new PositionedMsg(Msg.of(KitText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(KitText.SAVE_FAILED_LOG)));
         }
     }

@@ -5,7 +5,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.xploits.console.core.Nivel;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
-import com.xploits.shared.ComandoBase;
+import com.xploits.shared.XploitsCommandBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-public class XploitsCommand extends ComandoBase {
+public class XploitsCommand extends XploitsCommandBase {
     private static final int MAX_HITS = 10;
 
     public XploitsCommand() {
@@ -39,11 +39,11 @@ public class XploitsCommand extends ComandoBase {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.status())));
+            kitRequester().ifPresent(kr -> reply(Nivel.INFO, kr.name, PositionedMsg.same(kr.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.reload())));
+            kitRequester().ifPresent(kr -> reply(Nivel.INFO, kr.name, PositionedMsg.same(kr.reload())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
@@ -55,12 +55,12 @@ public class XploitsCommand extends ComandoBase {
             return SINGLE_SUCCESS;
         })));
         builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+            pvp().ifPresent(module -> reply(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("travel")
             .executes(context -> {
-                travel().ifPresent(module -> responder(Nivel.INFO, module.name, module.status()));
+                travel().ifPresent(module -> reply(Nivel.INFO, module.name, module.status()));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -73,7 +73,7 @@ public class XploitsCommand extends ComandoBase {
             })));
         builder.then(literal("sweep")
             .executes(context -> {
-                sweep().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+                sweep().ifPresent(module -> reply(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -106,21 +106,21 @@ public class XploitsCommand extends ComandoBase {
      * <p>El motivo de un rechazo de ruta es lo más valioso que sale por aquí -nombra el ajuste que
      * hay que tocar, su valor actual y la salida concreta-, así que llega al chat de una pieza: una
      * sola llamada, sin recortar, sin partir en líneas y sin resumir. Llega como {@link PositionedMsg}
-     * (las coordenadas solo en la mitad del chat) y {@link #responder} lo traduce y lo pasa como
+     * (las coordenadas solo en la mitad del chat) y {@link #reply} lo traduce y lo pasa como
      * argumento, nunca como cadena de formato: un motivo con un porcentaje no puede romper la llamada.
      *
      * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
      */
     private void travelGo(AutoTravel autoTravel) {
         PositionedMsg message = autoTravel.start();
-        responder(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
+        reply(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
     }
 
     /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void travelStop(AutoTravel autoTravel) {
         boolean travelling = autoTravel.isTravelling();
         Msg message = autoTravel.stop();
-        responder(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, PositionedMsg.same(message));
+        reply(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, PositionedMsg.same(message));
     }
 
     /**
@@ -133,14 +133,14 @@ public class XploitsCommand extends ComandoBase {
      */
     private void sweepGo(NetherSweep sweep) {
         Msg message = sweep.start();
-        responder(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
     }
 
     /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void sweepStop(NetherSweep sweep) {
         boolean sweeping = sweep.isSweeping();
         Msg message = sweep.stop();
-        responder(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -148,7 +148,7 @@ public class XploitsCommand extends ComandoBase {
             warning(Msg.of(CommandText.STASH_OFF_STATUS));
             return;
         }
-        responder(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
+        reply(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
     }
 
     private void find(String query) {
@@ -187,7 +187,7 @@ public class XploitsCommand extends ComandoBase {
                 "place", hit.key().id(), "shulker", where, "ago", ago(hit.seenAt()));
             Msg log = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
                 "place", hit.key().sinPosicion(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
-            responder(Nivel.INFO, stashKeeper.name, new PositionedMsg(chat, log));
+            reply(Nivel.INFO, stashKeeper.name, new PositionedMsg(chat, log));
         }
         if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));
     }

@@ -41,9 +41,11 @@ public final class ConsoleFolder {
         Path old = xploitsDir.resolve("consola");
         Path neu = xploitsDir.resolve("console");
         boolean oldExists = Files.isDirectory(old);
-        boolean newExists = Files.isDirectory(neu);
-        if (!oldExists && !newExists) return Outcome.NOTHING;
+        // Anything at the new path blocks the move, a plain file as much as a folder: moving onto it
+        // would fail every start and read as BUSY forever.
+        boolean newExists = Files.exists(neu);
         if (oldExists && newExists) return Outcome.NEW_ALREADY_EXISTS;
+        if (!oldExists && !Files.isDirectory(neu)) return Outcome.NOTHING;
         if (oldExists) {
             try {
                 mover.move(old, neu);

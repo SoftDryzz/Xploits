@@ -49,10 +49,16 @@ public final class SettingsMigration {
     }
 
     public static void run() {
-        Path root = MeteorClient.FOLDER.toPath();
-        migrateSettings(root);
-        migrateConsoleFolder(root);
-        if (!NOTICE.pending.isEmpty()) MeteorClient.EVENT_BUS.subscribe(NOTICE);
+        try {
+            Path root = MeteorClient.FOLDER.toPath();
+            migrateSettings(root);
+            migrateConsoleFolder(root);
+            // Subscribing can throw too (Orbit throws when it has no lambda factory for the handler's
+            // package); a missed notice must not stop the addon from loading.
+            if (!NOTICE.pending.isEmpty()) MeteorClient.EVENT_BUS.subscribe(NOTICE);
+        } catch (RuntimeException e) {
+            XploitsAddon.LOG.error("Xploits: settings migration could not finish", e);
+        }
     }
 
     private static void migrateSettings(Path root) {
@@ -168,7 +174,7 @@ public final class SettingsMigration {
         private void onTick(TickEvent.Post event) {
             if (MeteorClient.mc.world == null) return;
             for (Msg m : pending) {
-                // consola: registrado aparte
+                // console: logged separately
                 ChatUtils.infoPrefix("Xploits", "%s", Texts.render(m));
             }
             pending.clear();

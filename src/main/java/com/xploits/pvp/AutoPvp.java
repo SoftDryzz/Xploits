@@ -688,7 +688,7 @@ public class AutoPvp extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         if (lastPlan == null) return Texts.render(PvpText.READING);
         return Texts.render(phase(lastPlan));
     }

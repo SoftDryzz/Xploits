@@ -42,7 +42,7 @@ final class Colector {
         List<Instantanea.EstadoModulo> modulos = new ArrayList<>();
         for (Module m : Modules.get().getAll()) {
             if (!(m instanceof XploitsModule x) || m instanceof Consola || m instanceof XploitsSettings) continue;
-            String ahora = m.isActive() ? Texto.recortar(x.ahora(), ANCHO_AHORA) : "";
+            String ahora = m.isActive() ? Texto.recortar(x.activity(), ANCHO_AHORA) : "";
             modulos.add(new Instantanea.EstadoModulo(m.name, m.isActive(), ahora));
         }
         if (mc.player == null || mc.world == null) return Instantanea.sinJugador(modulos, Texts.current());

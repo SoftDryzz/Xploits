@@ -7,9 +7,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Protocolo de SnifferBuddy (spec §2): normaliza y clasifica mensajes, y construye los comandos salientes.
- * Todas las regex van ancladas: en 6b6t el chat público también llega como mensaje del sistema
- * ("[Rango] Nombre » texto"), y el anclaje es lo que impide suplantar mensajes desde ahí.
+ * SnifferBuddy's protocol (spec §2): normalizes and classifies messages, and builds the outgoing commands.
+ * Every regex is anchored: on 6b6t public chat also arrives as a system message, shaped like
+ * {@code [Rank] Name » text}, and the anchoring is what stops messages being spoofed from there.
  */
 public final class ChatPatterns {
     public static final String KITBOT = "SnifferBuddy";
@@ -33,7 +33,7 @@ public final class ChatPatterns {
 
     private ChatPatterns() {}
 
-    /** Quita espacios, el sufijo " (N)" del anti-spam de BetterChat y un único prefijo "[X head] " que 6b6t añade desde 2026-09-16. */
+    /** Strips spaces, BetterChat's anti-spam suffix " (N)" and a single "[X head] " prefix, which 6b6t adds since 2026-09-16. */
     public static String normalize(String raw) {
         String withoutSuffix = ANTI_SPAM_SUFFIX.matcher(raw.strip()).replaceFirst("").strip();
         return HEAD_PREFIX.matcher(withoutSuffix).replaceFirst("");
@@ -59,7 +59,7 @@ public final class ChatPatterns {
 
     public static String acceptCommand(String courier) {
         if (courier == null || courier.isBlank()) {
-            throw new IllegalArgumentException("courier vacío: nunca se envía /tpy a secas.");
+            throw new IllegalArgumentException("blank courier: a bare /tpy is never sent.");
         }
         return "/tpy " + courier;
     }

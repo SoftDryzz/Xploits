@@ -11,16 +11,16 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import net.minecraft.text.Text;
 
 /**
- * La base de los módulos de Xploits: todo lo que dicen por el chat va también a la consola
- * (spec consola §4). Primero se registra y después se llama a Meteor, que se comporta exactamente
- * como antes, incluido lanzar si el formato está roto.
+ * The base of Xploits' modules: everything they say in chat also goes to the console (console
+ * spec §4). The line is logged first and Meteor is called afterwards, so Meteor behaves exactly as
+ * before, including throwing when the format is broken.
  *
- * <p>Lo que lleva coordenadas no pasa por aquí: va por {@link #infoPrivado} y compañía, con su
- * versión sin posición para la consola (spec consola §7).
+ * <p>Whatever carries coordinates does not come through here: it goes through {@link #infoPrivate}
+ * and its siblings, with its position-free version for the console (console spec §7).
  */
 public abstract class XploitsModule extends Module {
-    protected XploitsModule(Category categoria, String nombre, String descripcion) {
-        super(categoria, nombre, descripcion);
+    protected XploitsModule(Category category, String name, String description) {
+        super(category, name, description);
     }
 
     @Override
@@ -31,19 +31,19 @@ public abstract class XploitsModule extends Module {
 
     @Override
     public void info(String message, Object... args) {
-        anotar(Nivel.INFO, message, args);
+        log(Nivel.INFO, message, args);
         super.info(message, args);
     }
 
     @Override
     public void warning(String message, Object... args) {
-        anotar(Nivel.AVISO, message, args);
+        log(Nivel.AVISO, message, args);
         super.warning(message, args);
     }
 
     @Override
     public void error(String message, Object... args) {
-        anotar(Nivel.ERROR, message, args);
+        log(Nivel.ERROR, message, args);
         super.error(message, args);
     }
 
@@ -77,33 +77,33 @@ public abstract class XploitsModule extends Module {
         error(Msg.of(key, namesAndValues));
     }
 
-    public void infoPrivado(PositionedMsg msg) {
+    public void infoPrivate(PositionedMsg msg) {
         Salida.mensaje(Nivel.INFO, name, Texts.render(Salida.paraConsola(msg)));
         super.info("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
-    public void warningPrivado(PositionedMsg msg) {
+    public void warningPrivate(PositionedMsg msg) {
         Salida.mensaje(Nivel.AVISO, name, Texts.render(Salida.paraConsola(msg)));
         super.warning("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
-    public void errorPrivado(PositionedMsg msg) {
+    public void errorPrivate(PositionedMsg msg) {
         Salida.mensaje(Nivel.ERROR, name, Texts.render(Salida.paraConsola(msg)));
         super.error("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
-    /** Solo a la consola, sin chat: para lo que ya se dijo por otro camino. */
-    public void registrar(Nivel nivel, Msg msg) {
-        Salida.mensaje(nivel, name, Texts.render(msg));
+    /** To the console only, not to chat: for what was already said some other way. */
+    public void logToConsole(Nivel level, Msg msg) {
+        Salida.mensaje(level, name, Texts.render(msg));
     }
 
-    /** Qué hace ahora, en 30 caracteres como mucho; vacío si nada. Solo desde el hilo del juego. */
-    public String ahora() {
+    /** What the module is doing right now, in 30 characters at most; empty if nothing. Game thread only. */
+    public String activity() {
         return "";
     }
 
-    private void anotar(Nivel nivel, String plantilla, Object[] args) {
-        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), plantilla, args);
-        Salida.mensaje(r.roto() ? Nivel.ERROR : nivel, name, r.texto());
+    private void log(Nivel level, String template, Object[] args) {
+        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), template, args);
+        Salida.mensaje(r.roto() ? Nivel.ERROR : level, name, r.texto());
     }
 }

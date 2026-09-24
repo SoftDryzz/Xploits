@@ -19,76 +19,76 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Las tres fronteras que la consola necesita y que ningún test de un núcleo ve (spec consola §13).
- * Lee el código fuente: es la única forma de impedir que un módulo nuevo se salte el registro.
+ * The three boundaries the console needs and that no core test can see (console spec §13).
+ * It reads the source code: that is the only way to stop a new module from bypassing the log.
  */
-class FronteraTest {
-    private static final Path FUENTES = Path.of("src", "main", "java");
-    private static final Set<String> BASES = Set.of("com/xploits/shared/XploitsModule.java", "com/xploits/shared/ComandoBase.java");
-    private static final Pattern EXTIENDE_METEOR = Pattern.compile("\\bextends\\s+(Module|Command)\\b");
-    private static final Pattern CHAT_DIRECTO = Pattern.compile("ChatUtils\\.(info|warning|error)\\(");
-    private static final String MARCA = "// consola: registrado aparte";
-    private static final List<String> DEL_JUEGO =
+class BoundaryTest {
+    private static final Path SOURCES = Path.of("src", "main", "java");
+    private static final Set<String> BASES = Set.of("com/xploits/shared/XploitsModule.java", "com/xploits/shared/XploitsCommandBase.java");
+    private static final Pattern EXTENDS_METEOR = Pattern.compile("\\bextends\\s+(Module|Command)\\b");
+    private static final Pattern DIRECT_CHAT = Pattern.compile("ChatUtils\\.(info|warning|error)\\(");
+    private static final String MARKER = "// console: logged separately";
+    private static final List<String> GAME_PACKAGES =
         List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.");
 
-    private static Map<String, List<String>> fuentes() throws IOException {
-        Map<String, List<String>> todas = new TreeMap<>();
-        try (Stream<Path> s = Files.walk(FUENTES)) {
+    private static Map<String, List<String>> sources() throws IOException {
+        Map<String, List<String>> all = new TreeMap<>();
+        try (Stream<Path> s = Files.walk(SOURCES)) {
             for (Path p : s.filter(f -> f.toString().endsWith(".java")).toList()) {
-                todas.put(FUENTES.relativize(p).toString().replace('\\', '/'), Files.readAllLines(p, StandardCharsets.UTF_8));
+                all.put(SOURCES.relativize(p).toString().replace('\\', '/'), Files.readAllLines(p, StandardCharsets.UTF_8));
             }
         }
-        return todas;
+        return all;
     }
 
     @Test
-    void soloLasBasesExtiendenModuleOCommandDeMeteor() throws IOException {
-        List<String> fuera = new ArrayList<>();
-        fuentes().forEach((ruta, lineas) -> {
-            if (BASES.contains(ruta)) return;
-            for (String l : lineas) {
-                if (EXTIENDE_METEOR.matcher(l).find()) fuera.add(ruta);
+    void onlyTheBasesExtendMeteorModuleOrCommand() throws IOException {
+        List<String> outside = new ArrayList<>();
+        sources().forEach((path, lines) -> {
+            if (BASES.contains(path)) return;
+            for (String l : lines) {
+                if (EXTENDS_METEOR.matcher(l).find()) outside.add(path);
             }
         });
-        assertEquals(List.of(), fuera, "estas clases se saltarían el registro de la consola");
+        assertEquals(List.of(), outside, "these classes would bypass the console log");
     }
 
     @Test
-    void ningunChatDirectoSinMarca() throws IOException {
-        List<String> sinMarca = new ArrayList<>();
-        fuentes().forEach((ruta, lineas) -> {
-            for (int i = 0; i < lineas.size(); i++) {
-                if (!CHAT_DIRECTO.matcher(lineas.get(i)).find()) continue;
-                boolean marcada = lineas.get(i).contains(MARCA) || (i > 0 && lineas.get(i - 1).contains(MARCA));
-                if (!marcada) sinMarca.add(ruta + ":" + (i + 1));
+    void noDirectChatWithoutMarker() throws IOException {
+        List<String> unmarked = new ArrayList<>();
+        sources().forEach((path, lines) -> {
+            for (int i = 0; i < lines.size(); i++) {
+                if (!DIRECT_CHAT.matcher(lines.get(i)).find()) continue;
+                boolean marked = lines.get(i).contains(MARKER) || (i > 0 && lines.get(i - 1).contains(MARKER));
+                if (!marked) unmarked.add(path + ":" + (i + 1));
             }
         });
-        assertEquals(List.of(), sinMarca, "ChatUtils directo no llega a la consola: registra aparte y marca la línea");
+        assertEquals(List.of(), unmarked, "direct ChatUtils never reaches the console: log it separately and mark the line");
     }
 
     @Test
-    void losNucleosYLaVentanaNoTocanElJuego() throws IOException {
-        List<String> malas = new ArrayList<>();
-        fuentes().forEach((ruta, lineas) -> {
-            boolean nucleo = ruta.contains("/core/");
-            boolean ventana = ruta.startsWith("com/xploits/console/ventana/");
-            if (!nucleo && !ventana) return;
-            boolean deLaConsola = ruta.startsWith("com/xploits/console/");
-            for (String l : lineas) {
+    void theCoresAndTheWindowDoNotTouchTheGame() throws IOException {
+        List<String> bad = new ArrayList<>();
+        sources().forEach((path, lines) -> {
+            boolean core = path.contains("/core/");
+            boolean window = path.startsWith("com/xploits/console/ventana/");
+            if (!core && !window) return;
+            boolean inConsole = path.startsWith("com/xploits/console/");
+            for (String l : lines) {
                 if (!l.startsWith("import ")) continue;
-                String importado = l.replace("import static ", "").replace("import ", "").trim();
-                for (String prefijo : DEL_JUEGO) {
-                    if (importado.startsWith(prefijo)) malas.add(ruta + " importa " + importado);
+                String imported = l.replace("import static ", "").replace("import ", "").trim();
+                for (String prefix : GAME_PACKAGES) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
                 }
-                if (deLaConsola && importado.startsWith("com.xploits.")
-                    && !importado.startsWith("com.xploits.console.core.")
-                    && !importado.startsWith("com.xploits.console.ventana.")
-                    && !importado.startsWith("com.xploits.shared.core.")) {
-                    malas.add(ruta + " importa " + importado);
+                if (inConsole && imported.startsWith("com.xploits.")
+                    && !imported.startsWith("com.xploits.console.core.")
+                    && !imported.startsWith("com.xploits.console.ventana.")
+                    && !imported.startsWith("com.xploits.shared.core.")) {
+                    bad.add(path + " imports " + imported);
                 }
             }
         });
-        assertEquals(List.of(), malas, "esto no se puede ejecutar fuera del juego");
+        assertEquals(List.of(), bad, "this cannot run outside the game");
     }
 
     /**
@@ -99,13 +99,13 @@ class FronteraTest {
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
     // text. This keeps the brief's "literal anywhere in the arguments" reach — so it still catches
-    // registrar(Nivel.INFO, "texto"), responder(Nivel.INFO, fuente, "texto"), info("%s", "texto")
-    // and warning(prefix + "texto") — but a scan through the call is blocked wherever it crosses a
+    // logToConsole(level, "text"), reply(level, source, "text"), info("%s", "text")
+    // and warning(prefix + "text") — but a scan through the call is blocked wherever it crosses a
     // MessageKey reference (an enum constant of some *Text type, e.g. LanguageText.X or "...Text.")
     // or a Msg.of(...) call: those are the values a named argument carries, not the message itself.
     // A logger call (LOG.info/warn/error) is developer text, not player text, and is not matched.
     private static final Pattern LITERAL_TO_PLAYER = Pattern.compile(
-        "(?<!LOG\\.)\\b(info|warning|error|infoPrivado|warningPrivado|errorPrivado|registrar|responder|avisar)"
+        "(?<!LOG\\.)\\b(info|warning|error|infoPrivate|warningPrivate|errorPrivate|logToConsole|reply|avisar|announce)"
             + "\\s*\\((?:(?!Text\\.|Msg\\.of\\()[^;])*?\"[^\"]*\\p{L}{2}");
     private static final Pattern LITERAL_TO_UI = Pattern.compile(
         "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\")");
@@ -122,16 +122,16 @@ class FronteraTest {
     @Test
     void migratedCodeSendsNoLiteralTextToThePlayer() throws IOException {
         List<String> found = new ArrayList<>();
-        fuentes().forEach((ruta, lineas) -> {
-            if (MIGRATED.stream().noneMatch(ruta::startsWith)) return;
-            for (int i = 0; i < lineas.size(); i++) {
-                String raw = lineas.get(i);
+        sources().forEach((path, lines) -> {
+            if (MIGRATED.stream().noneMatch(path::startsWith)) return;
+            for (int i = 0; i < lines.size(); i++) {
+                String raw = lines.get(i);
                 if (raw.contains(ALLOWED)) continue;
                 String c = code(raw);
                 boolean exception = c.contains("Exception(") || c.contains("LOG.");
                 if (LITERAL_TO_PLAYER.matcher(c).find() || LITERAL_TO_UI.matcher(c).find()
                     || (!exception && SPANISH_LITERAL.matcher(c).find())) {
-                    found.add(ruta + ":" + (i + 1) + "  " + c);
+                    found.add(path + ":" + (i + 1) + "  " + c);
                 }
             }
         });
@@ -182,8 +182,7 @@ class FronteraTest {
         "com/xploits/shared/SettingsMigrationNbtTest.java",
         "com/xploits/shared/Texts.java",
         "com/xploits/shared/XploitsSettings.java",
-        "com/xploits/shared/chat/ChatEvent.java",
-        "com/xploits/shared/chat/ChatPatternsTest.java",
+        "com/xploits/shared/chat/",
         "com/xploits/stash/core/ContainerSnapshot.java",
         "com/xploits/stash/core/ContainerSnapshotTest.java",
         "com/xploits/stash/core/ContainerType.java",
@@ -203,7 +202,10 @@ class FronteraTest {
         "com/xploits/travel/core/PatternParams.java",
         "com/xploits/travel/core/Route.java",
         "com/xploits/travel/core/TravelTextTest.java",
-        "com/xploits/travel/core/Waypoint.java"
+        "com/xploits/travel/core/Waypoint.java",
+        // Task 4 leaves out shared/XploitsModule.java, shared/XploitsCommandBase.java and XploitsAddon.java:
+        // they still name console types (Salida, Nivel, Formato, Consola), so they join with Task 5.
+        "com/xploits/BoundaryTest.java"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */
@@ -408,7 +410,7 @@ class FronteraTest {
     @Test
     void identifiersInEnglishPackagesHaveNoSpanishWords() throws IOException {
         List<String> found = new ArrayList<>();
-        for (Path root : List.of(FUENTES, TEST_SOURCES)) {
+        for (Path root : List.of(SOURCES, TEST_SOURCES)) {
             sourcesUnder(root).forEach((path, text) -> {
                 if (!english(path)) return;
                 String code = STRIP.matcher(text).replaceAll(" ");
@@ -435,7 +437,7 @@ class FronteraTest {
     @Test
     void mainStringLiteralsInEnglishPackagesHaveNoSpanishMarks() throws IOException {
         List<String> found = new ArrayList<>();
-        sourcesUnder(FUENTES).forEach((path, text) -> {
+        sourcesUnder(SOURCES).forEach((path, text) -> {
             if (!english(path)) return;
             String[] lines = text.split("\n");
             for (int i = 0; i < lines.length; i++) {

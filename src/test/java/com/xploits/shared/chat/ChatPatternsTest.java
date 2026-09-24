@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ChatPatternsTest {
     private static ChatEvent parse(String line) {
-        return ChatPatterns.classify(line).orElseThrow(() -> new AssertionError("No clasificado: " + line));
+        return ChatPatterns.classify(line).orElseThrow(() -> new AssertionError("Not classified: " + line));
     }
 
     @Test

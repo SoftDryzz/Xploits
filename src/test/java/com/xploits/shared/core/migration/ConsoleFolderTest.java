@@ -59,6 +59,25 @@ class ConsoleFolderTest {
     }
 
     @Test
+    void aPlainFileAtTheNewPathBlocksTheMoveLikeAFolder() throws IOException {
+        oldFolder();
+        Files.writeString(dir.resolve("console"), "not a folder");
+        ConsoleFolder.Outcome o = ConsoleFolder.run(dir, (from, to) -> {
+            throw new AssertionError("nothing may be moved: " + from + " -> " + to);
+        });
+        assertEquals(ConsoleFolder.Outcome.NEW_ALREADY_EXISTS, o);
+        assertTrue(Files.exists(dir.resolve("consola").resolve("vivo.log")));
+        assertEquals("not a folder", Files.readString(dir.resolve("console")));
+    }
+
+    @Test
+    void aLonePlainFileAtTheNewPathIsNothingToDo() throws IOException {
+        Files.writeString(dir.resolve("console"), "not a folder");
+        assertEquals(ConsoleFolder.Outcome.NOTHING, ConsoleFolder.run(dir));
+        assertEquals("not a folder", Files.readString(dir.resolve("console")));
+    }
+
+    @Test
     void aFailedMoveLeavesEverythingInPlace() throws IOException {
         oldFolder();
         ConsoleFolder.Outcome o = ConsoleFolder.run(dir, (from, to) -> {

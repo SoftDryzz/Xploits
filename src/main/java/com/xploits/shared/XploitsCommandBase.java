@@ -9,13 +9,13 @@ import meteordevelopment.meteorclient.commands.Command;
 import net.minecraft.text.Text;
 
 /**
- * La base de los comandos de Xploits, por la misma razón que {@link XploitsModule}. Lo que el
- * comando repite de un módulo va por {@link #responder}, con la fuente del módulo: así el filtro
- * de la consola lo encuentra con lo demás de ese módulo.
+ * The base of Xploits' commands, for the same reason as {@link XploitsModule}. What a command repeats
+ * on behalf of a module goes through {@link #reply}, with that module as its source, so the console's
+ * filter finds it together with the rest of that module's lines.
  */
-public abstract class ComandoBase extends Command {
-    protected ComandoBase(String nombre, String descripcion, String... alias) {
-        super(nombre, descripcion, alias);
+public abstract class XploitsCommandBase extends Command {
+    protected XploitsCommandBase(String name, String description, String... aliases) {
+        super(name, description, aliases);
     }
 
     @Override
@@ -26,19 +26,19 @@ public abstract class ComandoBase extends Command {
 
     @Override
     public void info(String message, Object... args) {
-        anotar(Nivel.INFO, message, args);
+        log(Nivel.INFO, message, args);
         super.info(message, args);
     }
 
     @Override
     public void warning(String message, Object... args) {
-        anotar(Nivel.AVISO, message, args);
+        log(Nivel.AVISO, message, args);
         super.warning(message, args);
     }
 
     @Override
     public void error(String message, Object... args) {
-        anotar(Nivel.ERROR, message, args);
+        log(Nivel.ERROR, message, args);
         super.error(message, args);
     }
 
@@ -60,18 +60,18 @@ public abstract class ComandoBase extends Command {
         super.error("%s", text); // i18n: allowed
     }
 
-    protected void responder(Nivel nivel, String fuente, PositionedMsg msg) {
-        Salida.mensaje(nivel, fuente, Texts.render(Salida.paraConsola(msg)));
+    protected void reply(Nivel level, String source, PositionedMsg msg) {
+        Salida.mensaje(level, source, Texts.render(Salida.paraConsola(msg)));
         String chat = Texts.render(msg.chat());
-        switch (nivel) {
+        switch (level) {
             case INFO -> super.info("%s", chat); // i18n: allowed
             case AVISO -> super.warning("%s", chat); // i18n: allowed
             case ERROR -> super.error("%s", chat); // i18n: allowed
         }
     }
 
-    private void anotar(Nivel nivel, String plantilla, Object[] args) {
-        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), plantilla, args);
-        Salida.mensaje(r.roto() ? Nivel.ERROR : nivel, getName(), r.texto());
+    private void log(Nivel level, String template, Object[] args) {
+        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), template, args);
+        Salida.mensaje(r.roto() ? Nivel.ERROR : level, getName(), r.texto());
     }
 }

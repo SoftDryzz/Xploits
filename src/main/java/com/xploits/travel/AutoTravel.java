@@ -530,7 +530,7 @@ public class AutoTravel extends XploitsModule {
         // decirlo. Se repite al entrar al mundo a propósito: si el módulo sigue encendido, saber
         // que está armado y con qué destino vale más que ahorrar una línea de chat.
         info(TravelText.ARMED);
-        infoPrivado(new PositionedMsg(
+        infoPrivate(new PositionedMsg(
             Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestination()),
             Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestinationSinPosicion())));
     }
@@ -629,7 +629,7 @@ public class AutoTravel extends XploitsModule {
         Msg message = Msg.of(TravelText.NET_CAUGHT, "command", text);
         // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
         Msg sinArgumentos = Msg.of(TravelText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
-        warningPrivado(new PositionedMsg(message, sinArgumentos));
+        warningPrivate(new PositionedMsg(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
 
@@ -897,7 +897,7 @@ public class AutoTravel extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return travelling
             ? Texts.render(TravelText.NOW_WAYPOINT, "index", index + 1, "total", waypoints.size())
             : Texts.render(TravelText.NOW_ARMED);
