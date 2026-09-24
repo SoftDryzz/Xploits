@@ -6,6 +6,10 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- The README is now in English, with a Spanish copy in README.es.md; developer docs are English.
+
 ## [0.4.0] — 2026-09-24
 
 ### Fixed

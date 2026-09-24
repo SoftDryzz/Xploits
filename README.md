@@ -53,10 +53,10 @@ Worth knowing, because these are **your** modules that the addon turns on, turns
 | Who | What it touches | How |
 |---|---|---|
 | `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it |
-| `auto-pvp` | Your **Meteor friends list** | Adds your people while it is on, so those ten do not attack them either. When turned off it removes **only the ones it added** |
+| `auto-pvp` | Your **Meteor friends list** | Adds your people while it is on, so the five combat modules do not attack them either. When turned off it removes **only the ones it added** |
 | `auto-pvp` | `crystal-aura`'s `anti-suicide` setting | It only **reads** it, to know whether it can trust Meteor not to kill you with your own crystal |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
-| `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk |
+| `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk — as it does `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (if set) and its own censoring, which stay changed for good |
 
 All of this, with the detail of what persists and what can go wrong, in [Security](docs/security.md).
 
@@ -129,7 +129,8 @@ covers **64 times** more area.
 
 **Three things that will happen to you the first time:**
 
-1. **A small rectangle is rejected.** It needs a long axis of about 19 chunks. That is correct.
+1. **A small rectangle is rejected.** The long axis has to be longer than `waypoint-margin` — about
+   10 chunks with the default (150 blocks). That is correct.
 2. **It has to be measured walking, not flying.** The module measures on its own how far away the
    server sends you chunks, but it only accepts samples with the player almost still. **Turn the
    module on and walk around** for a few seconds. The measurement is discarded on launch: to launch

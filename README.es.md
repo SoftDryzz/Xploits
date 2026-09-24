@@ -52,10 +52,10 @@ Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga
 | Quién | Qué toca | Cómo |
 |---|---|---|
 | `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Los enciende y apaga según la situación. **Solo apaga los que encendió él**: si tocas uno a mano, deja de tocarlo |
-| `auto-pvp` | Tu **lista de amigos de Meteor** | Mete a los tuyos mientras está encendido, para que esos diez tampoco les ataquen. Al apagarlo quita **solo los que puso él** |
+| `auto-pvp` | Tu **lista de amigos de Meteor** | Mete a los tuyos mientras está encendido, para que los cinco módulos de combate tampoco les ataquen. Al apagarlo quita **solo los que puso él** |
 | `auto-pvp` | El ajuste `anti-suicide` de `crystal-aura` | Solo lo **lee**, para saber si puede fiarse de que Meteor no te mate con tu propio cristal |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
-| `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco |
+| `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco — igual que `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (si se puso) y su propia censura, que quedan cambiados para siempre |
 
 Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/security.md).
 
@@ -127,7 +127,8 @@ vuelas ahí cubre **64 veces** más superficie.
 
 **Tres cosas que te pasarán la primera vez:**
 
-1. **Un rectángulo pequeño se rechaza.** Hace falta un eje largo de unos 19 chunks. Es correcto.
+1. **Un rectángulo pequeño se rechaza.** El eje largo tiene que ser más largo que `waypoint-margin`
+   — unos 10 chunks con el valor por defecto (150 bloques). Es correcto.
 2. **Hay que medir andando, no volando.** El módulo mide él solo a qué distancia te manda chunks el
    servidor, pero solo acepta muestras con el jugador casi parado. **Enciende el módulo y da una
    vuelta andando** unos segundos. La medida se tira al lanzar: para relanzar, otra vuelta.

@@ -131,8 +131,8 @@ was not seen lies— stays under the net.
 
 **Baritone is the most fragile interface of all.** There is no contract: there are chat commands and a
 mixin of its own that may or may not intercept them. Everything we know about it is verified by reading
-its bytecode, and is written down in the specs with the exact fact (for example: it starts landing
-**48 blocks** from its goal, a value taken from a comparison against `2304.0d`).
+its bytecode, and is written down in the local design notes with the exact fact (for example: it starts
+landing **48 blocks** from its goal, a value taken from a comparison against `2304.0d`).
 
 ## How we verify that something works
 

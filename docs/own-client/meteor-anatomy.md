@@ -152,7 +152,7 @@ Two gems that Xploits uses and that a client of your own will need too:
 | **Deduplicating on the bus** | One line; it stops a module's handlers from ending up duplicated for the rest of the session |
 | **Fewer mixins** | It is what decides whether you survive the next Minecraft version |
 | **Hard ranges by default** | `sliderRange` not pinning the value down is a source of silent failures |
-| **Tests** | Meteor practically has none. You have ~640, and that is your real edge |
+| **Tests** | Meteor practically has none. You have ~680, and that is your real edge |
 
 **Ignore at the start:** the whole GUI, profiles, proxies, accounts, macros. All of that gets added
 once the client already does something worth configuring.

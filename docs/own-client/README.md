@@ -135,7 +135,7 @@ flashiest part, the longest one, and the one that contributes least to what make
 It is not the features. It is four boring things almost no small client has:
 
 1. **That it builds from scratch with one command**, on another machine, with no manual steps.
-2. **That it has tests for what it decides.** You already have this: ~640. That is very rare in this
+2. **That it has tests for what it decides.** You already have this: ~680. That is very rare in this
    space.
 3. **That it says what it does and what it does not.** A failure that looks like a normal result is
    what kills a user's trust, and it does not come back.

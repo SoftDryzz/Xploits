@@ -76,8 +76,8 @@ cannot tell "it turned itself off" from "the player turned it off" and takes the
 
 ### The short-lane rejection, in Spanish, says to bring the corners closer when they must be moved apart
 
-**Symptom:** the `sweep.lane-too-short` rejection in Spanish says «agranda el rectángulo por ahí <!-- es-quote -->
--acerca chunk-x-1 a chunk-x-2, o chunk-z-1 a chunk-z-2-» when the rectangle has to **grow**.
+**Symptom:** the `sweep.lane-too-short` rejection in Spanish says «agranda el rectángulo por ahí -acerca chunk-x-1 a chunk-x-2, o chunk-z-1 a chunk-z-2, el par que esté más junto-» <!-- es-quote -->
+when the rectangle has to **grow**.
 
 **What happens.** The English text says the right thing -*move ... apart*, move that pair of chunks
 apart-; the Spanish one was left with «acerca» ("bring closer"), which is the opposite of what is
@@ -114,8 +114,8 @@ called `console`.
 
 ### Resuming `feat/dupe-audit` will clash with the English code
 
-**Symptom:** when resuming the uncommitted work of `feat/dupe-audit` (root checkout, on `e902c52`) after
-this migration, applying its changes fails.
+**Symptom:** when resuming the uncommitted work of `feat/dupe-audit` (root checkout) after this
+migration, applying its changes fails.
 
 **What happens.** That work touches `XploitsAddon.java` with a hunk written against the Spanish version
 of the file; after the rename to English that hunk no longer applies cleanly and has to be redone by
@@ -155,9 +155,10 @@ the way, it is a candidate for adjusting.
 **"I turn on `auto-travel` or `nether-sweep` and nothing happens."** They do not fly when turned on:
 they arm the trip and wait for their command. When you turn them on they tell you so in chat.
 
-**"A 3×3 chunk sweep is rejected."** Correct. A long axis of about 19 chunks is needed: below that, the
-vertices are so close together that they would be consumed in the same tick, and there would be lanes
-that are not flown **and that the sweep would count as combed anyway**.
+**"A 3×3 chunk sweep is rejected."** Correct. The long axis has to be longer than `waypoint-margin` —
+about 10 chunks with the default (150 blocks): below that, the vertices are so close together that they
+would be consumed in the same tick, and there would be lanes that are not flown **and that the sweep
+would count as combed anyway**.
 
 **"`DECOY` is rejected in highway mode."** Correct. Aiming 30° off takes you out of the corridor, and
 that draws more attention than going straight.

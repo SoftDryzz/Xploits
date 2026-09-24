@@ -73,6 +73,10 @@ loading chunks where you should not.
 turn on `censorCoordinates` and `censorRanCommands`, and leave them on: turning them off would undo a
 censor you may already have had.
 
+Preparation also sets `elytraTermsAccepted` to true, `elytraPredictTerrain` to false and, when a seed
+is configured, `elytraNetherSeed` — none of the three is part of the five restored on landing, so they
+stay at those values until you change them by hand.
+
 The resting values are **Baritone's real factory defaults**, read from its bytecode — not values that
 seemed reasonable to us. Two of the ones used at first were wrong (`elytraConserveFireworks` is `false`
 by default, not `true`; `elytraFireworkSpeed` is `1.2`, not `1`) and would have left every manual flight

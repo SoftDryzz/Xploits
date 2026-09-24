@@ -12,14 +12,14 @@ any project.
 
 | Piece | What it solves | Tests |
 |---|---|---|
-| `pvp/core/` | The whole combat judgement: offensive phase, defensive posture, module ownership, who is one of ours | ~170 |
-| `sweep/core/` | Lane planning, prior coverage, tally of what arrives, firework budget | ~200 |
-| `travel/core/` | Geometry of the four patterns, the Baritone script, stall watch, module borrowing | ~180 |
+| `pvp/core/` | The whole combat judgement: offensive phase, defensive posture, module ownership, who is one of ours | ~220 |
+| `sweep/core/` | Lane planning, prior coverage, tally of what arrives, firework budget | ~160 |
+| `travel/core/` | Geometry of the four patterns, the Baritone script, stall watch, module borrowing | ~140 |
 | `elytra/core/` | When to swap the elytra and for which one | |
 | `stash/core/` | Container index and search | |
 | `kitrequester/core/`, `autotpy/core/` | Kit state machine, TPA policy | |
 
-**About 640 tests in total.** This is the hard part, the one that cost the rounds, and the one
+**About 680 tests in total.** This is the hard part, the one that cost the rounds, and the one
 nobody else has. Everything else in the addon is a translation to Meteor and gets rewritten.
 
 **What has to be rewritten for each module** is its adapter: subscribing to events, translating the

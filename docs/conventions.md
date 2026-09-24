@@ -38,8 +38,8 @@ reading. And the third time it was actually read, this turned up: `blocksMovemen
 solid, so standing on a slab classified the enemy as buried and turned off the crystal aura in the
 middle of the fight.
 
-**Specs carry a "Verified API facts" section** with the fact and its consequence. If a fact is not
-there, it is not verified.
+**Local design notes carry a "Verified API facts" section** with the fact and its consequence. If a
+fact is not there, it is not verified.
 
 ---
 
