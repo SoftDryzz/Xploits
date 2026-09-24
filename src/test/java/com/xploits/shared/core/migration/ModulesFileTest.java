@@ -1,7 +1,9 @@
 package com.xploits.shared.core.migration;
 
+import com.xploits.testing.TempFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,8 +17,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModulesFileTest {
-    @TempDir
     Path dir;
+
+    @BeforeEach
+    void createTempFolder() throws IOException {
+        dir = TempFolder.create();
+    }
+
+    @AfterEach
+    void deleteTempFolder() {
+        TempFolder.delete(dir);
+    }
 
     private final List<Object> written = new ArrayList<>();
 

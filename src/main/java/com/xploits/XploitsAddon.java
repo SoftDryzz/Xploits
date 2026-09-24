@@ -7,6 +7,7 @@ import com.xploits.console.ConsoleModule;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.stash.StashKeeper;
 import com.xploits.shared.Languages;
 import com.xploits.shared.SettingsMigration;
@@ -34,6 +35,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new StashKeeper());
         Modules.get().add(new ElytraReplace());
         Modules.get().add(new AutoPvp());
+        Modules.get().add(new FightRecorder());
         Modules.get().add(new AutoTravel());
         Modules.get().add(new NetherSweep());
         Modules.get().add(new ConsoleModule());

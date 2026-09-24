@@ -3,7 +3,7 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Ocho módulos que se encienden por separado.
+otros servidores anarchy. Nueve módulos que se encienden por separado.
 
 La idea de fondo: **ningún módulo hace algo a medias sin decirlo**. Si no puede cumplir lo que
 promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido y callar.
@@ -36,7 +36,7 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | Mod | Obligatorio para | Si falta |
 |---|---|---|
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros cinco módulos funcionan igual |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros siete módulos funcionan igual |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
 | **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |
@@ -61,7 +61,7 @@ Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad
 
 ---
 
-## Los ocho módulos
+## Los nueve módulos
 
 ### `auto-travel` — volar a algún sitio sin dejar una flecha hacia tu base
 
@@ -151,6 +151,28 @@ enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que 
 **mete a los tuyos en tu lista de amigos de Meteor** para que ellos tampoco. Al apagarlo quita solo
 los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/security.md).
 
+### `fight-recorder` — grabar cada pelea y averiguar por qué moriste
+
+Vigila cada pelea en la que entras —con `auto-pvp` encendido o apagado— y guarda un fichero JSON por
+cada una: contra quién peleaste, el reparto del daño, tus tótems y cristales, los módulos que tenías
+encendidos y, si perdiste, su mejor suposición de por qué. **No guarda posiciones**: solo distancias,
+cantidades, booleanos y nombres.
+
+**Está apagado por defecto: enciéndelo una vez.** A partir de ahí funciona solo en segundo plano con
+el resto de tus módulos — no hace falta acordarse de armarlo antes de cada pelea.
+
+Se guarda en `<instancia>/meteor-client/xploits/pvp/fights/`, un fichero por pelea, las últimas 50:
+las más antiguas se borran según se escriben las nuevas.
+
+- **`death-notice`** (encendido por defecto) — una línea en el chat al morir en una pelea grabada:
+  cuánto duró, contra quién y la causa probable principal.
+- **`live-console`** (encendido por defecto) — escribe la pelea en la consola de Xploits mientras
+  ocurre (pops, golpes fuertes, muertes) y su resumen al terminar.
+
+Repasa lo grabado con `.xploits pvp review [n]` (el desglose completo de la pelea `n`, 1 = la más
+reciente) y `.xploits pvp fights` (las últimas 10, una línea cada una) — las dos funcionan con el
+módulo apagado.
+
 ### `elytra-replace` — cambiar la elytra antes de que se rompa
 
 Dos porcentajes independientes: a cuánto cambiar la puesta, y el mínimo que debe tener la de
@@ -182,8 +204,8 @@ leer después qué pasó.
 
 - **Se enciende y se apaga como cualquier módulo.** Si la dejas encendida, se abre sola al arrancar
   el juego, y no se cierra al salir de un mundo ni al morir.
-- **El menú va por números:** escribe el número y pulsa Enter. `1` todo, `2` pvp, `3` travel,
-  `4` sweep, `5` solo avisos, `6` pausa, `0` salir.
+- **El menú va por números:** escribe el número y pulsa Enter. `1` todo, `2` pvp (`auto-pvp` y
+  `fight-recorder`), `3` travel, `4` sweep, `5` solo avisos, `6` pausa, `0` salir.
 - **Nunca enseña coordenadas.** Lo que en el chat lleva una posición, en la ventana sale con la
   distancia o sin nada. El chat no cambia.
 - **Lo que escribe se queda en disco** mientras está encendida: `meteor-client/xploits/console/history/`,
@@ -203,6 +225,8 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 | `.xploits find <ítem>` | Dónde viste ese ítem |
 | `.xploits stash` | Estado del índice de contenedores |
 | `.xploits pvp` | Fase, postura, tu vida y el daño que te apunta |
+| `.xploits pvp review [n]` | Desglose completo de una pelea grabada (1 = la más reciente) |
+| `.xploits pvp fights` | Las últimas 10 peleas grabadas |
 | `.xploits travel` · `go` · `stop` | Estado del viaje, lanzarlo, cortarlo |
 | `.xploits sweep` · `go` · `stop` | Estado del barrido, lanzarlo, cortarlo |
 | `.xploits language [auto\|es\|en]` | Idioma activo, o lo cambia |
@@ -242,6 +266,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 <instancia>/meteor-client/xploits/        Cola de kits y progreso
 <instancia>/meteor-client/xploits/stash/  Índice de contenedores, por mundo
 <instancia>/meteor-client/xploits/console/  Historial de la consola, 30 días como mucho
+<instancia>/meteor-client/xploits/pvp/fights/  Peleas grabadas, 50 como mucho
 <instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
 <instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
 ```

@@ -23,6 +23,7 @@ class LogFilterTest {
     void eachFilterWithItsCounterexample() {
         assertTrue(LogFilter.ALL.accepts(m(Level.INFO, "stash-keeper")));
         assertTrue(LogFilter.PVP.accepts(m(Level.INFO, "auto-pvp")));
+        assertTrue(LogFilter.PVP.accepts(m(Level.INFO, "fight-recorder")));
         assertFalse(LogFilter.PVP.accepts(m(Level.INFO, "auto-travel")));
         assertTrue(LogFilter.TRAVEL.accepts(m(Level.INFO, "auto-travel")));
         assertFalse(LogFilter.TRAVEL.accepts(m(Level.INFO, "nether-sweep")));

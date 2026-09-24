@@ -23,7 +23,7 @@ public enum LogFilter {
     public boolean accepts(LogEntry.Message m) {
         return switch (this) {
             case ALL -> true;
-            case PVP -> m.source().equals("auto-pvp");
+            case PVP -> m.source().equals("auto-pvp") || m.source().equals("fight-recorder");
             case TRAVEL -> m.source().equals("auto-travel");
             case SWEEP -> m.source().equals("nether-sweep");
             case WARNINGS -> m.level() != Level.INFO;

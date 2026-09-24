@@ -1,7 +1,9 @@
 package com.xploits.kitrequester.core;
 
+import com.xploits.testing.TempFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,8 +15,17 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProgressStoreTest {
-    @TempDir
     Path dir;
+
+    @BeforeEach
+    void createTempFolder() throws IOException {
+        dir = TempFolder.create();
+    }
+
+    @AfterEach
+    void deleteTempFolder() {
+        TempFolder.delete(dir);
+    }
 
     @Test
     void missingFileGivesEmptyProgress() throws IOException {

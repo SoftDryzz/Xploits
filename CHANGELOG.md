@@ -6,6 +6,16 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`fight-recorder`** — records every fight, with `auto-pvp` on or off, and works out why you died.
+  No positions are stored: distances, counts, booleans and names only. Off by default; turn it on
+  once and it keeps the last 50 fights in `meteor-client/xploits/pvp/fights/`. `death-notice`
+  (default on) says the main probable cause in chat when you die; `live-console` (default on) writes
+  the fight to the Xploits console as it happens and its summary when it ends.
+  `.xploits pvp review [n]` shows the full breakdown of a recorded fight, `.xploits pvp fights`
+  lists the last ten. Both work with the module off.
+
 ### Changed
 
 - The README is now in English, with a Spanish copy in README.es.md; developer docs are English.
