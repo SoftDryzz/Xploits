@@ -678,6 +678,12 @@ public class AutoPvp extends XploitsModule {
         return Optional.of(new Neighbourhood(loaded, friendly));
     }
 
+    /** The current plan (game thread only): empty while inactive or after {@link #releaseAll()}. */
+    public Optional<Plan> currentPlan() { return isActive() ? Optional.ofNullable(lastPlan) : Optional.empty(); }
+
+    /** The current target's name (game thread only): empty while inactive, without a plan, or after {@link #releaseAll()}. */
+    public Optional<String> currentTarget() { return isActive() && lastPlan != null ? Optional.ofNullable(lastTargetName) : Optional.empty(); }
+
     /** The hotbar ammunition, which is what the modules it manages use. The pickaxe is not ammunition. */
     public Optional<Map<Resource, Integer>> hotbarResources() {
         if (mc.player == null) return Optional.empty();
