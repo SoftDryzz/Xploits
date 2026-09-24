@@ -231,7 +231,7 @@ public class XploitsCommand extends XploitsCommandBase {
         try {
             files = store.list();
         } catch (IOException e) {
-            reportCorrupt(recorder, store.folder(), e);
+            reportListFailed(recorder, e);
             return;
         }
         if (files.isEmpty()) {
@@ -254,7 +254,11 @@ public class XploitsCommand extends XploitsCommandBase {
         for (Msg line : FightSummary.review(record, n)) reply(Level.INFO, recorder.name, PositionedMsg.same(line));
     }
 
-    /** The last {@value #LIST_LIMIT} fights, newest first, one line each. */
+    /**
+     * The last {@value #LIST_LIMIT} fights, newest first, one line each. A file that fails to load is
+     * reported for that entry and skipped: the rest still list, and the numbering stays by position so
+     * {@code #n} still matches {@code review n}.
+     */
     private void fights() {
         Optional<FightRecorder> maybeRecorder = recorder();
         if (maybeRecorder.isEmpty()) return;
@@ -265,7 +269,7 @@ public class XploitsCommand extends XploitsCommandBase {
         try {
             files = store.list();
         } catch (IOException e) {
-            reportCorrupt(recorder, store.folder(), e);
+            reportListFailed(recorder, e);
             return;
         }
         if (files.isEmpty()) {
@@ -275,16 +279,15 @@ public class XploitsCommand extends XploitsCommandBase {
 
         List<Path> shown = files.subList(0, Math.min(LIST_LIMIT, files.size()));
         reply(Level.INFO, recorder.name, PositionedMsg.same(Msg.of(RecorderText.LIST_HEADER, "count", shown.size())));
-        int number = 1;
-        for (Path file : shown) {
+        for (int i = 0; i < shown.size(); i++) {
             FightRecord record;
             try {
-                record = store.load(file);
+                record = store.load(shown.get(i));
             } catch (IOException e) {
-                reportCorrupt(recorder, file, e);
-                return;
+                reportCorrupt(recorder, shown.get(i), e);
+                continue;
             }
-            reply(Level.INFO, recorder.name, PositionedMsg.same(FightSummary.listLine(number++, record, ago(record.endedAt()))));
+            reply(Level.INFO, recorder.name, PositionedMsg.same(FightSummary.listLine(i + 1, record, ago(record.endedAt()))));
         }
     }
 
@@ -292,6 +295,13 @@ public class XploitsCommand extends XploitsCommandBase {
     private void reportCorrupt(FightRecorder recorder, Path file, IOException e) {
         Msg chat = Msg.of(RecorderText.REVIEW_CORRUPT, "file", file.getFileName().toString(), "detail", String.valueOf(e.getMessage()));
         Msg log = Msg.of(RecorderText.REVIEW_CORRUPT_LOG);
+        reply(Level.WARNING, recorder.name, new PositionedMsg(chat, log));
+    }
+
+    /** The fights folder itself could not be listed: worded apart from a single corrupt file. */
+    private void reportListFailed(FightRecorder recorder, IOException e) {
+        Msg chat = Msg.of(RecorderText.REVIEW_LIST_FAILED, "detail", String.valueOf(e.getMessage()));
+        Msg log = Msg.of(RecorderText.REVIEW_LIST_FAILED_LOG);
         reply(Level.WARNING, recorder.name, new PositionedMsg(chat, log));
     }
 
