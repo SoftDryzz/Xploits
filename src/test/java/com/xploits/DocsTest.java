@@ -25,7 +25,7 @@ class DocsTest {
     private static final List<String> ENGLISH_DOCS = List.of("CHANGELOG.md", "docs/VERSIONING.md",
         "docs/architecture.md", "docs/conventions.md", "docs/known-issues.md", "docs/security.md",
         "docs/own-client/README.md", "docs/own-client/meteor-anatomy.md", "docs/own-client/roadmap.md",
-        "docs/own-client/integrating-baritone.md");
+        "docs/own-client/integrating-baritone.md", "README.md");
 
     private static final Set<String> SPANISH = Set.of("el", "la", "los", "las", "que", "para", "con", "una", "del",
         "por", "pero", "cuando", "como", "este", "esta", "esto", "sin", "sobre", "porque", "donde", "también");
@@ -120,5 +120,12 @@ class DocsTest {
             }
         }
         assertEquals(List.of(), found);
+    }
+
+    @Test
+    void bothReadmesHaveTheSameSections() throws IOException {
+        long en = Files.readAllLines(Path.of("README.md"), StandardCharsets.UTF_8).stream().filter(l -> l.startsWith("## ")).count();
+        long es = Files.readAllLines(Path.of("README.es.md"), StandardCharsets.UTF_8).stream().filter(l -> l.startsWith("## ")).count();
+        assertEquals(es, en, "README.md and README.es.md must mirror each other section by section");
     }
 }

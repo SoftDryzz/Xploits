@@ -1,3 +1,5 @@
+[English](README.md) · **Español**
+
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
