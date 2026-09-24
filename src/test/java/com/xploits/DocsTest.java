@@ -21,12 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Published documentation: links resolve, and the English docs are English (docs-in-English design §5). */
 class DocsTest {
-    /** Docs already translated. Each task appends; the last covers every published doc except README.es.md. */
-    private static final List<String> ENGLISH_DOCS = List.of("CHANGELOG.md", "docs/VERSIONING.md",
-        "docs/architecture.md", "docs/conventions.md", "docs/known-issues.md", "docs/security.md",
-        "docs/own-client/README.md", "docs/own-client/meteor-anatomy.md", "docs/own-client/roadmap.md",
-        "docs/own-client/integrating-baritone.md", "README.md");
-
     private static final Set<String> SPANISH = Set.of("el", "la", "los", "las", "que", "para", "con", "una", "del",
         "por", "pero", "cuando", "como", "este", "esta", "esto", "sin", "sobre", "porque", "donde", "también");
     private static final Pattern LINK = Pattern.compile("\\]\\(([^)\\s]+)\\)");
@@ -43,6 +37,15 @@ class DocsTest {
             tree.filter(p -> p.toString().endsWith(".md"))
                 .filter(p -> !p.startsWith(Path.of("docs", "superpowers")))
                 .forEach(docs::add);
+        }
+        return docs;
+    }
+
+    /** Every published doc except README.es.md, which stays Spanish. */
+    static List<String> englishDocs() throws IOException {
+        List<String> docs = new ArrayList<>();
+        for (Path doc : publishedDocs()) {
+            if (!doc.equals(Path.of("README.es.md"))) docs.add(doc.toString());
         }
         return docs;
     }
@@ -93,7 +96,10 @@ class DocsTest {
                     String file = target.contains("#") ? target.substring(0, target.indexOf('#')) : target;
                     String anchor = target.contains("#") ? target.substring(target.indexOf('#') + 1) : null;
                     Path resolved = file.isEmpty() ? doc : doc.toAbsolutePath().getParent().resolve(file).normalize();
-                    if (!Files.exists(resolved)) {
+                    String resolvedPath = resolved.toString().replace('\\', '/');
+                    if (resolvedPath.contains("/docs/superpowers/") || resolvedPath.contains("/.superpowers/")) {
+                        broken.add(doc + ":" + (i + 1) + " -> " + target + " (local-only, 404s on GitHub)");
+                    } else if (!Files.exists(resolved)) {
                         broken.add(doc + ":" + (i + 1) + " -> " + target);
                     } else if (anchor != null && resolved.toString().endsWith(".md") && !anchors(resolved).contains(anchor)) {
                         broken.add(doc + ":" + (i + 1) + " -> " + target + " (no such heading)");
@@ -107,7 +113,7 @@ class DocsTest {
     @Test
     void englishDocsHaveNoSpanishProse() throws IOException {
         List<String> found = new ArrayList<>();
-        for (String name : ENGLISH_DOCS) {
+        for (String name : englishDocs()) {
             Path doc = Path.of(name);
             List<String> raw = Files.readAllLines(doc, StandardCharsets.UTF_8);
             List<String> lines = prose(doc);
