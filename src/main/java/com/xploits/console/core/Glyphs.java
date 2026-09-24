@@ -1,36 +1,36 @@
 package com.xploits.console.core;
 
 /**
- * Los caracteres del marco. Los de caja se ven bien en la ventana con UTF-8 (spec §3.1); si la
- * consola no está en UTF-8 se dibuja en ASCII y se dice.
+ * The frame's characters. The box-drawing ones look right in the window with UTF-8 (spec §3.1); if
+ * the console is not in UTF-8 the frame is drawn in ASCII and the window says so.
  */
-public enum Glifos {
+public enum Glyphs {
     UNICODE('─', "●", "○"),
     ASCII('-', "*", "o");
 
     private final char horizontal;
-    private final String activo;
-    private final String inactivo;
+    private final String active;
+    private final String inactive;
 
-    Glifos(char horizontal, String activo, String inactivo) {
+    Glyphs(char horizontal, String active, String inactive) {
         this.horizontal = horizontal;
-        this.activo = activo;
-        this.inactivo = inactivo;
+        this.active = active;
+        this.inactive = inactive;
     }
 
     public char horizontal() {
         return horizontal;
     }
 
-    public String activo() {
-        return activo;
+    public String active() {
+        return active;
     }
 
-    public String inactivo() {
-        return inactivo;
+    public String inactive() {
+        return inactive;
     }
 
-    public String linea(int cols) {
+    public String line(int cols) {
         return String.valueOf(horizontal).repeat(Math.max(0, cols));
     }
 }

@@ -7,62 +7,62 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * El logo XTO2002 (spec consola §15). Se pinta a tamaño completo o no se pinta: escalado, el trazo
- * cae por debajo del umbral de rasterizado y las letras se rompen (verificado en capturas).
+ * The XTO2002 logo (console spec §15). It is drawn at full size or not at all: scaled down, the strokes
+ * fall below the rasterizing threshold and the letters break up (verified on screenshots).
  */
 public final class Banner {
-    public static final String RECURSO = "/xploits/consola/logo.ans";
-    public static final int FILAS = 13;
-    public static final int ANCHO_MAXIMO = 100;
-    public static final int COLUMNAS_MINIMAS = 100;
-    public static final int FILAS_MINIMAS = 40;
-    public static final String TEXTO = "XTO2002";
+    public static final String RESOURCE = "/xploits/console/logo.ans";
+    public static final int ROWS = 13;
+    public static final int MAX_WIDTH = 100;
+    public static final int MIN_COLUMNS = 100;
+    public static final int MIN_ROWS = 40;
+    public static final String TEXT = "XTO2002";
     private static final Pattern COLOR = Pattern.compile("\u001b\\[[0-9;]*m");
 
     private Banner() {
     }
 
-    public static List<String> cargar() throws IOException {
-        try (InputStream in = Banner.class.getResourceAsStream(RECURSO)) {
-            if (in == null) throw new IOException("falta el recurso " + RECURSO + " en el jar");
-            List<String> lineas = new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().toList();
-            validar(lineas);
-            return lineas;
+    public static List<String> load() throws IOException {
+        try (InputStream in = Banner.class.getResourceAsStream(RESOURCE)) {
+            if (in == null) throw new IOException("resource " + RESOURCE + " is missing from the jar");
+            List<String> lines = new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().toList();
+            validate(lines);
+            return lines;
         }
     }
 
-    /** Lanza si el logo no es lo que se espera: nunca se pinta un logo roto como si fuera el bueno. */
-    public static void validar(List<String> arte) {
-        if (arte.size() != FILAS) {
-            throw new IllegalArgumentException("el logo tiene que tener " + FILAS + " filas y tiene " + arte.size());
+    /** Throws if the logo is not what is expected: a broken logo is never drawn as if it were the good one. */
+    public static void validate(List<String> art) {
+        if (art.size() != ROWS) {
+            throw new IllegalArgumentException("the logo must have " + ROWS + " rows and has " + art.size());
         }
-        for (int i = 0; i < arte.size(); i++) {
-            String linea = arte.get(i);
-            String sinColor = COLOR.matcher(linea).replaceAll("");
-            if (sinColor.indexOf('\u001b') >= 0) {
-                throw new IllegalArgumentException("la fila " + (i + 1) + " del logo lleva un escape que no es de color");
+        for (int i = 0; i < art.size(); i++) {
+            String line = art.get(i);
+            String withoutColor = COLOR.matcher(line).replaceAll("");
+            if (withoutColor.indexOf('\u001b') >= 0) {
+                throw new IllegalArgumentException("row " + (i + 1) + " of the logo carries an escape that is not a color");
             }
-            if (!linea.endsWith(Ansi.RESET)) {
-                throw new IllegalArgumentException("la fila " + (i + 1) + " del logo no acaba en ESC[0m: el color se escaparía a la siguiente");
+            if (!line.endsWith(Ansi.RESET)) {
+                throw new IllegalArgumentException("row " + (i + 1) + " of the logo does not end in ESC[0m: the color would leak into the next one");
             }
-            int ancho = Texto.ancho(sinColor);
-            if (ancho > ANCHO_MAXIMO) {
-                throw new IllegalArgumentException("la fila " + (i + 1) + " del logo mide " + ancho + " columnas y el máximo es " + ANCHO_MAXIMO);
+            int width = TerminalText.width(withoutColor);
+            if (width > MAX_WIDTH) {
+                throw new IllegalArgumentException("row " + (i + 1) + " of the logo is " + width + " columns wide and the maximum is " + MAX_WIDTH);
             }
         }
     }
 
-    public static int anchoVisible(String linea) {
-        return Texto.ancho(Ansi.sinColor(linea));
+    public static int visibleWidth(String line) {
+        return TerminalText.width(Ansi.stripColor(line));
     }
 
-    public static boolean cabe(int cols, int filas) {
-        return cols >= COLUMNAS_MINIMAS && filas >= FILAS_MINIMAS;
+    public static boolean fits(int cols, int rows) {
+        return cols >= MIN_COLUMNS && rows >= MIN_ROWS;
     }
 
-    /** El logo si la ventana da para él; si no, el nombre en una fila, en el cian del logo. */
-    public static List<String> elegir(List<String> arte, int cols, int filas) {
-        if (cabe(cols, filas)) return arte;
-        return List.of(Ansi.color(Ansi.CIAN) + TEXTO + Ansi.RESET);
+    /** The logo if the window has room for it; otherwise the name on one row, in the logo's cyan. */
+    public static List<String> choose(List<String> art, int cols, int rows) {
+        if (fits(cols, rows)) return art;
+        return List.of(Ansi.color(Ansi.CYAN) + TEXT + Ansi.RESET);
     }
 }

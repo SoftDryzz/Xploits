@@ -661,30 +661,30 @@ public class AutoPvp extends XploitsModule {
     }
 
     /** Jugadores cargados y cuántos son de los tuyos, con la misma definición que el objetivo. Funciona con auto-pvp apagado. */
-    public record Vecindario(int cargados, int nuestros) {
+    public record Neighbourhood(int loaded, int friendly) {
     }
 
-    public Optional<Vecindario> vecindario() {
+    public Optional<Neighbourhood> neighbourhood() {
         if (mc.world == null || mc.player == null) return Optional.empty();
         Set<String> couriers = AllyPolicy.names(kitRequesterCouriers());
         Set<String> tpyUsers = AllyPolicy.names(autoTpyUsers());
-        int cargados = 0;
-        int nuestros = 0;
+        int loaded = 0;
+        int friendly = 0;
         for (PlayerEntity player : mc.world.getPlayers()) {
             if (player == mc.player) continue;
-            cargados++;
-            if (AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers).isOurs()) nuestros++;
+            loaded++;
+            if (AllyPolicy.of(nameOf(player), Friends.get().isFriend(player), couriers, tpyUsers).isOurs()) friendly++;
         }
-        return Optional.of(new Vecindario(cargados, nuestros));
+        return Optional.of(new Neighbourhood(loaded, friendly));
     }
 
     /** La munición de la hotbar, que es la que usan los módulos que dirige. El pico no es munición. */
-    public Optional<Map<Resource, Integer>> recursosEnBarra() {
+    public Optional<Map<Resource, Integer>> hotbarResources() {
         if (mc.player == null) return Optional.empty();
-        Map<Resource, Integer> recursos = new EnumMap<>(Resource.class);
-        recursos.putAll(inventory().resources());
-        recursos.remove(Resource.PICKAXE);
-        return Optional.of(recursos);
+        Map<Resource, Integer> resources = new EnumMap<>(Resource.class);
+        resources.putAll(inventory().resources());
+        resources.remove(Resource.PICKAXE);
+        return Optional.of(resources);
     }
 
     @Override

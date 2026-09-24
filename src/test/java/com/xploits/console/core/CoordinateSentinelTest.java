@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class CentinelaTest {
+class CoordinateSentinelTest {
     private static final Catalog ES = Catalog.load(Language.ES, p -> {
         throw new AssertionError(p);
     });
@@ -18,31 +18,31 @@ class CentinelaTest {
         throw new AssertionError(p);
     });
     @Test
-    void laClaveDeUnContenedorSeRetiene() {
-        assertTrue(Centinela.sospecha("obsidian x64 · minecraft:overworld@1234,64,-5678 · visto hace 2 h"));
+    void aContainerKeyIsHeld() {
+        assertTrue(CoordinateSentinel.isSuspect("obsidian x64 · minecraft:overworld@1234,64,-5678 · visto hace 2 h"));
     }
 
     @Test
-    void tambienConTodasLasCoordenadasNegativas() {
-        assertTrue(Centinela.sospecha("minecraft:the_nether@-12,-100,-40"));
+    void alsoWithAllCoordinatesNegative() {
+        assertTrue(CoordinateSentinel.isSuspect("minecraft:the_nether@-12,-100,-40"));
     }
 
     @Test
-    void unGoalOGotoDeBaritoneSeRetieneConCualquierPrefijo() {
-        assertTrue(Centinela.sospecha("he cancelado \"#goal 1200 -800\" antes de que saliera"));
-        assertTrue(Centinela.sospecha("&goto 1 64 -3"));
-        assertTrue(Centinela.sospecha("goal 5 6"));
+    void aBaritoneGoalOrGotoIsHeldWithAnyPrefix() {
+        assertTrue(CoordinateSentinel.isSuspect("he cancelado \"#goal 1200 -800\" antes de que saliera"));
+        assertTrue(CoordinateSentinel.isSuspect("&goto 1 64 -3"));
+        assertTrue(CoordinateSentinel.isSuspect("goal 5 6"));
     }
 
     @Test
-    void elFragmentoAntiguoDeStatusSeRetiene() {
-        assertTrue(Centinela.sospecha("waypoint 3 de 12 en 1200, -800 a 850 bloques"));
-        assertTrue(Centinela.sospecha("en -1200, 800"));
+    void theOldStatusFragmentIsHeld() {
+        assertTrue(CoordinateSentinel.isSuspect("waypoint 3 de 12 en 1200, -800 a 850 bloques"));
+        assertTrue(CoordinateSentinel.isSuspect("en -1200, 800"));
     }
 
     @Test
-    void loQueNoSonCoordenadasPasa() {
-        for (String texto : List.of(
+    void whatIsNotCoordinatesPasses() {
+        for (String text : List.of(
                 "Waypoint 3 de 5 alcanzado.",
                 "Pasada 2 de 4.",
                 "10x20 chunks",
@@ -54,22 +54,22 @@ class CentinelaTest {
                 "Patrón ESPIRAL · destino 5000 bloques por X+",
                 "overworld a 850 bloques",
                 "en 12, 40")) {
-            assertFalse(Centinela.sospecha(texto), texto);
+            assertFalse(CoordinateSentinel.isSuspect(text), text);
         }
     }
 
     @Test
     void englishPositionIsHeldToo() {
-        assertTrue(Centinela.sospecha("Destination at 1234, -5678"));
-        assertTrue(Centinela.sospecha("at -1234, 5678."));
-        assertFalse(Centinela.sospecha("that 1234, 5678"));
-        assertFalse(Centinela.sospecha("at 12, 34"));
+        assertTrue(CoordinateSentinel.isSuspect("Destination at 1234, -5678"));
+        assertTrue(CoordinateSentinel.isSuspect("at -1234, 5678."));
+        assertFalse(CoordinateSentinel.isSuspect("that 1234, 5678"));
+        assertFalse(CoordinateSentinel.isSuspect("at 12, 34"));
     }
 
     @Test
-    void loRetenidoDiceDeQuienVenia() {
-        assertEquals("[retenido: parecía llevar coordenadas · fuente auto-travel]", ES.render(Centinela.retenido("auto-travel")));
-        assertEquals("[held back: looked like coordinates · source auto-travel]", EN.render(Centinela.retenido("auto-travel")));
-        assertFalse(Centinela.sospecha(ES.render(Centinela.retenido("auto-travel"))));
+    void theHeldNoticeSaysWhoItCameFrom() {
+        assertEquals("[retenido: parecía llevar coordenadas · fuente auto-travel]", ES.render(CoordinateSentinel.held("auto-travel")));
+        assertEquals("[held back: looked like coordinates · source auto-travel]", EN.render(CoordinateSentinel.held("auto-travel")));
+        assertFalse(CoordinateSentinel.isSuspect(ES.render(CoordinateSentinel.held("auto-travel"))));
     }
 }

@@ -1,7 +1,7 @@
 package com.xploits.console;
 
-import com.xploits.console.core.Arranque;
-import com.xploits.console.core.Ciclo;
+import com.xploits.console.core.WindowLifecycle;
+import com.xploits.console.core.WindowStart;
 import com.xploits.shared.Texts;
 import meteordevelopment.meteorclient.MeteorClient;
 import net.fabricmc.loader.api.FabricLoader;
@@ -16,86 +16,86 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Lo que el módulo necesita del sistema para abrir, vigilar y cerrar la ventana (spec consola §8). */
-final class Lanzamiento {
-    private Lanzamiento() {
+/** What the module needs from the system to open, watch and close the window (console spec §8). */
+final class WindowLauncher {
+    private WindowLauncher() {
     }
 
-    static Path carpeta() {
-        return MeteorClient.FOLDER.toPath().resolve("xploits").resolve("consola");
+    static Path folder() {
+        return MeteorClient.FOLDER.toPath().resolve("xploits").resolve("console");
     }
 
-    static String nuevoId() {
+    static String newId() {
         return Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
     }
 
-    static Arranque.Resultado preparar(Path carpeta, String lanzamiento) {
+    static WindowStart.Result prepare(Path folder, String launchId) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java.exe");
         if (!Files.exists(java)) {
             java = ProcessHandle.current().info().command().map(c -> Path.of(c).resolveSibling("java.exe")).orElse(java); // i18n: allowed: a file name, not player text
         }
-        return Arranque.preparar(java, Files.exists(java), classpath(), carpeta, ProcessHandle.current().pid(), lanzamiento,
-            Salida.SESION, Texts.current());
+        return WindowStart.prepare(java, Files.exists(java), classpath(), folder, ProcessHandle.current().pid(), launchId,
+            ConsoleOutput.SESSION, Texts.current());
     }
 
-    /** El jar del mod, o sus carpetas en desarrollo. {@code getRootPaths()} no sirve: apunta dentro del zip. */
+    /** The mod's jar, or its folders in development. {@code getRootPaths()} is no use: it points inside the zip. */
     private static List<Path> classpath() {
         return FabricLoader.getInstance().getModContainer("xploits")
             .map(ModContainer::getOrigin)
-            .filter(origen -> origen.getKind() == ModOrigin.Kind.PATH)
+            .filter(origin -> origin.getKind() == ModOrigin.Kind.PATH)
             .map(ModOrigin::getPaths)
             .orElse(List.of());
     }
 
     /**
-     * Sin redirigir nada: es exactamente la forma verificada en la sonda. {@code start} abre la ventana
-     * y el {@code cmd} intermedio termina enseguida.
+     * Without redirecting anything: it is exactly the form verified in the probe. {@code start} opens the
+     * window and the intermediate {@code cmd} ends right away.
      */
-    static void lanzar(List<String> argv) throws IOException {
+    static void launch(List<String> argv) throws IOException {
         new ProcessBuilder(argv).start();
     }
 
-    static Optional<Ciclo.Pid> leerPid(Path carpeta) {
-        return leer(carpeta.resolve("consola.pid")).flatMap(Ciclo.Pid::leer);
+    static Optional<WindowLifecycle.Pid> readPid(Path folder) {
+        return read(folder.resolve("console.pid")).flatMap(WindowLifecycle.Pid::read);
     }
 
-    static Optional<Ciclo.Salida> leerSalida(Path carpeta) {
-        return leer(carpeta.resolve("consola.salida")).flatMap(Ciclo.Salida::leer);
+    static Optional<WindowLifecycle.Exit> readExit(Path folder) {
+        return read(folder.resolve("console.exit")).flatMap(WindowLifecycle.Exit::read);
     }
 
-    private static Optional<String> leer(Path fichero) {
+    private static Optional<String> read(Path file) {
         try {
-            return Files.exists(fichero) ? Optional.of(Files.readString(fichero, StandardCharsets.UTF_8)) : Optional.empty();
+            return Files.exists(file) ? Optional.of(Files.readString(file, StandardCharsets.UTF_8)) : Optional.empty();
         } catch (IOException e) {
             return Optional.empty();
         }
     }
 
-    /** Si el pid sigue vivo y es el mismo proceso: se compara también el instante de arranque, contra la reutilización de pids. */
-    static boolean vivo(Ciclo.Pid pid) {
+    /** Whether the pid is still alive and the same process: the start instant is compared too, against pid reuse. */
+    static boolean isAlive(WindowLifecycle.Pid pid) {
         return ProcessHandle.of(pid.pid())
             .filter(ProcessHandle::isAlive)
-            .filter(h -> h.info().startInstant().map(i -> Math.abs(i.toEpochMilli() - pid.inicioMs()) < 2_000).orElse(true))
+            .filter(h -> h.info().startInstant().map(i -> Math.abs(i.toEpochMilli() - pid.startMs()) < 2_000).orElse(true))
             .isPresent();
     }
 
-    /** Antes de lanzar: el pid y la salida de lanzamientos anteriores no deben confundir al ciclo. */
-    static void borrarRestos(Path carpeta) {
+    /** Before launching: the pid and exit of earlier launches must not confuse the lifecycle. */
+    static void deleteLeftovers(Path folder) {
         try {
-            Files.deleteIfExists(carpeta.resolve("consola.pid"));
-            Files.deleteIfExists(carpeta.resolve("consola.salida"));
-        } catch (IOException ignorada) {
-            // El ciclo ya ignora lo que no es de su lanzamiento: esto solo es limpieza.
+            Files.deleteIfExists(folder.resolve("console.pid"));
+            Files.deleteIfExists(folder.resolve("console.exit"));
+        } catch (IOException ignored) {
+            // The lifecycle already ignores whatever is not from its launch: this is only cleanup.
         }
     }
 
-    /** Espera a que la ventana se cierre sola al leer su F; si no lo hace a tiempo, la mata. */
-    static void vigilarCierre(Path carpeta, Ciclo.VigilarCierre v) {
-        Thread hilo = new Thread(() -> {
-            long limite = System.currentTimeMillis() + v.esperaMs();
-            while (System.currentTimeMillis() < limite) {
-                // Si ya se sabe su pid y está muerta, se cerró sola: no hay nada que hacer.
-                Optional<Long> pid = pidDe(carpeta, v);
+    /** Waits for the window to close by itself on reading its F; if it does not in time, kills it. */
+    static void watchClose(Path folder, WindowLifecycle.WatchClose w) {
+        Thread thread = new Thread(() -> {
+            long limit = System.currentTimeMillis() + w.waitMs();
+            while (System.currentTimeMillis() < limit) {
+                // If its pid is already known and it is dead, it closed by itself: nothing to do.
+                Optional<Long> pid = pidOf(folder, w);
                 if (pid.isPresent() && !ProcessHandle.of(pid.get()).map(ProcessHandle::isAlive).orElse(false)) return;
                 try {
                     Thread.sleep(100);
@@ -103,14 +103,14 @@ final class Lanzamiento {
                     return;
                 }
             }
-            pidDe(carpeta, v).flatMap(ProcessHandle::of).ifPresent(ProcessHandle::destroy);
-        }, "xploits-consola-cierre");
-        hilo.setDaemon(true);
-        hilo.start();
+            pidOf(folder, w).flatMap(ProcessHandle::of).ifPresent(ProcessHandle::destroy);
+        }, "xploits-console-closer");
+        thread.setDaemon(true);
+        thread.start();
     }
 
-    private static Optional<Long> pidDe(Path carpeta, Ciclo.VigilarCierre v) {
-        if (v.pid() != null) return Optional.of(v.pid());
-        return leerPid(carpeta).filter(p -> p.lanzamiento().equals(v.lanzamiento())).map(Ciclo.Pid::pid);
+    private static Optional<Long> pidOf(Path folder, WindowLifecycle.WatchClose w) {
+        if (w.pid() != null) return Optional.of(w.pid());
+        return readPid(folder).filter(p -> p.launchId().equals(w.launchId())).map(WindowLifecycle.Pid::pid);
     }
 }

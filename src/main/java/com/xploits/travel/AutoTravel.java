@@ -1,7 +1,7 @@
 package com.xploits.travel;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Instantanea;
+import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.Texts;
@@ -889,10 +889,10 @@ public class AutoTravel extends XploitsModule {
     }
 
     /** Por dónde va el viaje, sin coordenadas: waypoint, total y bloques que faltan. */
-    public Optional<Instantanea.Progreso> progreso() {
+    public Optional<GameSnapshot.Progress> progress() {
         if (!travelling || mc.player == null || waypoints.isEmpty()) return Optional.empty();
         Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
-        return Optional.of(new Instantanea.Progreso(index + 1, waypoints.size(),
+        return Optional.of(new GameSnapshot.Progress(index + 1, waypoints.size(),
             Math.round(RoutePlanner.bloquesRestantes(waypoints, index, here))));
     }
 

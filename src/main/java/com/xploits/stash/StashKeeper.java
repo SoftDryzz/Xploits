@@ -1,7 +1,7 @@
 package com.xploits.stash;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.Level;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
@@ -275,7 +275,7 @@ public class StashKeeper extends XploitsModule {
                 // console: logged separately
                 ChatUtils.info("Xploits", "%s", Texts.render(StashText.INDEXED, // i18n: allowed (chat prefix and format)
                     "container", openKey.id(), "types", openItems.size(), "shulkers", openNested.size()));
-                logToConsole(Nivel.INFO, Msg.of(StashText.INDEXED_LOG,
+                logToConsole(Level.INFO, Msg.of(StashText.INDEXED_LOG,
                     "where", openKey.sinPosicion(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
             }
         }

@@ -4,33 +4,33 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Lo que se hace con un texto antes de pintarlo en una terminal (spec consola §6).
+ * What is done to a text before drawing it in a terminal (console spec §6).
  *
- * <p>El texto viene de fuera más de lo que parece: nombres de jugadores, susurros del kitbot,
- * mensajes de excepciones. Un ESC que llegue tal cual a la terminal es una inyección de escapes:
- * puede borrar la pantalla, mover el cursor o cambiar el título. Por eso se sanea todo.
+ * <p>The text comes from outside more than it seems: player names, kitbot whispers, exception
+ * messages. An ESC that reaches the terminal as is, is an escape injection: it can clear the screen,
+ * move the cursor or change the title. That is why everything is sanitized.
  */
-public final class Texto {
-    private static final String[] TOKENS_DE_METEOR = {"(highlight)", "(default)"};
+public final class TerminalText {
+    private static final String[] METEOR_TOKENS = {"(highlight)", "(default)"};
 
-    private Texto() {
+    private TerminalText() {
     }
 
     /**
-     * Quita los códigos {@code §} de Minecraft con su letra y los tokens de Meteor; convierte el
-     * tabulador en espacio y elimina el retorno de carro; cambia por {@code ?} los controles C0 (salvo
-     * el salto de línea), DEL, los C1 y las marcas bidi. El salto de línea se conserva.
+     * Strips Minecraft's {@code §} codes with their letter and Meteor's tokens; turns the tab into a
+     * space and drops the carriage return; replaces with {@code ?} the C0 controls (except the line
+     * break), DEL, the C1 controls and the bidi marks. The line break is kept.
      */
-    public static String limpiar(String s) {
-        String sinTokens = s;
-        for (String token : TOKENS_DE_METEOR) sinTokens = sinTokens.replace(token, "");
-        StringBuilder sb = new StringBuilder(sinTokens.length());
+    public static String sanitize(String s) {
+        String withoutTokens = s;
+        for (String token : METEOR_TOKENS) withoutTokens = withoutTokens.replace(token, "");
+        StringBuilder sb = new StringBuilder(withoutTokens.length());
         int i = 0;
-        while (i < sinTokens.length()) {
-            int cp = sinTokens.codePointAt(i);
+        while (i < withoutTokens.length()) {
+            int cp = withoutTokens.codePointAt(i);
             i += Character.charCount(cp);
             if (cp == '§') {
-                if (i < sinTokens.length()) i += Character.charCount(sinTokens.codePointAt(i));
+                if (i < withoutTokens.length()) i += Character.charCount(withoutTokens.codePointAt(i));
                 continue;
             }
             if (cp == '\n') {
@@ -42,7 +42,7 @@ public final class Texto {
                 continue;
             }
             if (cp == '\r') continue;
-            if (esControl(cp) || esBidi(cp)) {
+            if (isControl(cp) || isBidi(cp)) {
                 sb.append('?');
                 continue;
             }
@@ -51,22 +51,22 @@ public final class Texto {
         return sb.toString();
     }
 
-    private static boolean esControl(int cp) {
+    private static boolean isControl(int cp) {
         return cp < 0x20 || cp == 0x7F || (cp >= 0x80 && cp <= 0x9F);
     }
 
-    private static boolean esBidi(int cp) {
+    private static boolean isBidi(int cp) {
         return cp == 0x200E || cp == 0x200F || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2066 && cp <= 0x2069);
     }
 
-    /** Columnas de terminal que ocupa un punto de código: 0 las marcas combinantes, 2 los anchos, 1 el resto. */
-    public static int anchoDe(int cp) {
-        int tipo = Character.getType(cp);
-        if (tipo == Character.NON_SPACING_MARK || tipo == Character.ENCLOSING_MARK) return 0;
-        return esAncho(cp) ? 2 : 1;
+    /** Terminal columns a code point takes: 0 for combining marks, 2 for wide ones, 1 for the rest. */
+    public static int widthOf(int cp) {
+        int type = Character.getType(cp);
+        if (type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) return 0;
+        return isWide(cp) ? 2 : 1;
     }
 
-    private static boolean esAncho(int cp) {
+    private static boolean isWide(int cp) {
         return (cp >= 0x1100 && cp <= 0x115F)
             || (cp >= 0x2E80 && cp <= 0xA4CF && cp != 0x303F)
             || (cp >= 0xAC00 && cp <= 0xD7A3)
@@ -79,71 +79,71 @@ public final class Texto {
             || (cp >= 0x20000 && cp <= 0x3FFFD);
     }
 
-    /** Columnas que ocupa el texto entero. No entiende escapes: quítalos antes. */
-    public static int ancho(String s) {
+    /** Columns the whole text takes. It does not understand escapes: strip them first. */
+    public static int width(String s) {
         int total = 0;
         for (int i = 0; i < s.length(); ) {
             int cp = s.codePointAt(i);
-            total += anchoDe(cp);
+            total += widthOf(cp);
             i += Character.charCount(cp);
         }
         return total;
     }
 
-    /** El texto en como mucho {@code cols} columnas; si hubo que cortar, acaba en {@code …}. */
-    public static String recortar(String s, int cols) {
+    /** The text in {@code cols} columns at most; if it had to be cut, it ends in {@code …}. */
+    public static String truncate(String s, int cols) {
         if (cols <= 0) return "";
-        if (ancho(s) <= cols) return s;
+        if (width(s) <= cols) return s;
         StringBuilder sb = new StringBuilder();
-        int usado = 0;
+        int used = 0;
         for (int i = 0; i < s.length(); ) {
             int cp = s.codePointAt(i);
-            int w = anchoDe(cp);
-            if (usado + w > cols - 1) break;
+            int w = widthOf(cp);
+            if (used + w > cols - 1) break;
             sb.appendCodePoint(cp);
-            usado += w;
+            used += w;
             i += Character.charCount(cp);
         }
         return sb.append('…').toString();
     }
 
     /**
-     * Parte el texto en filas de como mucho {@code cols} columnas, por saltos de línea y por ancho.
-     * Si salen más de {@code maxFilas}, se enseñan las primeras y la última acaba en {@code (+N)}, con
-     * N las filas que no se ven. Si el sufijo no deja espacio para texto, la última fila es el sufijo truncado.
+     * Splits the text into rows of {@code cols} columns at most, at line breaks and by width. If there
+     * are more than {@code maxRows}, the first ones are shown and the last ends in {@code (+N)}, with N
+     * the rows not shown. If the suffix leaves no room for text, the last row is the truncated suffix.
      */
-    public static List<String> envolver(String s, int cols, int maxFilas) {
-        if (cols < 2) throw new IllegalArgumentException("no se envuelve en " + cols + " columnas: un carácter ancho necesita 2");
-        if (maxFilas <= 0) throw new IllegalArgumentException("no se envuelve en " + maxFilas + " filas");
-        String cuerpo = s.endsWith("\n") ? s.substring(0, s.length() - 1) : s;
-        List<String> filas = new ArrayList<>();
-        for (String linea : cuerpo.split("\n", -1)) {
-            StringBuilder actual = new StringBuilder();
-            int usado = 0;
-            for (int i = 0; i < linea.length(); ) {
-                int cp = linea.codePointAt(i);
-                int w = anchoDe(cp);
-                if (usado > 0 && usado + w > cols) {
-                    filas.add(actual.toString());
-                    actual.setLength(0);
-                    usado = 0;
+    public static List<String> wrap(String s, int cols, int maxRows) {
+        if (cols < 2) throw new IllegalArgumentException("cannot wrap in " + cols + " columns: a wide character needs 2");
+        if (maxRows <= 0) throw new IllegalArgumentException("cannot wrap in " + maxRows + " rows");
+        String body = s.endsWith("\n") ? s.substring(0, s.length() - 1) : s;
+        List<String> rows = new ArrayList<>();
+        for (String line : body.split("\n", -1)) {
+            StringBuilder current = new StringBuilder();
+            int used = 0;
+            for (int i = 0; i < line.length(); ) {
+                int cp = line.codePointAt(i);
+                int w = widthOf(cp);
+                if (used > 0 && used + w > cols) {
+                    rows.add(current.toString());
+                    current.setLength(0);
+                    used = 0;
                 }
-                actual.appendCodePoint(cp);
-                usado += w;
+                current.appendCodePoint(cp);
+                used += w;
                 i += Character.charCount(cp);
             }
-            filas.add(actual.toString());
+            rows.add(current.toString());
         }
-        if (filas.size() <= maxFilas) return filas;
-        String sufijo = " (+" + (filas.size() - maxFilas) + ")";
-        List<String> visibles = new ArrayList<>(filas.subList(0, maxFilas));
-        String ultima = visibles.get(maxFilas - 1);
-        int anchoSufijo = ancho(sufijo);
-        if (cols - anchoSufijo < 1) {
-            visibles.set(maxFilas - 1, recortar(sufijo.strip(), cols));
+        if (rows.size() <= maxRows) return rows;
+        String suffix = " (+" + (rows.size() - maxRows) + ")";
+        List<String> visible = new ArrayList<>(rows.subList(0, maxRows));
+        String last = visible.get(maxRows - 1);
+        int suffixWidth = width(suffix);
+        if (cols - suffixWidth < 1) {
+            visible.set(maxRows - 1, truncate(suffix.strip(), cols));
         } else {
-            visibles.set(maxFilas - 1, recortar(ultima, cols - anchoSufijo) + sufijo);
+            visible.set(maxRows - 1, truncate(last, cols - suffixWidth) + suffix);
         }
-        return visibles;
+        return visible;
     }
 }

@@ -3,70 +3,69 @@ package com.xploits.console.core;
 import java.util.List;
 
 /**
- * Las secuencias de escape de la ventana, en un solo sitio (spec consola §6). Todas verificadas en
- * Windows Terminal: el redimensionado, la región de scroll de una fila para la entrada y el
- * guardar/restaurar cursor alrededor de cada fotograma.
+ * The window's escape sequences, in one place (console spec §6). All verified in Windows Terminal:
+ * the resize, the one-row scroll region for the input and the save/restore cursor around each frame.
  */
 public final class Ansi {
     public static final String ESC = "\u001b";
     public static final String CSI = ESC + "[";
     public static final String RESET = CSI + "0m";
-    public static final String BORRAR_FIN = CSI + "K";
-    public static final String BORRAR_PANTALLA = CSI + "2J";
-    public static final String GUARDAR = ESC + "7";
-    public static final String RESTAURAR = ESC + "8";
-    public static final String SINCRONIZAR_INICIO = CSI + "?2026h";
-    public static final String SINCRONIZAR_FIN = CSI + "?2026l";
-    public static final String REGION_TODA = CSI + "r";
+    public static final String CLEAR_TO_END = CSI + "K";
+    public static final String CLEAR_SCREEN = CSI + "2J";
+    public static final String SAVE_CURSOR = ESC + "7";
+    public static final String RESTORE_CURSOR = ESC + "8";
+    public static final String SYNC_BEGIN = CSI + "?2026h";
+    public static final String SYNC_END = CSI + "?2026l";
+    public static final String FULL_REGION = CSI + "r";
 
-    public static final int CIAN = 45;
+    public static final int CYAN = 45;
     public static final int MAGENTA = 199;
-    public static final int BLANCO = 231;
-    public static final int AMARILLO = 220;
-    public static final int ROJO = 196;
+    public static final int WHITE = 231;
+    public static final int YELLOW = 220;
+    public static final int RED = 196;
 
     private Ansi() {
     }
 
-    public static String irA(int fila, int col) {
-        return CSI + fila + ";" + col + "H";
+    public static String moveTo(int row, int col) {
+        return CSI + row + ";" + col + "H";
     }
 
-    public static String tamano(int filas, int cols) {
-        return CSI + "8;" + filas + ";" + cols + "t";
+    public static String resize(int rows, int cols) {
+        return CSI + "8;" + rows + ";" + cols + "t";
     }
 
-    public static String region(int desde, int hasta) {
-        return CSI + desde + ";" + hasta + "r";
+    public static String region(int from, int to) {
+        return CSI + from + ";" + to + "r";
     }
 
     public static String color(int n) {
         return CSI + "38;5;" + n + "m";
     }
 
-    public static String titulo(String titulo) {
-        return ESC + "]0;" + Texto.limpiar(titulo).replace('\n', ' ') + "\u0007";
+    public static String title(String title) {
+        return ESC + "]0;" + TerminalText.sanitize(title).replace('\n', ' ') + "\u0007";
     }
 
-    /** Quita las secuencias de color de una línea, para medirla. */
-    public static String sinColor(String s) {
+    /** Strips the color sequences from a line, to measure it. */
+    public static String stripColor(String s) {
         return s.replaceAll("\u001b\\[[0-9;]*m", "");
     }
 
     /**
-     * Un fotograma entero, sincronizado y en una sola escritura: las filas de arriba abajo, sin la de
-     * entrada. Con {@code reponerPrompt} se vuelve a escribir {@code "> "} en la fila de entrada (tras
-     * un Enter); si no, el cursor vuelve a donde lo dejó el eco del teclado.
+     * A whole frame, synchronized and in a single write: the rows from top to bottom, without the input
+     * row. With {@code restorePrompt} {@code "> "} is written again on the input row (after an Enter);
+     * otherwise the cursor goes back to where the keyboard echo left it.
      *
-     * <p>Nunca borra la pantalla entera: eso parpadea y además se llevaría lo tecleado.
+     * <p>It never clears the whole screen: that flickers and would also wipe what was typed.
      */
-    public static String fotograma(List<String> filas, int filaEntrada, boolean reponerPrompt) {
-        StringBuilder sb = new StringBuilder(SINCRONIZAR_INICIO).append(GUARDAR);
-        for (int i = 0; i < filas.size(); i++) {
-            sb.append(irA(i + 1, 1)).append(filas.get(i)).append(RESET).append(BORRAR_FIN);
+    public static String frame(List<String> rows, int inputRow, boolean restorePrompt) {
+        StringBuilder sb = new StringBuilder(SYNC_BEGIN).append(SAVE_CURSOR);
+        for (int i = 0; i < rows.size(); i++) {
+            sb.append(moveTo(i + 1, 1)).append(rows.get(i)).append(RESET).append(CLEAR_TO_END);
         }
-        if (reponerPrompt) sb.append(irA(filaEntrada, 1)).append("> ").append(BORRAR_FIN);
-        else sb.append(RESTAURAR);
-        return sb.append(SINCRONIZAR_FIN).toString();
+        if (restorePrompt) sb.append(moveTo(inputRow, 1)).append("> ").append(CLEAR_TO_END);
+        else sb.append(RESTORE_CURSOR);
+        return sb.append(SYNC_END).toString();
     }
 }

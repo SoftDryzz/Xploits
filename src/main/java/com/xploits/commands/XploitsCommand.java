@@ -2,7 +2,7 @@ package com.xploits.commands;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.shared.XploitsCommandBase;
@@ -39,11 +39,11 @@ public class XploitsCommand extends XploitsCommandBase {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            kitRequester().ifPresent(kr -> reply(Nivel.INFO, kr.name, PositionedMsg.same(kr.status())));
+            kitRequester().ifPresent(kr -> reply(Level.INFO, kr.name, PositionedMsg.same(kr.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            kitRequester().ifPresent(kr -> reply(Nivel.INFO, kr.name, PositionedMsg.same(kr.reload())));
+            kitRequester().ifPresent(kr -> reply(Level.INFO, kr.name, PositionedMsg.same(kr.reload())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
@@ -55,12 +55,12 @@ public class XploitsCommand extends XploitsCommandBase {
             return SINGLE_SUCCESS;
         })));
         builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> reply(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+            pvp().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("travel")
             .executes(context -> {
-                travel().ifPresent(module -> reply(Nivel.INFO, module.name, module.status()));
+                travel().ifPresent(module -> reply(Level.INFO, module.name, module.status()));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -73,7 +73,7 @@ public class XploitsCommand extends XploitsCommandBase {
             })));
         builder.then(literal("sweep")
             .executes(context -> {
-                sweep().ifPresent(module -> reply(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+                sweep().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -113,14 +113,14 @@ public class XploitsCommand extends XploitsCommandBase {
      */
     private void travelGo(AutoTravel autoTravel) {
         PositionedMsg message = autoTravel.start();
-        reply(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
+        reply(autoTravel.isTravelling() ? Level.INFO : Level.WARNING, autoTravel.name, message);
     }
 
     /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void travelStop(AutoTravel autoTravel) {
         boolean travelling = autoTravel.isTravelling();
         Msg message = autoTravel.stop();
-        reply(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, PositionedMsg.same(message));
+        reply(travelling ? Level.INFO : Level.WARNING, autoTravel.name, PositionedMsg.same(message));
     }
 
     /**
@@ -133,14 +133,14 @@ public class XploitsCommand extends XploitsCommandBase {
      */
     private void sweepGo(NetherSweep sweep) {
         Msg message = sweep.start();
-        reply(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweep.isSweeping() ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
     }
 
     /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
     private void sweepStop(NetherSweep sweep) {
         boolean sweeping = sweep.isSweeping();
         Msg message = sweep.stop();
-        reply(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweeping ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -148,7 +148,7 @@ public class XploitsCommand extends XploitsCommandBase {
             warning(Msg.of(CommandText.STASH_OFF_STATUS));
             return;
         }
-        reply(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
+        reply(Level.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
     }
 
     private void find(String query) {
@@ -187,7 +187,7 @@ public class XploitsCommand extends XploitsCommandBase {
                 "place", hit.key().id(), "shulker", where, "ago", ago(hit.seenAt()));
             Msg log = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
                 "place", hit.key().sinPosicion(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
-            reply(Nivel.INFO, stashKeeper.name, new PositionedMsg(chat, log));
+            reply(Level.INFO, stashKeeper.name, new PositionedMsg(chat, log));
         }
         if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));
     }

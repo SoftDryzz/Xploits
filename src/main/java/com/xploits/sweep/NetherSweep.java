@@ -1,7 +1,7 @@
 package com.xploits.sweep;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Instantanea;
+import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
@@ -1277,9 +1277,9 @@ public class NetherSweep extends XploitsModule {
     }
 
     /** Por dónde va el barrido: pasada, total y bloques que faltan, regreso incluido si se cuenta. */
-    public Optional<Instantanea.Progreso> progreso() {
+    public Optional<GameSnapshot.Progress> progress() {
         if (!sweeping || route == null) return Optional.empty();
-        return Optional.of(new Instantanea.Progreso(Math.min(index / 2 + 1, pasadasDelPlan), pasadasDelPlan,
+        return Optional.of(new GameSnapshot.Progress(Math.min(index / 2 + 1, pasadasDelPlan), pasadasDelPlan,
             Math.round(bloquesRestantes())));
     }
 

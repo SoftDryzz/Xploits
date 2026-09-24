@@ -5,33 +5,33 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class SecuenciaTest {
+class SequenceTrackerTest {
     @Test
-    void seguidosNoPierdenNada() {
-        Secuencia s = new Secuencia();
-        assertEquals(0, s.hueco("a", 1));
-        assertEquals(0, s.hueco("a", 2));
+    void consecutiveEntriesLoseNothing() {
+        SequenceTracker s = new SequenceTracker();
+        assertEquals(0, s.gap("a", 1));
+        assertEquals(0, s.gap("a", 2));
     }
 
     @Test
-    void unSaltoDeCincoSonCuatroPerdidos() {
-        Secuencia s = new Secuencia();
-        s.hueco("a", 1);
-        assertEquals(4, s.hueco("a", 6));
+    void aJumpOfFiveIsFourLost() {
+        SequenceTracker s = new SequenceTracker();
+        s.gap("a", 1);
+        assertEquals(4, s.gap("a", 6));
     }
 
     @Test
-    void retrocederEsUnFallo() {
-        Secuencia s = new Secuencia();
-        s.hueco("a", 5);
-        assertThrows(IllegalStateException.class, () -> s.hueco("a", 5));
-        assertThrows(IllegalStateException.class, () -> s.hueco("a", 3));
+    void goingBackwardsIsAnError() {
+        SequenceTracker s = new SequenceTracker();
+        s.gap("a", 5);
+        assertThrows(IllegalStateException.class, () -> s.gap("a", 5));
+        assertThrows(IllegalStateException.class, () -> s.gap("a", 3));
     }
 
     @Test
-    void unaSesionNuevaEmpiezaDeCero() {
-        Secuencia s = new Secuencia();
-        s.hueco("a", 10);
-        assertEquals(0, s.hueco("b", 0));
+    void aNewSessionStartsFromZero() {
+        SequenceTracker s = new SequenceTracker();
+        s.gap("a", 10);
+        assertEquals(0, s.gap("b", 0));
     }
 }

@@ -1,6 +1,6 @@
 package com.xploits.i18n;
 
-import com.xploits.console.core.Centinela;
+import com.xploits.console.core.CoordinateSentinel;
 import com.xploits.shared.core.i18n.Catalog;
 import com.xploits.shared.core.i18n.Language;
 import com.xploits.shared.core.i18n.MessageKey;
@@ -77,7 +77,7 @@ class CatalogParityTest {
                 args.add(1234);
             }
             Msg msg = Msg.of(k, args.toArray());
-            if (Centinela.sospecha(ES.render(msg)) != Centinela.sospecha(EN.render(msg))) mismatched.add(k.id());
+            if (CoordinateSentinel.isSuspect(ES.render(msg)) != CoordinateSentinel.isSuspect(EN.render(msg))) mismatched.add(k.id());
         }
         assertEquals(List.of(), mismatched, "a message held back in one language and not the other");
         assertEquals(List.of(), PROBLEMS);

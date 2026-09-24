@@ -1,10 +1,10 @@
 package com.xploits.console;
 
-import com.xploits.console.core.Centinela;
 import com.xploits.console.core.ConsoleText;
 import com.xploits.console.core.CoordinatePolicy;
-import com.xploits.console.core.Instantanea;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.CoordinateSentinel;
+import com.xploits.console.core.GameSnapshot;
+import com.xploits.console.core.Level;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.Msg;
@@ -18,95 +18,95 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * La puerta de todo lo que va a la consola (spec consola §7 y §10). Con la consola apagada no va a
- * ningún sitio: el histórico solo se escribe con ella encendida, por decisión del usuario.
+ * The gate for everything that goes to the console (console spec §7 and §10). With the console off it
+ * goes nowhere: the history is only written with the console on, by the user's choice.
  *
- * <p>Todo pasa por el centinela antes de llegar al sumidero. Los sitios con coordenadas se marcan
- * en el origen; esto es la red por si alguno se escapa.
+ * <p>Everything passes the sentinel before reaching the sink. The places with coordinates are marked at
+ * the source; this is the net in case one slips through.
  */
-public final class Salida {
-    /** La sesión de este juego: {@code seq} es monótono dentro de ella. */
-    public static final String SESION = Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
+public final class ConsoleOutput {
+    /** This game's session: {@code seq} is monotonic within it. */
+    public static final String SESSION = Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
 
     private static final AtomicLong SEQ = new AtomicLong();
-    private static final Queue<Msg> ALERTAS = new ConcurrentLinkedQueue<>();
-    private static final AtomicBoolean CENTINELA_AVISADO = new AtomicBoolean();
-    private static final AtomicBoolean GANCHO = new AtomicBoolean();
-    private static volatile Sumidero activo;
-    private static volatile boolean ocultarCoordenadas = true;
+    private static final Queue<Msg> ALERTS = new ConcurrentLinkedQueue<>();
+    private static final AtomicBoolean SENTINEL_WARNED = new AtomicBoolean();
+    private static final AtomicBoolean HOOK_INSTALLED = new AtomicBoolean();
+    private static volatile ConsoleSink activeSink;
+    private static volatile boolean hideCoordinates = true;
 
-    private Salida() {
+    private ConsoleOutput() {
     }
 
-    static void conectar(Sumidero sumidero) {
-        activo = sumidero;
+    static void connect(ConsoleSink sink) {
+        activeSink = sink;
     }
 
-    static void desconectar() {
-        activo = null;
+    static void disconnect() {
+        activeSink = null;
     }
 
     /** The console module's {@code hide-coordinates} setting; takes effect from the next line. */
-    static void ocultarCoordenadas(boolean ocultar) {
-        ocultarCoordenadas = ocultar;
+    static void hideCoordinates(boolean hide) {
+        hideCoordinates = hide;
     }
 
     /** The half of a positioned message the console gets under the current setting. */
-    public static Msg paraConsola(PositionedMsg msg) {
-        return CoordinatePolicy.pick(ocultarCoordenadas, msg.chat(), msg.log());
+    public static Msg forConsole(PositionedMsg msg) {
+        return CoordinatePolicy.pick(hideCoordinates, msg.chat(), msg.log());
     }
 
-    static long siguienteSeq() {
+    static long nextSeq() {
         return SEQ.getAndIncrement();
     }
 
-    public static void mensaje(Nivel nivel, String fuente, String texto) {
-        Sumidero s = activo;
+    public static void message(Level level, String source, String text) {
+        ConsoleSink s = activeSink;
         if (s == null) return;
-        String escrito = texto;
-        if (CoordinatePolicy.hold(ocultarCoordenadas, texto)) {
-            avisarCentinela(fuente);
-            escrito = Texts.render(Centinela.retenido(fuente));
+        String written = text;
+        if (CoordinatePolicy.hold(hideCoordinates, text)) {
+            reportSentinelHit(source);
+            written = Texts.render(CoordinateSentinel.held(source));
         }
-        s.mensaje(nivel, fuente, escrito);
+        s.message(level, source, written);
     }
 
-    public static void instantanea(Instantanea foto) {
-        Sumidero s = activo;
+    public static void snapshot(GameSnapshot snapshot) {
+        ConsoleSink s = activeSink;
         if (s == null) return;
-        List<Instantanea.EstadoModulo> modulos = new ArrayList<>();
-        for (Instantanea.EstadoModulo m : foto.modulos()) {
-            if (CoordinatePolicy.hold(ocultarCoordenadas, m.ahora())) {
-                avisarCentinela(m.nombre());
-                modulos.add(new Instantanea.EstadoModulo(m.nombre(), m.activo(), Texts.render(ConsoleText.HELD_SHORT)));
+        List<GameSnapshot.ModuleStatus> modules = new ArrayList<>();
+        for (GameSnapshot.ModuleStatus m : snapshot.modules()) {
+            if (CoordinatePolicy.hold(hideCoordinates, m.activity())) {
+                reportSentinelHit(m.name());
+                modules.add(new GameSnapshot.ModuleStatus(m.name(), m.active(), Texts.render(ConsoleText.HELD_SHORT)));
             } else {
-                modulos.add(m);
+                modules.add(m);
             }
         }
-        s.foto(foto.conModulos(modulos));
+        s.snapshot(snapshot.withModules(modules));
     }
 
-    private static void avisarCentinela(String fuente) {
-        if (CENTINELA_AVISADO.compareAndSet(false, true)) {
-            alertar(Msg.of(ConsoleText.UNMARKED_COORDINATES, "source", fuente));
+    private static void reportSentinelHit(String source) {
+        if (SENTINEL_WARNED.compareAndSet(false, true)) {
+            alert(Msg.of(ConsoleText.UNMARKED_COORDINATES, "source", source));
         }
     }
 
-    static void alertar(Msg texto) {
-        ALERTAS.add(texto);
+    static void alert(Msg text) {
+        ALERTS.add(text);
     }
 
-    /** La siguiente alerta por repartir, o null. Se reparte desde el hilo del juego. */
-    static Msg alertaPendiente() {
-        return ALERTAS.poll();
+    /** The next alert to hand out, or null. It is handed out from the game thread. */
+    static Msg pendingAlert() {
+        return ALERTS.poll();
     }
 
-    /** Una sola vez por JVM: al cerrarse el juego, lo pendiente y la despedida. */
-    static void instalarGanchoDeApagado() {
-        if (!GANCHO.compareAndSet(false, true)) return;
+    /** Once per JVM: when the game closes, what is pending and the goodbye. */
+    static void installShutdownHook() {
+        if (!HOOK_INSTALLED.compareAndSet(false, true)) return;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            Sumidero s = activo;
-            if (s != null) s.despedirDelJuego();
-        }, "xploits-consola-apagado"));
+            ConsoleSink s = activeSink;
+            if (s != null) s.writeGameEnd();
+        }, "xploits-console-shutdown"));
     }
 }

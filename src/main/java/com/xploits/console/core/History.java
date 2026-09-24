@@ -7,44 +7,44 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Una línea del historial legible (spec consola §5): fecha con milisegundos y desfase -para que sea
- * inequívoca aunque cambie la hora-, nivel, fuente y texto; las líneas de continuación, sangradas.
+ * One line of the readable history (console spec §5): date with milliseconds and offset (so it stays
+ * unambiguous even when the clock changes), level, source and text; continuation lines are indented.
  */
-public final class Historial {
-    private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS xxx");
-    private static final String SANGRIA = "    ";
+public final class History {
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS xxx");
+    private static final String INDENT = "    ";
 
-    private Historial() {
+    private History() {
     }
 
-    /** La línea de un registro, o null si no va al historial (las fotos y las órdenes de cierre). */
-    public static String linea(Registro r, ZoneId zona, Catalog textos) {
-        String fecha = FECHA.format(Instant.ofEpochMilli(r.epochMs()).atZone(zona));
-        return switch (r) {
-            case Registro.Mensaje m -> fecha + "  " + rellenar(m.nivel().etiqueta(textos)) + "  " + m.fuente() + "  " + cuerpo(m.texto());
-            case Registro.Juego j -> fecha + "  " + rellenar(textos.render(ConsoleText.HISTORY_GAME)) + "  "
-                + cuerpo(motivo(j.motivo(), textos));
-            case Registro.Perdida p -> fecha + "  " + rellenar(Nivel.AVISO.etiqueta(textos)) + "  consola  "
-                + textos.render(ConsoleText.HISTORY_LOST, "count", p.cuantos());
-            case Registro.Foto f -> null;
-            case Registro.Fin f -> null;
+    /** The line for an entry, or null if it does not go to the history (snapshots and close orders). */
+    public static String line(LogEntry e, ZoneId zone, Catalog texts) {
+        String date = DATE.format(Instant.ofEpochMilli(e.epochMs()).atZone(zone));
+        return switch (e) {
+            case LogEntry.Message m -> date + "  " + pad(m.level().label(texts)) + "  " + m.source() + "  " + body(m.text());
+            case LogEntry.Game g -> date + "  " + pad(texts.render(ConsoleText.HISTORY_GAME)) + "  "
+                + body(reason(g.reason(), texts));
+            case LogEntry.Lost l -> date + "  " + pad(Level.WARNING.label(texts)) + "  console  "
+                + texts.render(ConsoleText.HISTORY_LOST, "count", l.count());
+            case LogEntry.Snapshot s -> null;
+            case LogEntry.Close c -> null;
         };
     }
 
-    /** {@code inicio} and {@code fin} are protocol words in vivo.log; the history says them in its language. */
-    private static String motivo(String motivo, Catalog textos) {
-        return switch (motivo) {
-            case "inicio" -> textos.render(ConsoleText.GAME_START);
-            case "fin" -> textos.render(ConsoleText.GAME_END);
-            default -> motivo;
+    /** {@code start} and {@code end} are protocol words in live.log; the history says them in its language. */
+    private static String reason(String reason, Catalog texts) {
+        return switch (reason) {
+            case "start" -> texts.render(ConsoleText.GAME_START);
+            case "end" -> texts.render(ConsoleText.GAME_END);
+            default -> reason;
         };
     }
 
-    private static String rellenar(String etiqueta) {
-        return etiqueta + " ".repeat(Math.max(0, 5 - etiqueta.length()));
+    private static String pad(String label) {
+        return label + " ".repeat(Math.max(0, 5 - label.length()));
     }
 
-    private static String cuerpo(String texto) {
-        return Texto.limpiar(texto).replace("\n", "\n" + SANGRIA);
+    private static String body(String text) {
+        return TerminalText.sanitize(text).replace("\n", "\n" + INDENT);
     }
 }

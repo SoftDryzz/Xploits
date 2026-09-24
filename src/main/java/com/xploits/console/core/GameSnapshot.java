@@ -10,152 +10,151 @@ import java.util.Objects;
 import java.util.StringJoiner;
 
 /**
- * La foto de la cabecera de la consola (spec consola §9). Cada campo es {@code null} cuando no se
- * sabe: un dato desconocido se pinta {@code ?}, nunca {@code 0}.
+ * The snapshot behind the console's header (console spec §9). Every field is {@code null} when it is
+ * not known: an unknown value is drawn as {@code ?}, never {@code 0}.
  *
- * <p>{@code elytraPct == -1} significa que el jugador no lleva elytra puesta, que no es lo mismo que
- * no saberlo. Las cantidades de munición son <b>solo de la hotbar</b>, lo que usan los módulos que
- * dirige auto-pvp.
+ * <p>{@code elytraPct == -1} means the player is not wearing an elytra, which is not the same as not
+ * knowing. The ammunition counts are <b>hotbar only</b>, which is what the modules auto-pvp drives use.
  */
-public record Instantanea(
+public record GameSnapshot(
     String dimension,
-    Integer jugadores,
-    Integer nuestros,
-    Integer cohetes,
+    Integer players,
+    Integer friendly,
+    Integer fireworks,
     Integer elytraPct,
-    Progreso viaje,
-    Progreso barrido,
-    Double vida,
-    Integer armadura,
-    Integer obsidiana,
-    Integer cristales,
-    Integer telas,
-    Integer yunques,
-    List<EstadoModulo> modulos,
-    Language idioma) {
+    Progress travel,
+    Progress sweep,
+    Double health,
+    Integer armor,
+    Integer obsidian,
+    Integer crystals,
+    Integer webs,
+    Integer anvils,
+    List<ModuleStatus> modules,
+    Language language) {
 
-    /** Por dónde va un viaje o un barrido: {@code actual} de {@code total}, y los bloques que faltan. */
-    public record Progreso(int actual, int total, long restantes) {
+    /** How far a travel or a sweep has got: {@code current} of {@code total}, and the blocks still to go. */
+    public record Progress(int current, int total, long remaining) {
     }
 
-    /** Un módulo de Xploits: si está encendido y qué hace ahora, en pocas palabras. */
-    public record EstadoModulo(String nombre, boolean activo, String ahora) {
-        public EstadoModulo {
-            Objects.requireNonNull(nombre, "un módulo sin nombre"); // i18n: allowed: exception message
-            Objects.requireNonNull(ahora, "ahora vacío es \"\", no null"); // i18n: allowed: exception message
+    /** An Xploits module: whether it is on and what it is doing now, in a few words. */
+    public record ModuleStatus(String name, boolean active, String activity) {
+        public ModuleStatus {
+            Objects.requireNonNull(name, "a module without a name");
+            Objects.requireNonNull(activity, "an empty activity is \"\", not null");
         }
     }
 
-    private static final String DESCONOCIDO = "-";
-    private static final List<String> CLAVES =
-        List.of("dim", "jug", "nue", "coh", "ely", "via", "bar", "vid", "arm", "obs", "cri", "tel", "yun", "mod", "lng");
+    private static final String UNKNOWN = "-";
+    private static final List<String> KEYS =
+        List.of("dim", "ply", "frn", "fwk", "ely", "trv", "swp", "hp", "arm", "obs", "cry", "web", "anv", "mod", "lng");
 
-    public Instantanea {
-        modulos = List.copyOf(Objects.requireNonNull(modulos, "la lista de módulos puede estar vacía, no ser null")); // i18n: allowed: exception message
-        Objects.requireNonNull(idioma, "a snapshot says which language the window speaks");
+    public GameSnapshot {
+        modules = List.copyOf(Objects.requireNonNull(modules, "the module list may be empty, not null"));
+        Objects.requireNonNull(language, "a snapshot says which language the window speaks");
     }
 
-    /** Sin jugador en el mundo: todo desconocido salvo los módulos. */
-    public static Instantanea sinJugador(List<EstadoModulo> modulos, Language idioma) {
-        return new Instantanea(null, null, null, null, null, null, null, null, null, null, null, null, null, modulos, idioma);
+    /** No player in the world: everything unknown except the modules. */
+    public static GameSnapshot withoutPlayer(List<ModuleStatus> modules, Language language) {
+        return new GameSnapshot(null, null, null, null, null, null, null, null, null, null, null, null, null, modules, language);
     }
 
-    /** La misma foto con otra lista de módulos: el centinela la usa para retener un "ahora" sospechoso. */
-    public Instantanea conModulos(List<EstadoModulo> otros) {
-        return new Instantanea(dimension, jugadores, nuestros, cohetes, elytraPct, viaje, barrido, vida, armadura,
-            obsidiana, cristales, telas, yunques, otros, idioma);
+    /** The same snapshot with another module list: the sentinel uses it to hold back a suspicious activity. */
+    public GameSnapshot withModules(List<ModuleStatus> others) {
+        return new GameSnapshot(dimension, players, friendly, fireworks, elytraPct, travel, sweep, health, armor,
+            obsidian, crystals, webs, anvils, others, language);
     }
 
-    public String codificar() {
+    public String encode() {
         StringJoiner sj = new StringJoiner(";");
-        sj.add("dim=" + (dimension == null ? DESCONOCIDO : Escape.escapar(dimension)));
-        sj.add("jug=" + numero(jugadores));
-        sj.add("nue=" + numero(nuestros));
-        sj.add("coh=" + numero(cohetes));
-        sj.add("ely=" + numero(elytraPct));
-        sj.add("via=" + progreso(viaje));
-        sj.add("bar=" + progreso(barrido));
-        sj.add("vid=" + (vida == null ? DESCONOCIDO : Double.toString(vida)));
-        sj.add("arm=" + numero(armadura));
-        sj.add("obs=" + numero(obsidiana));
-        sj.add("cri=" + numero(cristales));
-        sj.add("tel=" + numero(telas));
-        sj.add("yun=" + numero(yunques));
+        sj.add("dim=" + (dimension == null ? UNKNOWN : Escape.escape(dimension)));
+        sj.add("ply=" + number(players));
+        sj.add("frn=" + number(friendly));
+        sj.add("fwk=" + number(fireworks));
+        sj.add("ely=" + number(elytraPct));
+        sj.add("trv=" + progress(travel));
+        sj.add("swp=" + progress(sweep));
+        sj.add("hp=" + (health == null ? UNKNOWN : Double.toString(health)));
+        sj.add("arm=" + number(armor));
+        sj.add("obs=" + number(obsidian));
+        sj.add("cry=" + number(crystals));
+        sj.add("web=" + number(webs));
+        sj.add("anv=" + number(anvils));
         StringJoiner mods = new StringJoiner("|");
-        for (EstadoModulo m : modulos) {
-            mods.add(Escape.escapar(m.nombre()) + "," + (m.activo() ? "1" : "0") + "," + Escape.escapar(m.ahora()));
+        for (ModuleStatus m : modules) {
+            mods.add(Escape.escape(m.name()) + "," + (m.active() ? "1" : "0") + "," + Escape.escape(m.activity()));
         }
         sj.add("mod=" + mods);
-        sj.add("lng=" + idioma.code());
+        sj.add("lng=" + language.code());
         return sj.toString();
     }
 
-    public static Instantanea decodificar(String s) {
-        Map<String, String> valores = new LinkedHashMap<>();
-        for (String par : Escape.partir(s, ';')) {
-            List<String> kv = Escape.partir(par, '=');
-            if (kv.size() != 2) throw new IllegalArgumentException("par mal formado en la instantánea");
-            String clave = kv.get(0);
-            if (!CLAVES.contains(clave)) throw new IllegalArgumentException("clave desconocida en la instantánea: " + clave);
-            if (valores.put(clave, kv.get(1)) != null) throw new IllegalArgumentException("clave repetida en la instantánea: " + clave);
+    public static GameSnapshot decode(String s) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String pair : Escape.split(s, ';')) {
+            List<String> kv = Escape.split(pair, '=');
+            if (kv.size() != 2) throw new IllegalArgumentException("malformed pair in the snapshot");
+            String key = kv.get(0);
+            if (!KEYS.contains(key)) throw new IllegalArgumentException("unknown key in the snapshot: " + key);
+            if (values.put(key, kv.get(1)) != null) throw new IllegalArgumentException("repeated key in the snapshot: " + key);
         }
-        for (String clave : CLAVES) {
-            if (!valores.containsKey(clave)) throw new IllegalArgumentException("falta la clave " + clave + " en la instantánea");
+        for (String key : KEYS) {
+            if (!values.containsKey(key)) throw new IllegalArgumentException("key " + key + " is missing from the snapshot");
         }
-        return new Instantanea(
-            texto(valores.get("dim")),
-            entero(valores.get("jug")),
-            entero(valores.get("nue")),
-            entero(valores.get("coh")),
-            entero(valores.get("ely")),
-            progreso(valores.get("via")),
-            progreso(valores.get("bar")),
-            DESCONOCIDO.equals(valores.get("vid")) ? null : Double.valueOf(valores.get("vid")),
-            entero(valores.get("arm")),
-            entero(valores.get("obs")),
-            entero(valores.get("cri")),
-            entero(valores.get("tel")),
-            entero(valores.get("yun")),
-            modulos(valores.get("mod")),
-            Language.fromCode(valores.get("lng")).orElse(Language.EN));
+        return new GameSnapshot(
+            text(values.get("dim")),
+            integer(values.get("ply")),
+            integer(values.get("frn")),
+            integer(values.get("fwk")),
+            integer(values.get("ely")),
+            progress(values.get("trv")),
+            progress(values.get("swp")),
+            UNKNOWN.equals(values.get("hp")) ? null : Double.valueOf(values.get("hp")),
+            integer(values.get("arm")),
+            integer(values.get("obs")),
+            integer(values.get("cry")),
+            integer(values.get("web")),
+            integer(values.get("anv")),
+            modules(values.get("mod")),
+            Language.fromCode(values.get("lng")).orElse(Language.EN));
     }
 
-    private static String numero(Integer n) {
-        return n == null ? DESCONOCIDO : n.toString();
+    private static String number(Integer n) {
+        return n == null ? UNKNOWN : n.toString();
     }
 
-    private static String progreso(Progreso p) {
-        return p == null ? DESCONOCIDO : p.actual() + "/" + p.total() + "/" + p.restantes();
+    private static String progress(Progress p) {
+        return p == null ? UNKNOWN : p.current() + "/" + p.total() + "/" + p.remaining();
     }
 
-    private static String texto(String v) {
-        return DESCONOCIDO.equals(v) ? null : Escape.desescapar(v);
+    private static String text(String v) {
+        return UNKNOWN.equals(v) ? null : Escape.unescape(v);
     }
 
-    private static Integer entero(String v) {
-        return DESCONOCIDO.equals(v) ? null : Integer.valueOf(v);
+    private static Integer integer(String v) {
+        return UNKNOWN.equals(v) ? null : Integer.valueOf(v);
     }
 
-    private static Progreso progreso(String v) {
-        if (DESCONOCIDO.equals(v)) return null;
-        String[] partes = v.split("/", -1);
-        if (partes.length != 3) throw new IllegalArgumentException("progreso mal formado: " + v);
-        return new Progreso(Integer.parseInt(partes[0]), Integer.parseInt(partes[1]), Long.parseLong(partes[2]));
+    private static Progress progress(String v) {
+        if (UNKNOWN.equals(v)) return null;
+        String[] parts = v.split("/", -1);
+        if (parts.length != 3) throw new IllegalArgumentException("malformed progress: " + v);
+        return new Progress(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Long.parseLong(parts[2]));
     }
 
-    private static List<EstadoModulo> modulos(String v) {
+    private static List<ModuleStatus> modules(String v) {
         if (v.isEmpty()) return List.of();
-        List<EstadoModulo> lista = new ArrayList<>();
-        for (String pieza : Escape.partir(v, '|')) {
-            List<String> campos = Escape.partir(pieza, ',');
-            if (campos.size() != 3) throw new IllegalArgumentException("módulo mal formado en la instantánea");
-            boolean activo = switch (campos.get(1)) {
+        List<ModuleStatus> list = new ArrayList<>();
+        for (String piece : Escape.split(v, '|')) {
+            List<String> fields = Escape.split(piece, ',');
+            if (fields.size() != 3) throw new IllegalArgumentException("malformed module in the snapshot");
+            boolean active = switch (fields.get(1)) {
                 case "1" -> true;
                 case "0" -> false;
-                default -> throw new IllegalArgumentException("estado de módulo desconocido: " + campos.get(1));
+                default -> throw new IllegalArgumentException("unknown module state: " + fields.get(1));
             };
-            lista.add(new EstadoModulo(Escape.desescapar(campos.get(0)), activo, Escape.desescapar(campos.get(2))));
+            list.add(new ModuleStatus(Escape.unescape(fields.get(0)), active, Escape.unescape(fields.get(2))));
         }
-        return lista;
+        return list;
     }
 }

@@ -11,117 +11,117 @@ import java.util.List;
 import java.util.StringJoiner;
 
 /**
- * La pantalla entera, fila a fila (spec consola §6): logo, separador, datos, separador, registro,
- * separador, menú y estado. La fila de entrada es la última de la ventana y la pinta la ventana.
+ * The whole screen, row by row (console spec §6): logo, separator, data, separator, log, separator,
+ * menu and status. The input row is the window's last one and the window draws it.
  *
- * <p>Si no cabe todo se quita en un orden fijo y <b>se dice en la línea de estado</b>: enseñar
- * menos datos sin avisar sería presentar una cabecera incompleta como si fuera la entera.
+ * <p>If everything does not fit, parts are removed in a fixed order and <b>the status line says so</b>:
+ * showing less data without saying it would present an incomplete header as if it were the whole one.
  */
-public final class Marco {
-    public static final int FILAS_MINIMAS_DEL_REGISTRO = 5;
-    public static final int FILAS_POR_MENSAJE = 3;
-    private static final int ANCHO_FUENTE = 12;
-    private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm:ss");
-    /** Índices de {@link Cabecera#NOMBRES} en el orden en que se quitan: módulos, entorno, vuelo, combate. */
-    private static final int[] ORDEN_DE_QUITAR = {3, 0, 1, 2};
+public final class ScreenFrame {
+    public static final int MIN_LOG_ROWS = 5;
+    public static final int ROWS_PER_MESSAGE = 3;
+    private static final int SOURCE_WIDTH = 12;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    /** Indices into {@link Header#NAMES} in the order they are removed: modules, environment, flight, combat. */
+    private static final int[] REMOVAL_ORDER = {3, 0, 1, 2};
 
-    private Marco() {
+    private ScreenFrame() {
     }
 
-    public record Entrada(Tamano tamano, List<String> arte, Instantanea instantanea, Latido.EstadoJuego juego,
-                          List<Registro.Mensaje> mensajes, Filtro filtro, boolean pausa, int nuevas,
-                          String aviso, Glifos glifos, ZoneId zona, Catalog textos) {
+    public record Input(WindowSize size, List<String> art, GameSnapshot snapshot, Heartbeat.GameState game,
+                        List<LogEntry.Message> messages, LogFilter filter, boolean paused, int newMessages,
+                        String notice, Glyphs glyphs, ZoneId zone, Catalog texts) {
     }
 
-    /** Exactamente {@code tamano.filas() - 1} filas. */
-    public static List<String> componer(Entrada e) {
-        int cols = e.tamano().cols();
-        int alto = e.tamano().filas() - 1;
-        List<String> filas = new ArrayList<>();
-        if (alto <= 0) return filas;
-        if (!e.tamano().cabeElMinimo()) {
-            filas.add(Texto.recortar(e.textos().render(WindowText.TOO_SMALL, "cols", cols, "rows", e.tamano().filas(),
-                "minCols", Tamano.MINIMO.cols(), "minRows", Tamano.MINIMO.filas()), cols));
-            while (filas.size() < alto) filas.add("");
-            return filas;
+    /** Exactly {@code size.rows() - 1} rows. */
+    public static List<String> compose(Input in) {
+        int cols = in.size().cols();
+        int height = in.size().rows() - 1;
+        List<String> rows = new ArrayList<>();
+        if (height <= 0) return rows;
+        if (!in.size().fitsMinimum()) {
+            rows.add(TerminalText.truncate(in.texts().render(WindowText.TOO_SMALL, "cols", cols, "rows", in.size().rows(),
+                "minCols", WindowSize.MINIMUM.cols(), "minRows", WindowSize.MINIMUM.rows()), cols));
+            while (rows.size() < height) rows.add("");
+            return rows;
         }
 
-        List<String> ocultas = new ArrayList<>();
-        List<String> logo = Banner.elegir(e.arte(), cols, e.tamano().filas());
-        if (!Banner.cabe(cols, e.tamano().filas())) ocultas.add(e.textos().render(WindowText.SECTION_LOGO));
+        List<String> hidden = new ArrayList<>();
+        List<String> logo = Banner.choose(in.art(), cols, in.size().rows());
+        if (!Banner.fits(cols, in.size().rows())) hidden.add(in.texts().render(WindowText.SECTION_LOGO));
 
-        List<String> datos = e.instantanea() == null
-            ? List.of(e.textos().render(WindowText.NO_GAME_DATA), "", "", "")
-            : Cabecera.filas(e.instantanea(), e.glifos(), e.textos());
+        List<String> data = in.snapshot() == null
+            ? List.of(in.texts().render(WindowText.NO_GAME_DATA), "", "", "")
+            : Header.rows(in.snapshot(), in.glyphs(), in.texts());
         boolean[] visible = {true, true, true, true};
-        int quedan = 4;
-        int cuerpo = filasDelRegistro(alto, logo.size(), quedan);
-        for (int i = 0; i < ORDEN_DE_QUITAR.length && cuerpo < FILAS_MINIMAS_DEL_REGISTRO; i++) {
-            visible[ORDEN_DE_QUITAR[i]] = false;
-            ocultas.add(e.textos().render(Cabecera.NOMBRES.get(ORDEN_DE_QUITAR[i])));
-            quedan--;
-            cuerpo = filasDelRegistro(alto, logo.size(), quedan);
+        int remaining = 4;
+        int body = logRows(height, logo.size(), remaining);
+        for (int i = 0; i < REMOVAL_ORDER.length && body < MIN_LOG_ROWS; i++) {
+            visible[REMOVAL_ORDER[i]] = false;
+            hidden.add(in.texts().render(Header.NAMES.get(REMOVAL_ORDER[i])));
+            remaining--;
+            body = logRows(height, logo.size(), remaining);
         }
 
-        String separador = Ansi.color(Ansi.CIAN) + e.glifos().linea(cols) + Ansi.RESET;
-        filas.addAll(logo);
-        filas.add(separador);
-        if (quedan > 0) {
-            for (int i = 0; i < datos.size(); i++) {
-                if (visible[i]) filas.add(Texto.recortar(Texto.limpiar(datos.get(i)), cols));
+        String separator = Ansi.color(Ansi.CYAN) + in.glyphs().line(cols) + Ansi.RESET;
+        rows.addAll(logo);
+        rows.add(separator);
+        if (remaining > 0) {
+            for (int i = 0; i < data.size(); i++) {
+                if (visible[i]) rows.add(TerminalText.truncate(TerminalText.sanitize(data.get(i)), cols));
             }
-            filas.add(separador);
+            rows.add(separator);
         }
-        filas.addAll(registro(e, cols, cuerpo));
-        filas.add(separador);
-        filas.add(Texto.recortar(Menu.linea(e.textos()), cols));
-        filas.add(estado(e, cols, ocultas));
-        return filas;
+        rows.addAll(logPane(in, cols, body));
+        rows.add(separator);
+        rows.add(TerminalText.truncate(Menu.line(in.texts()), cols));
+        rows.add(statusLine(in, cols, hidden));
+        return rows;
     }
 
-    private static int filasDelRegistro(int alto, int filasDeLogo, int filasDeDatos) {
-        int separadores = filasDeDatos > 0 ? 3 : 2;
-        return alto - filasDeLogo - filasDeDatos - separadores - 2;
+    private static int logRows(int height, int logoRows, int dataRows) {
+        int separators = dataRows > 0 ? 3 : 2;
+        return height - logoRows - dataRows - separators - 2;
     }
 
-    /** Los mensajes más recientes abajo; uno que no cabe entero no se enseña a medias. */
-    private static List<String> registro(Entrada e, int cols, int filas) {
-        LinkedList<String> salida = new LinkedList<>();
-        List<Registro.Mensaje> todos = e.mensajes();
-        for (int i = todos.size() - 1; i >= 0 && salida.size() < filas; i--) {
-            Registro.Mensaje m = todos.get(i);
-            if (!e.filtro().acepta(m)) continue;
-            String prefijo = HORA.format(Instant.ofEpochMilli(m.epochMs()).atZone(e.zona())) + "  " + fuente(m.fuente()) + "  ";
-            List<String> bloque = Texto.envolver(prefijo + Texto.limpiar(m.texto()), cols, FILAS_POR_MENSAJE);
-            if (salida.size() + bloque.size() > filas) break;
-            String color = switch (m.nivel()) {
+    /** The most recent messages at the bottom; one that does not fit whole is not shown by halves. */
+    private static List<String> logPane(Input in, int cols, int rows) {
+        LinkedList<String> result = new LinkedList<>();
+        List<LogEntry.Message> all = in.messages();
+        for (int i = all.size() - 1; i >= 0 && result.size() < rows; i--) {
+            LogEntry.Message m = all.get(i);
+            if (!in.filter().accepts(m)) continue;
+            String prefix = TIME.format(Instant.ofEpochMilli(m.epochMs()).atZone(in.zone())) + "  " + source(m.source()) + "  ";
+            List<String> block = TerminalText.wrap(prefix + TerminalText.sanitize(m.text()), cols, ROWS_PER_MESSAGE);
+            if (result.size() + block.size() > rows) break;
+            String color = switch (m.level()) {
                 case INFO -> "";
-                case AVISO -> Ansi.color(Ansi.AMARILLO);
-                case ERROR -> Ansi.color(Ansi.ROJO);
+                case WARNING -> Ansi.color(Ansi.YELLOW);
+                case ERROR -> Ansi.color(Ansi.RED);
             };
-            for (int j = bloque.size() - 1; j >= 0; j--) {
-                salida.addFirst(color.isEmpty() ? bloque.get(j) : color + bloque.get(j) + Ansi.RESET);
+            for (int j = block.size() - 1; j >= 0; j--) {
+                result.addFirst(color.isEmpty() ? block.get(j) : color + block.get(j) + Ansi.RESET);
             }
         }
-        while (salida.size() < filas) salida.addFirst("");
-        return salida;
+        while (result.size() < rows) result.addFirst("");
+        return result;
     }
 
-    private static String fuente(String fuente) {
-        String limpia = Texto.recortar(Texto.limpiar(fuente).replace('\n', ' '), ANCHO_FUENTE);
-        return limpia + " ".repeat(Math.max(0, ANCHO_FUENTE - Texto.ancho(limpia)));
+    private static String source(String source) {
+        String clean = TerminalText.truncate(TerminalText.sanitize(source).replace('\n', ' '), SOURCE_WIDTH);
+        return clean + " ".repeat(Math.max(0, SOURCE_WIDTH - TerminalText.width(clean)));
     }
 
-    private static String estado(Entrada e, int cols, List<String> ocultas) {
+    private static String statusLine(Input in, int cols, List<String> hidden) {
         StringJoiner sj = new StringJoiner(" · ");
-        Catalog t = e.textos();
-        sj.add(t.render(WindowText.STATUS_FILTER, "filter", e.filtro().etiqueta(t)));
-        if (e.pausa()) sj.add(t.render(WindowText.STATUS_PAUSED, "count", e.nuevas()));
-        sj.add(Latido.texto(e.juego(), t));
-        if (!ocultas.isEmpty()) sj.add(t.render(WindowText.STATUS_HIDDEN, "sections", String.join(", ", ocultas)));
-        if (e.aviso() != null) sj.add(Texto.limpiar(e.aviso()).replace('\n', ' '));
-        String texto = Texto.recortar(sj.toString(), cols);
-        int color = Latido.color(e.juego());
-        return color == 0 ? texto : Ansi.color(color) + texto + Ansi.RESET;
+        Catalog t = in.texts();
+        sj.add(t.render(WindowText.STATUS_FILTER, "filter", in.filter().label(t)));
+        if (in.paused()) sj.add(t.render(WindowText.STATUS_PAUSED, "count", in.newMessages()));
+        sj.add(Heartbeat.text(in.game(), t));
+        if (!hidden.isEmpty()) sj.add(t.render(WindowText.STATUS_HIDDEN, "sections", String.join(", ", hidden)));
+        if (in.notice() != null) sj.add(TerminalText.sanitize(in.notice()).replace('\n', ' '));
+        String text = TerminalText.truncate(sj.toString(), cols);
+        int color = Heartbeat.color(in.game());
+        return color == 0 ? text : Ansi.color(color) + text + Ansi.RESET;
     }
 }

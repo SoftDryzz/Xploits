@@ -18,7 +18,7 @@ language.command-desc=Addon status, stash search, language and reload.
 
 # console
 console.module-desc=Opens a terminal window with the logo, the game's status and the log of what Xploits does. No coordinates by default: in the window and its file they appear without a position (setting hide-coordinates).
-console.setting-hide-coordinates=Hides coordinates in the window and its history. Turned off, the console shows the same text as the chat and keeps positions on disk (vivo.log and up to 30 days of history).
+console.setting-hide-coordinates=Hides coordinates in the window and its history. Turned off, the console shows the same text as the chat and keeps positions on disk (live.log and up to 30 days of history).
 console.level-info=INFO
 console.level-warning=WARN
 console.level-error=ERROR
@@ -82,8 +82,8 @@ window.filter-warnings=warnings only
 window.menu-empty=type the number of a menu option
 window.menu-unknown=«{input}» is not a menu option
 window.not-utf8=the console is not in UTF-8: drawing the frame in ASCII
-window.cannot-read-log=cannot read vivo.log: {error}
-window.unreadable-line=unreadable line in vivo.log: {error}
+window.cannot-read-log=cannot read live.log: {error}
+window.unreadable-line=unreadable line in live.log: {error}
 window.records-lost={count} records were lost
 window.game-lost-messages=the game lost {count} messages: its queue filled up
 window.problem={problem}

@@ -8,53 +8,53 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Cuánto crece lo que la consola deja en disco (spec consola §5): {@code vivo.log} rota a 1 MiB; el
- * historial guarda 30 días o 64 MiB, lo que llegue antes, y el fichero de hoy no se borra nunca.
+ * How much the console leaves on disk (console spec §5): {@code live.log} rotates at 1 MiB; the
+ * history keeps 30 days or 64 MiB, whichever comes first, and today's file is never deleted.
  */
-public final class Rotacion {
-    public static final long LIMITE_VIVO = 1L << 20;
-    public static final int DIAS = 30;
-    public static final long LIMITE_HISTORIAL = 64L << 20;
+public final class LogRotation {
+    public static final long LIVE_LOG_LIMIT = 1L << 20;
+    public static final int DAYS = 30;
+    public static final long HISTORY_LIMIT = 64L << 20;
 
-    private Rotacion() {
+    private LogRotation() {
     }
 
-    public static boolean rotarVivo(long tamanoActual, long bytesNuevos) {
-        return tamanoActual + bytesNuevos > LIMITE_VIVO;
+    public static boolean shouldRotateLiveLog(long currentSize, long newBytes) {
+        return currentSize + newBytes > LIVE_LOG_LIMIT;
     }
 
-    public record Fichero(String nombre, long tamano, LocalDate fecha) {
+    public record LogFile(String name, long size, LocalDate date) {
     }
 
-    /** La fecha de un fichero del historial, o vacío si el nombre no es {@code AAAA-MM-DD.log}. */
-    public static Optional<LocalDate> fechaDe(String nombre) {
-        if (!nombre.endsWith(".log")) return Optional.empty();
+    /** The date of a history file, or empty if the name is not {@code YYYY-MM-DD.log}. */
+    public static Optional<LocalDate> dateOf(String name) {
+        if (!name.endsWith(".log")) return Optional.empty();
         try {
-            return Optional.of(LocalDate.parse(nombre.substring(0, nombre.length() - ".log".length())));
+            return Optional.of(LocalDate.parse(name.substring(0, name.length() - ".log".length())));
         } catch (DateTimeParseException e) {
             return Optional.empty();
         }
     }
 
-    public static String nombreDelDia(LocalDate dia) {
-        return dia + ".log";
+    public static String fileNameFor(LocalDate day) {
+        return day + ".log";
     }
 
-    /** Qué ficheros del historial borrar, del más viejo al más nuevo. */
-    public static List<String> borrar(List<Fichero> ficheros, LocalDate hoy) {
-        LocalDate primeroQueSeGuarda = hoy.minusDays(DIAS - 1);
-        List<String> borrar = new ArrayList<>();
-        List<Fichero> quedan = new ArrayList<>();
-        for (Fichero f : ficheros.stream().sorted(Comparator.comparing(Fichero::fecha)).toList()) {
-            if (f.fecha().isBefore(primeroQueSeGuarda)) borrar.add(f.nombre());
-            else quedan.add(f);
+    /** Which history files to delete, oldest first. */
+    public static List<String> toDelete(List<LogFile> files, LocalDate today) {
+        LocalDate firstKept = today.minusDays(DAYS - 1);
+        List<String> delete = new ArrayList<>();
+        List<LogFile> kept = new ArrayList<>();
+        for (LogFile f : files.stream().sorted(Comparator.comparing(LogFile::date)).toList()) {
+            if (f.date().isBefore(firstKept)) delete.add(f.name());
+            else kept.add(f);
         }
-        long total = quedan.stream().mapToLong(Fichero::tamano).sum();
-        for (Fichero f : quedan) {
-            if (total <= LIMITE_HISTORIAL || !f.fecha().isBefore(hoy)) break;
-            borrar.add(f.nombre());
-            total -= f.tamano();
+        long total = kept.stream().mapToLong(LogFile::size).sum();
+        for (LogFile f : kept) {
+            if (total <= HISTORY_LIMIT || !f.date().isBefore(today)) break;
+            delete.add(f.name());
+            total -= f.size();
         }
-        return borrar;
+        return delete;
     }
 }

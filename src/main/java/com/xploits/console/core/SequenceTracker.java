@@ -1,25 +1,25 @@
 package com.xploits.console.core;
 
 /**
- * Detecta registros perdidos: dentro de una sesión del juego, {@code seq} crece de uno en uno.
- * Retroceder es un fallo de lectura, no un hueco, y se dice en voz alta.
+ * Detects lost entries: within a game session, {@code seq} grows one by one. Going backwards is a read
+ * error, not a gap, and it is reported loudly.
  */
-public final class Secuencia {
-    private String sesion;
-    private long ultima;
+public final class SequenceTracker {
+    private String session;
+    private long last;
 
-    /** Cuántos registros faltan entre el anterior de la misma sesión y este. Una sesión nueva empieza de cero. */
-    public long hueco(String sesion, long seq) {
-        if (!sesion.equals(this.sesion)) {
-            this.sesion = sesion;
-            ultima = seq;
+    /** How many entries are missing between the previous one of the same session and this one. A new session starts from zero. */
+    public long gap(String session, long seq) {
+        if (!session.equals(this.session)) {
+            this.session = session;
+            last = seq;
             return 0;
         }
-        if (seq <= ultima) {
-            throw new IllegalStateException("registro fuera de orden: el " + seq + " llega después del " + ultima);
+        if (seq <= last) {
+            throw new IllegalStateException("entry out of order: " + seq + " arrives after " + last);
         }
-        long perdidos = seq - ultima - 1;
-        ultima = seq;
-        return perdidos;
+        long lost = seq - last - 1;
+        last = seq;
+        return lost;
     }
 }

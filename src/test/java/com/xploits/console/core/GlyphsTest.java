@@ -4,13 +4,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class GlifosTest {
+class GlyphsTest {
     @Test
-    void cadaJuegoTieneSusCaracteres() {
-        assertEquals("───", Glifos.UNICODE.linea(3));
-        assertEquals("---", Glifos.ASCII.linea(3));
-        assertEquals("●", Glifos.UNICODE.activo());
-        assertEquals("o", Glifos.ASCII.inactivo());
-        assertEquals("", Glifos.UNICODE.linea(0));
+    void eachSetHasItsCharacters() {
+        assertEquals("───", Glyphs.UNICODE.line(3));
+        assertEquals("---", Glyphs.ASCII.line(3));
+        assertEquals("●", Glyphs.UNICODE.active());
+        assertEquals("o", Glyphs.ASCII.inactive());
+        assertEquals("", Glyphs.UNICODE.line(0));
     }
 }

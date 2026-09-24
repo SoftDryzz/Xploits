@@ -6,51 +6,51 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Convierte los bytes que se van leyendo del final de {@code vivo.log} en líneas completas.
+ * Turns the bytes read, bit by bit, from the end of {@code live.log} into complete lines.
  *
- * <p>Se decodifica <b>por línea</b>, nunca por trozo: una lectura puede cortar un carácter de varios
- * bytes por la mitad ({@code é}, {@code ▀}), y decodificar el trozo lo convertiría en basura.
+ * <p>Decoding is done <b>per line</b>, never per chunk: a read can cut a multi-byte character in half
+ * ({@code é}, {@code ▀}), and decoding the chunk would turn it into garbage.
  */
-public final class Lector {
-    private final ByteArrayOutputStream pendiente = new ByteArrayOutputStream();
+public final class LineReader {
+    private final ByteArrayOutputStream pending = new ByteArrayOutputStream();
 
-    public List<String> alimentar(byte[] bytes) {
-        return alimentar(bytes, 0, bytes.length);
+    public List<String> feed(byte[] bytes) {
+        return feed(bytes, 0, bytes.length);
     }
 
-    public List<String> alimentar(byte[] bytes, int desde, int hasta) {
-        List<String> lineas = new ArrayList<>();
-        for (int i = desde; i < hasta; i++) {
+    public List<String> feed(byte[] bytes, int from, int to) {
+        List<String> lines = new ArrayList<>();
+        for (int i = from; i < to; i++) {
             byte b = bytes[i];
             if (b == '\n') {
-                lineas.add(pendiente.toString(StandardCharsets.UTF_8));
-                pendiente.reset();
+                lines.add(pending.toString(StandardCharsets.UTF_8));
+                pending.reset();
             } else {
-                pendiente.write(b);
+                pending.write(b);
             }
         }
-        return lineas;
+        return lines;
     }
 
-    /** Si hay una línea empezada y sin terminar. */
-    public boolean aMedias() {
-        return pendiente.size() > 0;
+    /** Whether a line has been started and not finished. */
+    public boolean hasPartialLine() {
+        return pending.size() > 0;
     }
 
-    /** Tira lo pendiente: se usa al pasar de un fichero rotado al nuevo. */
-    public void olvidar() {
-        pendiente.reset();
+    /** Drops what is pending: used when moving from a rotated file to the new one. */
+    public void forget() {
+        pending.reset();
     }
 
-    public enum Cambio { SIGUE, ROTADO }
+    public enum Change { CONTINUES, ROTATED }
 
     /**
-     * Si el fichero que se sigue es el mismo. Está rotado si su cabecera es de otra generación o si
-     * es más corto que lo ya leído.
+     * Whether the file being followed is the same one. It has rotated if its header is from another
+     * generation or if it is shorter than what has already been read.
      */
-    public static Cambio detectar(long leido, long tamano, String generacionSeguida, String generacionActual) {
-        if (generacionActual != null && !generacionActual.equals(generacionSeguida)) return Cambio.ROTADO;
-        if (tamano < leido) return Cambio.ROTADO;
-        return Cambio.SIGUE;
+    public static Change detect(long read, long size, String followedGeneration, String currentGeneration) {
+        if (currentGeneration != null && !currentGeneration.equals(followedGeneration)) return Change.ROTATED;
+        if (size < read) return Change.ROTATED;
+        return Change.CONTINUES;
     }
 }

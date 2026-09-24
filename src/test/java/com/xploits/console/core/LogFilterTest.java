@@ -8,34 +8,34 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class FiltroTest {
+class LogFilterTest {
     private static final Catalog ES = Catalog.load(Language.ES, p -> {
         throw new AssertionError(p);
     });
     private static final Catalog EN = Catalog.load(Language.EN, p -> {
         throw new AssertionError(p);
     });
-    private static Registro.Mensaje m(Nivel nivel, String fuente) {
-        return new Registro.Mensaje(0, 0, "s", nivel, fuente, "x");
+    private static LogEntry.Message m(Level level, String source) {
+        return new LogEntry.Message(0, 0, "s", level, source, "x");
     }
 
     @Test
-    void cadaFiltroConSuContraejemplo() {
-        assertTrue(Filtro.TODO.acepta(m(Nivel.INFO, "stash-keeper")));
-        assertTrue(Filtro.PVP.acepta(m(Nivel.INFO, "auto-pvp")));
-        assertFalse(Filtro.PVP.acepta(m(Nivel.INFO, "auto-travel")));
-        assertTrue(Filtro.TRAVEL.acepta(m(Nivel.INFO, "auto-travel")));
-        assertFalse(Filtro.TRAVEL.acepta(m(Nivel.INFO, "nether-sweep")));
-        assertTrue(Filtro.SWEEP.acepta(m(Nivel.INFO, "nether-sweep")));
-        assertFalse(Filtro.SWEEP.acepta(m(Nivel.AVISO, "auto-pvp")));
-        assertTrue(Filtro.AVISOS.acepta(m(Nivel.AVISO, "auto-pvp")));
-        assertTrue(Filtro.AVISOS.acepta(m(Nivel.ERROR, "xploits")));
-        assertFalse(Filtro.AVISOS.acepta(m(Nivel.INFO, "auto-pvp")));
+    void eachFilterWithItsCounterexample() {
+        assertTrue(LogFilter.ALL.accepts(m(Level.INFO, "stash-keeper")));
+        assertTrue(LogFilter.PVP.accepts(m(Level.INFO, "auto-pvp")));
+        assertFalse(LogFilter.PVP.accepts(m(Level.INFO, "auto-travel")));
+        assertTrue(LogFilter.TRAVEL.accepts(m(Level.INFO, "auto-travel")));
+        assertFalse(LogFilter.TRAVEL.accepts(m(Level.INFO, "nether-sweep")));
+        assertTrue(LogFilter.SWEEP.accepts(m(Level.INFO, "nether-sweep")));
+        assertFalse(LogFilter.SWEEP.accepts(m(Level.WARNING, "auto-pvp")));
+        assertTrue(LogFilter.WARNINGS.accepts(m(Level.WARNING, "auto-pvp")));
+        assertTrue(LogFilter.WARNINGS.accepts(m(Level.ERROR, "xploits")));
+        assertFalse(LogFilter.WARNINGS.accepts(m(Level.INFO, "auto-pvp")));
     }
 
     @Test
     void theLabelsComeFromTheCatalog() {
-        assertEquals("solo avisos", Filtro.AVISOS.etiqueta(ES));
-        assertEquals("warnings only", Filtro.AVISOS.etiqueta(EN));
+        assertEquals("solo avisos", LogFilter.WARNINGS.label(ES));
+        assertEquals("warnings only", LogFilter.WARNINGS.label(EN));
     }
 }

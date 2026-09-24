@@ -1,6 +1,6 @@
 package com.xploits.stash.core;
 
-import com.xploits.console.core.Centinela;
+import com.xploits.console.core.CoordinateSentinel;
 import com.xploits.shared.core.i18n.Catalog;
 import com.xploits.shared.core.i18n.Language;
 import com.xploits.shared.core.i18n.Msg;
@@ -72,6 +72,6 @@ class ContainerKeyTest {
         Catalog es = Catalog.load(Language.ES, problem -> {
             throw new AssertionError(problem);
         });
-        assertFalse(Centinela.sospecha(es.render(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0))));
+        assertFalse(CoordinateSentinel.isSuspect(es.render(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0))));
     }
 }

@@ -9,24 +9,24 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * La vida de una ventana de consola, desde que se enciende el módulo hasta que se cierra
- * (spec consola §8). Decide; el adaptador ejecuta las acciones que devuelve.
+ * The life of a console window, from turning the module on until the window closes
+ * (console spec §8). It decides; the adapter carries out the actions it returns.
  *
- * <p>Cada lanzamiento lleva un id: un {@code consola.pid}, una salida o una orden de cierre de otro
- * lanzamiento no cuentan. Y cerrar con la X no deja escribir nada (verificado), así que desde aquí
- * <b>no se distingue</b> de un kill, y el aviso no finge que sí.
+ * <p>Every launch carries an id: a {@code console.pid}, an exit or a close order from another launch
+ * does not count. And closing with the X leaves nothing written (verified), so from here it
+ * <b>cannot be told apart</b> from a kill, and the notice does not pretend otherwise.
  */
-public final class Ciclo {
-    public static final long ESPERA_PID_MS = 10_000;
-    public static final long ESPERA_CIERRE_MS = 3_000;
+public final class WindowLifecycle {
+    public static final long PID_WAIT_MS = 10_000;
+    public static final long CLOSE_WAIT_MS = 3_000;
 
-    public record Pid(long pid, long inicioMs, String lanzamiento) {
-        public String escribir() {
-            return pid + "\t" + inicioMs + "\t" + lanzamiento;
+    public record Pid(long pid, long startMs, String launchId) {
+        public String write() {
+            return pid + "\t" + startMs + "\t" + launchId;
         }
 
-        public static Optional<Pid> leer(String contenido) {
-            String[] c = contenido.lines().findFirst().orElse("").split("\t", -1);
+        public static Optional<Pid> read(String content) {
+            String[] c = content.lines().findFirst().orElse("").split("\t", -1);
             if (c.length != 3 || c[2].isEmpty()) return Optional.empty();
             try {
                 return Optional.of(new Pid(Long.parseLong(c[0]), Long.parseLong(c[1]), c[2]));
@@ -36,105 +36,105 @@ public final class Ciclo {
         }
     }
 
-    /** Lo que la ventana deja escrito al irse: {@code usuario} si salió por el menú, {@code error} si reventó. */
-    public record Salida(String tipo, String lanzamiento, String detalle) {
-        public static final String USUARIO = "usuario";
+    /** What the window leaves written when it goes: {@code user} if it quit from the menu, {@code error} if it crashed. */
+    public record Exit(String type, String launchId, String detail) {
+        public static final String USER = "user";
         public static final String ERROR = "error";
 
-        public static String usuario(String lanzamiento) {
-            return USUARIO + "\t" + lanzamiento;
+        public static String user(String launchId) {
+            return USER + "\t" + launchId;
         }
 
-        public static String error(String lanzamiento, String detalle) {
-            return ERROR + "\t" + lanzamiento + "\t" + Escape.escapar(detalle);
+        public static String error(String launchId, String detail) {
+            return ERROR + "\t" + launchId + "\t" + Escape.escape(detail);
         }
 
-        public static Optional<Salida> leer(String contenido) {
-            String[] c = contenido.lines().findFirst().orElse("").split("\t", -1);
-            if (c.length == 2 && c[0].equals(USUARIO)) return Optional.of(new Salida(USUARIO, c[1], ""));
+        public static Optional<Exit> read(String content) {
+            String[] c = content.lines().findFirst().orElse("").split("\t", -1);
+            if (c.length == 2 && c[0].equals(USER)) return Optional.of(new Exit(USER, c[1], ""));
             if (c.length == 3 && c[0].equals(ERROR)) {
                 try {
-                    return Optional.of(new Salida(ERROR, c[1], Escape.desescapar(c[2])));
+                    return Optional.of(new Exit(ERROR, c[1], Escape.unescape(c[2])));
                 } catch (IllegalArgumentException e) {
-                    return Optional.of(new Salida(ERROR, c[1], c[2]));
+                    return Optional.of(new Exit(ERROR, c[1], c[2]));
                 }
             }
             return Optional.empty();
         }
     }
 
-    /** Lo que el adaptador ha visto en este tick. {@code vivo} dice si un pid sigue vivo y es el mismo proceso. */
-    public record Observacion(long ahoraMs, Pid leido, Predicate<Pid> vivo, Salida salida) {
+    /** What the adapter saw on this tick. {@code alive} says whether a pid is still alive and the same process. */
+    public record Observation(long nowMs, Pid readPid, Predicate<Pid> alive, Exit exit) {
     }
 
-    public sealed interface Accion {
+    public sealed interface Action {
     }
 
-    public record Lanzar(String lanzamiento) implements Accion {
+    public record Launch(String launchId) implements Action {
     }
 
-    public record EscribirFin(String lanzamiento) implements Accion {
+    public record WriteClose(String launchId) implements Action {
     }
 
-    /** Si a los {@code esperaMs} la ventana sigue viva, se mata. {@code pid} es null si aún no se conocía. */
-    public record VigilarCierre(String lanzamiento, Long pid, long esperaMs) implements Accion {
+    /** If the window is still alive after {@code waitMs}, it is killed. {@code pid} is null if it was not known yet. */
+    public record WatchClose(String launchId, Long pid, long waitMs) implements Action {
     }
 
-    public record Avisar(Nivel nivel, Msg texto) implements Accion {
+    public record Notify(Level level, Msg text) implements Action {
     }
 
-    public record ApagarModulo() implements Accion {
+    public record DisableModule() implements Action {
     }
 
-    private enum Fase { APAGADO, PENDIENTE, LANZANDO, ESPERANDO_PID, VIVA, CERRANDO }
+    private enum Phase { OFF, PENDING, LAUNCHING, AWAITING_PID, ALIVE, CLOSING }
 
     private final Supplier<String> ids;
-    private Fase fase = Fase.APAGADO;
-    private String lanzamiento;
-    private String orden;
-    private long plazo;
-    private Pid viva;
-    private Pid cerrando;
-    private boolean relanzar;
+    private Phase phase = Phase.OFF;
+    private String launchId;
+    private String command;
+    private long deadline;
+    private Pid alive;
+    private Pid closing;
+    private boolean relaunch;
 
-    public Ciclo(Supplier<String> ids) {
+    public WindowLifecycle(Supplier<String> ids) {
         this.ids = Objects.requireNonNull(ids);
     }
 
-    public boolean activo() {
-        return fase != Fase.APAGADO;
+    public boolean active() {
+        return phase != Phase.OFF;
     }
 
-    public List<Accion> encender() {
-        switch (fase) {
-            case APAGADO -> fase = Fase.PENDIENTE;
-            case CERRANDO -> relanzar = true;
+    public List<Action> turnOn() {
+        switch (phase) {
+            case OFF -> phase = Phase.PENDING;
+            case CLOSING -> relaunch = true;
             default -> {
             }
         }
         return List.of();
     }
 
-    public List<Accion> apagar(long ahoraMs) {
-        switch (fase) {
-            case PENDIENTE -> {
-                olvidar();
+    public List<Action> turnOff(long nowMs) {
+        switch (phase) {
+            case PENDING -> {
+                forget();
                 return List.of();
             }
-            case LANZANDO, ESPERANDO_PID, VIVA -> {
-                String lanz = lanzamiento;
-                Long pid = viva == null ? null : viva.pid();
-                cerrando = viva;
-                lanzamiento = null;
-                orden = null;
-                viva = null;
-                fase = Fase.CERRANDO;
-                plazo = ahoraMs + ESPERA_CIERRE_MS;
-                relanzar = false;
-                return List.of(new EscribirFin(lanz), new VigilarCierre(lanz, pid, ESPERA_CIERRE_MS));
+            case LAUNCHING, AWAITING_PID, ALIVE -> {
+                String launch = launchId;
+                Long pid = alive == null ? null : alive.pid();
+                closing = alive;
+                launchId = null;
+                command = null;
+                alive = null;
+                phase = Phase.CLOSING;
+                deadline = nowMs + CLOSE_WAIT_MS;
+                relaunch = false;
+                return List.of(new WriteClose(launch), new WatchClose(launch, pid, CLOSE_WAIT_MS));
             }
-            case CERRANDO -> {
-                relanzar = false;
+            case CLOSING -> {
+                relaunch = false;
                 return List.of();
             }
             default -> {
@@ -143,88 +143,88 @@ public final class Ciclo {
         }
     }
 
-    public List<Accion> tick(Observacion o) {
-        return switch (fase) {
-            case APAGADO, LANZANDO -> List.of();
-            case PENDIENTE -> {
-                lanzamiento = ids.get();
-                fase = Fase.LANZANDO;
-                yield List.of(new Lanzar(lanzamiento));
+    public List<Action> tick(Observation o) {
+        return switch (phase) {
+            case OFF, LAUNCHING -> List.of();
+            case PENDING -> {
+                launchId = ids.get();
+                phase = Phase.LAUNCHING;
+                yield List.of(new Launch(launchId));
             }
-            case ESPERANDO_PID -> esperandoPid(o);
-            case VIVA -> o.vivo().test(viva) ? List.of() : muerta(o.salida());
-            case CERRANDO -> {
-                boolean cerrada = o.ahoraMs() >= plazo || (cerrando != null && !o.vivo().test(cerrando));
-                if (cerrada) {
-                    boolean otraVez = relanzar;
-                    olvidar();
-                    if (otraVez) fase = Fase.PENDIENTE;
+            case AWAITING_PID -> awaitingPid(o);
+            case ALIVE -> o.alive().test(alive) ? List.of() : windowDied(o.exit());
+            case CLOSING -> {
+                boolean closed = o.nowMs() >= deadline || (closing != null && !o.alive().test(closing));
+                if (closed) {
+                    boolean again = relaunch;
+                    forget();
+                    if (again) phase = Phase.PENDING;
                 }
                 yield List.of();
             }
         };
     }
 
-    public List<Accion> lanzado(String orden, long ahoraMs) {
-        exigirLanzando();
-        this.orden = orden;
-        plazo = ahoraMs + ESPERA_PID_MS;
-        fase = Fase.ESPERANDO_PID;
+    public List<Action> launched(String command, long nowMs) {
+        requireLaunching();
+        this.command = command;
+        deadline = nowMs + PID_WAIT_MS;
+        phase = Phase.AWAITING_PID;
         return List.of();
     }
 
-    public List<Accion> rechazado(Msg motivo) {
-        exigirLanzando();
-        olvidar();
-        return List.of(new Avisar(Nivel.ERROR, Msg.of(ConsoleText.CANNOT_OPEN, "reason", motivo)), new ApagarModulo());
+    public List<Action> rejected(Msg reason) {
+        requireLaunching();
+        forget();
+        return List.of(new Notify(Level.ERROR, Msg.of(ConsoleText.CANNOT_OPEN, "reason", reason)), new DisableModule());
     }
 
-    private List<Accion> esperandoPid(Observacion o) {
-        Pid leido = o.leido();
-        if (leido != null && leido.lanzamiento().equals(lanzamiento)) {
-            if (o.vivo().test(leido)) {
-                viva = leido;
-                fase = Fase.VIVA;
+    private List<Action> awaitingPid(Observation o) {
+        Pid readPid = o.readPid();
+        if (readPid != null && readPid.launchId().equals(launchId)) {
+            if (o.alive().test(readPid)) {
+                alive = readPid;
+                phase = Phase.ALIVE;
                 return List.of();
             }
-            return muerta(o.salida());
+            return windowDied(o.exit());
         }
-        if (o.ahoraMs() >= plazo) {
-            // El F va igualmente: una ventana que arranque tarde lo encuentra y se cierra, en vez de quedarse huérfana.
-            Msg texto = Msg.of(ConsoleText.NOT_STARTED, "seconds", ESPERA_PID_MS / 1000, "command", orden);
-            String lanz = lanzamiento;
-            olvidar();
-            return List.of(new Avisar(Nivel.ERROR, texto), new EscribirFin(lanz), new ApagarModulo());
+        if (o.nowMs() >= deadline) {
+            // The F goes anyway: a window that starts late finds it and closes, instead of being left orphaned.
+            Msg text = Msg.of(ConsoleText.NOT_STARTED, "seconds", PID_WAIT_MS / 1000, "command", command);
+            String launch = launchId;
+            forget();
+            return List.of(new Notify(Level.ERROR, text), new WriteClose(launch), new DisableModule());
         }
         return List.of();
     }
 
-    private List<Accion> muerta(Salida s) {
-        String lanz = lanzamiento;
-        olvidar();
-        boolean nuestra = s != null && s.lanzamiento().equals(lanz);
-        Avisar aviso;
-        if (nuestra && s.tipo().equals(Salida.USUARIO)) {
-            aviso = new Avisar(Nivel.INFO, Msg.of(ConsoleText.CLOSED_FROM_MENU));
-        } else if (nuestra && s.tipo().equals(Salida.ERROR)) {
-            aviso = new Avisar(Nivel.ERROR, Msg.of(ConsoleText.CLOSED_BY_ERROR, "detail", s.detalle()));
+    private List<Action> windowDied(Exit e) {
+        String launch = launchId;
+        forget();
+        boolean ours = e != null && e.launchId().equals(launch);
+        Notify notice;
+        if (ours && e.type().equals(Exit.USER)) {
+            notice = new Notify(Level.INFO, Msg.of(ConsoleText.CLOSED_FROM_MENU));
+        } else if (ours && e.type().equals(Exit.ERROR)) {
+            notice = new Notify(Level.ERROR, Msg.of(ConsoleText.CLOSED_BY_ERROR, "detail", e.detail()));
         } else {
-            aviso = new Avisar(Nivel.INFO, Msg.of(ConsoleText.WINDOW_CLOSED));
+            notice = new Notify(Level.INFO, Msg.of(ConsoleText.WINDOW_CLOSED));
         }
-        return List.of(aviso, new ApagarModulo());
+        return List.of(notice, new DisableModule());
     }
 
-    private void exigirLanzando() {
-        if (fase != Fase.LANZANDO) throw new IllegalStateException("no hay ningún lanzamiento en curso");
+    private void requireLaunching() {
+        if (phase != Phase.LAUNCHING) throw new IllegalStateException("no launch is in progress");
     }
 
-    private void olvidar() {
-        fase = Fase.APAGADO;
-        lanzamiento = null;
-        orden = null;
-        plazo = 0;
-        viva = null;
-        cerrando = null;
-        relanzar = false;
+    private void forget() {
+        phase = Phase.OFF;
+        launchId = null;
+        command = null;
+        deadline = 0;
+        alive = null;
+        closing = null;
+        relaunch = false;
     }
 }

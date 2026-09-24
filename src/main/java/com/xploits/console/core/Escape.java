@@ -4,15 +4,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * El escapado de los ficheros de la consola (spec consola §5). Se escapan todos los caracteres que
- * hacen de separador en algún nivel: tabulador (campos), {@code ;} y {@code =} (claves de la
- * instantánea), {@code ,} y {@code |} (lista de módulos), y los saltos.
+ * The escaping of the console's files (console spec §5). Every character that acts as a separator at
+ * some level is escaped: tab (fields), {@code ;} and {@code =} (snapshot keys), {@code ,} and
+ * {@code |} (module list), and line breaks.
  */
 public final class Escape {
     private Escape() {
     }
 
-    public static String escapar(String s) {
+    public static String escape(String s) {
         StringBuilder sb = new StringBuilder(s.length() + 8);
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -31,7 +31,7 @@ public final class Escape {
         return sb.toString();
     }
 
-    public static String desescapar(String s) {
+    public static String unescape(String s) {
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -39,38 +39,38 @@ public final class Escape {
                 sb.append(c);
                 continue;
             }
-            if (i + 1 >= s.length()) throw new IllegalArgumentException("una barra invertida suelta al final del campo");
-            char siguiente = s.charAt(++i);
-            switch (siguiente) {
+            if (i + 1 >= s.length()) throw new IllegalArgumentException("a lone backslash at the end of the field");
+            char next = s.charAt(++i);
+            switch (next) {
                 case '\\' -> sb.append('\\');
                 case 't' -> sb.append('\t');
                 case 'n' -> sb.append('\n');
                 case 'r' -> sb.append('\r');
-                case ';', '=', ',', '|' -> sb.append(siguiente);
-                default -> throw new IllegalArgumentException("escape desconocido: \\" + siguiente);
+                case ';', '=', ',', '|' -> sb.append(next);
+                default -> throw new IllegalArgumentException("unknown escape: \\" + next);
             }
         }
         return sb.toString();
     }
 
-    /** Parte por un separador que no esté escapado. Las piezas siguen escapadas. */
-    public static List<String> partir(String s, char separador) {
-        List<String> piezas = new ArrayList<>();
-        StringBuilder actual = new StringBuilder();
+    /** Splits on a separator that is not escaped. The pieces stay escaped. */
+    public static List<String> split(String s, char separator) {
+        List<String> pieces = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (c == '\\' && i + 1 < s.length()) {
-                actual.append(c).append(s.charAt(++i));
+                current.append(c).append(s.charAt(++i));
                 continue;
             }
-            if (c == separador) {
-                piezas.add(actual.toString());
-                actual.setLength(0);
+            if (c == separator) {
+                pieces.add(current.toString());
+                current.setLength(0);
                 continue;
             }
-            actual.append(c);
+            current.append(c);
         }
-        piezas.add(actual.toString());
-        return piezas;
+        pieces.add(current.toString());
+        return pieces;
     }
 }

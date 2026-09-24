@@ -10,78 +10,78 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class InstantaneaTest {
-    private static final Instantanea COMPLETA = new Instantanea("minecraft:the_nether", 3, 1, 64, 87,
-        new Instantanea.Progreso(3, 12, 850), null, 18.5, 20, 128, 7, 0, null,
-        List.of(new Instantanea.EstadoModulo("auto-pvp", true, "SUPERFICIE"),
-            new Instantanea.EstadoModulo("auto-travel", false, "")), Language.ES);
+class GameSnapshotTest {
+    private static final GameSnapshot FULL = new GameSnapshot("minecraft:the_nether", 3, 1, 64, 87,
+        new GameSnapshot.Progress(3, 12, 850), null, 18.5, 20, 128, 7, 0, null,
+        List.of(new GameSnapshot.ModuleStatus("auto-pvp", true, "SUPERFICIE"),
+            new GameSnapshot.ModuleStatus("auto-travel", false, "")), Language.ES);
 
     @Test
-    void codificacionExactaCalculadaAMano() {
-        assertEquals("dim=minecraft:the_nether;jug=3;nue=1;coh=64;ely=87;via=3/12/850;bar=-;vid=18.5;arm=20;"
-            + "obs=128;cri=7;tel=0;yun=-;mod=auto-pvp,1,SUPERFICIE|auto-travel,0,;lng=es", COMPLETA.codificar());
+    void exactEncodingWorkedOutByHand() {
+        assertEquals("dim=minecraft:the_nether;ply=3;frn=1;fwk=64;ely=87;trv=3/12/850;swp=-;hp=18.5;arm=20;"
+            + "obs=128;cry=7;web=0;anv=-;mod=auto-pvp,1,SUPERFICIE|auto-travel,0,;lng=es", FULL.encode());
     }
 
     @Test
-    void idaYVueltaConSeparadoresEnLosTextos() {
-        Instantanea rara = new Instantanea("a;b=c", 0, 0, 0, -1, null, new Instantanea.Progreso(2, 7, 12400),
+    void roundTripWithSeparatorsInTheTexts() {
+        GameSnapshot odd = new GameSnapshot("a;b=c", 0, 0, 0, -1, null, new GameSnapshot.Progress(2, 7, 12400),
             0.0, 0, 0, 0, 0, 0,
-            List.of(new Instantanea.EstadoModulo("m,|;=\\", true, "SUPERFICIE · Foo, el de; la=base|x")), Language.EN);
-        assertEquals(rara, Instantanea.decodificar(rara.codificar()));
-        assertEquals(COMPLETA, Instantanea.decodificar(COMPLETA.codificar()));
+            List.of(new GameSnapshot.ModuleStatus("m,|;=\\", true, "SUPERFICIE · Foo, el de; la=base|x")), Language.EN);
+        assertEquals(odd, GameSnapshot.decode(odd.encode()));
+        assertEquals(FULL, GameSnapshot.decode(FULL.encode()));
     }
 
     @Test
-    void desconocidoNoEsCero() {
-        Instantanea sin = Instantanea.decodificar(Instantanea.sinJugador(List.of(), Language.EN).codificar());
-        assertNull(sin.jugadores());
-        assertNull(sin.vida());
-        assertTrue(sin.modulos().isEmpty());
+    void unknownIsNotZero() {
+        GameSnapshot empty = GameSnapshot.decode(GameSnapshot.withoutPlayer(List.of(), Language.EN).encode());
+        assertNull(empty.players());
+        assertNull(empty.health());
+        assertTrue(empty.modules().isEmpty());
     }
 
     @Test
-    void conModulosSoloCambiaLosModulos() {
-        Instantanea otra = COMPLETA.conModulos(List.of());
-        assertTrue(otra.modulos().isEmpty());
-        assertEquals(COMPLETA.cohetes(), otra.cohetes());
-        assertEquals(COMPLETA.viaje(), otra.viaje());
+    void withModulesChangesOnlyTheModules() {
+        GameSnapshot other = FULL.withModules(List.of());
+        assertTrue(other.modules().isEmpty());
+        assertEquals(FULL.fireworks(), other.fireworks());
+        assertEquals(FULL.travel(), other.travel());
     }
 
     @Test
-    void ceroSigueSiendoCero() {
-        assertEquals(0, Instantanea.decodificar(COMPLETA.codificar()).telas());
+    void zeroStaysZero() {
+        assertEquals(0, GameSnapshot.decode(FULL.encode()).webs());
     }
 
     @Test
-    void unaClaveDesconocidaSeRechazaNombrandola() {
+    void anUnknownKeyIsRejectedByName() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Instantanea.decodificar(COMPLETA.codificar() + ";zzz=1"));
+            () -> GameSnapshot.decode(FULL.encode() + ";zzz=1"));
         assertTrue(e.getMessage().contains("zzz"));
     }
 
     @Test
-    void faltarUnaClaveSeRechazaNombrandola() {
-        String sinArmadura = COMPLETA.codificar().replace("arm=20;", "");
+    void aMissingKeyIsRejectedByName() {
+        String withoutArmor = FULL.encode().replace("arm=20;", "");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Instantanea.decodificar(sinArmadura));
+            () -> GameSnapshot.decode(withoutArmor));
         assertTrue(e.getMessage().contains("arm"));
     }
 
     @Test
     void languageTravelsInTheSnapshot() {
-        Instantanea i = Instantanea.sinJugador(List.of(), Language.ES);
-        assertEquals(Language.ES, Instantanea.decodificar(i.codificar()).idioma());
+        GameSnapshot s = GameSnapshot.withoutPlayer(List.of(), Language.ES);
+        assertEquals(Language.ES, GameSnapshot.decode(s.encode()).language());
     }
 
     @Test
     void unknownLanguageFallsBackToEnglish() {
-        String s = Instantanea.sinJugador(List.of(), Language.ES).codificar().replace("lng=es", "lng=fr");
-        assertEquals(Language.EN, Instantanea.decodificar(s).idioma());
+        String s = GameSnapshot.withoutPlayer(List.of(), Language.ES).encode().replace("lng=es", "lng=fr");
+        assertEquals(Language.EN, GameSnapshot.decode(s).language());
     }
 
     @Test
     void languageIsRequired() {
-        String s = Instantanea.sinJugador(List.of(), Language.ES).codificar().replace(";lng=es", "");
-        assertThrows(IllegalArgumentException.class, () -> Instantanea.decodificar(s));
+        String s = GameSnapshot.withoutPlayer(List.of(), Language.ES).encode().replace(";lng=es", "");
+        assertThrows(IllegalArgumentException.class, () -> GameSnapshot.decode(s));
     }
 }

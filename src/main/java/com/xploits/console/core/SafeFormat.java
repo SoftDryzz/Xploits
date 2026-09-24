@@ -5,23 +5,23 @@ import com.xploits.shared.core.i18n.Catalog;
 import java.util.IllegalFormatException;
 
 /**
- * El {@code String.format} de las clases base (spec consola §11). Meteor formatea el mensaje antes
- * de mandarlo al chat; si la plantilla está rota, lanza y el mensaje se pierde. Aquí se formatea
- * igual —mismo método, mismo locale por defecto— pero un formato roto no se come el mensaje: se
- * registra la plantilla cruda, en ERROR y diciendo qué pasó.
+ * The base classes' {@code String.format} (console spec §11). Meteor formats the message before
+ * sending it to chat; if the template is broken, it throws and the message is lost. Here it is
+ * formatted the same way (same method, same default locale) but a broken format does not swallow the
+ * message: the raw template is logged, at ERROR and saying what happened.
  */
-public final class Formato {
-    private Formato() {
+public final class SafeFormat {
+    private SafeFormat() {
     }
 
-    public record Resultado(String texto, boolean roto) {
+    public record Result(String text, boolean broken) {
     }
 
-    public static Resultado aplicar(Catalog textos, String plantilla, Object... args) {
+    public static Result apply(Catalog texts, String template, Object... args) {
         try {
-            return new Resultado(String.format(plantilla, args), false);
+            return new Result(String.format(template, args), false);
         } catch (IllegalFormatException e) {
-            return new Resultado(plantilla + " " + textos.render(ConsoleText.BROKEN_FORMAT, "error", e.getClass().getSimpleName()), true);
+            return new Result(template + " " + texts.render(ConsoleText.BROKEN_FORMAT, "error", e.getClass().getSimpleName()), true);
         }
     }
 }

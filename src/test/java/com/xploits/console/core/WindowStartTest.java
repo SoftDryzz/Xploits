@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ArranqueTest {
+class WindowStartTest {
     private static final Catalog ES = Catalog.load(Language.ES, p -> {
         throw new AssertionError(p);
     });
@@ -20,82 +20,82 @@ class ArranqueTest {
         throw new AssertionError(p);
     });
     private static final Path JAVA = Path.of("C:\\j\\bin\\java.exe");
-    private static final Path CARPETA = Path.of("C:\\mc\\meteor-client\\xploits\\consola");
+    private static final Path FOLDER = Path.of("C:\\mc\\meteor-client\\xploits\\console");
 
     @Test
-    void laOrdenExactaConUnaRutaConEspacios() {
-        Arranque.Resultado r = Arranque.preparar(JAVA, true, List.of(Path.of("C:\\mods con espacio\\xploits-0.1.0.jar")),
-            CARPETA, 1234, "abc", "s1", Language.ES);
-        String interna = "chcp 65001 >nul & \"C:\\j\\bin\\java.exe\" -cp "
-            + "\"C:\\mods con espacio\\xploits-0.1.0.jar\" com.xploits.console.ventana.ConsoleMain "
-            + "\"C:\\mc\\meteor-client\\xploits\\consola\" 1234 abc s1 es";
-        assertEquals(new Arranque.Orden(List.of("cmd.exe", "/c", "start", "Xploits consola", "cmd.exe", "/c", interna), interna), r);
+    void theExactCommandWithAPathWithSpaces() {
+        WindowStart.Result r = WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\mods with spaces\\xploits-0.1.0.jar")),
+            FOLDER, 1234, "abc", "s1", Language.ES);
+        String inner = "chcp 65001 >nul & \"C:\\j\\bin\\java.exe\" -cp "
+            + "\"C:\\mods with spaces\\xploits-0.1.0.jar\" com.xploits.console.window.ConsoleMain "
+            + "\"C:\\mc\\meteor-client\\xploits\\console\" 1234 abc s1 es";
+        assertEquals(new WindowStart.Command(List.of("cmd.exe", "/c", "start", "Xploits console", "cmd.exe", "/c", inner), inner), r);
     }
 
     @Test
-    void elTituloLlevaUnEspacioPorqueSinElStartLoTomaPorElPrograma() {
-        assertTrue(Arranque.TITULO.contains(" "));
+    void theTitleHasASpaceBecauseWithoutItStartTakesItForTheProgram() {
+        assertTrue(WindowStart.TITLE.contains(" "));
     }
 
     @Test
-    void unaRutaConAmpersandSeRechazaNombrandola() {
-        Arranque.Resultado r = Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m\\x.jar")),
-            Path.of("C:\\Juegos & cosas\\x"), 1, "a", "s", Language.ES);
-        Arranque.Rechazo rechazo = assertInstanceOf(Arranque.Rechazo.class, r);
-        String motivo = ES.render(rechazo.motivo());
-        assertTrue(motivo.contains("C:\\Juegos & cosas\\x"), motivo);
-        assertTrue(motivo.contains("«&»"), motivo);
+    void aPathWithAnAmpersandIsRejectedByName() {
+        WindowStart.Result r = WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m\\x.jar")),
+            Path.of("C:\\Games & stuff\\x"), 1, "a", "s", Language.ES);
+        WindowStart.Rejection rejection = assertInstanceOf(WindowStart.Rejection.class, r);
+        String reason = ES.render(rejection.reason());
+        assertTrue(reason.contains("C:\\Games & stuff\\x"), reason);
+        assertTrue(reason.contains("«&»"), reason);
     }
 
     @Test
-    void cadaCaracterQueCmdInterpretaSeRechaza() {
+    void everyCharacterCmdInterpretsIsRejected() {
         for (String c : List.of("&", "^", "%", "!")) {
-            Arranque.Resultado r = Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m" + c + "n\\x.jar")), CARPETA, 1, "a", "s", Language.ES);
-            assertInstanceOf(Arranque.Rechazo.class, r, c);
+            WindowStart.Result r = WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m" + c + "n\\x.jar")), FOLDER, 1, "a", "s", Language.ES);
+            assertInstanceOf(WindowStart.Rejection.class, r, c);
         }
     }
 
     @Test
-    void sinJavaOSinJarNoSeLanza() {
-        assertTrue(ES.render(assertInstanceOf(Arranque.Rechazo.class,
-            Arranque.preparar(JAVA, false, List.of(Path.of("C:\\m\\x.jar")), CARPETA, 1, "a", "s", Language.ES)).motivo()).contains("java.exe"));
-        assertTrue(ES.render(assertInstanceOf(Arranque.Rechazo.class,
-            Arranque.preparar(JAVA, true, List.of(), CARPETA, 1, "a", "s", Language.ES)).motivo()).contains("jar"));
+    void withoutJavaOrJarNothingIsLaunched() {
+        assertTrue(ES.render(assertInstanceOf(WindowStart.Rejection.class,
+            WindowStart.prepare(JAVA, false, List.of(Path.of("C:\\m\\x.jar")), FOLDER, 1, "a", "s", Language.ES)).reason()).contains("java.exe"));
+        assertTrue(ES.render(assertInstanceOf(WindowStart.Rejection.class,
+            WindowStart.prepare(JAVA, true, List.of(), FOLDER, 1, "a", "s", Language.ES)).reason()).contains("jar"));
     }
 
     @Test
-    void enDesarrolloLasCarpetasSeUnenConPuntoYComa() {
-        Arranque.Orden o = assertInstanceOf(Arranque.Orden.class, Arranque.preparar(JAVA, true,
-            List.of(Path.of("C:\\a\\classes"), Path.of("C:\\a\\resources")), CARPETA, 1, "a", "s", Language.ES));
-        assertTrue(o.descripcion().contains("-cp \"C:\\a\\classes;C:\\a\\resources\""), o.descripcion());
+    void inDevelopmentTheFoldersAreJoinedWithSemicolons() {
+        WindowStart.Command c = assertInstanceOf(WindowStart.Command.class, WindowStart.prepare(JAVA, true,
+            List.of(Path.of("C:\\a\\classes"), Path.of("C:\\a\\resources")), FOLDER, 1, "a", "s", Language.ES));
+        assertTrue(c.description().contains("-cp \"C:\\a\\classes;C:\\a\\resources\""), c.description());
     }
 
     @Test
-    void unIdDeLanzamientoRaroEsUnFalloDelAdaptador() {
+    void aStrangeLaunchIdIsAnAdapterBug() {
         assertThrows(IllegalArgumentException.class,
-            () -> Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), CARPETA, 1, "a b", "s", Language.ES));
+            () -> WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), FOLDER, 1, "a b", "s", Language.ES));
     }
 
     @Test
-    void unaSesionRaraEsUnFalloDelAdaptador() {
+    void aStrangeSessionIsAnAdapterBug() {
         assertThrows(IllegalArgumentException.class,
-            () -> Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), CARPETA, 1, "a", "s 1", Language.ES));
+            () -> WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), FOLDER, 1, "a", "s 1", Language.ES));
         assertThrows(IllegalArgumentException.class,
-            () -> Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), CARPETA, 1, "a", "S1", Language.ES));
+            () -> WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), FOLDER, 1, "a", "S1", Language.ES));
     }
 
     @Test
     void theLanguageIsTheLastArgument() {
-        Arranque.Orden o = assertInstanceOf(Arranque.Orden.class,
-            Arranque.preparar(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), CARPETA, 1, "a", "s", Language.EN));
-        String[] tokens = o.descripcion().split(" ");
+        WindowStart.Command c = assertInstanceOf(WindowStart.Command.class,
+            WindowStart.prepare(JAVA, true, List.of(Path.of("C:\\m\\x.jar")), FOLDER, 1, "a", "s", Language.EN));
+        String[] tokens = c.description().split(" ");
         assertEquals("en", tokens[tokens.length - 1]);
     }
 
     @Test
     void aRejectionInEnglish() {
-        Arranque.Rechazo r = assertInstanceOf(Arranque.Rechazo.class,
-            Arranque.preparar(JAVA, true, List.of(), CARPETA, 1, "a", "s", Language.EN));
-        assertEquals("the addon's jar is not on disk, and the window runs from it", EN.render(r.motivo()));
+        WindowStart.Rejection r = assertInstanceOf(WindowStart.Rejection.class,
+            WindowStart.prepare(JAVA, true, List.of(), FOLDER, 1, "a", "s", Language.EN));
+        assertEquals("the addon's jar is not on disk, and the window runs from it", EN.render(r.reason()));
     }
 }

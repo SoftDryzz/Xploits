@@ -6,37 +6,37 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * La última red contra las coordenadas (spec consola §7). Los sitios que las llevan se marcan en el
- * origen; esto existe por si alguno se escapa sin marcar.
+ * The last net against coordinates (console spec §7). The places that carry them are marked at the
+ * source; this exists in case one slips through unmarked.
  *
- * <p>Falla cerrado y con patrones precisos: un falso positivo cuesta una línea oculta, que además
- * dice que lo está, y un falso negativo cuesta la base del jugador.
+ * <p>It fails closed and with precise patterns: a false positive costs a hidden line, which also says
+ * it is hidden, and a false negative costs the player's base.
  */
-public final class Centinela {
-    private static final List<Pattern> PATRONES = List.of(
-        // El formato de ContainerKey.id(): dimension@x,y,z.
+public final class CoordinateSentinel {
+    private static final List<Pattern> PATTERNS = List.of(
+        // The ContainerKey.id() format: dimension@x,y,z.
         Pattern.compile("@-?\\d+,-?\\d+,-?\\d+"),
-        // Un goal o goto de Baritone con dos o tres enteros, con cualquier prefijo o sin él.
+        // A Baritone goal or goto with two or three integers, with any prefix or none.
         Pattern.compile("(?<![\\p{L}\\p{N}])[^\\s\\p{L}\\p{N}]?(?:goal|goto)\\s+-?\\d+(?:\\s+-?\\d+){1,2}(?!\\d)",
             Pattern.CASE_INSENSITIVE),
-        // El fragmento antiguo de AutoTravel.status(): "en 1200, -800".
+        // The old AutoTravel.status() fragment, in Spanish: "en 1200, -800".
         Pattern.compile("(?<![\\p{L}\\p{N}])en -?\\d{3,}, -?\\d{3,}(?!\\d)"),
-        // Su equivalente en inglés: "at 1200, -800".
+        // Its English equivalent: "at 1200, -800".
         Pattern.compile("(?<![\\p{L}\\p{N}])at -?\\d{3,}, -?\\d{3,}(?!\\d)"));
 
-    private Centinela() {
+    private CoordinateSentinel() {
     }
 
-    /** Si el texto tiene pinta de llevar coordenadas. */
-    public static boolean sospecha(String texto) {
-        for (Pattern patron : PATRONES) {
-            if (patron.matcher(texto).find()) return true;
+    /** Whether the text looks like it carries coordinates. */
+    public static boolean isSuspect(String text) {
+        for (Pattern pattern : PATTERNS) {
+            if (pattern.matcher(text).find()) return true;
         }
         return false;
     }
 
-    /** Lo que queda de un texto retenido: que se retuvo y de quién venía, nada más. */
-    public static Msg retenido(String fuente) {
-        return Msg.of(ConsoleText.HELD, "source", fuente);
+    /** What is left of a held text: that it was held and whom it came from, nothing else. */
+    public static Msg held(String source) {
+        return Msg.of(ConsoleText.HELD, "source", source);
     }
 }

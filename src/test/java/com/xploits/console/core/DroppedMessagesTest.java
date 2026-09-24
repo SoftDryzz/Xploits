@@ -8,16 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class PerdidasTest {
+class DroppedMessagesTest {
     @Test
-    void soloLaPrimeraAvisaYSeDrenanUnaVez() {
-        Perdidas p = new Perdidas();
-        assertTrue(p.descartado());
-        assertFalse(p.descartado());
-        assertFalse(p.descartado());
-        assertEquals(OptionalLong.of(3), p.drenar());
-        assertEquals(OptionalLong.empty(), p.drenar());
-        assertFalse(p.descartado());
-        assertEquals(OptionalLong.of(1), p.drenar());
+    void onlyTheFirstWarnsAndTheyDrainOnce() {
+        DroppedMessages d = new DroppedMessages();
+        assertTrue(d.recordDrop());
+        assertFalse(d.recordDrop());
+        assertFalse(d.recordDrop());
+        assertEquals(OptionalLong.of(3), d.drain());
+        assertEquals(OptionalLong.empty(), d.drain());
+        assertFalse(d.recordDrop());
+        assertEquals(OptionalLong.of(1), d.drain());
     }
 }

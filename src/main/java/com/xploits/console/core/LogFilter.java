@@ -2,31 +2,31 @@ package com.xploits.console.core;
 
 import com.xploits.shared.core.i18n.Catalog;
 
-/** Qué mensajes enseña el registro según la opción del menú. */
-public enum Filtro {
-    TODO(WindowText.FILTER_ALL),
+/** Which messages the log pane shows, by menu option. */
+public enum LogFilter {
+    ALL(WindowText.FILTER_ALL),
     PVP(WindowText.FILTER_PVP),
     TRAVEL(WindowText.FILTER_TRAVEL),
     SWEEP(WindowText.FILTER_SWEEP),
-    AVISOS(WindowText.FILTER_WARNINGS);
+    WARNINGS(WindowText.FILTER_WARNINGS);
 
-    private final WindowText etiqueta;
+    private final WindowText label;
 
-    Filtro(WindowText etiqueta) {
-        this.etiqueta = etiqueta;
+    LogFilter(WindowText label) {
+        this.label = label;
     }
 
-    public String etiqueta(Catalog textos) {
-        return textos.render(etiqueta);
+    public String label(Catalog texts) {
+        return texts.render(label);
     }
 
-    public boolean acepta(Registro.Mensaje m) {
+    public boolean accepts(LogEntry.Message m) {
         return switch (this) {
-            case TODO -> true;
-            case PVP -> m.fuente().equals("auto-pvp");
-            case TRAVEL -> m.fuente().equals("auto-travel");
-            case SWEEP -> m.fuente().equals("nether-sweep");
-            case AVISOS -> m.nivel() != Nivel.INFO;
+            case ALL -> true;
+            case PVP -> m.source().equals("auto-pvp");
+            case TRAVEL -> m.source().equals("auto-travel");
+            case SWEEP -> m.source().equals("nether-sweep");
+            case WARNINGS -> m.level() != Level.INFO;
         };
     }
 }

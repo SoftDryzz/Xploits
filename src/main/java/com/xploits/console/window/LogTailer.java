@@ -1,7 +1,7 @@
-package com.xploits.console.ventana;
+package com.xploits.console.window;
 
-import com.xploits.console.core.Lector;
-import com.xploits.console.core.Registro;
+import com.xploits.console.core.LineReader;
+import com.xploits.console.core.LogEntry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -14,79 +14,79 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Sigue el final de {@code vivo.log} mientras el juego lo escribe y lo rota (spec consola §5).
+ * Follows the end of {@code live.log} while the game writes and rotates it (console spec §5).
  *
- * <p>Nunca deja un fichero abierto: abre por NIO, lee y cierra en cada vuelta. Un fichero abierto
- * con {@code FileInputStream} no comparte el borrado en Windows y bloquearía la rotación del juego.
+ * <p>It never leaves a file open: it opens through NIO, reads and closes on every round. A file opened
+ * with {@code FileInputStream} does not share deletion on Windows and would block the game's rotation.
  */
-final class Seguidor {
-    private final Path vivo;
-    private final Path anterior;
-    private final Lector lector = new Lector();
-    private String generacion;
-    private long leido;
+final class LogTailer {
+    private final Path liveLog;
+    private final Path previousLog;
+    private final LineReader reader = new LineReader();
+    private String generation;
+    private long offset;
 
-    Seguidor(Path carpeta) {
-        vivo = carpeta.resolve("vivo.log");
-        anterior = carpeta.resolve("vivo.1.log");
+    LogTailer(Path folder) {
+        liveLog = folder.resolve("live.log");
+        previousLog = folder.resolve("live.1.log");
     }
 
-    /** Las líneas completas nuevas desde la vuelta anterior, sin la cabecera. */
-    List<String> leer() throws IOException {
-        if (!Files.exists(vivo)) return List.of();
-        String actual = generacionDe(vivo);
-        if (actual == null) return List.of();
-        List<String> lineas = new ArrayList<>();
-        if (generacion == null) {
-            generacion = actual;
-            leido = 0;
-            lector.olvidar();
-        } else if (Lector.detectar(leido, Files.size(vivo), generacion, actual) == Lector.Cambio.ROTADO) {
-            // Lo que quedaba del fichero rotado, si es el que se estaba siguiendo.
-            if (Files.exists(anterior) && generacion.equals(generacionDe(anterior))) {
-                lineas.addAll(cola(anterior, leido).lineas());
+    /** The new complete lines since the previous round, without the header. */
+    List<String> read() throws IOException {
+        if (!Files.exists(liveLog)) return List.of();
+        String current = generationOf(liveLog);
+        if (current == null) return List.of();
+        List<String> lines = new ArrayList<>();
+        if (generation == null) {
+            generation = current;
+            offset = 0;
+            reader.forget();
+        } else if (LineReader.detect(offset, Files.size(liveLog), generation, current) == LineReader.Change.ROTATED) {
+            // What was left of the rotated file, if it is the one being followed.
+            if (Files.exists(previousLog) && generation.equals(generationOf(previousLog))) {
+                lines.addAll(tail(previousLog, offset).lines());
             }
-            generacion = actual;
-            leido = 0;
-            lector.olvidar();
+            generation = current;
+            offset = 0;
+            reader.forget();
         }
-        Cola cola = cola(vivo, leido);
-        leido = cola.hasta();
-        lineas.addAll(cola.lineas());
-        lineas.removeIf(Registro::esCabecera);
-        return lineas;
+        Tail tail = tail(liveLog, offset);
+        offset = tail.upTo();
+        lines.addAll(tail.lines());
+        lines.removeIf(LogEntry::isHeader);
+        return lines;
     }
 
-    private record Cola(List<String> lineas, long hasta) {
+    private record Tail(List<String> lines, long upTo) {
     }
 
-    private Cola cola(Path fichero, long desde) throws IOException {
-        try (FileChannel canal = FileChannel.open(fichero, StandardOpenOption.READ)) {
-            if (canal.size() <= desde) return new Cola(List.of(), desde);
-            canal.position(desde);
+    private Tail tail(Path file, long from) throws IOException {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+            if (channel.size() <= from) return new Tail(List.of(), from);
+            channel.position(from);
             ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
-            List<String> lineas = new ArrayList<>();
-            long posicion = desde;
+            List<String> lines = new ArrayList<>();
+            long position = from;
             int n;
-            while ((n = canal.read(buffer)) > 0) {
-                lineas.addAll(lector.alimentar(buffer.array(), 0, n));
-                posicion += n;
+            while ((n = channel.read(buffer)) > 0) {
+                lines.addAll(reader.feed(buffer.array(), 0, n));
+                position += n;
                 buffer.clear();
             }
-            return new Cola(lineas, posicion);
+            return new Tail(lines, position);
         }
     }
 
-    /** La generación de la cabecera, o null si la primera línea aún no está entera. Lanza si es de otra versión. */
-    private static String generacionDe(Path fichero) throws IOException {
-        try (FileChannel canal = FileChannel.open(fichero, StandardOpenOption.READ)) {
+    /** The header's generation, or null if the first line is not whole yet. Throws if it is from another version. */
+    private static String generationOf(Path file) throws IOException {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             ByteBuffer buffer = ByteBuffer.allocate(256);
-            int n = canal.read(buffer);
+            int n = channel.read(buffer);
             if (n <= 0) return null;
-            String inicio = new String(buffer.array(), 0, n, StandardCharsets.UTF_8);
-            int salto = inicio.indexOf('\n');
-            if (salto < 0) return null;
-            return Registro.generacionDe(inicio.substring(0, salto));
+            String start = new String(buffer.array(), 0, n, StandardCharsets.UTF_8);
+            int newline = start.indexOf('\n');
+            if (newline < 0) return null;
+            return LogEntry.generationOf(start.substring(0, newline));
         }
     }
 }

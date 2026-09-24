@@ -10,75 +10,84 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RegistroTest {
+class LogEntryTest {
     @Test
-    void codificacionExactaDeUnMensaje() {
+    void exactEncodingOfAMessage() {
         assertEquals("R\t7\t1000\ts1\tW\tauto-pvp\ta\\tb",
-            new Registro.Mensaje(7, 1000, "s1", Nivel.AVISO, "auto-pvp", "a\tb").codificar());
+            new LogEntry.Message(7, 1000, "s1", Level.WARNING, "auto-pvp", "a\tb").encode());
     }
 
     @Test
-    void cadaTipoVaYVuelve() {
-        Instantanea foto = Instantanea.sinJugador(List.of(new Instantanea.EstadoModulo("auto-pvp", true, "x;y")), Language.EN);
-        for (Registro r : List.of(
-                new Registro.Mensaje(1, 2, "s", Nivel.ERROR, "xploits", "50% \\ fin\\"),
-                new Registro.Foto(3, 4, "s", foto),
-                new Registro.Juego(5, 6, "s", "inicio"),
-                new Registro.Fin(7, 8, "s", "l1", "consola apagada"),
-                new Registro.Perdida(9, 10, "s", 42))) {
-            assertEquals(r, Registro.decodificar(r.codificar()));
+    void eachTypeRoundTrips() {
+        GameSnapshot snapshot = GameSnapshot.withoutPlayer(List.of(new GameSnapshot.ModuleStatus("auto-pvp", true, "x;y")), Language.EN);
+        for (LogEntry e : List.of(
+                new LogEntry.Message(1, 2, "s", Level.ERROR, "xploits", "50% \\ end\\"),
+                new LogEntry.Snapshot(3, 4, "s", snapshot),
+                new LogEntry.Game(5, 6, "s", "start"),
+                new LogEntry.Close(7, 8, "s", "l1", "console off"),
+                new LogEntry.Lost(9, 10, "s", 42))) {
+            assertEquals(e, LogEntry.decode(e.encode()));
         }
     }
 
     @Test
-    void unaBarraSueltaSeRechaza() {
-        assertThrows(IllegalArgumentException.class, () -> Registro.decodificar("R\t1\t2\ts\tI\tf\ttexto\\"));
+    void aLoneBackslashIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.decode("R\t1\t2\ts\tI\tf\ttext\\"));
     }
 
     @Test
-    void camposDeMasODeMenosSeRechazan() {
-        assertThrows(IllegalArgumentException.class, () -> Registro.decodificar("J\t1\t2\ts"));
-        assertThrows(IllegalArgumentException.class, () -> Registro.decodificar("J\t1\t2\ts\tm\textra"));
+    void tooManyOrTooFewFieldsAreRejected() {
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.decode("J\t1\t2\ts"));
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.decode("J\t1\t2\ts\tm\textra"));
     }
 
     @Test
-    void unTipoDesconocidoSeRechazaNombrandolo() {
+    void anUnknownTypeIsRejectedByName() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Registro.decodificar("X\t1\t2\ts\tm"));
+            () -> LogEntry.decode("X\t1\t2\ts\tm"));
         assertTrue(e.getMessage().contains("X"));
     }
 
     @Test
-    void unaSecuenciaNoNumericaSeRechaza() {
+    void aNonNumericSequenceIsRejected() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Registro.decodificar("J\tuno\t2\ts\tm"));
+            () -> LogEntry.decode("J\tone\t2\ts\tm"));
         assertTrue(e.getMessage().contains("seq"));
     }
 
     @Test
-    void unNivelDesconocidoSeRechaza() {
-        assertThrows(IllegalArgumentException.class, () -> Registro.decodificar("R\t1\t2\ts\tX\tf\tt"));
+    void anUnknownLevelIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.decode("R\t1\t2\ts\tX\tf\tt"));
     }
 
     @Test
-    void laCabeceraLlevaVersionYGeneracion() {
-        assertEquals("#xploits-consola\t2\tabc", Registro.cabecera("abc"));
-        assertEquals("abc", Registro.generacionDe(Registro.cabecera("abc")));
-        assertTrue(Registro.esCabecera(Registro.cabecera("abc")));
-        assertFalse(Registro.esCabecera("R\t1\t2\ts\tI\tf\tt"));
+    void theHeaderCarriesVersionAndGeneration() {
+        assertEquals("#xploits-console\t3\tabc", LogEntry.header("abc"));
+        assertEquals("abc", LogEntry.generationOf(LogEntry.header("abc")));
+        assertTrue(LogEntry.isHeader(LogEntry.header("abc")));
+        assertFalse(LogEntry.isHeader("R\t1\t2\ts\tI\tf\tt"));
     }
 
     @Test
-    void unaCabeceraDeOtraVersionSeRechazaDiciendoCual() {
+    void aHeaderFromAnotherVersionIsRejectedSayingWhich() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-            () -> Registro.generacionDe("#xploits-consola\t3\tabc"));
-        assertTrue(e.getMessage().contains("3"));
-        assertThrows(IllegalArgumentException.class, () -> Registro.generacionDe("hola"));
+            () -> LogEntry.generationOf("#xploits-console\t4\tabc"));
+        assertTrue(e.getMessage().contains("4"));
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.generationOf("hola"));
     }
 
     @Test
     void versionOneHeaderIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> Registro.generacionDe("#xploits-consola\t1\tabc"));
-        assertEquals("abc", Registro.generacionDe("#xploits-consola\t2\tabc"));
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.generationOf("#xploits-console\t1\tabc"));
+        assertEquals("abc", LogEntry.generationOf("#xploits-console\t3\tabc"));
+    }
+
+    @Test
+    void versionTwoHeaderIsRejected() {
+        // Version 2 is the Spanish-named stream (vivo.log) from before 0.4.0: a window left open across the
+        // update must not read it as its own.
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.generationOf("#xploits-consola\t2\tabc"));
+        assertThrows(IllegalArgumentException.class, () -> LogEntry.generationOf("#xploits-console\t2\tabc"));
+        assertFalse(LogEntry.isHeader("#xploits-consola\t2\tabc"));
     }
 }

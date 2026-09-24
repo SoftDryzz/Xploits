@@ -2,12 +2,12 @@ package com.xploits.console;
 
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.ConsoleText;
-import com.xploits.console.core.Historial;
-import com.xploits.console.core.Instantanea;
-import com.xploits.console.core.Nivel;
-import com.xploits.console.core.Perdidas;
-import com.xploits.console.core.Registro;
-import com.xploits.console.core.Rotacion;
+import com.xploits.console.core.DroppedMessages;
+import com.xploits.console.core.GameSnapshot;
+import com.xploits.console.core.History;
+import com.xploits.console.core.Level;
+import com.xploits.console.core.LogEntry;
+import com.xploits.console.core.LogRotation;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.i18n.Catalog;
 import com.xploits.shared.core.i18n.Msg;
@@ -33,227 +33,227 @@ import java.util.function.LongFunction;
 import java.util.stream.Stream;
 
 /**
- * Escribe {@code vivo.log} y el historial desde un hilo propio (spec consola §10), el primero del
- * código de Xploits.
+ * Writes {@code live.log} and the history from a thread of its own (console spec §10), the first one
+ * in Xploits' code.
  *
- * <p>Las reglas: el hilo del juego nunca espera aquí -salvo al apagar la consola, cuando
- * {@link #cerrar()} espera como mucho medio segundo a que el escritor termine su lote (el bucle sale
- * a los 200 ms de ver {@code parando})- ni recibe una excepción de aquí; la cola es acotada y lo que
- * no cabe se cuenta y se dice; {@code seq} se asigna al escribir, bajo el mismo cerrojo que la
- * escritura, así que en el fichero siempre crece; y un error de este hilo nunca vuelve a entrar por
- * el sumidero, o se alimentaría a sí mismo.
+ * <p>The rules: the game thread never waits here (except when the console turns off, when
+ * {@link #close()} waits half a second at most for the writer to finish its batch; the loop exits
+ * within 200 ms of seeing {@code stopping}) nor gets an exception from here; the queue is bounded and
+ * what does not fit is counted and reported; {@code seq} is assigned when writing, under the same lock
+ * as the write, so it always grows in the file; and an error on this thread never comes back in
+ * through the sink, or it would feed itself.
  */
-final class Sumidero {
-    private static final int CAPACIDAD = 4_096;
-    private static final long LATIDO_MS = 1_000;
+final class ConsoleSink {
+    private static final int CAPACITY = 4_096;
+    private static final long HEARTBEAT_MS = 1_000;
 
-    private final Path vivo;
-    private final Path anterior;
-    private final Path historial;
-    private final ZoneId zona = ZoneId.systemDefault();
-    private final BlockingQueue<LongFunction<Registro>> cola = new ArrayBlockingQueue<>(CAPACIDAD);
-    private final AtomicReference<Ofrecida> foto = new AtomicReference<>();
-    private final Perdidas perdidas = new Perdidas();
-    private Thread hilo;
-    private volatile boolean parando;
-    private Instantanea ultimaFoto;
-    private long ultimaFotoMs;
-    private LocalDate diaPodado;
-    private boolean falloAvisado;
-    private boolean vueltaFallidaAvisada;
+    private final Path liveLog;
+    private final Path previousLog;
+    private final Path historyDir;
+    private final ZoneId zone = ZoneId.systemDefault();
+    private final BlockingQueue<LongFunction<LogEntry>> queue = new ArrayBlockingQueue<>(CAPACITY);
+    private final AtomicReference<OfferedSnapshot> offered = new AtomicReference<>();
+    private final DroppedMessages dropped = new DroppedMessages();
+    private Thread thread;
+    private volatile boolean stopping;
+    private GameSnapshot lastSnapshot;
+    private long lastSnapshotMs;
+    private LocalDate prunedDay;
+    private boolean failureReported;
+    private boolean failedRoundReported;
 
-    Sumidero(Path carpeta) {
-        vivo = carpeta.resolve("vivo.log");
-        anterior = carpeta.resolve("vivo.1.log");
-        historial = carpeta.resolve("historial");
+    ConsoleSink(Path folder) {
+        liveLog = folder.resolve("live.log");
+        previousLog = folder.resolve("live.1.log");
+        historyDir = folder.resolve("history");
     }
 
-    void arrancar() throws IOException {
-        Files.createDirectories(historial);
-        if (!Files.exists(vivo) || !cabeceraValida()) empezarFichero(false);
-        podar();
-        hilo = new Thread(this::bucle, "xploits-consola-escritor");
-        hilo.setDaemon(true);
-        hilo.start();
+    void start() throws IOException {
+        Files.createDirectories(historyDir);
+        if (!Files.exists(liveLog) || !hasValidHeader()) startFile(false);
+        prune();
+        thread = new Thread(this::loop, "xploits-console-writer");
+        thread.setDaemon(true);
+        thread.start();
     }
 
-    void mensaje(Nivel nivel, String fuente, String texto) {
+    void message(Level level, String source, String text) {
         long ms = System.currentTimeMillis();
-        ofrecer(seq -> new Registro.Mensaje(seq, ms, Salida.SESION, nivel, fuente, texto));
+        offer(seq -> new LogEntry.Message(seq, ms, ConsoleOutput.SESSION, level, source, text));
     }
 
-    void juego(String motivo) {
+    void gameEvent(String reason) {
         long ms = System.currentTimeMillis();
-        ofrecer(seq -> new Registro.Juego(seq, ms, Salida.SESION, motivo));
+        offer(seq -> new LogEntry.Game(seq, ms, ConsoleOutput.SESSION, reason));
     }
 
-    void fin(String lanzamiento, String motivo) {
+    void sendClose(String launchId, String reason) {
         long ms = System.currentTimeMillis();
-        ofrecer(seq -> new Registro.Fin(seq, ms, Salida.SESION, lanzamiento, motivo));
+        offer(seq -> new LogEntry.Close(seq, ms, ConsoleOutput.SESSION, launchId, reason));
     }
 
     /**
-     * Desde el hilo del juego: guarda la foto con la hora a la que el juego la ofrece. Esa hora es la
-     * que lleva la {@code S}, así que el latido mide al juego y no al escritor.
+     * From the game thread: keeps the snapshot with the time at which the game offers it. That time is
+     * the one the {@code S} carries, so the heartbeat measures the game and not the writer.
      */
-    void foto(Instantanea instantanea) {
-        foto.set(new Ofrecida(instantanea, System.currentTimeMillis()));
+    void snapshot(GameSnapshot snapshot) {
+        offered.set(new OfferedSnapshot(snapshot, System.currentTimeMillis()));
     }
 
-    /** Una foto ofrecida por el juego y la hora a la que la ofreció. */
-    private record Ofrecida(Instantanea instantanea, long ms) {
+    /** A snapshot offered by the game and the time at which it offered it. */
+    private record OfferedSnapshot(GameSnapshot snapshot, long ms) {
     }
 
-    private void ofrecer(LongFunction<Registro> registro) {
-        if (!cola.offer(registro) && perdidas.descartado()) {
-            Salida.alertar(Msg.of(ConsoleText.QUEUE_FULL));
+    private void offer(LongFunction<LogEntry> entry) {
+        if (!queue.offer(entry) && dropped.recordDrop()) {
+            ConsoleOutput.alert(Msg.of(ConsoleText.QUEUE_FULL));
         }
     }
 
-    /** Para el hilo y escribe lo que quede. Se llama al apagar la consola. */
-    void cerrar() {
-        parando = true;
-        if (hilo != null) {
+    /** Stops the thread and writes what is left. Called when the console turns off. */
+    void close() {
+        stopping = true;
+        if (thread != null) {
             try {
-                hilo.join(500);
+                thread.join(500);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
-        vaciar();
+        drain();
     }
 
-    /** Desde el gancho de apagado del juego: para al escritor, lo pendiente y la despedida. */
-    void despedirDelJuego() {
-        parando = true;
-        if (hilo != null) {
+    /** From the game's shutdown hook: stops the writer, then what is pending and the goodbye. */
+    void writeGameEnd() {
+        stopping = true;
+        if (thread != null) {
             try {
-                hilo.join(1_000);
+                thread.join(1_000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
         long ms = System.currentTimeMillis();
-        vaciar();
-        escribir(List.of(seq -> new Registro.Juego(seq, ms, Salida.SESION, "fin")));
+        drain();
+        write(List.of(seq -> new LogEntry.Game(seq, ms, ConsoleOutput.SESSION, "end")));
     }
 
-    private void bucle() {
-        while (!parando) {
+    private void loop() {
+        while (!stopping) {
             try {
-                List<LongFunction<Registro>> lote = new ArrayList<>();
-                LongFunction<Registro> primero = cola.poll(200, TimeUnit.MILLISECONDS);
-                if (primero != null) {
-                    lote.add(primero);
-                    cola.drainTo(lote);
+                List<LongFunction<LogEntry>> batch = new ArrayList<>();
+                LongFunction<LogEntry> first = queue.poll(200, TimeUnit.MILLISECONDS);
+                if (first != null) {
+                    batch.add(first);
+                    queue.drainTo(batch);
                 }
-                sumarFotoYPerdidas(lote);
-                escribir(lote);
+                addSnapshotAndLosses(batch);
+                write(batch);
             } catch (InterruptedException e) {
                 return;
             } catch (RuntimeException e) {
-                // El escritor no puede morir en silencio: se dice una vez y se sigue con la vuelta siguiente.
-                XploitsAddon.LOG.error("El escritor de la consola ha fallado", e);
-                if (!vueltaFallidaAvisada) {
-                    vueltaFallidaAvisada = true;
-                    Salida.alertar(Msg.of(ConsoleText.WRITER_FAILED, "error", e.getClass().getSimpleName() + ": "
+                // The writer cannot die silently: it is reported once and the next round goes on.
+                XploitsAddon.LOG.error("The console writer has failed", e);
+                if (!failedRoundReported) {
+                    failedRoundReported = true;
+                    ConsoleOutput.alert(Msg.of(ConsoleText.WRITER_FAILED, "error", e.getClass().getSimpleName() + ": "
                         + e.getMessage()));
                 }
             }
         }
     }
 
-    private void vaciar() {
-        List<LongFunction<Registro>> lote = new ArrayList<>();
-        cola.drainTo(lote);
-        sumarFotoYPerdidas(lote);
-        escribir(lote);
+    private void drain() {
+        List<LongFunction<LogEntry>> batch = new ArrayList<>();
+        queue.drainTo(batch);
+        addSnapshotAndLosses(batch);
+        write(batch);
     }
 
     /**
-     * La foto es, además de cabecera, el latido del juego. Se consume la última que ofreció el juego y
-     * va solo si cambió o si pasó un segundo desde la anterior, con la hora a la que el juego la
-     * ofreció. Si el juego deja de ofrecer, no sale ninguna {@code S} y la ventana ve envejecer el
-     * latido. Una oferta que no cumple se descarta: la siguiente llega en unos 250 ms.
+     * The snapshot is, besides the header, the game's heartbeat. The last one the game offered is taken
+     * and it goes only if it changed or if a second has passed since the previous one, with the time at
+     * which the game offered it. If the game stops offering, no {@code S} goes out and the window sees
+     * the heartbeat age. An offer that does not qualify is dropped: the next one arrives in about 250 ms.
      */
-    private synchronized void sumarFotoYPerdidas(List<LongFunction<Registro>> lote) {
-        long ahora = System.currentTimeMillis();
-        Ofrecida oferta = foto.getAndSet(null);
-        if (oferta != null && (!oferta.instantanea().equals(ultimaFoto) || oferta.ms() - ultimaFotoMs >= LATIDO_MS)) {
-            Instantanea f = oferta.instantanea();
-            long ms = oferta.ms();
-            ultimaFoto = f;
-            ultimaFotoMs = ms;
-            lote.add(seq -> new Registro.Foto(seq, ms, Salida.SESION, f));
+    private synchronized void addSnapshotAndLosses(List<LongFunction<LogEntry>> batch) {
+        long now = System.currentTimeMillis();
+        OfferedSnapshot offering = offered.getAndSet(null);
+        if (offering != null && (!offering.snapshot().equals(lastSnapshot) || offering.ms() - lastSnapshotMs >= HEARTBEAT_MS)) {
+            GameSnapshot s = offering.snapshot();
+            long ms = offering.ms();
+            lastSnapshot = s;
+            lastSnapshotMs = ms;
+            batch.add(seq -> new LogEntry.Snapshot(seq, ms, ConsoleOutput.SESSION, s));
         }
-        perdidas.drenar().ifPresent(n -> lote.add(seq -> new Registro.Perdida(seq, ahora, Salida.SESION, n)));
+        dropped.drain().ifPresent(n -> batch.add(seq -> new LogEntry.Lost(seq, now, ConsoleOutput.SESSION, n)));
     }
 
-    private synchronized void escribir(List<LongFunction<Registro>> lote) {
-        if (lote.isEmpty()) return;
+    private synchronized void write(List<LongFunction<LogEntry>> batch) {
+        if (batch.isEmpty()) return;
         try {
-            StringBuilder crudo = new StringBuilder();
-            StringBuilder legible = new StringBuilder();
+            StringBuilder raw = new StringBuilder();
+            StringBuilder readable = new StringBuilder();
             // The history is read by the player: it is written in the language chosen now.
-            Catalog textos = Texts.catalog(Texts.current());
-            for (LongFunction<Registro> pendiente : lote) {
-                Registro r = pendiente.apply(Salida.siguienteSeq());
-                crudo.append(r.codificar()).append('\n');
-                String linea = Historial.linea(r, zona, textos);
-                if (linea != null) legible.append(linea).append('\n');
+            Catalog texts = Texts.catalog(Texts.current());
+            for (LongFunction<LogEntry> pending : batch) {
+                LogEntry e = pending.apply(ConsoleOutput.nextSeq());
+                raw.append(e.encode()).append('\n');
+                String line = History.line(e, zone, texts);
+                if (line != null) readable.append(line).append('\n');
             }
-            byte[] bytes = crudo.toString().getBytes(StandardCharsets.UTF_8);
-            if (!Files.exists(vivo)) empezarFichero(false);
-            else if (Rotacion.rotarVivo(Files.size(vivo), bytes.length)) empezarFichero(true);
-            Files.write(vivo, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            LocalDate hoy = LocalDate.now(zona);
-            if (!legible.isEmpty()) {
-                Files.writeString(historial.resolve(Rotacion.nombreDelDia(hoy)), legible, StandardCharsets.UTF_8,
+            byte[] bytes = raw.toString().getBytes(StandardCharsets.UTF_8);
+            if (!Files.exists(liveLog)) startFile(false);
+            else if (LogRotation.shouldRotateLiveLog(Files.size(liveLog), bytes.length)) startFile(true);
+            Files.write(liveLog, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            LocalDate today = LocalDate.now(zone);
+            if (!readable.isEmpty()) {
+                Files.writeString(historyDir.resolve(LogRotation.fileNameFor(today)), readable, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             }
-            if (!hoy.equals(diaPodado)) podar();
+            if (!today.equals(prunedDay)) prune();
         } catch (IOException | RuntimeException e) {
-            if (!falloAvisado) {
-                falloAvisado = true;
-                XploitsAddon.LOG.error("La consola no puede escribir su registro", e);
-                Salida.alertar(Msg.of(ConsoleText.CANNOT_WRITE_LOG, "error", String.valueOf(e.getMessage())));
+            if (!failureReported) {
+                failureReported = true;
+                XploitsAddon.LOG.error("The console cannot write its log", e);
+                ConsoleOutput.alert(Msg.of(ConsoleText.CANNOT_WRITE_LOG, "error", String.valueOf(e.getMessage())));
             }
         }
     }
 
-    private void empezarFichero(boolean rotar) throws IOException {
-        if (rotar && Files.exists(vivo)) Files.move(vivo, anterior, StandardCopyOption.REPLACE_EXISTING);
-        String generacion = Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
-        Files.writeString(vivo, Registro.cabecera(generacion) + "\n", StandardCharsets.UTF_8);
+    private void startFile(boolean rotate) throws IOException {
+        if (rotate && Files.exists(liveLog)) Files.move(liveLog, previousLog, StandardCopyOption.REPLACE_EXISTING);
+        String generation = Long.toString(ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE, 36);
+        Files.writeString(liveLog, LogEntry.header(generation) + "\n", StandardCharsets.UTF_8);
     }
 
-    private boolean cabeceraValida() {
-        try (BufferedReader in = Files.newBufferedReader(vivo, StandardCharsets.UTF_8)) {
-            String primera = in.readLine();
-            if (primera == null) return false;
-            Registro.generacionDe(primera);
+    private boolean hasValidHeader() {
+        try (BufferedReader in = Files.newBufferedReader(liveLog, StandardCharsets.UTF_8)) {
+            String firstLine = in.readLine();
+            if (firstLine == null) return false;
+            LogEntry.generationOf(firstLine);
             return true;
         } catch (IOException | IllegalArgumentException e) {
             return false;
         }
     }
 
-    private void podar() {
-        LocalDate hoy = LocalDate.now(zona);
-        diaPodado = hoy;
-        try (Stream<Path> ficheros = Files.list(historial)) {
-            List<Rotacion.Fichero> lista = new ArrayList<>();
-            for (Path p : ficheros.toList()) {
-                String nombre = p.getFileName().toString();
-                Optional<LocalDate> fecha = Rotacion.fechaDe(nombre);
-                if (fecha.isPresent()) lista.add(new Rotacion.Fichero(nombre, Files.size(p), fecha.get()));
+    private void prune() {
+        LocalDate today = LocalDate.now(zone);
+        prunedDay = today;
+        try (Stream<Path> files = Files.list(historyDir)) {
+            List<LogRotation.LogFile> list = new ArrayList<>();
+            for (Path p : files.toList()) {
+                String name = p.getFileName().toString();
+                Optional<LocalDate> date = LogRotation.dateOf(name);
+                if (date.isPresent()) list.add(new LogRotation.LogFile(name, Files.size(p), date.get()));
             }
-            for (String nombre : Rotacion.borrar(lista, hoy)) {
-                Files.deleteIfExists(historial.resolve(nombre));
-                mensaje(Nivel.INFO, "consola", Texts.render(ConsoleText.HISTORY_PRUNED, "file", nombre, "days", Rotacion.DIAS));
+            for (String name : LogRotation.toDelete(list, today)) {
+                Files.deleteIfExists(historyDir.resolve(name));
+                message(Level.INFO, "console", Texts.render(ConsoleText.HISTORY_PRUNED, "file", name, "days", LogRotation.DAYS));
             }
         } catch (IOException e) {
-            XploitsAddon.LOG.warn("No se pudo podar el historial de la consola", e);
+            XploitsAddon.LOG.warn("Could not prune the console history", e);
         }
     }
 }

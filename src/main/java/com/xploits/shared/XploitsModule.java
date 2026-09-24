@@ -1,8 +1,8 @@
 package com.xploits.shared;
 
-import com.xploits.console.Salida;
-import com.xploits.console.core.Formato;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.ConsoleOutput;
+import com.xploits.console.core.Level;
+import com.xploits.console.core.SafeFormat;
 import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.MessageKey;
 import com.xploits.shared.core.i18n.Msg;
@@ -25,43 +25,43 @@ public abstract class XploitsModule extends Module {
 
     @Override
     public void info(Text message) {
-        Salida.mensaje(Nivel.INFO, name, message.getString());
+        ConsoleOutput.message(Level.INFO, name, message.getString());
         super.info(message);
     }
 
     @Override
     public void info(String message, Object... args) {
-        log(Nivel.INFO, message, args);
+        log(Level.INFO, message, args);
         super.info(message, args);
     }
 
     @Override
     public void warning(String message, Object... args) {
-        log(Nivel.AVISO, message, args);
+        log(Level.WARNING, message, args);
         super.warning(message, args);
     }
 
     @Override
     public void error(String message, Object... args) {
-        log(Nivel.ERROR, message, args);
+        log(Level.ERROR, message, args);
         super.error(message, args);
     }
 
     public void info(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.INFO, name, text);
+        ConsoleOutput.message(Level.INFO, name, text);
         super.info("%s", text); // i18n: allowed
     }
 
     public void warning(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.AVISO, name, text);
+        ConsoleOutput.message(Level.WARNING, name, text);
         super.warning("%s", text); // i18n: allowed
     }
 
     public void error(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.ERROR, name, text);
+        ConsoleOutput.message(Level.ERROR, name, text);
         super.error("%s", text); // i18n: allowed
     }
 
@@ -78,23 +78,23 @@ public abstract class XploitsModule extends Module {
     }
 
     public void infoPrivate(PositionedMsg msg) {
-        Salida.mensaje(Nivel.INFO, name, Texts.render(Salida.paraConsola(msg)));
+        ConsoleOutput.message(Level.INFO, name, Texts.render(ConsoleOutput.forConsole(msg)));
         super.info("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void warningPrivate(PositionedMsg msg) {
-        Salida.mensaje(Nivel.AVISO, name, Texts.render(Salida.paraConsola(msg)));
+        ConsoleOutput.message(Level.WARNING, name, Texts.render(ConsoleOutput.forConsole(msg)));
         super.warning("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void errorPrivate(PositionedMsg msg) {
-        Salida.mensaje(Nivel.ERROR, name, Texts.render(Salida.paraConsola(msg)));
+        ConsoleOutput.message(Level.ERROR, name, Texts.render(ConsoleOutput.forConsole(msg)));
         super.error("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     /** To the console only, not to chat: for what was already said some other way. */
-    public void logToConsole(Nivel level, Msg msg) {
-        Salida.mensaje(level, name, Texts.render(msg));
+    public void logToConsole(Level level, Msg msg) {
+        ConsoleOutput.message(level, name, Texts.render(msg));
     }
 
     /** What the module is doing right now, in 30 characters at most; empty if nothing. Game thread only. */
@@ -102,8 +102,8 @@ public abstract class XploitsModule extends Module {
         return "";
     }
 
-    private void log(Nivel level, String template, Object[] args) {
-        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), template, args);
-        Salida.mensaje(r.roto() ? Nivel.ERROR : level, name, r.texto());
+    private void log(Level level, String template, Object[] args) {
+        SafeFormat.Result r = SafeFormat.apply(Texts.catalog(Texts.current()), template, args);
+        ConsoleOutput.message(r.broken() ? Level.ERROR : level, name, r.text());
     }
 }

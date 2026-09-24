@@ -8,98 +8,98 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class TextoTest {
+class TerminalTextTest {
     @Test
-    void unEscInyectadoNoLlegaALaTerminal() {
-        assertEquals("hola?[2Jadios", Texto.limpiar("hola\u001b[2Jadios"));
+    void anInjectedEscNeverReachesTheTerminal() {
+        assertEquals("hello?[2Jbye", TerminalText.sanitize("hello\u001b[2Jbye"));
     }
 
     @Test
-    void losControlesC1TambienSeNeutralizan() {
-        assertEquals("a?b", Texto.limpiar("a\u0085b"));
+    void c1ControlsAreNeutralizedToo() {
+        assertEquals("a?b", TerminalText.sanitize("a\u0085b"));
     }
 
     @Test
-    void lasMarcasBidiSeNeutralizan() {
-        assertEquals("a?b", Texto.limpiar("a‮b"));
+    void bidiMarksAreNeutralized() {
+        assertEquals("a?b", TerminalText.sanitize("a‮b"));
     }
 
     @Test
-    void losCodigosDeColorDeMinecraftSeQuitan() {
-        assertEquals("Rojo normal", Texto.limpiar("§cRojo§r normal"));
+    void minecraftColorCodesAreStripped() {
+        assertEquals("Red normal", TerminalText.sanitize("§cRed§r normal"));
     }
 
     @Test
-    void losTokensDeMeteorSeQuitan() {
-        assertEquals("x", Texto.limpiar("(highlight)x(default)"));
+    void meteorTokensAreStripped() {
+        assertEquals("x", TerminalText.sanitize("(highlight)x(default)"));
     }
 
     @Test
-    void elTabuladorEsUnEspacioYElRetornoDesaparece() {
-        assertEquals("a b\nc", Texto.limpiar("a\tb\r\nc"));
+    void aTabIsASpaceAndACarriageReturnDisappears() {
+        assertEquals("a b\nc", TerminalText.sanitize("a\tb\r\nc"));
     }
 
     @Test
-    void anchosPorPuntoDeCodigo() {
-        assertEquals(5, Texto.ancho("áéíóú"));
-        assertEquals(1, Texto.ancho("é"));
-        assertEquals(4, Texto.ancho("漢字"));
-        assertEquals(2, Texto.ancho("▀▄"));
-        assertEquals(2, Texto.ancho("😀"));
+    void widthsPerCodePoint() {
+        assertEquals(5, TerminalText.width("áéíóú"));
+        assertEquals(1, TerminalText.width("e\u0301"));
+        assertEquals(4, TerminalText.width("漢字"));
+        assertEquals(2, TerminalText.width("▀▄"));
+        assertEquals(2, TerminalText.width("😀"));
     }
 
     @Test
-    void recortarNoTocaLoQueCabe() {
-        assertEquals("abcde", Texto.recortar("abcde", 5));
+    void truncateLeavesWhatFitsAlone() {
+        assertEquals("abcde", TerminalText.truncate("abcde", 5));
     }
 
     @Test
-    void recortarJustoPorEncimaDelAncho() {
-        assertEquals("abcd…", Texto.recortar("abcdef", 5));
+    void truncateJustOverTheWidth() {
+        assertEquals("abcd…", TerminalText.truncate("abcdef", 5));
     }
 
     @Test
-    void recortarNoParteUnParSustituto() {
-        String r = Texto.recortar("ab😀cd", 4);
+    void truncateNeverSplitsASurrogatePair() {
+        String r = TerminalText.truncate("ab😀cd", 4);
         assertEquals("ab…", r);
         assertFalse(Character.isHighSurrogate(r.charAt(r.length() - 2)));
     }
 
     @Test
-    void recortarAUnaColumnaOANinguna() {
-        assertEquals("…", Texto.recortar("abc", 1));
-        assertEquals("", Texto.recortar("abc", 0));
+    void truncateToOneColumnOrNone() {
+        assertEquals("…", TerminalText.truncate("abc", 1));
+        assertEquals("", TerminalText.truncate("abc", 0));
     }
 
     @Test
-    void envolverPorAnchoYPorSaltos() {
-        assertEquals(List.of("abc", "def", "gh", "xy"), Texto.envolver("abcdefgh\nxy", 3, 10));
+    void wrapByWidthAndByNewlines() {
+        assertEquals(List.of("abc", "def", "gh", "xy"), TerminalText.wrap("abcdefgh\nxy", 3, 10));
     }
 
     @Test
-    void envolverConDemasiadasFilasLoDice() {
-        assertEquals(List.of("aaaaaaaaaa", "aaaa… (+1)"), Texto.envolver("a".repeat(25), 10, 2));
+    void wrapWithTooManyRowsSaysSo() {
+        assertEquals(List.of("aaaaaaaaaa", "aaaa… (+1)"), TerminalText.wrap("a".repeat(25), 10, 2));
     }
 
     @Test
-    void envolverIgnoraElSaltoFinal() {
-        assertEquals(List.of("ab"), Texto.envolver("ab\n", 10, 5));
+    void wrapIgnoresTheTrailingNewline() {
+        assertEquals(List.of("ab"), TerminalText.wrap("ab\n", 10, 5));
     }
 
     @Test
-    void envolverUnCaracterAnchoNoDejaFilaVacia() {
-        assertEquals(List.of("a", "字"), Texto.envolver("a字", 2, 5));
+    void wrappingAWideCharacterLeavesNoEmptyRow() {
+        assertEquals(List.of("a", "字"), TerminalText.wrap("a字", 2, 5));
     }
 
     @Test
-    void envolverConUnSufijoMasAnchoQueLaVentanaNoSeDesborda() {
-        assertEquals(List.of("(+6)"), Texto.envolver("a".repeat(25), 4, 1));
+    void wrapWithASuffixWiderThanTheWindowDoesNotOverflow() {
+        assertEquals(List.of("(+6)"), TerminalText.wrap("a".repeat(25), 4, 1));
     }
 
     @Test
-    void envolverRechazaAnchosOFilasSinSentido() {
-        assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 0, 1));
-        assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 1, 1));
-        assertThrows(IllegalArgumentException.class, () -> Texto.envolver("a", 5, 0));
+    void wrapRejectsNonsensicalWidthsOrRows() {
+        assertThrows(IllegalArgumentException.class, () -> TerminalText.wrap("a", 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> TerminalText.wrap("a", 1, 1));
+        assertThrows(IllegalArgumentException.class, () -> TerminalText.wrap("a", 5, 0));
     }
 }

@@ -5,37 +5,37 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
 
-/** Los últimos N elementos, en orden de llegada. */
-public final class Anillo<T> {
-    private final Object[] elementos;
-    private int inicio;
-    private int tamano;
+/** The last N elements, in order of arrival. */
+public final class RingBuffer<T> {
+    private final Object[] elements;
+    private int start;
+    private int size;
 
-    public Anillo(int capacidad) {
-        if (capacidad <= 0) throw new IllegalArgumentException("un anillo sin capacidad no guarda nada");
-        elementos = new Object[capacidad];
+    public RingBuffer(int capacity) {
+        if (capacity <= 0) throw new IllegalArgumentException("a ring without capacity holds nothing");
+        elements = new Object[capacity];
     }
 
-    public void agregar(T t) {
-        int pos = (inicio + tamano) % elementos.length;
-        elementos[pos] = t;
-        if (tamano < elementos.length) tamano++;
-        else inicio = (inicio + 1) % elementos.length;
+    public void add(T t) {
+        int pos = (start + size) % elements.length;
+        elements[pos] = t;
+        if (size < elements.length) size++;
+        else start = (start + 1) % elements.length;
     }
 
-    public int tamano() {
-        return tamano;
+    public int size() {
+        return size;
     }
 
-    /** Los {@code n} últimos que cumplen el filtro, del más viejo al más nuevo. */
+    /** The {@code n} latest that pass the filter, oldest first. */
     @SuppressWarnings("unchecked")
-    public List<T> ultimos(int n, Predicate<? super T> filtro) {
-        List<T> salida = new ArrayList<>();
-        for (int i = tamano - 1; i >= 0 && salida.size() < n; i--) {
-            T t = (T) elementos[(inicio + i) % elementos.length];
-            if (filtro.test(t)) salida.add(t);
+    public List<T> latest(int n, Predicate<? super T> filter) {
+        List<T> result = new ArrayList<>();
+        for (int i = size - 1; i >= 0 && result.size() < n; i--) {
+            T t = (T) elements[(start + i) % elements.length];
+            if (filter.test(t)) result.add(t);
         }
-        Collections.reverse(salida);
-        return salida;
+        Collections.reverse(result);
+        return result;
     }
 }

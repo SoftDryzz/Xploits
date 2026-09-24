@@ -2,32 +2,32 @@ package com.xploits.console.core;
 
 import com.xploits.shared.core.i18n.Catalog;
 
-/** El nivel de un mensaje, con su letra en {@code vivo.log} y su palabra en el historial. */
-public enum Nivel {
+/** A message's level, with its letter in {@code live.log} and its word in the history. */
+public enum Level {
     INFO('I', ConsoleText.LEVEL_INFO),
-    AVISO('W', ConsoleText.LEVEL_WARNING),
+    WARNING('W', ConsoleText.LEVEL_WARNING),
     ERROR('E', ConsoleText.LEVEL_ERROR);
 
-    private final char codigo;
-    private final ConsoleText etiqueta;
+    private final char code;
+    private final ConsoleText label;
 
-    Nivel(char codigo, ConsoleText etiqueta) {
-        this.codigo = codigo;
-        this.etiqueta = etiqueta;
+    Level(char code, ConsoleText label) {
+        this.code = code;
+        this.label = label;
     }
 
-    public char codigo() {
-        return codigo;
+    public char code() {
+        return code;
     }
 
-    public String etiqueta(Catalog textos) {
-        return textos.render(etiqueta);
+    public String label(Catalog texts) {
+        return texts.render(label);
     }
 
-    public static Nivel de(char codigo) {
-        for (Nivel n : values()) {
-            if (n.codigo == codigo) return n;
+    public static Level fromCode(char code) {
+        for (Level l : values()) {
+            if (l.code == code) return l;
         }
-        throw new IllegalArgumentException("nivel desconocido: " + codigo);
+        throw new IllegalArgumentException("unknown level: " + code);
     }
 }

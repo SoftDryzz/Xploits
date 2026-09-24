@@ -71,7 +71,7 @@ class BoundaryTest {
         List<String> bad = new ArrayList<>();
         sources().forEach((path, lines) -> {
             boolean core = path.contains("/core/");
-            boolean window = path.startsWith("com/xploits/console/ventana/");
+            boolean window = path.startsWith("com/xploits/console/window/");
             if (!core && !window) return;
             boolean inConsole = path.startsWith("com/xploits/console/");
             for (String l : lines) {
@@ -82,7 +82,7 @@ class BoundaryTest {
                 }
                 if (inConsole && imported.startsWith("com.xploits.")
                     && !imported.startsWith("com.xploits.console.core.")
-                    && !imported.startsWith("com.xploits.console.ventana.")
+                    && !imported.startsWith("com.xploits.console.window.")
                     && !imported.startsWith("com.xploits.shared.core.")) {
                     bad.add(path + " imports " + imported);
                 }
@@ -105,7 +105,7 @@ class BoundaryTest {
     // or a Msg.of(...) call: those are the values a named argument carries, not the message itself.
     // A logger call (LOG.info/warn/error) is developer text, not player text, and is not matched.
     private static final Pattern LITERAL_TO_PLAYER = Pattern.compile(
-        "(?<!LOG\\.)\\b(info|warning|error|infoPrivate|warningPrivate|errorPrivate|logToConsole|reply|avisar|announce)"
+        "(?<!LOG\\.)\\b(info|warning|error|infoPrivate|warningPrivate|errorPrivate|logToConsole|reply|announce|showNotice)"
             + "\\s*\\((?:(?!Text\\.|Msg\\.of\\()[^;])*?\"[^\"]*\\p{L}{2}");
     private static final Pattern LITERAL_TO_UI = Pattern.compile(
         "(\\.description\\(\\s*\"|\\.text\\(\\s*\"|super\\(XploitsAddon\\.CATEGORY,\\s*\"[^\"]*\",\\s*\")");
@@ -147,14 +147,8 @@ class BoundaryTest {
         "com/xploits/elytra/",
         "com/xploits/kitrequester/inventory/",
         "com/xploits/mixin/",
-        "com/xploits/shared/core/",
-        "com/xploits/shared/core/migration/",
         "com/xploits/commands/CommandText.java",
         "com/xploits/commands/CommandTextTest.java",
-        "com/xploits/console/core/ConsoleText.java",
-        "com/xploits/console/core/CoordinatePolicyTest.java",
-        "com/xploits/console/core/Escape.java",
-        "com/xploits/console/core/WindowText.java",
         "com/xploits/kitrequester/core/Action.java",
         "com/xploits/kitrequester/core/CandidateTracker.java",
         "com/xploits/kitrequester/core/CandidateTrackerTest.java",
@@ -175,14 +169,6 @@ class BoundaryTest {
         "com/xploits/pvp/core/RetreatWatchTest.java",
         "com/xploits/pvp/core/Skipped.java",
         "com/xploits/pvp/core/Snapshots.java",
-        "com/xploits/shared/ChatLogFilter.java",
-        "com/xploits/shared/LanguageStore.java",
-        "com/xploits/shared/Languages.java",
-        "com/xploits/shared/SettingsMigration.java",
-        "com/xploits/shared/SettingsMigrationNbtTest.java",
-        "com/xploits/shared/Texts.java",
-        "com/xploits/shared/XploitsSettings.java",
-        "com/xploits/shared/chat/",
         "com/xploits/stash/core/ContainerSnapshot.java",
         "com/xploits/stash/core/ContainerSnapshotTest.java",
         "com/xploits/stash/core/ContainerType.java",
@@ -203,9 +189,10 @@ class BoundaryTest {
         "com/xploits/travel/core/Route.java",
         "com/xploits/travel/core/TravelTextTest.java",
         "com/xploits/travel/core/Waypoint.java",
-        // Task 4 leaves out shared/XploitsModule.java, shared/XploitsCommandBase.java and XploitsAddon.java:
-        // they still name console types (Salida, Nivel, Formato, Consola), so they join with Task 5.
-        "com/xploits/BoundaryTest.java"
+        "com/xploits/BoundaryTest.java",
+        "com/xploits/XploitsAddon.java",
+        "com/xploits/console/",
+        "com/xploits/shared/"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */

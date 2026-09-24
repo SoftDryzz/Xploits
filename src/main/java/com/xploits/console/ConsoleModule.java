@@ -1,10 +1,10 @@
 package com.xploits.console;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Arranque;
-import com.xploits.console.core.Ciclo;
 import com.xploits.console.core.ConsoleText;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.Level;
+import com.xploits.console.core.WindowLifecycle;
+import com.xploits.console.core.WindowStart;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.core.i18n.Msg;
@@ -28,24 +28,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Abre y cierra la ventana de la consola (spec consola §8).
+ * Opens and closes the console window (console spec §8).
  *
- * <p>Con {@code runInMainMenu} queda fuera del encendido y apagado que Meteor hace al entrar y salir
- * de cada mundo: si se deja encendida, abre al arrancar el juego y sobrevive a desconexiones y
- * muertes. No se lanza en {@code onActivate}, que al arrancar corre antes de que exista nada, sino
- * en el primer tick.
+ * <p>With {@code runInMainMenu} it stays out of the turning on and off that Meteor does on entering and
+ * leaving each world: if left on, it opens when the game starts and survives disconnects and deaths.
+ * It does not launch in {@code onActivate}, which at startup runs before anything exists, but on the
+ * first tick.
  *
- * <p>Sin mundo, el chat se pierde en silencio (spec §3.2). Por eso los avisos van por el
- * {@link Repartidor}: toast enseguida, y al chat en cuanto hay mundo, esté el módulo encendido o no.
+ * <p>Without a world, chat is lost silently (spec §3.2). That is why the notices go through the
+ * {@link NoticeDispatcher}: a toast right away, and to chat as soon as there is a world, whether the
+ * module is on or not.
  */
-public class Consola extends XploitsModule {
-    private static final int TICKS_ENTRE_VISTAZOS = 5;
+public class ConsoleModule extends XploitsModule {
+    private static final int TICKS_BETWEEN_CHECKS = 5;
 
-    private final Ciclo ciclo = new Ciclo(Lanzamiento::nuevoId);
-    private final Repartidor repartidor = new Repartidor();
-    private Sumidero sumidero;
-    private FileChannel canalDelCerrojo;
-    private FileLock cerrojo;
+    private final WindowLifecycle lifecycle = new WindowLifecycle(WindowLauncher::newId);
+    private final NoticeDispatcher dispatcher = new NoticeDispatcher();
+    private ConsoleSink sink;
+    private FileChannel lockChannel;
+    private FileLock lock;
     private int ticks;
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -54,194 +55,194 @@ public class Consola extends XploitsModule {
         .name("hide-coordinates")
         .description(Texts.startupText(ConsoleText.SETTING_HIDE_COORDINATES))
         .defaultValue(true)
-        .onChanged(Salida::ocultarCoordenadas)
+        .onChanged(ConsoleOutput::hideCoordinates)
         .build());
 
-    public Consola() {
-        super(XploitsAddon.CATEGORY, "consola", Texts.startupText(ConsoleText.MODULE_DESC));
+    public ConsoleModule() {
+        super(XploitsAddon.CATEGORY, "console", Texts.startupText(ConsoleText.MODULE_DESC));
         runInMainMenu = true;
-        Salida.instalarGanchoDeApagado();
-        MeteorClient.EVENT_BUS.subscribe(repartidor);
+        ConsoleOutput.installShutdownHook();
+        MeteorClient.EVENT_BUS.subscribe(dispatcher);
     }
 
     @Override
     public void onActivate() {
-        Path carpeta = Lanzamiento.carpeta();
-        if (!tomarCerrojo(carpeta)) {
-            avisar(Nivel.ERROR, Msg.of(ConsoleText.IN_USE, "folder", carpeta.toString()));
+        Path folder = WindowLauncher.folder();
+        if (!acquireLock(folder)) {
+            announce(Level.ERROR, Msg.of(ConsoleText.IN_USE, "folder", folder.toString()));
             toggle();
             return;
         }
-        Sumidero nuevo = new Sumidero(carpeta);
+        ConsoleSink fresh = new ConsoleSink(folder);
         try {
-            nuevo.arrancar();
+            fresh.start();
         } catch (IOException e) {
-            avisar(Nivel.ERROR, Msg.of(ConsoleText.CANNOT_PREPARE_LOG, "folder", carpeta.toString(), "error", String.valueOf(e.getMessage())));
-            soltarCerrojo();
+            announce(Level.ERROR, Msg.of(ConsoleText.CANNOT_PREPARE_LOG, "folder", folder.toString(), "error", String.valueOf(e.getMessage())));
+            releaseLock();
             toggle();
             return;
         }
-        sumidero = nuevo;
-        Salida.conectar(sumidero);
-        sumidero.juego("inicio");
+        sink = fresh;
+        ConsoleOutput.connect(sink);
+        sink.gameEvent("start");
         ticks = 0;
-        ejecutar(ciclo.encender());
+        execute(lifecycle.turnOn());
     }
 
     @Override
     public void onDeactivate() {
-        ejecutar(ciclo.apagar(System.currentTimeMillis()));
-        Salida.desconectar();
-        if (sumidero != null) {
-            sumidero.cerrar();
-            sumidero = null;
+        execute(lifecycle.turnOff(System.currentTimeMillis()));
+        ConsoleOutput.disconnect();
+        if (sink != null) {
+            sink.close();
+            sink = null;
         }
-        soltarCerrojo();
+        releaseLock();
     }
 
-    /** Orbit no captura: una excepción de aquí subiría al tick del juego. Se dice y la consola se apaga. */
+    /** Orbit does not catch: an exception from here would reach the game's tick. It is reported and the console turns off. */
     @EventHandler
     private void onTick(TickEvent.Post event) {
         try {
-            if (++ticks % TICKS_ENTRE_VISTAZOS != 0) return;
-            Path carpeta = Lanzamiento.carpeta();
-            ejecutar(ciclo.tick(new Ciclo.Observacion(System.currentTimeMillis(),
-                Lanzamiento.leerPid(carpeta).orElse(null), Lanzamiento::vivo, Lanzamiento.leerSalida(carpeta).orElse(null))));
-            // Puede haberse apagado por lo que acaba de pasar: se vuelve a mirar.
-            if (sumidero != null) Salida.instantanea(Colector.tomar());
+            if (++ticks % TICKS_BETWEEN_CHECKS != 0) return;
+            Path folder = WindowLauncher.folder();
+            execute(lifecycle.tick(new WindowLifecycle.Observation(System.currentTimeMillis(),
+                WindowLauncher.readPid(folder).orElse(null), WindowLauncher::isAlive, WindowLauncher.readExit(folder).orElse(null))));
+            // It may have turned off because of what just happened: check again.
+            if (sink != null) ConsoleOutput.snapshot(SnapshotCollector.capture());
         } catch (RuntimeException e) {
-            XploitsAddon.LOG.error("La consola ha fallado", e);
-            avisar(Nivel.ERROR, Msg.of(ConsoleText.FAILED, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
+            XploitsAddon.LOG.error("The console has failed", e);
+            announce(Level.ERROR, Msg.of(ConsoleText.FAILED, "error", e.getClass().getSimpleName() + ": " + e.getMessage()));
             if (isActive()) toggle();
         }
     }
 
-    private void ejecutar(List<Ciclo.Accion> acciones) {
-        for (Ciclo.Accion accion : acciones) {
-            switch (accion) {
-                case Ciclo.Lanzar l -> lanzar(l.lanzamiento());
-                case Ciclo.EscribirFin f -> {
-                    if (sumidero != null) sumidero.fin(f.lanzamiento(), "consola apagada");
+    private void execute(List<WindowLifecycle.Action> actions) {
+        for (WindowLifecycle.Action action : actions) {
+            switch (action) {
+                case WindowLifecycle.Launch l -> launch(l.launchId());
+                case WindowLifecycle.WriteClose w -> {
+                    if (sink != null) sink.sendClose(w.launchId(), "console off");
                 }
-                case Ciclo.VigilarCierre v -> Lanzamiento.vigilarCierre(Lanzamiento.carpeta(), v);
-                case Ciclo.Avisar a -> avisar(a.nivel(), a.texto());
-                case Ciclo.ApagarModulo x -> {
+                case WindowLifecycle.WatchClose w -> WindowLauncher.watchClose(WindowLauncher.folder(), w);
+                case WindowLifecycle.Notify n -> announce(n.level(), n.text());
+                case WindowLifecycle.DisableModule d -> {
                     if (isActive()) toggle();
                 }
             }
         }
     }
 
-    /** Un fallo inesperado al preparar o lanzar se resuelve como rechazo: el ciclo no puede quedarse en LANZANDO. */
-    private void lanzar(String lanzamiento) {
-        Path carpeta = Lanzamiento.carpeta();
-        Lanzamiento.borrarRestos(carpeta);
-        Arranque.Resultado resultado;
+    /** An unexpected failure while preparing or launching is settled as a rejection: the lifecycle cannot stay in LAUNCHING. */
+    private void launch(String launchId) {
+        Path folder = WindowLauncher.folder();
+        WindowLauncher.deleteLeftovers(folder);
+        WindowStart.Result result;
         try {
-            resultado = Lanzamiento.preparar(carpeta, lanzamiento);
+            result = WindowLauncher.prepare(folder, launchId);
         } catch (RuntimeException e) {
-            ejecutar(ciclo.rechazado(falloInesperado(e)));
+            execute(lifecycle.rejected(unexpectedFailure(e)));
             return;
         }
-        switch (resultado) {
-            case Arranque.Rechazo r -> ejecutar(ciclo.rechazado(r.motivo()));
-            case Arranque.Orden o -> {
+        switch (result) {
+            case WindowStart.Rejection r -> execute(lifecycle.rejected(r.reason()));
+            case WindowStart.Command c -> {
                 try {
-                    Lanzamiento.lanzar(o.argv());
+                    WindowLauncher.launch(c.argv());
                 } catch (IOException e) {
-                    ejecutar(ciclo.rechazado(Msg.of(ConsoleText.WINDOWS_REFUSED, "error", String.valueOf(e.getMessage()))));
+                    execute(lifecycle.rejected(Msg.of(ConsoleText.WINDOWS_REFUSED, "error", String.valueOf(e.getMessage()))));
                     return;
                 } catch (RuntimeException e) {
-                    ejecutar(ciclo.rechazado(falloInesperado(e)));
+                    execute(lifecycle.rejected(unexpectedFailure(e)));
                     return;
                 }
-                ejecutar(ciclo.lanzado(o.descripcion(), System.currentTimeMillis()));
+                execute(lifecycle.launched(c.description(), System.currentTimeMillis()));
             }
         }
     }
 
-    private static Msg falloInesperado(RuntimeException e) {
-        XploitsAddon.LOG.error("Fallo inesperado al preparar la ventana de la consola", e);
+    private static Msg unexpectedFailure(RuntimeException e) {
+        XploitsAddon.LOG.error("Unexpected failure while preparing the console window", e);
         return Msg.of(ConsoleText.UNEXPECTED_FAILURE, "error", e.getClass().getSimpleName() + ": " + e.getMessage());
     }
 
-    private boolean tomarCerrojo(Path carpeta) {
+    private boolean acquireLock(Path folder) {
         try {
-            Files.createDirectories(carpeta);
-            canalDelCerrojo = FileChannel.open(carpeta.resolve("consola.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            cerrojo = canalDelCerrojo.tryLock();
+            Files.createDirectories(folder);
+            lockChannel = FileChannel.open(folder.resolve("console.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            lock = lockChannel.tryLock();
         } catch (IOException | OverlappingFileLockException e) {
-            cerrojo = null;
+            lock = null;
         }
-        if (cerrojo == null) soltarCerrojo();
-        return cerrojo != null;
+        if (lock == null) releaseLock();
+        return lock != null;
     }
 
-    private void soltarCerrojo() {
+    private void releaseLock() {
         try {
-            if (cerrojo != null) cerrojo.release();
-            if (canalDelCerrojo != null) canalDelCerrojo.close();
-        } catch (IOException ignorada) {
-            // Al cerrarse el juego el sistema lo suelta igualmente.
+            if (lock != null) lock.release();
+            if (lockChannel != null) lockChannel.close();
+        } catch (IOException ignored) {
+            // When the game closes the system releases it anyway.
         }
-        cerrojo = null;
-        canalDelCerrojo = null;
+        lock = null;
+        lockChannel = null;
     }
 
-    private void avisar(Nivel nivel, Msg msg) {
-        String texto = Texts.render(msg);
-        switch (nivel) {
-            case INFO -> XploitsAddon.LOG.info("[consola] {}", texto);
-            case AVISO -> XploitsAddon.LOG.warn("[consola] {}", texto);
-            case ERROR -> XploitsAddon.LOG.error("[consola] {}", texto);
+    private void announce(Level level, Msg msg) {
+        String text = Texts.render(msg);
+        switch (level) {
+            case INFO -> XploitsAddon.LOG.info("[console] {}", text);
+            case WARNING -> XploitsAddon.LOG.warn("[console] {}", text);
+            case ERROR -> XploitsAddon.LOG.error("[console] {}", text);
         }
-        repartidor.encolar(nivel, msg);
+        dispatcher.enqueue(level, msg);
     }
 
-    private record Aviso(Nivel nivel, Msg texto) {
+    private record Notice(Level level, Msg text) {
     }
 
     /**
-     * Reparte los avisos de la consola y las alertas de {@link Salida}. Está suscrito siempre, aparte
-     * del módulo, porque el aviso más importante -«la ventana no ha arrancado»- llega justo cuando el
-     * módulo se apaga, y muchas veces en el menú, donde el chat no existe.
+     * Hands out the console's notices and {@link ConsoleOutput}'s alerts. It is always subscribed, apart
+     * from the module, because the most important notice ("the window has not started") arrives just as
+     * the module turns off, and often in the menu, where there is no chat.
      */
-    private final class Repartidor {
-        private final List<Aviso> porTostar = new ArrayList<>();
-        private final List<Aviso> porChat = new ArrayList<>();
+    private final class NoticeDispatcher {
+        private final List<Notice> pendingToasts = new ArrayList<>();
+        private final List<Notice> pendingChat = new ArrayList<>();
 
-        void encolar(Nivel nivel, Msg texto) {
-            if (nivel != Nivel.INFO) porTostar.add(new Aviso(nivel, texto));
-            porChat.add(new Aviso(nivel, texto));
+        void enqueue(Level level, Msg text) {
+            if (level != Level.INFO) pendingToasts.add(new Notice(level, text));
+            pendingChat.add(new Notice(level, text));
         }
 
         /**
-         * Orbit no captura: si repartir falla, se registra y se descarta lo pendiente, para no repetir
-         * el mismo fallo en cada tick. No se avisa desde aquí: el aviso podría fallar por lo mismo.
+         * Orbit does not catch: if dispatching fails, it is logged and what is pending is dropped, so the
+         * same failure does not repeat on every tick. No notice is sent from here: it could fail the same way.
          */
         @EventHandler
         private void onTick(TickEvent.Post event) {
             try {
-                Msg alerta;
-                while ((alerta = Salida.alertaPendiente()) != null) avisar(Nivel.ERROR, alerta);
-                for (Aviso a : porTostar) {
-                    mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(Texts.render(a.texto())).icon(Items.COMMAND_BLOCK).build());
+                Msg alert;
+                while ((alert = ConsoleOutput.pendingAlert()) != null) announce(Level.ERROR, alert);
+                for (Notice n : pendingToasts) {
+                    mc.getToastManager().add(new MeteorToast.Builder("Xploits").text(Texts.render(n.text())).icon(Items.COMMAND_BLOCK).build());
                 }
-                porTostar.clear();
-                if (mc.world == null || porChat.isEmpty()) return;
-                List<Aviso> copia = new ArrayList<>(porChat);
-                porChat.clear();
-                for (Aviso a : copia) {
-                    switch (a.nivel()) {
-                        case INFO -> info(a.texto());
-                        case AVISO -> warning(a.texto());
-                        case ERROR -> error(a.texto());
+                pendingToasts.clear();
+                if (mc.world == null || pendingChat.isEmpty()) return;
+                List<Notice> copy = new ArrayList<>(pendingChat);
+                pendingChat.clear();
+                for (Notice n : copy) {
+                    switch (n.level()) {
+                        case INFO -> info(n.text());
+                        case WARNING -> warning(n.text());
+                        case ERROR -> error(n.text());
                     }
                 }
             } catch (RuntimeException e) {
-                XploitsAddon.LOG.error("La consola no ha podido repartir sus avisos; se descartan los pendientes", e);
-                porTostar.clear();
-                porChat.clear();
+                XploitsAddon.LOG.error("The console could not dispatch its notices; the pending ones are dropped", e);
+                pendingToasts.clear();
+                pendingChat.clear();
             }
         }
     }

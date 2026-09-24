@@ -1,8 +1,8 @@
 package com.xploits.shared;
 
-import com.xploits.console.Salida;
-import com.xploits.console.core.Formato;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.ConsoleOutput;
+import com.xploits.console.core.Level;
+import com.xploits.console.core.SafeFormat;
 import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.commands.Command;
@@ -20,58 +20,58 @@ public abstract class XploitsCommandBase extends Command {
 
     @Override
     public void info(Text message) {
-        Salida.mensaje(Nivel.INFO, getName(), message.getString());
+        ConsoleOutput.message(Level.INFO, getName(), message.getString());
         super.info(message);
     }
 
     @Override
     public void info(String message, Object... args) {
-        log(Nivel.INFO, message, args);
+        log(Level.INFO, message, args);
         super.info(message, args);
     }
 
     @Override
     public void warning(String message, Object... args) {
-        log(Nivel.AVISO, message, args);
+        log(Level.WARNING, message, args);
         super.warning(message, args);
     }
 
     @Override
     public void error(String message, Object... args) {
-        log(Nivel.ERROR, message, args);
+        log(Level.ERROR, message, args);
         super.error(message, args);
     }
 
     public void info(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.INFO, getName(), text);
+        ConsoleOutput.message(Level.INFO, getName(), text);
         super.info("%s", text); // i18n: allowed
     }
 
     public void warning(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.AVISO, getName(), text);
+        ConsoleOutput.message(Level.WARNING, getName(), text);
         super.warning("%s", text); // i18n: allowed
     }
 
     public void error(Msg msg) {
         String text = Texts.render(msg);
-        Salida.mensaje(Nivel.ERROR, getName(), text);
+        ConsoleOutput.message(Level.ERROR, getName(), text);
         super.error("%s", text); // i18n: allowed
     }
 
-    protected void reply(Nivel level, String source, PositionedMsg msg) {
-        Salida.mensaje(level, source, Texts.render(Salida.paraConsola(msg)));
+    protected void reply(Level level, String source, PositionedMsg msg) {
+        ConsoleOutput.message(level, source, Texts.render(ConsoleOutput.forConsole(msg)));
         String chat = Texts.render(msg.chat());
         switch (level) {
             case INFO -> super.info("%s", chat); // i18n: allowed
-            case AVISO -> super.warning("%s", chat); // i18n: allowed
+            case WARNING -> super.warning("%s", chat); // i18n: allowed
             case ERROR -> super.error("%s", chat); // i18n: allowed
         }
     }
 
-    private void log(Nivel level, String template, Object[] args) {
-        Formato.Resultado r = Formato.aplicar(Texts.catalog(Texts.current()), template, args);
-        Salida.mensaje(r.roto() ? Nivel.ERROR : level, getName(), r.texto());
+    private void log(Level level, String template, Object[] args) {
+        SafeFormat.Result r = SafeFormat.apply(Texts.catalog(Texts.current()), template, args);
+        ConsoleOutput.message(r.broken() ? Level.ERROR : level, getName(), r.text());
     }
 }
