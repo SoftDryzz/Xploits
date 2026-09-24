@@ -44,7 +44,31 @@ public enum RecorderText implements MessageKey {
     LIVE_OPPONENT_DIED,
     LIVE_BIG_HIT,
     LIVE_BY,
-    LIVE_OUT_OF;
+    LIVE_OUT_OF,
+    CAUSE_NO_TOTEMS,
+    CAUSE_DOUBLE_POP,
+    CAUSE_TOTEMS_LEFT,
+    CAUSE_OUT_OF_TOTEMS,
+    CAUSE_SELF_CRYSTAL,
+    CAUSE_FALL,
+    CAUSE_BURST,
+    CAUSE_OUTNUMBERED,
+    CAUSE_CRYSTAL_AURA_OFF,
+    CAUSE_CRYSTAL_OUTPACED,
+    CAUSE_UNDEFENDED,
+    CAUSE_OUT_OF_CRYSTALS,
+    CAUSE_OUT_OF_OBSIDIAN,
+    CAUSE_ANVIL,
+    CAUSE_ARMOR_BROKE,
+    CAUSE_MELEE,
+    CAUSE_GLIDING,
+    CAUSE_CHASING,
+    CAUSE_LOW_HEALTH_STAYED,
+    /** Appended to a cause whose kind also dealt the killing blow. */
+    CAUSE_KILLING_BLOW,
+    CAUSE_UNCLEAR,
+    /** Appended to {@link #CAUSE_UNCLEAR}: the kind that dealt the most known damage. */
+    CAUSE_TOP_SOURCE;
 
     @Override
     public String area() {
