@@ -37,7 +37,14 @@ public enum RecorderText implements MessageKey {
     CONCAT,
     ON,
     OFF,
-    ACTIVITY;
+    ACTIVITY,
+    LIVE_STARTED,
+    LIVE_SELF_POP,
+    LIVE_OPPONENT_POP,
+    LIVE_OPPONENT_DIED,
+    LIVE_BIG_HIT,
+    LIVE_BY,
+    LIVE_OUT_OF;
 
     @Override
     public String area() {

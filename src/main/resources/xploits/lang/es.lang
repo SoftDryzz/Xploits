@@ -476,6 +476,13 @@ recorder.concat={first}{second}
 recorder.on=encendido
 recorder.off=apagado
 recorder.activity=peleando · {seconds} s
+recorder.live-started=Pelea empezada · {names}
+recorder.live-self-pop=Pop tuyo · {count} en esta pelea · te quedan {totems} tótems
+recorder.live-opponent-pop=Pop de {name} · {count} en esta pelea
+recorder.live-opponent-died={name} ha muerto
+recorder.live-big-hit=Golpe fuerte · {amount,1} de daño · {kind} · {by}
+recorder.live-by=de {name}
+recorder.live-out-of=Sin {material}
 
 # elytra
 elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.

@@ -476,6 +476,13 @@ recorder.concat={first}{second}
 recorder.on=on
 recorder.off=off
 recorder.activity=fighting · {seconds} s
+recorder.live-started=Fight started · {names}
+recorder.live-self-pop=You popped · {count} this fight · {totems} totems left
+recorder.live-opponent-pop={name} popped · {count} this fight
+recorder.live-opponent-died={name} died
+recorder.live-big-hit=Big hit · {amount,1} damage · {kind} · {by}
+recorder.live-by=by {name}
+recorder.live-out-of=Out of {material}
 
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.
