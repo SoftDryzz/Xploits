@@ -6,6 +6,44 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `stash-keeper`'s "indexed a container" chat line named only "Xploits" instead of the item found.
+
+### Changed
+
+- The code base is now English: packages, types, members, comments, javadoc, test names and
+  exception/log messages. Nothing a player reads changed — the catalogs, chat, toasts and the
+  console window stay in whichever language `.xploits language` has active.
+- The `consola` module is now `console`. Its setting groups are English too:
+  - `auto-travel`: `Patrón` → `Pattern`, `Vuelo` → `Flight`, `Avisos` → `Notify`.
+  - `nether-sweep`: `Pasada` → `Lane`, `Cohetes` → `Fireworks`, `Vuelo` → `Flight`, `Avisos` →
+    `Notify`.
+  - `auto-travel`'s `quiebro-leg`/`quiebro-offset` settings are now `swerve-leg`/`swerve-offset`.
+- Setting values renamed: `pattern` `RECTO` → `STRAIGHT`, `QUIEBRO` → `SWERVE`, `ESPIRAL` →
+  `SPIRAL`, `SENUELO` → `DECOY` (`ZIGZAG` unchanged); `destination-mode` `COORDENADAS` →
+  `COORDINATES`, `RELATIVO` → `RELATIVE`, `AUTOPISTA` → `HIGHWAY`.
+- The console's on-disk files moved to `meteor-client/xploits/console/`: `live.log` (plus
+  `live.1.log`), `history/`, `console.lock`/`console.pid`/`console.exit`, `console-errors.log`,
+  `size.txt`. `live.log` is now format version 3. The window's title is now "Xploits console".
+
+### Migration
+
+- The rename above is applied automatically, once, the first time 0.4.0 starts: `modules.nbt` (main
+  and per profile) and `hud.nbt` are rewritten with the new module, group, setting and value names,
+  and the `xploits/consola/` folder is moved to `xploits/console/` with its files renamed to match.
+  Every file rewritten is backed up first, as `<file>.pre-0.4.0.backup.nbt`, and never overwritten if
+  a backup already exists. A chat message reports what happened. The migration is kept for at least
+  two MINOR versions, then removed.
+- `config.nbt` is not migrated — Meteor loads it before any addon runs, so a rewrite would be
+  discarded. If you had hidden the console module from Meteor's module list under its old name, it
+  can reappear once; hide it again under `console` and it stays hidden from then on.
+
+### Notes
+
+- A console window still open from 0.3.x must be closed before starting 0.4.0. If it is not, the
+  `xploits/consola/` folder is still locked on this start and moves on the next one instead.
+
 ## [0.3.1] — 2026-09-24
 
 ### Fixed
