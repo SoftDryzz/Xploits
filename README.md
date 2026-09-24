@@ -3,7 +3,7 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Eight modules, each switched on separately.
+other anarchy servers. Nine modules, each switched on separately.
 
 The core idea: **no module does half a job without saying so**. If it cannot deliver what it
 promises, it refuses and tells you which setting to change — instead of doing something similar and
@@ -62,7 +62,7 @@ All of this, with the detail of what persists and what can go wrong, in [Securit
 
 ---
 
-## The eight modules
+## The nine modules
 
 ### `auto-travel` — fly somewhere without leaving an arrow pointing at your base
 
@@ -154,6 +154,26 @@ of you —placed crystals, people with swords—, not with a totem counter.
 your people to your Meteor friends list** so they do not either. When turned off it removes only
 the ones it added, never one you already had. See [Security](docs/security.md).
 
+### `fight-recorder` — record every fight and work out why you died
+
+Watches every fight you are in — with `auto-pvp` on or off — and keeps a JSON file for each one: who
+you fought, the damage split, your totems and crystals, the modules you had on and, if you lost, its
+best guess at why. **No positions are stored**: distances, counts, booleans and names only.
+
+**It is off by default: turn it on once.** After that it just runs in the background with the rest
+of your modules — you do not have to remember to arm it before a fight.
+
+Kept in `<instance>/meteor-client/xploits/pvp/fights/`, one file per fight, the last 50: older ones
+are deleted as new ones are written.
+
+- **`death-notice`** (on by default) — one chat line when you die in a recorded fight: how long it
+  lasted, who against, and the main probable cause.
+- **`live-console`** (on by default) — writes the fight to the Xploits console as it happens (pops,
+  big hits, deaths) and its summary when it ends.
+
+Review what it recorded with `.xploits pvp review [n]` (the full breakdown of fight `n`, 1 = most
+recent) and `.xploits pvp fights` (the last 10, one line each) — both work with the module off.
+
 ### `elytra-replace` — swap the elytra before it breaks
 
 Two independent percentages: at how much to swap the one you are wearing, and the minimum the spare
@@ -185,8 +205,8 @@ what happened.
 
 - **It is switched on and off like any module.** If you leave it on, it opens by itself when the
   game starts, and it does not close when you leave a world or die.
-- **The menu works by numbers:** type the number and press Enter. `1` all, `2` pvp, `3` travel,
-  `4` sweep, `5` warnings only, `6` pause, `0` exit.
+- **The menu works by numbers:** type the number and press Enter. `1` all, `2` pvp (`auto-pvp` and
+  `fight-recorder`), `3` travel, `4` sweep, `5` warnings only, `6` pause, `0` exit.
 - **It never shows coordinates.** What carries a position in chat comes out in the window with the
   distance or with nothing. The chat does not change.
 - **What it writes stays on disk** while it is on: `meteor-client/xploits/console/history/`, one
@@ -206,6 +226,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
 | `.xploits find <item>` | Where you saw that item |
 | `.xploits stash` | Status of the container index |
 | `.xploits pvp` | Phase, posture, your health and the damage aimed at you |
+| `.xploits pvp review [n]` | Full breakdown of a recorded fight (1 = most recent) |
+| `.xploits pvp fights` | The last 10 recorded fights |
 | `.xploits travel` · `go` · `stop` | Trip status, launch it, stop it |
 | `.xploits sweep` · `go` · `stop` | Sweep status, launch it, stop it |
 | `.xploits language [auto\|es\|en]` | Active language, or sets it |
@@ -245,6 +267,7 @@ be published in the server chat**.
 <instance>/meteor-client/xploits/        Kit queue and progress
 <instance>/meteor-client/xploits/stash/  Container index, per world
 <instance>/meteor-client/xploits/console/  Console history, 30 days at most
+<instance>/meteor-client/xploits/pvp/fights/  Recorded fights, 50 at most
 <instance>/meteor-client/modules.nbt     Settings (written by Meteor)
 <instance>/meteor-client/friends.nbt     Friends list (written by Meteor)
 ```
