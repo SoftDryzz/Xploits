@@ -8,12 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BorrowedModuleTest {
-    /** elytra-fly: la preparación lo apaga siempre (spec §6.2, paso 5). */
+    /** elytra-fly: the preparation always turns it off (spec §6.2, step 5). */
     private static BorrowedModule elytraFly() {
         return new BorrowedModule("elytra-fly", false);
     }
 
-    /** elytra-replace: la preparación lo enciende siempre (spec §6.2, paso 5). */
+    /** elytra-replace: the preparation always turns it on (spec §6.2, step 5). */
     private static BorrowedModule elytraReplace() {
         return new BorrowedModule("elytra-replace", true);
     }
@@ -21,101 +21,101 @@ class BorrowedModuleTest {
     @Test
     void takingAModuleThatIsInTheWayTurnsItOffAndLandingGivesItBack() {
         BorrowedModule module = elytraFly();
-        assertEquals(Action.APAGAR, module.take(true));
-        assertEquals(Action.ENCENDER, module.release(false, true));
+        assertEquals(Action.TURN_OFF, module.take(true));
+        assertEquals(Action.TURN_ON, module.release(false, true));
     }
 
     @Test
     void takingAModuleThatIsMissingTurnsItOnAndLandingGivesItBack() {
         BorrowedModule module = elytraReplace();
-        assertEquals(Action.ENCENDER, module.take(false));
-        assertEquals(Action.APAGAR, module.release(true, true));
+        assertEquals(Action.TURN_ON, module.take(false));
+        assertEquals(Action.TURN_OFF, module.release(true, true));
     }
 
     /**
-     * El caso que motivó todo esto: un jugador que nunca usa elytra-fly no puede aterrizar con
-     * elytra-fly encendido. Con el reposo declarado en un ajuste de valor true, aterrizaba encendido.
+     * The case that started all this: a player who never uses elytra-fly cannot land with elytra-fly
+     * on. With the resting state declared in a setting whose value was true, they landed with it on.
      */
     @Test
     void aModuleThePlayerNeverUsedIsNotTurnedOnByTheLanding() {
         BorrowedModule module = elytraFly();
-        assertEquals(Action.NADA, module.take(false), "ya estaba apagado: no hay nada que apagar");
-        assertEquals(Action.NADA, module.release(false, true), "estaba apagado antes y sigue apagado");
+        assertEquals(Action.NONE, module.take(false), "it was already off: there is nothing to turn off");
+        assertEquals(Action.NONE, module.release(false, true), "it was off before and it is still off");
     }
 
     @Test
     void aModuleThatWasAlreadyOnStaysOn() {
         BorrowedModule module = elytraReplace();
-        assertEquals(Action.NADA, module.take(true));
-        assertEquals(Action.NADA, module.release(true, true));
+        assertEquals(Action.NONE, module.take(true));
+        assertEquals(Action.NONE, module.release(true, true));
     }
 
-    /** Doctrina de ModuleLedger: lo que el jugador mueve a mano manda sobre lo anotado. */
+    /** ModuleLedger's doctrine: what the player moves by hand overrides what was noted down. */
     @Test
     void aManualMoveDuringTheFlightWins() {
         BorrowedModule module = elytraFly();
-        assertEquals(Action.APAGAR, module.take(true));
-        // El jugador lo vuelve a encender a mitad de vuelo: al aterrizar no se toca.
-        assertEquals(Action.NADA, module.release(true, true));
+        assertEquals(Action.TURN_OFF, module.take(true));
+        // The player turns it back on mid-flight: on landing it is not touched.
+        assertEquals(Action.NONE, module.release(true, true));
         assertFalse(module.hasPending());
     }
 
     @Test
     void aManualMoveDuringTheFlightWinsTheOtherWayRound() {
         BorrowedModule module = elytraReplace();
-        assertEquals(Action.ENCENDER, module.take(false));
-        // El jugador lo apaga a mitad de vuelo: al aterrizar no se vuelve a apagar ni se enciende.
-        assertEquals(Action.NADA, module.release(false, true));
+        assertEquals(Action.TURN_ON, module.take(false));
+        // The player turns it off mid-flight: on landing it is neither turned off again nor turned on.
+        assertEquals(Action.NONE, module.release(false, true));
     }
 
     /**
-     * Los dos tests de arriba NO protegen la regla del movimiento a mano, aunque lo parezca: en
-     * ambos el jugador devuelve el módulo a su estado de despegue, así que la comprobación
-     * siguiente -"ya está donde estaba"- devuelve NADA por su cuenta y el test pasa igual con la
-     * regla que sin ella. Se comprobó borrando la línea: la suite entera seguía en verde.
+     * The two tests above do NOT protect the manual-move rule, even though it looks like they do: in
+     * both the player puts the module back to its take-off state, so the next check -"it is already
+     * where it was"- returns NONE on its own and the test passes the same with the rule as without it.
+     * This was checked by deleting the line: the whole suite stayed green.
      *
-     * Los dos de aquí abajo son los únicos casos que las distinguen: el módulo se queda en el
-     * estado que la preparación NO tocó, y el jugador lo mueve al contrario. Sin la regla, el
-     * aterrizaje deshace el cambio del jugador y encima informa de que restauró el entorno.
+     * The two below are the only cases that tell them apart: the module stays in the state the
+     * preparation did NOT touch, and the player moves it the other way. Without the rule, the landing
+     * undoes the player's change and on top of that reports that it restored the environment.
      */
     @Test
     void aManualMoveWinsEvenWhenThePreparationNeverTouchedTheModule() {
         BorrowedModule module = elytraFly();
-        assertEquals(Action.NADA, module.take(false), "ya estaba apagado: la preparación no lo toca");
+        assertEquals(Action.NONE, module.take(false), "it was already off: the preparation does not touch it");
 
-        // El jugador enciende elytra-fly a mano a mitad de vuelo. Al aterrizar es suyo, no nuestro:
-        // sin la regla se apagaría, porque la anotación dice "estaba apagado".
-        assertEquals(Action.NADA, module.release(true, true));
-        assertFalse(module.hasPending(), "no hay nada que devolver: el módulo es del jugador");
+        // The player turns elytra-fly on by hand mid-flight. On landing it is theirs, not ours:
+        // without the rule it would be turned off, because the note says "it was off".
+        assertEquals(Action.NONE, module.release(true, true));
+        assertFalse(module.hasPending(), "there is nothing to give back: the module is the player's");
     }
 
     @Test
     void aManualMoveWinsEvenWhenThePreparationNeverTouchedTheModuleTheOtherWayRound() {
         BorrowedModule module = elytraReplace();
-        assertEquals(Action.NADA, module.take(true), "ya estaba encendido: la preparación no lo toca");
+        assertEquals(Action.NONE, module.take(true), "it was already on: the preparation does not touch it");
 
-        // El jugador apaga elytra-replace a mano durante el vuelo. Sin la regla se volvería a
-        // encender al aterrizar, porque la anotación dice "estaba encendido".
-        assertEquals(Action.NADA, module.release(false, true));
+        // The player turns elytra-replace off by hand during the flight. Without the rule it would be
+        // turned back on on landing, because the note says "it was on".
+        assertEquals(Action.NONE, module.release(false, true));
         assertFalse(module.hasPending());
     }
 
     @Test
     void releasingWithoutHavingTakenDoesNothing() {
         BorrowedModule module = elytraFly();
-        assertEquals(Action.NADA, module.release(true, true));
-        assertEquals(Action.NADA, module.release(false, true));
+        assertEquals(Action.NONE, module.release(true, true));
+        assertEquals(Action.NONE, module.release(false, true));
         assertFalse(module.hasPending());
     }
 
-    /** Salida del mundo: no se puede tocar ningún módulo, así que la devolución queda pendiente. */
+    /** Leaving the world: no module can be touched, so the give-back stays pending. */
     @Test
     void whenTheModuleCannotBeToggledTheDecisionIsLeftPending() {
         BorrowedModule module = elytraFly();
         module.take(true);
-        assertEquals(Action.NADA, module.release(false, false), "no se toca nada durante el desmontaje");
+        assertEquals(Action.NONE, module.release(false, false), "nothing is touched during the teardown");
         assertTrue(module.hasPending());
-        assertEquals(Action.ENCENDER, module.pending());
+        assertEquals(Action.TURN_ON, module.pending());
     }
 
     @Test
@@ -123,34 +123,34 @@ class BorrowedModuleTest {
         BorrowedModule module = elytraReplace();
         module.take(false);
         module.release(true, false);
-        assertEquals(Action.APAGAR, module.claimPending());
+        assertEquals(Action.TURN_OFF, module.claimPending());
         assertFalse(module.hasPending());
-        assertEquals(Action.NADA, module.claimPending());
+        assertEquals(Action.NONE, module.claimPending());
     }
 
     /**
-     * Los seis caminos de salida se solapan (spec §6.3): el apagado del módulo llega justo detrás de
-     * la salida del mundo. El segundo no puede borrar lo que apuntó el primero.
+     * The six exit paths overlap (spec §6.3): turning the module off arrives right behind leaving the
+     * world. The second cannot erase what the first noted down.
      */
     @Test
     void aSecondReleaseDoesNotWipeThePending() {
         BorrowedModule module = elytraFly();
         module.take(true);
         module.release(false, false);
-        assertEquals(Action.NADA, module.release(false, true), "ya no está prestado");
+        assertEquals(Action.NONE, module.release(false, true), "it is no longer borrowed");
         assertTrue(module.hasPending());
-        assertEquals(Action.ENCENDER, module.pending());
+        assertEquals(Action.TURN_ON, module.pending());
     }
 
     @Test
     void withNothingToUndoTheresNoPendingEither() {
         BorrowedModule module = elytraFly();
         module.take(false);
-        assertEquals(Action.NADA, module.release(false, false));
-        assertFalse(module.hasPending(), "no había nada que devolver: no hay nada que dejar pendiente");
+        assertEquals(Action.NONE, module.release(false, false));
+        assertFalse(module.hasPending(), "there was nothing to give back: there is nothing to leave pending");
     }
 
-    /** Un viaje nuevo anota de cero: el pendiente del anterior ya no describe ningún reposo. */
+    /** A new trip notes down from scratch: the previous one's pending action no longer describes any resting state. */
     @Test
     void takingAgainForgetsThePending() {
         BorrowedModule module = elytraFly();
@@ -168,7 +168,7 @@ class BorrowedModuleTest {
         module.release(false, false);
         module.forget();
         assertFalse(module.hasPending());
-        assertEquals(Action.NADA, module.release(false, true));
+        assertEquals(Action.NONE, module.release(false, true));
     }
 
     @Test

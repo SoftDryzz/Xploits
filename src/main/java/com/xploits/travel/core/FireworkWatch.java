@@ -1,49 +1,49 @@
 package com.xploits.travel.core;
 
 /**
- * La decisión del aviso de fuegos artificiales (spec AutoTravel §8: <i>"Sin fuegos a mitad de vuelo
- * → Aviso fuerte: toast y sonido. Enterarse a 100k importa"</i>). Aquí vive todo lo que se puede
- * decidir sin tocar Minecraft: a partir de cuántos fuegos se avisa y cuándo se repite el aviso.
- * Contar los fuegos del inventario y sacar el toast es del adaptador.
+ * The firework warning decision (AutoTravel spec §8: <i>"Out of fireworks mid-flight → Loud warning:
+ * toast and sound. Finding out at 100k matters"</i>). Everything that can be decided without touching
+ * Minecraft lives here: from how many fireworks the warning fires and when it repeats. Counting the
+ * inventory's fireworks and showing the toast belong to the adapter.
  *
- * <p><b>Por qué hace falta una clase para un {@code if}.</b> El vuelo se observa una vez por tick,
- * así que un aviso sin memoria saldría veinte veces por segundo hasta el final del viaje y taparía
- * cualquier otra cosa en pantalla. Y la memoria ingenua -un {@code boolean} que se pone a
- * {@code true} y no se quita- tiene el fallo contrario: si el jugador repone fuegos de un shulker y
- * más tarde vuelve a quedarse sin ellos, el módulo se quedaría mudo el resto del viaje, que es
- * justo cuando el aviso importa más.
+ * <p><b>Why a class is needed for an {@code if}.</b> The flight is observed once per tick, so a
+ * warning without memory would go out twenty times per second until the end of the trip and would
+ * cover anything else on screen. And the naive memory -a {@code boolean} set to {@code true} and never
+ * cleared- has the opposite flaw: if the player restocks fireworks from a shulker and later runs out
+ * again, the module would stay mute for the rest of the trip, which is precisely when the warning
+ * matters most.
  *
- * <p>La salida es una histéresis con una sola frontera: se avisa al entrar en la banda de peligro
- * ({@code fuegos <= umbral}) y el aviso <b>se rearma</b> al salir de ella ({@code fuegos > umbral}).
- * Durante el vuelo la cuenta solo baja -cada impulso gasta uno-, así que salir de la banda significa
- * exactamente una cosa: que se han repuesto.
+ * <p>The way out is a hysteresis with a single boundary: it warns on entering the danger band
+ * ({@code fireworks <= threshold}) and the warning <b>rearms</b> on leaving it ({@code fireworks >
+ * threshold}). During the flight the count only goes down -each boost spends one-, so leaving the
+ * band means exactly one thing: that they have been restocked.
  */
 public final class FireworkWatch {
     private final int threshold;
 
-    /** Si ya se avisó y todavía no se ha salido de la banda de peligro. */
+    /** Whether it already warned and has not yet left the danger band. */
     private boolean warned;
 
     /**
-     * @param threshold con estos fuegos o menos se avisa. Cero significa avisar solo cuando se
-     *                  acaben del todo; cualquier valor mayor avisa con margen, que es de lo que se
-     *                  trata a cien mil bloques de casa
+     * @param threshold with this many fireworks or fewer it warns. Zero means warning only when they
+     *                  run out completely; any larger value warns with some margin, which is the point
+     *                  a hundred thousand blocks from home
      */
     public FireworkWatch(int threshold) {
         if (threshold < 0) {
-            throw new IllegalArgumentException("el umbral de fuegos no puede ser negativo: " + threshold);
+            throw new IllegalArgumentException("the firework threshold cannot be negative: " + threshold);
         }
         this.threshold = threshold;
     }
 
     /**
-     * Observa la cuenta de fuegos de este tick y dice si hay que sacar el aviso fuerte ahora.
+     * Observes this tick's firework count and says whether the loud warning has to go out now.
      *
-     * @return {@code true} una sola vez por cada entrada en la banda de peligro
+     * @return {@code true} only once for each entry into the danger band
      */
     public boolean observe(int fireworks) {
         if (fireworks > threshold) {
-            // Fuera de la banda: se han repuesto, o nunca se entró. El aviso vuelve a estar armado.
+            // Outside the band: they have been restocked, or it was never entered. The warning is armed again.
             warned = false;
             return false;
         }
@@ -52,7 +52,7 @@ public final class FireworkWatch {
         return true;
     }
 
-    /** Vuelve al estado de recién empezada, con el aviso armado. Para el arranque de un viaje. */
+    /** Goes back to the freshly started state, with the warning armed. For the start of a trip. */
     public void reset() {
         warned = false;
     }

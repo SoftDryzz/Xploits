@@ -23,7 +23,7 @@ class SafetyNetTest {
         return ES.render(msg);
     }
 
-    // El texto que el jugador habría escrito
+    // The text the player would have typed
 
     @Test
     void plainChatTravelsAsItIsTyped() {
@@ -33,9 +33,9 @@ class SafetyNetTest {
 
     @Test
     void aServerCommandGetsItsSlashBack() {
-        // El paquete de comando lleva "tpy Pepe", no "/tpy Pepe": sin devolverle la barra, la red
-        // compararía contra un texto que el jugador nunca escribió.
-        assertEquals("/tpy Pepe", SafetyNet.typedText(Channel.COMANDO, "tpy Pepe"));
+        // The command packet carries "tpy Pepe", not "/tpy Pepe": without giving it its slash back,
+        // the net would compare against a text the player never typed.
+        assertEquals("/tpy Pepe", SafetyNet.typedText(Channel.COMMAND, "tpy Pepe"));
     }
 
     @Test
@@ -44,7 +44,7 @@ class SafetyNetTest {
         assertThrows(IllegalArgumentException.class, () -> SafetyNet.typedText(null, "hola"));
     }
 
-    // Qué reconoce la red como comando nuestro
+    // What the net recognises as one of our commands
 
     @Test
     void ourOwnBaritoneCommandsAreRecognised() {
@@ -58,15 +58,15 @@ class SafetyNetTest {
     void whatThePlayerSaysIsNotTouched() {
         assertFalse(SafetyNet.directs(PREFIX, Channel.CHAT, "hola a todos"));
         assertFalse(SafetyNet.directs(PREFIX, Channel.CHAT, "voy al spawn"));
-        // Lleva el prefijo, pero no al principio: no es un comando.
+        // It carries the prefix, but not at the start: it is not a command.
         assertFalse(SafetyNet.directs(PREFIX, Channel.CHAT, "el canal es #general"));
     }
 
     @Test
     void theOtherModulesCommandsSurviveTheTrip() {
-        // auto-tpy y kit-requester mandan comandos con barra mientras auto-travel dirige.
-        assertFalse(SafetyNet.directs(PREFIX, Channel.COMANDO, "tpy Pepe"));
-        assertFalse(SafetyNet.directs(PREFIX, Channel.COMANDO, "msg Pepe kit por favor"));
+        // auto-tpy and kit-requester send slash commands while auto-travel is in charge.
+        assertFalse(SafetyNet.directs(PREFIX, Channel.COMMAND, "tpy Pepe"));
+        assertFalse(SafetyNet.directs(PREFIX, Channel.COMMAND, "msg Pepe kit por favor"));
     }
 
     @Test
@@ -78,19 +78,19 @@ class SafetyNetTest {
 
     @Test
     void theSlashIsPartOfTheComparison() {
-        // Si alguien llegara aquí con un prefijo de barra -no puede: se rechaza al lanzar-, el
-        // canal de comando casaría. Esta es la razón exacta por la que se rechaza antes.
-        assertTrue(SafetyNet.typedText(Channel.COMANDO, "tpy Pepe").startsWith("/"));
+        // If someone got here with a slash prefix -they cannot: it is rejected at launch-, the command
+        // channel would match. This is the exact reason why it is rejected earlier.
+        assertTrue(SafetyNet.typedText(Channel.COMMAND, "tpy Pepe").startsWith("/"));
     }
 
     @Test
     void anUnusablePrefixRecognisesNothingInsteadOfEverything() {
         assertFalse(SafetyNet.directs("", Channel.CHAT, "hola a todos"));
         assertFalse(SafetyNet.directs(null, Channel.CHAT, "hola a todos"));
-        assertFalse(SafetyNet.directs("/", Channel.COMANDO, "tpy Pepe"));
+        assertFalse(SafetyNet.directs("/", Channel.COMMAND, "tpy Pepe"));
     }
 
-    // Qué prefijos se aceptan al lanzar
+    // Which prefixes are accepted at launch
 
     @Test
     void anOrdinaryPrefixIsAccepted() {
@@ -128,25 +128,25 @@ class SafetyNetTest {
         assertNull(SafetyNet.prefixRejection("#/"));
     }
 
-    // El veredicto de la restauración
+    // The restoration's verdict
 
     @Test
     void aDeliveredRestorationHasNothingToWarnAbout() {
-        assertTrue(Restoration.ENTREGADA.arrived());
-        assertNull(Restoration.ENTREGADA.warning(PREFIX));
+        assertTrue(Restoration.DELIVERED.arrived());
+        assertNull(Restoration.DELIVERED.warning(PREFIX));
     }
 
     @Test
     void aCancelledRestorationSaysBaritoneMayStillBeFlying() {
-        assertFalse(Restoration.CANCELADA.arrived());
-        assertEquals(Msg.of(TravelText.RESTORATION_CANCELLED, "prefix", PREFIX), Restoration.CANCELADA.warning(PREFIX));
-        String warning = es(Restoration.CANCELADA.warning(PREFIX));
+        assertFalse(Restoration.CANCELLED.arrived());
+        assertEquals(Msg.of(TravelText.RESTORATION_CANCELLED, "prefix", PREFIX), Restoration.CANCELLED.warning(PREFIX));
+        String warning = es(Restoration.CANCELLED.warning(PREFIX));
         assertTrue(warning.contains("puede seguir volando"), warning);
     }
 
     @Test
     void aCancelledRestorationSaysTheSettingsStayedWritten() {
-        String warning = es(Restoration.CANCELADA.warning(PREFIX));
+        String warning = es(Restoration.CANCELLED.warning(PREFIX));
         assertTrue(warning.contains("elytraAutoSwap"), warning);
         assertTrue(warning.contains("elytraAutoJump"), warning);
         assertTrue(warning.contains("elytraAllowEmergencyLand"), warning);
@@ -157,9 +157,10 @@ class SafetyNetTest {
 
     @Test
     void aCancelledRestorationSaysWhatToTypeByHand() {
-        String warning = es(Restoration.CANCELADA.warning(">"));
-        // El prefijo que falló se nombra, y a la vez se dice que hay que usar otro: el que Baritone
-        // escuche de verdad. Decirle que reintente con ">" sería mandarlo al mismo agujero.
+        String warning = es(Restoration.CANCELLED.warning(">"));
+        // The prefix that failed is named, and at the same time the player is told to use another one:
+        // the one Baritone really listens to. Telling them to retry with ">" would send them into the
+        // same hole.
         assertTrue(warning.contains(">cancel"), warning);
         assertTrue(warning.contains("#cancel"), warning);
         assertTrue(warning.contains("a mano"), warning);
@@ -167,9 +168,9 @@ class SafetyNetTest {
 
     @Test
     void aRestorationWithNoPlayerSaysTheSettingsStayedWritten() {
-        assertFalse(Restoration.SIN_JUGADOR.arrived());
-        assertEquals(Msg.of(TravelText.RESTORATION_NO_PLAYER, "prefix", PREFIX), Restoration.SIN_JUGADOR.warning(PREFIX));
-        String warning = es(Restoration.SIN_JUGADOR.warning(PREFIX));
+        assertFalse(Restoration.NO_PLAYER.arrived());
+        assertEquals(Msg.of(TravelText.RESTORATION_NO_PLAYER, "prefix", PREFIX), Restoration.NO_PLAYER.warning(PREFIX));
+        String warning = es(Restoration.NO_PLAYER.warning(PREFIX));
         assertTrue(warning.contains("elytraFireworkSpeed"), warning);
         assertTrue(warning.contains("#set nombre valor"), warning);
     }
@@ -181,14 +182,14 @@ class SafetyNetTest {
         }
     }
 
-    // El verbo de un comando saliente, sin sus argumentos (spec consola §7)
+    // The verb of an outgoing command, without its arguments (console spec §7)
 
     @Test
-    void elVerboDeUnComandoSinSusArgumentos() {
-        assertEquals("#goal", SafetyNet.verbo("#goal 1200 -800"));
-        assertEquals("#set", SafetyNet.verbo("  #set elytraAutoJump true"));
-        assertEquals("#elytra", SafetyNet.verbo("#elytra"));
-        assertEquals("(vacío)", SafetyNet.verbo("   "));
-        assertThrows(IllegalArgumentException.class, () -> SafetyNet.verbo(null));
+    void theVerbOfACommandWithoutItsArguments() {
+        assertEquals("#goal", SafetyNet.verb("#goal 1200 -800"));
+        assertEquals("#set", SafetyNet.verb("  #set elytraAutoJump true"));
+        assertEquals("#elytra", SafetyNet.verb("#elytra"));
+        assertEquals("(empty)", SafetyNet.verb("   "));
+        assertThrows(IllegalArgumentException.class, () -> SafetyNet.verb(null));
     }
 }

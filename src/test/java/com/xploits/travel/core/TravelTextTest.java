@@ -32,7 +32,7 @@ class TravelTextTest {
             + " cambiárselo antes de que llegue, y nunca menos de 300, que es lo más corto que una elytra con"
             + " cohetes vuela como tramo en vez de como bamboleo. Con huecos más cortos el módulo suelta un"
             + " waypoint y el siguiente en el mismo tick, el patrón se consume sin volarse y la ruta sale recta"
-            + " sin avisar. Sube el periodo a 296 bloques, o la amplitud a 283, o elige RECTO..", ES.render(tightZigzag()));
+            + " sin avisar. Sube el periodo a 296 bloques, o la amplitud a 283, o elige STRAIGHT..", ES.render(tightZigzag()));
     }
 
     @Test
@@ -55,7 +55,7 @@ class TravelTextTest {
             + " there, and never less than 300, which is the shortest a rocket-powered elytra flies as a leg rather"
             + " than as a wobble. With shorter gaps the module drops a waypoint and the next one in the same tick,"
             + " the pattern is used up without being flown and the route goes straight without warning. Raise the"
-            + " period to 296 blocks, or the amplitude to 283, or choose RECTO.", rendered);
+            + " period to 296 blocks, or the amplitude to 283, or choose STRAIGHT.", rendered);
         assertFalse(rendered.contains(".."), "English rejection should not end with a doubled period");
     }
 

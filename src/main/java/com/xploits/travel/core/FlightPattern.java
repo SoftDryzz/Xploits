@@ -1,15 +1,15 @@
 package com.xploits.travel.core;
 
-/** Los patrones de vuelo de AutoTravel: el despiste que se interpone entre origen y destino. */
+/** AutoTravel's flight patterns: the decoy that stands between origin and destination. */
 public enum FlightPattern {
-    /** Línea recta, sin despiste: un solo waypoint, el destino. */
-    RECTO,
-    /** Desviación lateral que alterna de lado a paso corto y amplitud pequeña. */
+    /** A straight line, with no decoy: a single waypoint, the destination. */
+    STRAIGHT,
+    /** A lateral deviation that switches sides with a short step and a small amplitude. */
     ZIGZAG,
-    /** La misma desviación que ZIGZAG, pero con tramos largos y desvíos amplios. */
-    QUIEBRO,
-    /** Un tramo final en espiral que se va cerrando sobre el destino. */
-    ESPIRAL,
-    /** Apunta primero lejos del destino real y corrige después. Se rechaza en autopista. */
-    SENUELO
+    /** The same deviation as ZIGZAG, but with long legs and wide offsets. */
+    SWERVE,
+    /** A final spiral stretch that closes in on the destination. */
+    SPIRAL,
+    /** First aims far from the real destination and corrects afterwards. Rejected on a highway. */
+    DECOY
 }

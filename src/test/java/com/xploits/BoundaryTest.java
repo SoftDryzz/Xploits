@@ -180,19 +180,11 @@ class BoundaryTest {
         "com/xploits/sweep/core/ChunkPos.java",
         "com/xploits/sweep/core/Lane.java",
         "com/xploits/sweep/core/SweepText.java",
-        "com/xploits/travel/core/Axis.java",
-        "com/xploits/travel/core/BaritoneScript.java",
-        "com/xploits/travel/core/BaritoneScriptTest.java",
-        "com/xploits/travel/core/DestinationTest.java",
-        "com/xploits/travel/core/FireworkWatch.java",
-        "com/xploits/travel/core/PatternParams.java",
-        "com/xploits/travel/core/Route.java",
-        "com/xploits/travel/core/TravelTextTest.java",
-        "com/xploits/travel/core/Waypoint.java",
         "com/xploits/BoundaryTest.java",
         "com/xploits/XploitsAddon.java",
         "com/xploits/console/",
-        "com/xploits/shared/"
+        "com/xploits/shared/",
+        "com/xploits/travel/"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */
@@ -436,5 +428,25 @@ class BoundaryTest {
             }
         });
         assertEquals(List.of(), found, "Spanish text in code: player text belongs in the catalogs, the rest in English");
+    }
+
+    /** Setting values and ids a player types or picks, as they were before 0.4.0 (design §8). */
+    private static final Set<String> OLD_SETTING_WORDS = Set.of(
+        "RECTO", "QUIEBRO", "ESPIRAL", "SENUELO", "COORDENADAS", "RELATIVO", "AUTOPISTA", "quiebro-leg", "quiebro-offset");
+
+    @Test
+    void catalogsNameOnlyCurrentSettingValues() throws IOException {
+        List<String> found = new ArrayList<>();
+        for (String lang : List.of("es", "en")) {
+            List<String> lines = Files.readAllLines(Path.of("src", "main", "resources", "xploits", "lang", lang + ".lang"), StandardCharsets.UTF_8);
+            for (int i = 0; i < lines.size(); i++) {
+                for (String w : OLD_SETTING_WORDS) {
+                    if (java.util.regex.Pattern.compile("(?<![\\w-])" + java.util.regex.Pattern.quote(w) + "(?![\\w-])").matcher(lines.get(i)).find()) {
+                        found.add(lang + ".lang:" + (i + 1) + " " + w);
+                    }
+                }
+            }
+        }
+        assertEquals(List.of(), found, "a catalog asks the player for a value that no longer exists");
     }
 }

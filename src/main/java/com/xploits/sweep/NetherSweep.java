@@ -675,11 +675,11 @@ public class NetherSweep extends XploitsModule {
                 payload = chat.chatMessage();
             }
             else if (event.packet instanceof CommandExecutionC2SPacket command) {
-                channel = SafetyNet.Channel.COMANDO;
+                channel = SafetyNet.Channel.COMMAND;
                 payload = command.command();
             }
             else if (event.packet instanceof ChatCommandSignedC2SPacket command) {
-                channel = SafetyNet.Channel.COMANDO;
+                channel = SafetyNet.Channel.COMMAND;
                 payload = command.command();
             }
             else return;
@@ -703,7 +703,7 @@ public class NetherSweep extends XploitsModule {
 
         Msg message = Msg.of(SweepText.NET_CAUGHT, "command", text);
         // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
-        Msg sinArgumentos = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
+        Msg sinArgumentos = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verb(text));
         warningPrivate(new PositionedMsg(message, sinArgumentos));
         loudToast(message, Items.BARRIER);
     }
@@ -1332,7 +1332,7 @@ public class NetherSweep extends XploitsModule {
      * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después
      */
     private SafetyNet.Restoration finish(SweepText reason, boolean warn) {
-        if (!sweeping) return SafetyNet.Restoration.ENTREGADA;
+        if (!sweeping) return SafetyNet.Restoration.DELIVERED;
         sweeping = false;
 
         // Lo medido en este vuelo se guarda para la estimación previa del siguiente (spec §6), y solo
@@ -1386,7 +1386,7 @@ public class NetherSweep extends XploitsModule {
         try {
             SafetyNet.Restoration outcome;
             if (mc.player == null) {
-                outcome = SafetyNet.Restoration.SIN_JUGADOR;
+                outcome = SafetyNet.Restoration.NO_PLAYER;
             }
             else {
                 // El && va detrás a propósito: primero se manda, siempre, y luego se acumula. Con la
@@ -1395,7 +1395,7 @@ public class NetherSweep extends XploitsModule {
                 for (String command : BaritoneScript.restoration(activePrefix, restingSettings())) {
                     delivered = send(command) && delivered;
                 }
-                outcome = delivered ? SafetyNet.Restoration.ENTREGADA : SafetyNet.Restoration.CANCELADA;
+                outcome = delivered ? SafetyNet.Restoration.DELIVERED : SafetyNet.Restoration.CANCELLED;
             }
 
             releaseModule(Modules.get().get(ElytraFly.class), elytraFly);
@@ -1494,13 +1494,13 @@ public class NetherSweep extends XploitsModule {
 
     private static void apply(Module module, BorrowedModule.Action action) {
         switch (action) {
-            case ENCENDER -> {
+            case TURN_ON -> {
                 if (!module.isActive()) module.enable();
             }
-            case APAGAR -> {
+            case TURN_OFF -> {
                 if (module.isActive()) module.disable();
             }
-            case NADA -> { }
+            case NONE -> { }
         }
     }
 

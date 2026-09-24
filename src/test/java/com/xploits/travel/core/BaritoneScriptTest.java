@@ -25,7 +25,7 @@ class BaritoneScriptTest {
         List<String> commands = BaritoneScript.preparation(PREFIX, flying());
         assertFalse(commands.isEmpty());
         for (String command : commands) {
-            assertTrue(command.startsWith(PREFIX), "sin prefijo: " + command);
+            assertTrue(command.startsWith(PREFIX), "no prefix: " + command);
         }
         assertTrue(BaritoneScript.launch(PREFIX).startsWith(PREFIX));
         assertTrue(BaritoneScript.cancel(PREFIX).startsWith(PREFIX));
@@ -36,7 +36,7 @@ class BaritoneScriptTest {
     void aDifferentPrefixIsHonoured() {
         assertTrue(BaritoneScript.launch(">").startsWith(">"));
         for (String command : BaritoneScript.preparation(">", flying())) {
-            assertTrue(command.startsWith(">"), "sin prefijo: " + command);
+            assertTrue(command.startsWith(">"), "no prefix: " + command);
         }
     }
 
@@ -94,7 +94,7 @@ class BaritoneScriptTest {
             new BaritoneScript.FlightSettings(false, false, false, 2.0, "");
         List<String> restoration = BaritoneScript.restoration(PREFIX, resting);
 
-        assertTrue(any(restoration, "elytraAutoSwap true"), "hay que devolver el cambio propio de Baritone");
+        assertTrue(any(restoration, "elytraAutoSwap true"), "Baritone's own swap has to be given back");
         assertTrue(any(restoration, "elytraAutoJump false"));
         assertTrue(any(restoration, "elytraAllowEmergencyLand false"));
         assertTrue(any(restoration, "elytraConserveFireworks false"));
@@ -103,17 +103,17 @@ class BaritoneScriptTest {
 
     @Test
     void preparationSetsElytraAutoSwapBeforeThePlayersOwnSettings() {
-        // Spec §10, con nombre propio: elytraAutoSwap false tiene que ir antes que los ajustes del
-        // jugador, para que Baritone nunca alcance a tocar el élitro con su propio cambio puesto.
+        // Spec §10, by name: elytraAutoSwap false has to go before the player's settings, so that
+        // Baritone never gets to touch the elytra with its own swap on.
         List<String> commands = BaritoneScript.preparation(PREFIX, flying());
 
         int autoSwapIndex = indexOfContaining(commands, "elytraAutoSwap false");
         int autoJumpIndex = indexOfContaining(commands, "elytraAutoJump");
 
-        assertTrue(autoSwapIndex >= 0, "falta elytraAutoSwap false");
-        assertTrue(autoJumpIndex >= 0, "falta el ajuste del jugador");
+        assertTrue(autoSwapIndex >= 0, "elytraAutoSwap false is missing");
+        assertTrue(autoJumpIndex >= 0, "the player's setting is missing");
         assertTrue(autoSwapIndex < autoJumpIndex,
-            "elytraAutoSwap false debe ir antes que los ajustes del jugador (spec §10)");
+            "elytraAutoSwap false must go before the player's settings (spec §10)");
     }
 
     private static int indexOfContaining(List<String> commands, String fragment) {
@@ -132,9 +132,9 @@ class BaritoneScriptTest {
 
     @Test
     void theVerbsAreExactlyWhatWouldBePublishedToTheServersChat() {
-        // Sin fijar el vocabulario exacto, launch() devolviendo "#foo" en vez de "#elytra" pasaba
-        // todos los tests igual. Estas cadenas son justo lo que se publicaría en el chat de 6b6t si
-        // Baritone no llegara a interceptarlas: el contrato que más importa.
+        // Without pinning the exact vocabulary, launch() returning "#foo" instead of "#elytra" passed
+        // every test all the same. These strings are exactly what would be published in 6b6t's chat
+        // if Baritone failed to intercept them: the contract that matters most.
         assertEquals("#elytra", BaritoneScript.launch(PREFIX));
         assertEquals("#cancel", BaritoneScript.cancel(PREFIX));
         assertEquals("#goal 1 2", BaritoneScript.goTo(PREFIX, new Waypoint(1, 2)));
@@ -143,9 +143,9 @@ class BaritoneScriptTest {
 
     @Test
     void anEmptyPrefixIsRejectedInsteadOfPublishingPlainChat() {
-        // Con prefijo vacío los comandos saldrían como chat plano al servidor, y la red de
-        // seguridad que cancela los paquetes con el prefijo de Baritone no los reconocería como
-        // suyos: dejaría pasar el chat entero. El núcleo es el único embudo, así que valida aquí.
+        // With an empty prefix the commands would go out to the server as plain chat, and the safety
+        // net that cancels packets with Baritone's prefix would not recognise them as its own: it
+        // would let the whole chat through. The core is the only funnel, so it checks here.
         assertThrows(IllegalArgumentException.class, () -> BaritoneScript.launch(""));
         assertThrows(IllegalArgumentException.class, () -> BaritoneScript.cancel(""));
         assertThrows(IllegalArgumentException.class, () -> BaritoneScript.goTo("", new Waypoint(1, 2)));
@@ -154,14 +154,15 @@ class BaritoneScriptTest {
     }
 
     /**
-     * Los cuatro valores de fábrica de Baritone, fijados aquí porque son un hecho externo y caro: si
-     * el reposo no es el suyo, la restauración no restaura, <b>reconfigura</b>. Baritone persiste sus
-     * ajustes a disco, así que un solo viaje dejaría todos los #elytra que el jugador haga a mano
-     * después con valores que él nunca eligió -y sin forma de relacionarlo con el addon-.
+     * Baritone's four out-of-the-box values, pinned here because they are an external and expensive
+     * fact: if the resting state is not its own, the restoration does not restore, it
+     * <b>reconfigures</b>. Baritone persists its settings to disk, so a single trip would leave every
+     * #elytra the player runs by hand afterwards with values they never chose -and with no way to link
+     * it to the addon-.
      *
-     * <p>Leídos del bytecode de baritone-standalone-fabric-1.17.0.jar (clase Settings, ofuscada como
-     * baritone/e.class, con javap -p -c). Dos de los cuatro no eran los que el módulo declaraba:
-     * elytraConserveFireworks es FALSE, no true, y elytraFireworkSpeed es 1.2d, no 1.
+     * <p>Read from the bytecode of baritone-standalone-fabric-1.17.0.jar (Settings class, obfuscated as
+     * baritone/e.class, with javap -p -c). Two of the four were not the ones the module declared:
+     * elytraConserveFireworks is FALSE, not true, and elytraFireworkSpeed is 1.2d, not 1.
      */
     @Test
     void theRestingValuesAreBaritonesOwnFactoryDefaults() {
@@ -173,9 +174,9 @@ class BaritoneScriptTest {
     }
 
     /**
-     * Y el 1.2 tiene que salir con su decimal. El formateador quita los decimales de los enteros para
-     * que "1" no salga "1.0"; si ese recorte se llevara por delante el 1.2, la restauración escribiría
-     * un valor distinto del que dice restaurar.
+     * And the 1.2 has to come out with its decimal. The formatter drops the decimals of whole numbers
+     * so that "1" does not come out as "1.0"; if that trim took the 1.2 down with it, the restoration
+     * would write a value different from the one it claims to restore.
      */
     @Test
     void theFactoryFireworkSpeedKeepsItsDecimal() {

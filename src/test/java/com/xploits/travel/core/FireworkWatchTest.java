@@ -15,7 +15,7 @@ class FireworkWatchTest {
     }
 
     @Test
-    void porEncimaDelUmbralNoSeAvisa() {
+    void aboveTheThresholdThereIsNoWarning() {
         FireworkWatch watch = watch();
         assertFalse(watch.observe(64));
         assertFalse(watch.observe(30));
@@ -23,67 +23,67 @@ class FireworkWatchTest {
     }
 
     @Test
-    void seAvisaJustoAlTocarElUmbral() {
+    void itWarnsExactlyOnReachingTheThreshold() {
         FireworkWatch watch = watch();
         assertFalse(watch.observe(THRESHOLD + 1));
-        assertTrue(watch.observe(THRESHOLD), "con los fuegos del umbral justos ya se avisa");
+        assertTrue(watch.observe(THRESHOLD), "with exactly the threshold's fireworks it already warns");
     }
 
-    /** El vuelo se observa veinte veces por segundo: un aviso por tick taparía todo lo demás. */
+    /** The flight is observed twenty times per second: one warning per tick would cover everything else. */
     @Test
-    void elAvisoNoSeRepiteCadaTick() {
+    void theWarningDoesNotRepeatEveryTick() {
         FireworkWatch watch = watch();
         assertTrue(watch.observe(10));
 
         for (int fireworks = 10; fireworks >= 0; fireworks--) {
-            assertFalse(watch.observe(fireworks), "no se repite mientras siga en la banda: " + fireworks);
+            assertFalse(watch.observe(fireworks), "it does not repeat while still in the band: " + fireworks);
         }
         for (int i = 0; i < 100; i++) {
-            assertFalse(watch.observe(0), "ni siquiera a cero se repite en bucle");
+            assertFalse(watch.observe(0), "not even at zero does it repeat in a loop");
         }
     }
 
     /**
-     * El fallo contrario al bucle: quedarse mudo el resto del viaje. Si el jugador saca fuegos de un
-     * shulker y más tarde vuelve a quedarse sin ellos, el aviso tiene que volver a salir.
+     * The opposite failure to the loop: staying mute for the rest of the trip. If the player takes
+     * fireworks out of a shulker and later runs out again, the warning has to come out again.
      */
     @Test
-    void reponerFuegosRearmaElAviso() {
+    void restockingFireworksRearmsTheWarning() {
         FireworkWatch watch = watch();
         assertTrue(watch.observe(5));
         assertFalse(watch.observe(3));
 
-        assertFalse(watch.observe(64), "reponer no avisa, solo rearma");
+        assertFalse(watch.observe(64), "restocking does not warn, it only rearms");
 
-        assertTrue(watch.observe(5), "tras la reposición el aviso vuelve a poder salir");
+        assertTrue(watch.observe(5), "after the restock the warning can come out again");
     }
 
     @Test
-    void laReposicionTieneQueSacarDeLaBandaParaRearmar() {
+    void theRestockMustLeaveTheBandToRearm() {
         FireworkWatch watch = watch();
         assertTrue(watch.observe(5));
 
-        // Subir dentro de la banda no es una reposición que valga: sigue en peligro y ya se avisó.
+        // Going up inside the band is not a restock that counts: it is still in danger and it already warned.
         assertFalse(watch.observe(THRESHOLD));
         assertFalse(watch.observe(5));
 
-        assertFalse(watch.observe(THRESHOLD + 1), "ahora sí ha salido de la banda");
+        assertFalse(watch.observe(THRESHOLD + 1), "now it has left the band");
         assertTrue(watch.observe(THRESHOLD));
     }
 
     @Test
-    void seRearmaTantasVecesComoHagaFalta() {
+    void itRearmsAsManyTimesAsNeeded() {
         FireworkWatch watch = watch();
         for (int round = 0; round < 5; round++) {
-            assertFalse(watch.observe(64), "ronda " + round);
-            assertTrue(watch.observe(0), "ronda " + round);
-            assertFalse(watch.observe(0), "ronda " + round);
+            assertFalse(watch.observe(64), "round " + round);
+            assertTrue(watch.observe(0), "round " + round);
+            assertFalse(watch.observe(0), "round " + round);
         }
     }
 
-    /** Umbral cero: solo se avisa cuando se acaban del todo, y basta uno para rearmar. */
+    /** Zero threshold: it only warns when they run out completely, and one is enough to rearm. */
     @Test
-    void umbralCeroAvisaSoloAlQuedarseSinNinguno() {
+    void aZeroThresholdWarnsOnlyWhenRunningOut() {
         FireworkWatch watch = new FireworkWatch(0);
         assertFalse(watch.observe(1));
         assertTrue(watch.observe(0));
@@ -93,33 +93,33 @@ class FireworkWatchTest {
     }
 
     @Test
-    void empezarYaSinFuegosAvisaEnElPrimerTick() {
+    void startingWithoutFireworksWarnsOnTheFirstTick() {
         assertTrue(watch().observe(0));
     }
 
     @Test
-    void resetDevuelveElAvisoAArmado() {
+    void resetReturnsTheWarningToArmed() {
         FireworkWatch watch = watch();
         assertTrue(watch.observe(0));
         assertFalse(watch.observe(0));
 
         watch.reset();
 
-        assertTrue(watch.observe(0), "un viaje nuevo vuelve a avisar aunque el anterior ya lo hiciera");
+        assertTrue(watch.observe(0), "a new trip warns again even if the previous one already did");
     }
 
     @Test
-    void elUmbralEsDelConstructorYSeRecuerda() {
+    void theThresholdComesFromTheConstructorAndIsRemembered() {
         assertEquals(THRESHOLD, watch().threshold());
 
         FireworkWatch early = new FireworkWatch(40);
-        assertTrue(early.observe(40), "con umbral 40 se avisa mucho antes");
+        assertTrue(early.observe(40), "with a threshold of 40 it warns much earlier");
 
-        assertFalse(new FireworkWatch(2).observe(40), "con umbral 2 esos mismos 40 no preocupan");
+        assertFalse(new FireworkWatch(2).observe(40), "with a threshold of 2 those same 40 are no worry");
     }
 
     @Test
-    void unUmbralNegativoSeRechaza() {
+    void aNegativeThresholdIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new FireworkWatch(-1));
     }
 }

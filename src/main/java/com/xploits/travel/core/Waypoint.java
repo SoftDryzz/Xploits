@@ -1,11 +1,11 @@
 package com.xploits.travel.core;
 
 /**
- * Un punto en el plano XZ, sin altura: Baritone resuelve la Y por su cuenta al perseguir un
- * {@code goal} de dos coordenadas.
+ * A point on the XZ plane, with no height: Baritone works out the Y by itself when chasing a
+ * two-coordinate {@code goal}.
  */
 public record Waypoint(double x, double z) {
-    /** Distancia euclídea en el plano XZ hasta {@code other}. */
+    /** Euclidean distance on the XZ plane to {@code other}. */
     public double distanceTo(Waypoint other) {
         double dx = other.x() - x;
         double dz = other.z() - z;

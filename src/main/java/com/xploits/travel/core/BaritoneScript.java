@@ -4,32 +4,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Las secuencias de comandos de chat que hablan con Baritone (spec AutoTravel §8). A Baritone se
- * le habla por comandos de chat con prefijo -su propia consola, no la de Meteor-, así que este
- * módulo no depende de ninguna API de Baritone: solo construye cadenas.
+ * The chat command sequences that talk to Baritone (AutoTravel spec §8). Baritone is spoken to
+ * through prefixed chat commands -its own console, not Meteor's-, so this module depends on no
+ * Baritone API: it only builds strings.
  */
 public final class BaritoneScript {
     private BaritoneScript() {
     }
 
     /**
-     * Los ajustes de vuelo del jugador, tal y como los pide o los tenía antes de empezar.
+     * The player's flight settings, as they ask for them or as they had them before starting.
      *
-     * @param netherSeed la semilla del Nether para predecir el terreno; vacía si no se conoce -en
-     *                   ese caso no se escribe ningún comando para ella (spec AutoTravel)
+     * @param netherSeed the Nether seed used to predict the terrain; empty if it is not known -in
+     *                   that case no command is written for it (AutoTravel spec)
      */
     public record FlightSettings(boolean autoJump, boolean allowEmergencyLand, boolean conserveFireworks,
                                   double fireworkSpeed, String netherSeed) {
     }
 
     /**
-     * Los valores <b>de fábrica de Baritone</b> para los cuatro ajustes que este módulo toca. Es el
-     * reposo por defecto de {@link #restoration(String, FlightSettings)}: quien instala el addon y no
-     * toca nada tiene que aterrizar con Baritone exactamente como estaba antes de instalarlo.
+     * <b>Baritone's out-of-the-box</b> values for the four settings this module touches. It is the
+     * default resting state of {@link #restoration(String, FlightSettings)}: whoever installs the
+     * addon and touches nothing must land with Baritone exactly as it was before installing it.
      *
-     * <p>Leídos del bytecode del jar instalado -{@code baritone-standalone-fabric-1.17.0.jar}, clase
-     * {@code Settings} ofuscada como {@code baritone/e.class}, con {@code javap -p -c}-, en el
-     * constructor donde cada ajuste se construye con su valor inicial:
+     * <p>Read from the bytecode of the installed jar -{@code baritone-standalone-fabric-1.17.0.jar},
+     * the {@code Settings} class obfuscated as {@code baritone/e.class}, with {@code javap -p -c}-, in
+     * the constructor where each setting is built with its initial value:
      *
      * <ul>
      *   <li>{@code elytraAutoJump}: {@code Boolean.FALSE}</li>
@@ -38,24 +38,24 @@ public final class BaritoneScript {
      *   <li>{@code elytraFireworkSpeed}: {@code double 1.2d}</li>
      * </ul>
      *
-     * <p><b>Por qué esto importa tanto como para tener su propio sitio.</b> Baritone <b>persiste sus
-     * ajustes a disco</b>. Un valor de reposo inventado no se queda en el viaje: reconfigura para
-     * siempre todos los {@code #elytra} que el jugador haga a mano después, sin que tenga forma de
-     * relacionarlo con el addon. Eso contradice el "lo deja todo como estaba" de spec §1.
+     * <p><b>Why this matters enough to have its own place.</b> Baritone <b>persists its settings to
+     * disk</b>. A made-up resting value does not stay in the trip: it reconfigures forever every
+     * {@code #elytra} the player runs by hand afterwards, with no way for them to link it to the
+     * addon. That contradicts spec §1's "leaves everything as it was".
      *
-     * <p>La semilla va vacía porque no es un ajuste que se restaure (ver {@link
-     * #restoration(String, FlightSettings)}): nunca fue un cambio nuestro.
+     * <p>The seed is empty because it is not a setting that gets restored (see {@link
+     * #restoration(String, FlightSettings)}): it was never a change of ours.
      */
     public static FlightSettings baritoneDefaults() {
         return new FlightSettings(false, true, false, 1.2, "");
     }
 
     /**
-     * Los comandos que preparan el vuelo: los cuatro ajustes del jugador, más los tres que exige
-     * nuestro propio manejo del vuelo (spec §8.1) -{@code elytraAutoSwap false} porque el cambio de
-     * élitro lo hace {@code elytra-replace}, no Baritone; {@code elytraTermsAccepted true} para
-     * silenciar su aviso; y {@code elytraPredictTerrain false}-. La semilla solo se escribe si no
-     * está vacía.
+     * The commands that prepare the flight: the player's four settings, plus the three that our own
+     * handling of the flight requires (spec §8.1) -{@code elytraAutoSwap false} because the elytra
+     * swap is done by {@code elytra-replace}, not Baritone; {@code elytraTermsAccepted true} to
+     * silence its notice; and {@code elytraPredictTerrain false}-. The seed is only written if it is
+     * not empty.
      *
      * <p>Before all of them, {@code censorCoordinates true} and {@code censorRanCommands true}: Baritone
      * echoes goals and commands to chat, and Minecraft copies chat to latest.log. They are never
@@ -82,21 +82,21 @@ public final class BaritoneScript {
     }
 
     /**
-     * Los comandos que devuelven el vuelo al reposo: {@code elytraAutoSwap true} -deshace el cambio
-     * propio de Baritone- y los cuatro ajustes del jugador a sus valores de reposo. La semilla no se
-     * restaura: nunca fue un cambio nuestro, solo un dato que le pasamos a Baritone si lo teníamos.
+     * The commands that put the flight back to rest: {@code elytraAutoSwap true} -undoes Baritone's
+     * own swap- and the player's four settings at their resting values. The seed is not restored: it
+     * was never a change of ours, only a piece of data we handed to Baritone if we had it.
      *
-     * <p>Dos cosas que parecen olvidos y no lo son:
+     * <p>Two things that look like omissions and are not:
      *
      * <ul>
-     *   <li>{@code elytraAutoSwap} se restaura siempre a {@code true}, fijo, sin leerlo de {@code
-     *       resting}: el cambio a {@code false} fue nuestro, no del jugador, así que no hay un
-     *       "valor de reposo suyo" que consultar -siempre fue {@code true} antes de que {@link
-     *       #preparation} lo tocara.</li>
-     *   <li>{@code elytraPredictTerrain} no se restaura aquí porque {@link #preparation} tampoco lo
-     *       trata como un ajuste del jugador: lo apaga por nuestra cuenta (spec §8.1) y no forma
-     *       parte de {@link FlightSettings}, así que este método no tiene ningún valor que
-     *       devolverle.</li>
+     *   <li>{@code elytraAutoSwap} is always restored to {@code true}, fixed, without reading it
+     *       from {@code resting}: the change to {@code false} was ours, not the player's, so there is
+     *       no "resting value of theirs" to look up -it was always {@code true} before {@link
+     *       #preparation} touched it.</li>
+     *   <li>{@code elytraPredictTerrain} is not restored here because {@link #preparation} does not
+     *       treat it as a player setting either: it turns it off on our own account (spec §8.1) and
+     *       it is not part of {@link FlightSettings}, so this method has no value to give back to
+     *       it.</li>
      *   <li>{@code censorCoordinates} and {@code censorRanCommands} stay on: Baritone saves {@code #set}
      *       to disk, so turning them off would undo a censor the player already had, and leaving them
      *       on only hides coordinates.</li>
@@ -113,35 +113,35 @@ public final class BaritoneScript {
         return List.copyOf(commands);
     }
 
-    /** El comando que fija el siguiente objetivo, con las coordenadas redondeadas al bloque. */
+    /** The command that sets the next goal, with the coordinates rounded to the block. */
     public static String goTo(String prefix, Waypoint point) {
         requirePrefix(prefix);
         return prefix + "goal " + Math.round(point.x()) + " " + Math.round(point.z());
     }
 
-    /** El comando que lanza el vuelo hacia el objetivo ya fijado. */
+    /** The command that launches the flight towards the goal already set. */
     public static String launch(String prefix) {
         requirePrefix(prefix);
         return prefix + "elytra";
     }
 
-    /** El comando que corta cualquier cosa que Baritone estuviera haciendo. */
+    /** The command that cuts whatever Baritone was doing. */
     public static String cancel(String prefix) {
         requirePrefix(prefix);
         return prefix + "cancel";
     }
 
     /**
-     * El núcleo es el único embudo por el que pasan todos los comandos antes de llegar al chat, así
-     * que la validación del prefijo va aquí: un prefijo vacío convertiría cada comando en chat
-     * plano -{@code "set elytraAutoJump true"} en vez de {@code "#set elytraAutoJump true"}-, que se
-     * publicaría en el servidor tal cual, y la red de seguridad que cancela los paquetes con el
-     * prefijo de Baritone no lo reconocería como suyo y dejaría pasar el chat entero.
+     * The core is the only funnel all commands go through before reaching the chat, so the prefix
+     * check goes here: an empty prefix would turn every command into plain chat -{@code "set
+     * elytraAutoJump true"} instead of {@code "#set elytraAutoJump true"}-, which would be published
+     * on the server as it is, and the safety net that cancels packets with Baritone's prefix would not
+     * recognise it as its own and would let the whole chat through.
      */
     private static void requirePrefix(String prefix) {
         if (prefix == null || prefix.isEmpty()) {
             throw new IllegalArgumentException(
-                "el prefijo de Baritone no puede estar vacío: los comandos saldrían como chat plano al servidor"); // i18n: allowed (exception message, continuation line)
+                "the Baritone prefix cannot be empty: the commands would go out to the server as plain chat");
         }
     }
 
@@ -153,7 +153,7 @@ public final class BaritoneScript {
         return Boolean.toString(value);
     }
 
-    /** Sin decimales cuando el valor es entero, para que {@code elytraFireworkSpeed 1} no salga {@code 1.0}. */
+    /** No decimals when the value is whole, so that {@code elytraFireworkSpeed 1} does not come out as {@code 1.0}. */
     private static String number(double value) {
         if (!Double.isInfinite(value) && !Double.isNaN(value) && value == Math.rint(value)) {
             return Long.toString((long) value);
