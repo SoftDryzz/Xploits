@@ -22,7 +22,7 @@ From `1.0.0` on, full SemVer: **MAJOR** for incompatible changes, **MINOR** for 
 Xploits has no public API. What breaks is **work the player has already done**:
 
 - renaming a module id or a setting id — Meteor stores settings by id and silently drops the old value;
-- changing an on-disk format: the stash index, kit-requester progress, the console's `vivo.log`;
+- changing an on-disk format: the stash index, kit-requester progress, the console's `live.log`;
 - removing or renaming a `.xploits` subcommand;
 - moving to another Minecraft or Meteor version.
 

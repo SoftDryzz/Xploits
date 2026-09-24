@@ -1,306 +1,313 @@
+**English** · [Español](README.es.md)
+
 # Xploits
 
-Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Ocho módulos que se encienden por separado.
+A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
+other anarchy servers. Eight modules, each switched on separately.
 
-La idea de fondo: **ningún módulo hace algo a medias sin decirlo**. Si no puede cumplir lo que
-promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido y callar.
-
----
-
-## Antes de instalar
-
-**Copia `xploits-<versión>.jar` a la carpeta `mods/` de tu instancia**, junto a Meteor, y **borra
-cualquier `xploits-*.jar` anterior**: el nombre lleva la versión, y con dos a la vez el addon se carga
-dos veces. Reinicia el juego. Los módulos salen en la ClickGUI, categoría **Xploits**. Qué cambia en
-cada versión: [CHANGELOG](CHANGELOG.md).
-
-⚠️ **Si vienes de antes de la 0.4.0**, cierra cualquier ventana de la consola que sigas teniendo
-abierta antes de arrancar: al primer arranque de la 0.4.0, el addon renombra automáticamente los
-ajustes y ficheros que cambiaron de nombre en esa versión (`modules.nbt`, `hud.nbt` y la carpeta
-`xploits/consola/`), hace una copia de cada fichero que toca como `<fichero>.pre-0.4.0.backup.nbt`
-antes de escribirlo, y te avisa por chat de lo que hizo. No pierdes nada; si una ventana de la
-consola sigue teniendo la carpeta abierta, lo que no pudo moverse se reintenta en el siguiente
-arranque: con la ventana antigua ya cerrada, `xploits/consola/` se fusiona con `xploits/console/`
-(el historial pasa a `console/history/`, sin sobrescribir nada; si un mismo día está en las dos, se
-guardan ambos y el antiguo queda como `<día>-old.log`) y la carpeta antigua se borra al quedar vacía.
-Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `console`.
-
-### Qué necesitas instalado, y qué deja de funcionar si falta
-
-Este addon **se apoya en otros mods a propósito**: cuando algo ya está resuelto y bien resuelto, lo
-usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
-
-| Mod | Obligatorio para | Si falta |
-|---|---|---|
-| **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros cinco módulos funcionan igual |
-| **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
-| **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
-| **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |
-
-⚠️ **Los tres detectores de `nether-sweep` tienen que estar encendidos, no solo instalados.** El
-módulo te avisa con toast antes de despegar si alguno falta, **pero no te lo impide**: puedes volar
-una hora y no registrar nada.
-
-### Qué módulos de Meteor toca el addon
-
-Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga o consulta.
-
-| Quién | Qué toca | Cómo |
-|---|---|---|
-| `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Los enciende y apaga según la situación. **Solo apaga los que encendió él**: si tocas uno a mano, deja de tocarlo |
-| `auto-pvp` | Tu **lista de amigos de Meteor** | Mete a los tuyos mientras está encendido, para que esos diez tampoco les ataquen. Al apagarlo quita **solo los que puso él** |
-| `auto-pvp` | El ajuste `anti-suicide` de `crystal-aura` | Solo lo **lee**, para saber si puede fiarse de que Meteor no te mate con tu propio cristal |
-| `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
-| `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco |
-
-Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/seguridad.md).
+The core idea: **no module does half a job without saying so**. If it cannot deliver what it
+promises, it refuses and tells you which setting to change — instead of doing something similar and
+keeping quiet.
 
 ---
 
-## Los ocho módulos
+## Before installing
 
-### `auto-travel` — volar a algún sitio sin dejar una flecha hacia tu base
+**Copy `xploits-<version>.jar` into your instance's `mods/` folder**, next to Meteor, and **delete
+any older `xploits-*.jar`**: the file name carries the version, and with two of them the addon loads
+twice. Restart the game. The modules show up in the ClickGUI, under the **Xploits** category. What
+changes in each version: [CHANGELOG](CHANGELOG.md).
 
-Vuela con elytra usando Baritone, por una ruta con **patrón de despiste** para que tu traza no sea
-una recta que apunte a donde vives.
+⚠️ **If you are coming from before 0.4.0**, close any console window you still have open before
+starting the game: on the first start of 0.4.0, the addon automatically renames the settings and
+files whose names changed in that version (`modules.nbt`, `hud.nbt` and the `xploits/consola/`
+folder), backs up every file it touches as `<file>.pre-0.4.0.backup.nbt` before writing it, and
+tells you in chat what it did. You lose nothing; if a console window still has the folder open,
+whatever could not be moved is retried on the next start: with the old window closed,
+`xploits/consola/` is merged into `xploits/console/` (the history goes to `console/history/`,
+overwriting nothing; if the same day is in both, both are kept and the old one becomes
+`<day>-old.log`) and the old folder is deleted once empty. Meteor macros that type
+`.toggle consola` are not migrated: change them to `console`.
 
-**Encenderlo no vuela**: arma el viaje y espera. Se lanza con `.xploits travel go`.
+### What you need installed, and what stops working without it
 
-**El destino se pide de tres maneras** (`destination-mode`):
+This addon **relies on other mods on purpose**: when something is already solved, and solved well,
+it uses that instead of reimplementing it worse. The price is that you need to have them.
 
-| Modo | Qué pides | Ajustes |
+| Mod | Required for | If missing |
 |---|---|---|
-| `COORDINATES` | Un punto del mundo | `x`, `z` |
-| `RELATIVE` | Un desplazamiento desde donde estés: 5000 y −3000 es «5000 en X y −3000 en Z desde aquí» | `offset-x`, `offset-z` |
-| `HIGHWAY` | Un eje y cuántos bloques volar por él | `axis`, `highway-distance` |
+| **Meteor Client 1.21.11** | Everything | The addon does not load |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Both **refuse to launch** and say so. The other five modules work the same |
+| **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
+| **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
+| **`stash-finder`** (comes with Meteor) | `nether-sweep` | The sweep flies and records no containers. It warns you before take-off |
 
-**`RELATIVE` es el que menos rastro deja.** Meteor guarda los ajustes en
-`<instancia>/meteor-client/modules.nbt`: con `COORDINATES` tu destino acaba escrito ahí; con un
-desplazamiento, solo cuánto te mueves, que no dice desde dónde. Si venías de usar coordenadas, pon
-`x` y `z` a 0: cambiar de modo no borra lo que ya se guardó.
+⚠️ **`nether-sweep`'s three detectors must be switched on, not just installed.** The module warns
+you with a toast before take-off if any is missing, **but it does not stop you**: you can fly for an
+hour and record nothing.
 
-**Las autopistas son ocho:** las cuatro rectas (`X_PLUS`, `X_MINUS`, `Z_PLUS`, `Z_MINUS`) y las
-cuatro diagonales (`X_PLUS_Z_PLUS`, `X_PLUS_Z_MINUS`, `X_MINUS_Z_PLUS`, `X_MINUS_Z_MINUS`). En
-todas, `highway-distance` son **bloques volados**: 20 000 por una diagonal avanzan unos 14 142 en
-X y otros tantos en Z, y cuestan los mismos cohetes que 20 000 en recto.
+### Which Meteor modules the addon touches
 
-| Patrón | Qué hace | Cuándo |
+Worth knowing, because these are **your** modules that the addon turns on, turns off or reads.
+
+| Who | What it touches | How |
 |---|---|---|
-| `STRAIGHT` | Nada | **En autopista.** Ahí tu traza es una más entre miles; ondular solo gasta cohetes y te saca del corredor |
-| `ZIGZAG` | Ondula a los lados a menudo | Que quien te vea de lejos no pueda trazar tu rumbo con una regla |
-| `SWERVE` | Igual, con tramos largos y desvíos anchos | Contra quien te vio desde más lejos. Gasta bastante más |
-| `SPIRAL` | Recto casi todo, espiral al final | **Protege la llegada**: no te acercas a casa en línea recta |
-| `DECOY` | Apunta a un sitio falso y corrige a mitad | **Protege la salida**: contra quien te ve despegar |
+| `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it |
+| `auto-pvp` | Your **Meteor friends list** | Adds your people while it is on, so the five combat modules do not attack them either. When turned off it removes **only the ones it added** |
+| `auto-pvp` | `crystal-aura`'s `anti-suicide` setting | It only **reads** it, to know whether it can trust Meteor not to kill you with your own crystal |
+| `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
+| `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk — as it does `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (if set) and its own censoring, which stay changed for good |
 
-**El desvío se paga en cohetes.** La espiral es cara en absoluto: su largo depende del radio y las
-vueltas, no de la distancia. **Baja `spiral-turns` a 0,5** salvo que quieras pagarlo — cuadruplica
-el coste frente a 1,5 para solo un 31 % más de desvío.
-
-**Para fundar una base**, dos viajes: primero por autopista con `STRAIGHT` lo más lejos que aguante el
-inventario; luego sales de la autopista y vas a las coordenadas con `SPIRAL`. El punto donde
-abandonas la autopista es la pista más fuerte que vas a dejar: no lo hagas en una coordenada
-redonda ni dos veces en el mismo sitio.
-
-### `nether-sweep` — peinar terreno para encontrar bases
-
-Vuela un rectángulo del **Nether** con pasadas de cortacésped, para que el terreno pase por delante
-de tu cliente.
-
-**Este módulo vuela, no detecta.** Quien encuentra y guarda son tres mods que ya tienes:
-
-- **`BaseFinder`** (Trouser Streak) — portales abiertos, construcciones en el techo, skybuilds.
-- **`stash-finder`** (Meteor) — cofres, barriles, shulkers, cofres de ender.
-- **`NewerNewChunks`** (Trouser Streak) — registra qué chunks te han llegado. **El barrido lo lee** y
-  planifica solo sobre los huecos, así que no repite lo que llevas meses acumulando.
-
-**Con esos tres apagados vuelas una hora y no se registra nada.** El módulo te avisa antes de
-despegar, pero no te lo impide.
-
-Por qué el Nether: un portal en `(x, z)` es una base del Overworld en `(8x, 8z)`. Cada bloque que
-vuelas ahí cubre **64 veces** más superficie.
-
-**Encenderlo no vuela**: se lanza con `.xploits sweep go`.
-
-**Tres cosas que te pasarán la primera vez:**
-
-1. **Un rectángulo pequeño se rechaza.** Hace falta un eje largo de unos 19 chunks. Es correcto.
-2. **Hay que medir andando, no volando.** El módulo mide él solo a qué distancia te manda chunks el
-   servidor, pero solo acepta muestras con el jugador casi parado. **Enciende el módulo y da una
-   vuelta andando** unos segundos. La medida se tira al lanzar: para relanzar, otra vuelta.
-3. **Al aterrizar te dice cuánto cubrió de verdad**, no solo que terminó. Si entrega menos del 95 %
-   el aviso sale **fuerte, con toast**: esa zona no está peinada entera y hay que relanzar el mismo
-   rectángulo, que se replanifica solo sobre lo que falte. **Ese aviso es la red de dos fallos
-   conocidos** — ver [Problemas conocidos](docs/problemas-conocidos.md).
-
-### `auto-pvp` — que los módulos de combate se enciendan cuando toca
-
-**No pelea.** Enciende y apaga los de Meteor según la situación, y solo apaga los que encendió él:
-si tocas uno a mano, deja de tocarlo.
-
-Decide por **dos ejes a la vez**: en qué fase está el enemigo (acercándose, en superficie, rodeado,
-enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que ya tienes encima
-—cristales colocados, gente con espada—, no con un contador de tótems.
-
-**No ataca a los tuyos**: tus amigos de Meteor, los couriers de `kit-requester` y tu lista de
-`auto-tpy`. Y como los cinco módulos de combate eligen su propio objetivo, mientras está encendido
-**mete a los tuyos en tu lista de amigos de Meteor** para que ellos tampoco. Al apagarlo quita solo
-los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/seguridad.md).
-
-### `elytra-replace` — cambiar la elytra antes de que se rompa
-
-Dos porcentajes independientes: a cuánto cambiar la puesta, y el mínimo que debe tener la de
-repuesto. Elige **la peor que pase el mínimo**, para no gastar la buena. Funciona con o sin
-`ElytraFly`.
-
-### `kit-requester` — pedir kits
-
-Pide kits a SnifferBuddy en lotes y acepta la TPA del courier que los entrega.
-
-> **Los bots de kits llevan tiempo caídos.** El módulo funciona, pero no esperes que llegue nada
-> mientras sigan así.
-
-### `auto-tpy` — aceptar TPAs
-
-Acepta al instante las de tu lista y las de tus amigos de Meteor. **Nunca acepta `/tpahere`**: solo
-trae gente hacia ti, nunca te mueve a ti.
-
-### `stash-keeper` — recordar dónde viste las cosas
-
-Apunta el contenido de los contenedores que abres y de los shulkers que ves. **No mueve nada.**
-Luego `.xploits find <ítem>` te dice dónde estaba.
-
-### `console` — ver lo que hace el addon en una ventana aparte
-
-Abre una ventana de terminal con el logo XTO2002 arriba, el estado del juego debajo y el registro de
-todo lo que dicen los módulos de Xploits. Para tenerla en la otra pantalla mientras juegas, o para
-leer después qué pasó.
-
-- **Se enciende y se apaga como cualquier módulo.** Si la dejas encendida, se abre sola al arrancar
-  el juego, y no se cierra al salir de un mundo ni al morir.
-- **El menú va por números:** escribe el número y pulsa Enter. `1` todo, `2` pvp, `3` travel,
-  `4` sweep, `5` solo avisos, `6` pausa, `0` salir.
-- **Nunca enseña coordenadas.** Lo que en el chat lleva una posición, en la ventana sale con la
-  distancia o sin nada. El chat no cambia.
-- **Lo que escribe se queda en disco** mientras está encendida: `meteor-client/xploits/console/history/`,
-  un fichero por día, 30 días como mucho.
-- Si el juego se cierra o se cuelga, la ventana **se queda abierta** y lo dice, para que puedas leer
-  lo último que pasó.
-
-Necesita Windows Terminal, que es la consola por defecto de Windows 11.
+All of this, with the detail of what persists and what can go wrong, in [Security](docs/security.md).
 
 ---
 
-## Comandos
+## The eight modules
 
-| Comando | Qué hace |
+### `auto-travel` — fly somewhere without leaving an arrow pointing at your base
+
+Flies with elytra using Baritone, along a route with a **decoy pattern** so your trail is not a
+straight line pointing at where you live.
+
+**Turning it on does not fly**: it arms the trip and waits. You launch it with `.xploits travel go`.
+
+**The destination is given in three ways** (`destination-mode`):
+
+| Mode | What you ask for | Settings |
+|---|---|---|
+| `COORDINATES` | A point in the world | `x`, `z` |
+| `RELATIVE` | An offset from wherever you are: 5000 and −3000 is "5000 on X and −3000 on Z from here" | `offset-x`, `offset-z` |
+| `HIGHWAY` | An axis and how many blocks to fly along it | `axis`, `highway-distance` |
+
+**`RELATIVE` leaves the least trace.** Meteor saves the settings in
+`<instance>/meteor-client/modules.nbt`: with `COORDINATES` your destination ends up written there;
+with an offset, only how far you move, which does not say from where. If you used coordinates
+before, set `x` and `z` to 0: switching mode does not erase what was already saved.
+
+**There are eight highways:** the four straight ones (`X_PLUS`, `X_MINUS`, `Z_PLUS`, `Z_MINUS`) and
+the four diagonals (`X_PLUS_Z_PLUS`, `X_PLUS_Z_MINUS`, `X_MINUS_Z_PLUS`, `X_MINUS_Z_MINUS`). On all
+of them, `highway-distance` is **blocks flown**: 20 000 along a diagonal advances about 14 142 on X
+and as many on Z, and costs the same fireworks as 20 000 straight.
+
+| Pattern | What it does | When |
+|---|---|---|
+| `STRAIGHT` | Nothing | **On a highway.** There your trail is one among thousands; weaving only burns fireworks and takes you out of the corridor |
+| `ZIGZAG` | Weaves side to side often | So whoever sees you from afar cannot draw your heading with a ruler |
+| `SWERVE` | The same, with long legs and wide swerves | Against whoever saw you from further away. Costs quite a bit more |
+| `SPIRAL` | Straight almost all the way, a spiral at the end | **Protects the arrival**: you do not approach home in a straight line |
+| `DECOY` | Aims at a fake spot and corrects halfway | **Protects the departure**: against whoever sees you take off |
+
+**The detour is paid in fireworks.** The spiral is expensive in absolute terms: its length depends
+on the radius and the turns, not on the distance. **Lower `spiral-turns` to 0.5** unless you want to
+pay for it — 1.5 costs four times as much as 0.5 for only 31 % more detour.
+
+**To found a base**, two trips: first along a highway with `STRAIGHT` as far as your inventory
+lasts; then you leave the highway and go to the coordinates with `SPIRAL`. The point where you leave
+the highway is the strongest clue you will leave behind: do not do it at a round coordinate, nor
+twice at the same spot.
+
+### `nether-sweep` — comb ground to find bases
+
+Flies a rectangle of the **Nether** in lawnmower passes, so the ground passes in front of your
+client.
+
+**This module flies, it does not detect.** The finding and recording is done by three mods you
+already have:
+
+- **`BaseFinder`** (Trouser Streak) — open portals, builds on the roof, skybuilds.
+- **`stash-finder`** (Meteor) — chests, barrels, shulkers, ender chests.
+- **`NewerNewChunks`** (Trouser Streak) — records which chunks have reached you. **The sweep reads
+  it** and plans only over the gaps, so it does not repeat what you have been piling up for months.
+
+**With those three off you fly for an hour and nothing is recorded.** The module warns you before
+take-off, but does not stop you.
+
+Why the Nether: a portal at `(x, z)` is an Overworld base at `(8x, 8z)`. Every block you fly there
+covers **64 times** more area.
+
+**Turning it on does not fly**: you launch it with `.xploits sweep go`.
+
+**Three things that will happen to you the first time:**
+
+1. **A small rectangle is rejected.** The long axis has to be longer than `waypoint-margin` — about
+   10 chunks with the default (150 blocks). That is correct.
+2. **It has to be measured walking, not flying.** The module measures on its own how far away the
+   server sends you chunks, but it only accepts samples with the player almost still. **Turn the
+   module on and walk around** for a few seconds. The measurement is discarded on launch: to launch
+   again, another walk.
+3. **On landing it tells you how much it really covered**, not just that it finished. If it delivers
+   less than 95 % the warning comes out **loud, with a toast**: that area is not fully combed and
+   you have to launch the same rectangle again, which is replanned only over what is missing. **That
+   warning is the safety net for two known bugs** — see [Known issues](docs/known-issues.md).
+
+### `auto-pvp` — combat modules that switch on when it is time
+
+**It does not fight.** It turns Meteor's on and off depending on the situation, and only turns off
+the ones it turned on: if you touch one by hand, it stops touching it.
+
+It decides on **two axes at once**: what phase the enemy is in (approaching, on the surface,
+surrounded, buried, fleeing) and what is aiming at you. The latter with the damage already on top
+of you —placed crystals, people with swords—, not with a totem counter.
+
+**It does not attack your people**: your Meteor friends, `kit-requester`'s couriers and your
+`auto-tpy` list. And since the five combat modules pick their own target, while it is on it **adds
+your people to your Meteor friends list** so they do not either. When turned off it removes only
+the ones it added, never one you already had. See [Security](docs/security.md).
+
+### `elytra-replace` — swap the elytra before it breaks
+
+Two independent percentages: at how much to swap the one you are wearing, and the minimum the spare
+must have. It picks **the worst one that passes the minimum**, so as not to waste the good one. Works
+with or without `elytra-fly`.
+
+### `kit-requester` — request kits
+
+Requests kits from SnifferBuddy in batches and accepts the TPA from the courier who delivers them.
+
+> **The kit bots have been down for a while.** The module works, but do not expect anything to
+> arrive while they stay that way.
+
+### `auto-tpy` — accept TPAs
+
+Instantly accepts those from your list and from your Meteor friends. **It never accepts
+`/tpahere`**: it only brings people to you, it never moves you.
+
+### `stash-keeper` — remember where you saw things
+
+Notes down the contents of the containers you open and of the shulkers you see. **It moves
+nothing.** Later `.xploits find <item>` tells you where it was.
+
+### `console` — see what the addon does in a separate window
+
+Opens a terminal window with the XTO2002 logo at the top, the game status below it and the log of
+everything the Xploits modules say. To keep it on the other screen while you play, or to read later
+what happened.
+
+- **It is switched on and off like any module.** If you leave it on, it opens by itself when the
+  game starts, and it does not close when you leave a world or die.
+- **The menu works by numbers:** type the number and press Enter. `1` all, `2` pvp, `3` travel,
+  `4` sweep, `5` warnings only, `6` pause, `0` exit.
+- **It never shows coordinates.** What carries a position in chat comes out in the window with the
+  distance or with nothing. The chat does not change.
+- **What it writes stays on disk** while it is on: `meteor-client/xploits/console/history/`, one
+  file per day, 30 days at most.
+- If the game closes or hangs, the window **stays open** and says so, so you can read the last
+  thing that happened.
+
+It needs Windows Terminal, which is the default console in Windows 11.
+
+---
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| `.xploits status` | Estado general |
-| `.xploits find <ítem>` | Dónde viste ese ítem |
-| `.xploits stash` | Estado del índice de contenedores |
-| `.xploits pvp` | Fase, postura, tu vida y el daño que te apunta |
-| `.xploits travel` · `go` · `stop` | Estado del viaje, lanzarlo, cortarlo |
-| `.xploits sweep` · `go` · `stop` | Estado del barrido, lanzarlo, cortarlo |
-| `.xploits reload` | Recarga los datos guardados |
+| `.xploits status` | Overall status |
+| `.xploits find <item>` | Where you saw that item |
+| `.xploits stash` | Status of the container index |
+| `.xploits pvp` | Phase, posture, your health and the damage aimed at you |
+| `.xploits travel` · `go` · `stop` | Trip status, launch it, stop it |
+| `.xploits sweep` · `go` · `stop` | Sweep status, launch it, stop it |
+| `.xploits language [auto\|es\|en]` | Active language, or sets it |
+| `.xploits reload` | Reloads the saved data |
 
 ---
 
-## Lo que hay que saber de los dos que vuelan
+## What to know about the two that fly
 
-**No se pueden usar a la vez.** Los dos dirigen al mismo Baritone y `#elytra` solo admite un
-objetivo: el segundo se lo quitaría al primero, el primero cortaría a los 45 segundos con su propia
-restauración —parando el vuelo del segundo a mitad— y el segundo diagnosticaría un atasco falso.
-Cada uno comprueba al otro y **se niega a lanzar** mientras el otro vuele. Se usan en el mismo
-viaje: vuelas con `auto-travel`, lo paras al llegar, y barres.
+**They cannot be used at the same time.** Both drive the same Baritone and `#elytra` only takes one
+goal: the second would take it from the first, the first would cut out after 45 seconds with its own
+restoration —stopping the second's flight halfway— and the second would diagnose a false stall.
+Each one checks for the other and **refuses to launch** while the other is flying. They are used in
+the same outing: you fly with `auto-travel`, stop it when you arrive, and sweep.
 
-**El prefijo de Baritone no puede empezar por `/`.** Con barra el comando va por el camino de
-comando del servidor, que Baritone no escucha, y de paso la red de seguridad se comería todos los
-demás comandos con barra. Se rechaza al lanzar y se explica.
+**Baritone's prefix cannot start with `/`.** With a slash the command goes down the server command
+path, which Baritone does not listen to, and on top of that the safety net would swallow every other
+slash command. It is rejected on launch and explained.
 
-**Antes de lanzar un viaje** necesitas elytra puesta y cohetes. `elytra-replace` cambia la que
-lleves, pero no te pone ninguna. Y si tienes `elytra-fly` con `chest-swap` en `Always` o
-`WaitForGround`, se niega a lanzar: apagar `elytra-fly` con eso puesto te cambia la elytra por la
-pechera justo antes del despegue. Pon `chest-swap` en `Never`.
+**Before launching a trip** you need an elytra on and fireworks. `elytra-replace` swaps the one you
+are wearing, but does not put one on you. And if you have `elytra-fly` with `chest-swap` on `Always`
+or `WaitForGround`, it refuses to launch: turning `elytra-fly` off with that set swaps your elytra
+for the chestplate right before take-off. Set `chest-swap` to `Never`.
 
-**Al aterrizar**, `elytra-fly` y `elytra-replace` vuelven **al estado que tenían antes**, no a uno
-declarado; si los mueves a mano durante el vuelo, manda lo que tú dejaste.
+**On landing**, `elytra-fly` and `elytra-replace` go back **to the state they were in before**, not
+to a declared one; if you move them by hand during the flight, what you left wins.
 
-**Si sale un aviso de que un comando `#` se canceló, no es un fallo**: es la red haciendo su
-trabajo. Significa que Baritone no está interceptando sus propios comandos, y que **si los
-escribieras a mano se publicarían en el chat del servidor**.
+**If a warning says a `#` command was cancelled, it is not a bug**: it is the net doing its job. It
+means Baritone is not intercepting its own commands, and that **if you typed them by hand they would
+be published in the server chat**.
 
 ---
 
-## Dónde se guardan tus datos
+## Where your data is stored
 
 ```
-<instancia>/meteor-client/xploits/        Cola de kits y progreso
-<instancia>/meteor-client/xploits/stash/  Índice de contenedores, por mundo
-<instancia>/meteor-client/xploits/console/  Historial de la consola, 30 días como mucho
-<instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
-<instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
+<instance>/meteor-client/xploits/        Kit queue and progress
+<instance>/meteor-client/xploits/stash/  Container index, per world
+<instance>/meteor-client/xploits/console/  Console history, 30 days at most
+<instance>/meteor-client/modules.nbt     Settings (written by Meteor)
+<instance>/meteor-client/friends.nbt     Friends list (written by Meteor)
 ```
 
-⚠️ **Tus coordenadas viven en más sitios de los que crees**: en `modules.nbt` si pones un destino
-absoluto, en los logs de Minecraft anteriores a la 0.3.1 (desde entonces se tapan, ver [Coordenadas
-en los logs](#coordenadas-en-los-logs)) y en los datos de Xaero. Si compartes un log para que te
-ayuden con algo, **límpialo antes**. Ver [Seguridad](docs/seguridad.md).
+⚠️ **Your coordinates live in more places than you think**: in `modules.nbt` if you set an absolute
+destination, in Minecraft logs from before 0.3.1 (since then they are masked, see [Coordinates in
+the logs](#coordinates-in-the-logs)) and in Xaero's data. If you share a log to get help with
+something, **clean it first**. See [Security](docs/security.md).
 
 ---
 
-## Idioma
+## Language
 
-El módulo `xploits` tiene un ajuste `language`: `Auto`, `Español` o `English`. En `Auto` sigue el
-idioma de Minecraft —cualquier `es_*` da español, cualquier otro da inglés—; con `Español` o
-`English` se queda fijo ahí pase lo que pase con el juego.
+The `xploits` module has a `language` setting: `Auto`, `Español` or `English`. On `Auto` it follows
+Minecraft's language —any `es_*` gives Spanish, anything else gives English—; with `Español` or
+`English` it stays fixed there whatever happens with the game.
 
-`.xploits language` dice cuál está activo ahora mismo. `.xploits language auto|es|en` lo cambia. El
-chat, los toasts y la ventana de la consola cambian al momento; las descripciones del ClickGUI, en
-el siguiente reinicio.
+`.xploits language` says which one is active right now. `.xploits language auto|es|en` changes it.
+The chat, the toasts and the console window change at once; the ClickGUI descriptions, on the next
+restart.
 
-⚠️ **Con Minecraft en inglés, el addon arranca en inglés.** Si quieres español desde el principio,
-pon `.xploits language es` la primera vez.
+⚠️ **With Minecraft in English, the addon starts in English.** If you want Spanish from the start,
+run `.xploits language es` the first time.
 
-## Coordenadas en los logs
+## Coordinates in the logs
 
-Minecraft copia cada línea del chat en `logs/latest.log`, así que cualquier posición que salga en el
-chat acaba en disco. El ajuste `hide-coordinates-in-log` del módulo `xploits` las tapa con `***` en
-esa copia (en pantalla se siguen viendo): `Off`, `Baritone` (solo sus líneas), `All` (por defecto) o
-`All but Baritone`. También tapa los `Saving region x,z` que Baritone escribe por su cuenta.
-`auto-travel` y `nether-sweep` además activan la censura de Baritone (`censorCoordinates`,
-`censorRanCommands`) antes del primer objetivo, y la dejan puesta.
+Minecraft copies every chat line into `logs/latest.log`, so any position that shows up in chat ends
+up on disk. The `xploits` module's `hide-coordinates-in-log` setting masks them with `***` in that
+copy (on screen you still see them): `Off`, `Baritone` (only its lines), `All` (the default) or
+`All but Baritone`. It also masks the `Saving region x,z` lines Baritone writes on its own.
+`auto-travel` and `nether-sweep` also turn on Baritone's censoring (`censorCoordinates`,
+`censorRanCommands`) before the first goal, and leave it on.
 
-La consola oculta las coordenadas por defecto. Con su ajuste `hide-coordinates` apagado muestra lo
-mismo que el chat y las guarda en disco (hasta 30 días de historial).
+The console hides coordinates by default. With its `hide-coordinates` setting off it shows the same
+as the chat and saves them to disk (up to 30 days of history).
 
-Los logs anteriores a la 0.3.1 no se limpian.
-
----
-
-## Si algo no funciona
-
-Lee **[Problemas conocidos](docs/problemas-conocidos.md)**: están los fallos que sabemos que existen,
-con su síntoma y qué hacer.
-
-Lo más habitual:
-
-- **«Lo enciendo y no pasa nada.»** `auto-travel` y `nether-sweep` no vuelan al encenderse. Al
-  encenderlos te lo dicen por chat.
-- **«Me rechaza y no sé por qué.»** El mensaje dice el ajuste, su valor actual y a qué ponerlo. Si
-  te manda a un ajuste que no existe con ese nombre, **eso sí es un fallo nuestro**.
+Logs from before 0.3.1 are not cleaned.
 
 ---
 
-## Para quien toque el código
+## If something does not work
 
-| Documento | Para qué |
+Read **[Known issues](docs/known-issues.md)**: it has the bugs we know exist, with their symptom and
+what to do.
+
+The most common:
+
+- **"I turn it on and nothing happens."** `auto-travel` and `nether-sweep` do not fly when turned
+  on. When you turn them on they tell you so in chat.
+- **"It rejects me and I do not know why."** The message gives the setting, its current value and
+  what to set it to. If it sends you to a setting that does not exist under that name, **that one is
+  our bug**.
+
+---
+
+## For whoever touches the code
+
+| Document | What for |
 |---|---|
-| [Arquitectura](docs/arquitectura.md) | Cómo está montado, y qué sería portable a otro cliente |
-| [Seguridad](docs/seguridad.md) | Qué toca cada módulo, qué persiste a disco, qué puede filtrarse |
-| [Problemas conocidos](docs/problemas-conocidos.md) | Fallos con nombre y apellidos |
-| [Convenciones](docs/convenciones.md) | Cómo se trabaja aquí y por qué |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | El diseño de cada módulo y el porqué de cada decisión |
-| [Construir un cliente propio](docs/cliente-propio/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
+| [Architecture](docs/architecture.md) | How it is put together, and what would be portable to another client |
+| [Security](docs/security.md) | What each module touches, what persists to disk, what can leak |
+| [Known issues](docs/known-issues.md) | Bugs by name |
+| [Conventions](docs/conventions.md) | How work is done here and why |
+| [Building a client of your own](docs/own-client/) | If this stops being an addon: licences, Meteor's anatomy, Baritone through its API and a roadmap |
 
-**Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.
+**Build:** `./gradlew build` → `build/libs/xploits-<version>.jar`.

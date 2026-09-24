@@ -23,3 +23,7 @@ progress.json
 progress.json.tmp
 kits-queue.txt
 *.log
+
+# Local-only design records and agent workspaces: never published
+docs/superpowers/
+.superpowers/
