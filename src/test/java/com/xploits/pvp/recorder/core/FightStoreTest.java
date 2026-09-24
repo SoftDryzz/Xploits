@@ -11,8 +11,10 @@ import com.xploits.pvp.recorder.core.FightRecord.Opponent;
 import com.xploits.pvp.recorder.core.FightRecord.PhaseChange;
 import com.xploits.pvp.recorder.core.FightRecord.Sample;
 import com.xploits.pvp.recorder.core.FightRecord.SelfTotals;
+import com.xploits.testing.TempFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,8 +36,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FightStoreTest {
     private static final Pattern FORBIDDEN_KEY = Pattern.compile("(?i)^(x|y|z|pos|position|coord|coords|dimension)$");
 
+    private Path dir;
+
+    @BeforeEach
+    void createTempFolder() throws IOException {
+        dir = TempFolder.create();
+    }
+
+    @AfterEach
+    void deleteTempFolder() {
+        TempFolder.delete(dir);
+    }
+
     @Test
-    void roundTripKeepsEveryField(@TempDir Path dir) throws IOException {
+    void roundTripKeepsEveryField() throws IOException {
         FightStore store = new FightStore(dir);
         FightRecord f = realisticFight();
 
@@ -50,7 +64,7 @@ class FightStoreTest {
     }
 
     @Test
-    void listIsNewestFirstAndIgnoresTmpAndForeignFiles(@TempDir Path dir) throws IOException {
+    void listIsNewestFirstAndIgnoresTmpAndForeignFiles() throws IOException {
         FightStore store = new FightStore(dir);
         store.save(fightAt(1_700_000_001_000L));
         store.save(fightAt(1_700_000_002_000L));
@@ -66,7 +80,7 @@ class FightStoreTest {
     }
 
     @Test
-    void aNameCollisionIsResolvedByAddingOneMillisecond(@TempDir Path dir) throws IOException {
+    void aNameCollisionIsResolvedByAddingOneMillisecond() throws IOException {
         FightStore store = new FightStore(dir);
 
         Path first = store.save(fightAt(1_700_000_005_000L));
@@ -81,7 +95,7 @@ class FightStoreTest {
     }
 
     @Test
-    void aFailedMoveLeavesNoTemporaryFileBehind(@TempDir Path dir) throws IOException {
+    void aFailedMoveLeavesNoTemporaryFileBehind() throws IOException {
         IOException refused = new IOException("the move was refused");
         FightStore store = new FightStore(dir, (from, to) -> {
             assertTrue(Files.exists(from), "the .tmp was written before the move");
@@ -97,7 +111,7 @@ class FightStoreTest {
     }
 
     @Test
-    void aCorruptFileThrowsAndIsLeftUntouched(@TempDir Path dir) throws IOException {
+    void aCorruptFileThrowsAndIsLeftUntouched() throws IOException {
         Path file = dir.resolve("fight-1.json");
         Files.writeString(file, "{not json");
 
@@ -106,7 +120,7 @@ class FightStoreTest {
     }
 
     @Test
-    void anEmptyFileThrowsAndIsLeftUntouched(@TempDir Path dir) throws IOException {
+    void anEmptyFileThrowsAndIsLeftUntouched() throws IOException {
         Path file = dir.resolve("fight-1.json");
         Files.writeString(file, "");
 
@@ -115,7 +129,7 @@ class FightStoreTest {
     }
 
     @Test
-    void anUnsupportedSchemaThrowsAndIsLeftUntouched(@TempDir Path dir) throws IOException {
+    void anUnsupportedSchemaThrowsAndIsLeftUntouched() throws IOException {
         // otherwise-valid content (round-trips fine at schema 1) so this fails only if the schema itself is not checked
         Path file = new FightStore(dir).save(fightAt(1_700_000_009_000L));
         String original = Files.readString(file);
@@ -128,7 +142,7 @@ class FightStoreTest {
     }
 
     @Test
-    void aMissingListThrowsAndIsLeftUntouched(@TempDir Path dir) throws IOException {
+    void aMissingListThrowsAndIsLeftUntouched() throws IOException {
         Path file = dir.resolve("fight-1.json");
         String json = "{\"schema\": 1, \"addonVersion\": \"0.5.0\", \"outcome\": \"ENDED\", \"mode\": \"MANUAL\","
             + " \"self\": {}}";
@@ -139,7 +153,7 @@ class FightStoreTest {
     }
 
     @Test
-    void pruneDeletesEverythingPastTheFiftiethByFileNameOrderOnly(@TempDir Path dir) throws IOException {
+    void pruneDeletesEverythingPastTheFiftiethByFileNameOrderOnly() throws IOException {
         FightStore store = new FightStore(dir);
         long base = 1_700_000_000_000L;
         for (int i = 0; i < KEEP_PLUS_FIVE; i++) {
@@ -157,7 +171,7 @@ class FightStoreTest {
     }
 
     @Test
-    void noJsonKeyEverNamesAPosition(@TempDir Path dir) throws IOException {
+    void noJsonKeyEverNamesAPosition() throws IOException {
         Path saved = new FightStore(dir).save(realisticFight());
         JsonElement root = JsonParser.parseString(Files.readString(saved));
 
