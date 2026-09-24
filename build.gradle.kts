@@ -61,6 +61,7 @@ tasks {
         options.release = 21
         options.compilerArgs.add("-Xlint:deprecation")
         options.compilerArgs.add("-Xlint:unchecked")
+        options.compilerArgs.add("-Xdoclint:reference/private")
     }
 
     test {
