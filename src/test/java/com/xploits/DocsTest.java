@@ -23,7 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DocsTest {
     /** Docs already translated. Each task appends; the last covers every published doc except README.es.md. */
     private static final List<String> ENGLISH_DOCS = List.of("CHANGELOG.md", "docs/VERSIONING.md",
-        "docs/architecture.md", "docs/conventions.md", "docs/known-issues.md", "docs/security.md");
+        "docs/architecture.md", "docs/conventions.md", "docs/known-issues.md", "docs/security.md",
+        "docs/own-client/README.md", "docs/own-client/meteor-anatomy.md", "docs/own-client/roadmap.md",
+        "docs/own-client/integrating-baritone.md");
 
     private static final Set<String> SPANISH = Set.of("el", "la", "los", "las", "que", "para", "con", "una", "del",
         "por", "pero", "cuando", "como", "este", "esta", "esto", "sin", "sobre", "porque", "donde", "también");

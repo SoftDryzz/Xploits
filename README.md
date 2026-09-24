@@ -300,6 +300,6 @@ Lo más habitual:
 | [Seguridad](docs/security.md) | Qué toca cada módulo, qué persiste a disco, qué puede filtrarse |
 | [Problemas conocidos](docs/known-issues.md) | Fallos con nombre y apellidos |
 | [Convenciones](docs/conventions.md) | Cómo se trabaja aquí y por qué |
-| [Construir un cliente propio](docs/cliente-propio/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
+| [Construir un cliente propio](docs/own-client/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
 
 **Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.

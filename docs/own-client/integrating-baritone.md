@@ -1,34 +1,34 @@
-# Integrar Baritone
+# Integrating Baritone
 
-El addon habla con Baritone **escribiendo comandos en el chat**. Es una chapuza que costó dos rondas
-de trabajo y toda una red de seguridad. En un cliente propio **no hay que hacerlo así**, y esta es la
-mejora más grande y más barata de toda la migración.
+The addon talks to Baritone by **writing commands into chat**. It is a hack that cost two rounds of
+work and a whole safety net. In a client of your own **this should not be done that way**, and this
+is the biggest, cheapest improvement in the whole migration.
 
 ---
 
-## Por qué el addon acabó escribiendo en el chat
+## Why the addon ended up writing to chat
 
-Baritone se distribuye en dos formas, y en esta máquina están las dos. Comprobado abriendo los jars:
+Baritone ships in two forms, and both are on this machine. Checked by opening the jars:
 
-| Jar | Clases en `baritone.api` | Qué se puede hacer |
+| Jar | Classes in `baritone.api` | What you can do |
 |---|---|---|
-| `baritone-api-fabric` | **4**: `BaritoneAPI`, `IBaritone`, `IBaritoneProvider`, `Settings` | **Compilar contra ella** |
-| `baritone-standalone-fabric` | **1** | Nada: el resto está ofuscado |
+| `baritone-api-fabric` | **4**: `BaritoneAPI`, `IBaritone`, `IBaritoneProvider`, `Settings` | **Compile against it** |
+| `baritone-standalone-fabric` | **1** | Nothing: the rest is obfuscated |
 
-El addon se instaló junto al **standalone**, así que no había API contra la que compilar: compilaría
-y reventaría en el juego. La única vía que quedaba era el chat.
+The addon was installed alongside the **standalone** one, so there was no API to compile against: it
+would compile and blow up in the game. The only route left was chat.
 
-**Y eso trae un riesgo que no es teórico.** En un servidor anarchy, si un `#elytra` se escapa al
-chat público acabas de anunciar a todos que vas con Baritone y hacia dónde. Leído en el bytecode del
-mixin de Baritone, este solo cancela el comando si su gestor lo reconoce: si cambiaste el prefijo o
-no hay instancia ligada a tu jugador, **el texto sale al servidor**. De ahí la red que cancela
-paquetes de chat, que existe solo por esto.
+**And that carries a risk that is not theoretical.** On an anarchy server, if an `#elytra` leaks
+into public chat you have just announced to everyone that you are running Baritone, and where.
+Read from Baritone's own mixin bytecode, it only cancels the command if its manager recognizes it:
+if you changed the prefix or there is no instance bound to your player, **the text goes out to the
+server.** That is the whole reason the chat-packet-cancelling net exists.
 
 ---
 
-## Cómo se hace bien
+## How to do it right
 
-Con el jar de API como dependencia de compilación:
+With the API jar as a compile-time dependency:
 
 ```java
 IBaritoneProvider provider = BaritoneAPI.getProvider();
@@ -36,79 +36,82 @@ IBaritone baritone = provider.getPrimaryBaritone();
 Settings settings = BaritoneAPI.getSettings();
 ```
 
-A partir de ahí, todo lo que el addon hace por chat se hace llamando:
+From there, everything the addon does over chat is done with a call instead:
 
-| Lo que el addon escribe | Lo que se llama |
+| What the addon writes | What gets called |
 |---|---|
-| `#set elytraAutoJump true` | El campo del ajuste en `Settings`, con su tipo |
-| `#goal x z` | El gestor de objetivos, con un objetivo tipado |
-| `#elytra` | El proceso de elytra, directamente |
-| `#cancel` | El control de caminos |
+| `#set elytraAutoJump true` | The setting's field in `Settings`, with its type |
+| `#goal x z` | The goal manager, with a typed goal |
+| `#elytra` | The elytra process, directly |
+| `#cancel` | Path control |
 
-**Lo que desaparece de golpe:**
+**What disappears at once:**
 
-- La red de seguridad entera y su oyente suscrito aparte.
-- Todo el guion de comandos y la validación del prefijo.
-- El ajuste `baritone-prefix` y la clase de fallo de configurarlo mal.
-- La incertidumbre de no saber si un comando llegó: ahora es una llamada, o compila o no.
+- The whole safety net and its separately subscribed listener.
+- The entire command script and prefix validation.
+- The `baritone-prefix` setting and the whole class of failure from misconfiguring it.
+- The uncertainty of not knowing whether a command arrived: now it is a call, it either compiles or
+  it does not.
 
-**Y lo que ganáis además:** leer sus ajustes. Hoy el addon solo puede **escribirlos**, así que declara
-valores de reposo en vez de guardar los que había. Con la API se lee el valor antes, se cambia, y se
-devuelve el que era — sin declarar nada y sin poder equivocarse.
-
----
-
-## Los tres problemas que sí tenéis que resolver
-
-**1. La versión.** El jar de API que hay aquí es para una versión antigua de Minecraft. Para 1.21.11
-hace falta un build de API de esa versión. **Comprobadlo antes de diseñar nada encima**: si no
-existe para vuestra versión, el problema vuelve. Baritone publica por JitPack y hay forks por
-versión.
-
-**2. Solo `baritone.api` está soportado.** Lo dice su propio proyecto: todo lo de fuera puede cambiar
-sin aviso. Si os apoyáis en algo de dentro, os romperéis en su siguiente release.
-
-**3. Que esté instalado.** Comprobadlo con `FabricLoader.isModLoaded("baritone")` y **no** con la
-bandera de Meteor: su `PathManagers` hace un `Class.forName("baritone.api.BaritoneAPI")` que
-**falla con el standalone ofuscado**. En estas instancias, todo lo de Meteor que usa Baritone está
-muerto en silencio por eso.
+**And what you also gain:** reading its settings. Today the addon can only **write** them, so it
+declares rest values instead of saving the ones that were there. With the API you read the value
+first, change it, and restore whatever it was — no declaring anything, and no chance of getting it
+wrong.
 
 ---
 
-## Lo que sí conviene conservar del addon
+## The three problems you do have to solve
 
-No todo lo que rodea a Baritone era chapuza. Tres piezas resuelven problemas reales que **siguen
-existiendo con la API**, porque no son del transporte sino del comportamiento de Baritone:
+**1. The version.** The API jar here is for an old Minecraft version. For 1.21.11 you need an API
+build for that version. **Check this before designing anything on top of it**: if it does not exist
+for your version, the problem comes back. Baritone publishes through JitPack, and there are forks
+per version.
 
-**Que aterriza en cada objetivo.** Su vuelo con elytra significa «vuela ahí **y pósate**»: empieza a
-aterrizar a **48 bloques** del objetivo —valor sacado de su bytecode, una comparación contra
-`2304.0d`— y **no tiene ningún ajuste que lo desactive**. Para volar una ruta de varios puntos hay
-que cambiarle el objetivo **antes** de que llegue. En el addon eso es `waypoint-margin`; con la API
-será lo mismo, pero llamando.
+**2. Only `baritone.api` is supported.** Its own project says so: anything outside it can change
+with no notice. Lean on something from inside and you will break on their next release.
 
-**Que no avisa de nada.** No dice si va bien, si está atascado ni si se quedó sin ruta. El vigilante
-de atasco de Xploits —30 segundos sin acercarse, atado al waypoint por construcción para que un
-salto de índice no dispare un corte falso— sigue haciendo falta igual.
-
-**Que cambia la elytra por su cuenta.** Tiene sus propios `elytraAutoSwap` y `elytraMinimumDurability`
-con otro criterio que el vuestro. Hay que apagarlos si queréis mandar vosotros.
-
-**Y la regla que engloba las tres:** todo lo que sabéis de Baritone está verificado leyendo su
-bytecode, no su documentación. Eso no cambia con la API — solo cambia que ya no tenéis que adivinar
-si el comando llegó.
+**3. That it is installed.** Check with `FabricLoader.isModLoaded("baritone")` and **not** with
+Meteor's flag: its `PathManagers` does a `Class.forName("baritone.api.BaritoneAPI")` which **fails
+with the obfuscated standalone jar**. On these instances, everything in Meteor that uses Baritone is
+silently dead because of exactly that.
 
 ---
 
-## Si Baritone no os convence
+## What is worth keeping from the addon
 
-Merece la pena plantearse la pregunta, porque un cliente propio puede permitirse lo que un addon no:
+Not everything around Baritone was a hack. Three pieces solve real problems that **still exist with
+the API**, because they are about Baritone's behavior, not about the transport:
 
-**Lo que Baritone os da gratis** es enorme: pathfinding, minería, construcción, y un vuelo con elytra
-que funciona de verdad. Reescribir eso son años.
+**That it lands at every target.** Its elytra flight means "fly there **and land**": it starts
+landing at **48 blocks** from the target — a value pulled from its bytecode, a comparison against
+`2304.0d` — and **has no setting that turns it off.** To fly a multi-point route you have to change
+its target **before** it gets there. In the addon that is `waypoint-margin`; with the API it will be
+the same thing, just via a call.
 
-**Lo que os cuesta** es una dependencia que no controláis, ofuscada fuera de su API, sin contrato
-sobre su comportamiento, que aterriza cuando no quieres y que no informa de nada.
+**That it warns of nothing.** It does not say whether it is going well, whether it is stuck, or
+whether it ran out of path. Xploits' stall watch — 30 seconds with no progress, tied to the waypoint
+by construction so an index jump does not trigger a false cutoff — is still needed just the same.
 
-**La postura razonable** es la que ya tiene el addon: usarlo para volar, y **poner vuestra propia
-capa de criterio encima** — qué ruta, cuándo cortar, qué hacer si no responde. Esa capa ya la
-tenéis escrita y probada, y es la parte que nadie más tiene.
+**That it swaps the elytra on its own.** It has its own `elytraAutoSwap` and
+`elytraMinimumDurability` with different criteria from yours. You have to turn them off if you want
+to be the one in charge.
+
+**And the rule that covers all three:** everything you know about Baritone is verified by reading
+its bytecode, not its documentation. That does not change with the API — the only thing that changes
+is that you no longer have to guess whether the command arrived.
+
+---
+
+## If Baritone does not convince you
+
+It is worth asking the question, because a client of your own can afford what an addon cannot:
+
+**What Baritone gives you for free** is huge: pathfinding, mining, building, and an elytra flight
+that actually works. Rewriting that is years of work.
+
+**What it costs you** is a dependency you do not control, obfuscated outside its API, with no
+contract on its behavior, that lands when you do not want it to and reports nothing.
+
+**The reasonable stance** is the one the addon already has: use it to fly, and **put your own layer
+of judgement on top** — which route, when to cut it short, what to do if it stops responding. You
+already have that layer written and tested, and it is the part nobody else has.

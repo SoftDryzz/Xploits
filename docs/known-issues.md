@@ -29,12 +29,12 @@ instead of looking only at the last tick.
 
 ### The consumed-link warning claims more than it can
 
-**Symptom:** when starting a sweep, a warning says some corner will be lost but that *"the band is
-crossed anyway"*.
+**Symptom:** when starting a sweep, a warning says some corner will be lost but that *"The strip is
+still crossed -no lane is lost-, but its edges will pass further from the client than planned."*
 
-**What happens.** That is true when the consumed link is short (a narrow last band) and **false when it
-is a whole band long**, which by construction always exceeds the coverage radius: it leaves up to two
-thirds of the band undelivered at one end, 22 % integrated.
+**What happens.** That is true when the consumed link is short (a narrow last strip) and **false when
+it is a whole strip long**, which by construction always exceeds the coverage radius: it leaves up to
+two thirds of the strip undelivered at one end, 22 % integrated.
 
 **When it hits you:** with small lane widths (a loaded server) or with a high `waypoint-margin`.
 

@@ -1,167 +1,170 @@
-# Anatomía de Meteor
+# Meteor anatomy
 
-Dónde está su código, qué hace cada parte, y qué vale la pena replicar, mejorar o ignorar.
+Where its code lives, what each part does, and what is worth replicating, improving, or ignoring.
 
 ---
 
-## Dónde está el código
+## Where the code lives
 
-**El repositorio:** <https://github.com/MeteorDevelopment/meteor-client> (GPL-3.0).
+**The repository:** <https://github.com/MeteorDevelopment/meteor-client> (GPL-3.0).
 
-**El jar de fuentes, ya descargado en esta máquina** por Gradle al compilar el addon:
+**The sources jar, already downloaded on this machine** by Gradle when the addon is built:
 
 ```
 ~/.gradle/caches/modules-2/files-2.1/meteordevelopment/meteor-client/
     1.21.11-SNAPSHOT/<hash>/meteor-client-1.21.11-SNAPSHOT-sources.jar
 ```
 
-Descomprimirlo y leerlo es la forma más rápida de resolver cualquier duda. **Este repo tiene una
-regla escrita sobre eso**: no afirmar nunca qué hace una API de Meteor sin haberla leído ahí. Se
-saltó dos veces y las dos costaron una ronda entera de trabajo.
+Unzipping and reading it is the fastest way to settle any doubt. **This repo has a rule written
+about exactly that:** never claim what a Meteor API does without having read it there. It has been
+skipped twice, and both times cost a whole round of work.
 
-Hay además una copia remapeada a nombres legibles dentro del proyecto:
+There is also a copy remapped to readable names inside the project:
 
 ```
-<proyecto>/.gradle/loom-cache/remapped_mods/.../meteor-client-*-sources.jar
+<project>/.gradle/loom-cache/remapped_mods/.../meteor-client-*-sources.jar
 ```
 
 ---
 
-## El mapa, por subsistema
+## The map, by subsystem
 
-Todo cuelga de `meteordevelopment/meteorclient/`.
+Everything hangs off `meteordevelopment/meteorclient/`.
 
-### `systems/` — el chasis
+### `systems/` — the chassis
 
-Lo que de verdad define un cliente. Un `System` es una cosa que persiste y se guarda a disco:
-módulos, ajustes, amigos, waypoints, macros, cuentas, perfiles, proxies, HUD.
+What actually defines a client. A `System` is something that persists and saves to disk: modules,
+settings, friends, waypoints, macros, accounts, profiles, proxies, HUD.
 
-**`systems/modules/`** es el corazón: `Module`, `Modules`, `Category` y los 197 módulos repartidos
-en seis categorías (`combat`, `misc`, `movement`, `player`, `render`, `world`).
+**`systems/modules/`** is the heart of it: `Module`, `Modules`, `Category`, and the 197 modules
+split across six categories (`combat`, `misc`, `movement`, `player`, `render`, `world`).
 
-**Lo que hay que entender de `Module` antes de replicarlo**, porque son decisiones con consecuencias:
+**What you need to understand about `Module` before replicating it**, because these are decisions
+with consequences:
 
-- Un módulo tiene `onActivate()` / `onDeactivate()` y se suscribe solo al bus.
-- **`toggle()` desuscribe el módulo ANTES de llamar a `onDeactivate()`.** Cualquier oyente que
-  tenga que sobrevivir a la desactivación va suscrito aparte. En Xploits esto costó una ronda.
-- **`Modules.onGameLeft()` llama a `onDeactivate()` pero NO marca el módulo como inactivo**, para
-  que vuelva solo al reentrar. Tocar otros módulos ahí los deja suscritos dos veces el resto de la
-  sesión, porque el bus no deduplica.
+- A module has `onActivate()` / `onDeactivate()` and subscribes itself to the bus.
+- **`toggle()` unsubscribes the module BEFORE calling `onDeactivate()`.** Any listener that has to
+  survive deactivation subscribes separately. In Xploits this cost a round.
+- **`Modules.onGameLeft()` calls `onDeactivate()` but does NOT mark the module inactive**, so it
+  comes back on its own on re-entry. Touching other modules there leaves them subscribed twice for
+  the rest of the session, because the bus does not deduplicate.
 
-**Si construís el vuestro, estas tres son las que arreglaría.** Que el ciclo de vida de un módulo
-sea sutil es la fuente de fallos más cara que tiene Meteor.
+**If you build your own, these three are the ones I'd fix.** How subtle a module's lifecycle is is
+the most expensive source of failures Meteor has.
 
-### `settings/` — 36 ficheros
+### `settings/` — 36 files
 
-Ajustes tipados (`BoolSetting`, `DoubleSetting`, `EnumSetting`, `StringListSetting`…) con
-serialización, valores por defecto, rangos y visibilidad condicional.
+Typed settings (`BoolSetting`, `DoubleSetting`, `EnumSetting`, `StringListSetting`…) with
+serialization, defaults, ranges, and conditional visibility.
 
-Dos cosas que conviene saber y que no son obvias:
+Two things worth knowing that are not obvious:
 
-- **`sliderRange` es solo cosmético**: acota el widget, no el valor. Lo que clava el valor es
-  `.min()`/`.max()`, y sin eso el jugador puede teclear cualquier cosa o heredarla de la config.
-- **Un valor persistido que no pasa la validación se descarta al cargar** y el ajuste vuelve a su
-  valor de fábrica. Es lo que permite subir un mínimo y que las configuraciones viejas se arreglen
-  solas.
+- **`sliderRange` is cosmetic only**: it bounds the widget, not the value. What pins the value down
+  is `.min()`/`.max()`, and without that the player can type in anything or inherit it from the
+  config.
+- **A persisted value that fails validation is discarded on load** and the setting goes back to its
+  factory value. That is what lets you raise a minimum and have old configs fix themselves.
 
-`Module.settings` es público y `Settings.get(nombre, tipo)` devuelve el ajuste tipado, así que **un
-módulo puede leer el ajuste de otro** sin reflexión ni mixins. Xploits lo usa para comprobar que el
-`anti-suicide` de `CrystalAura` sigue encendido antes de fiarse de él.
+`Module.settings` is public and `Settings.get(name, type)` returns the typed setting, so **one
+module can read another's setting** with no reflection or mixins. Xploits uses this to check that
+`CrystalAura`'s `anti-suicide` is still on before trusting it.
 
-### `events/` — 69 ficheros, y `orbit`
+### `events/` — 69 files, and `orbit`
 
-El bus no está en Meteor: es una librería aparte, **`meteordevelopment:orbit`**. Vale la pena leerla
-entera porque es pequeña y define cómo se comporta todo lo demás.
+The bus is not part of Meteor: it is a separate library, **`meteordevelopment:orbit`**. Worth
+reading in full because it is small and defines how everything else behaves.
 
-Tres cosas suyas con consecuencias:
+Three things about it with consequences:
 
-- **No deduplica.** Suscribir dos veces el mismo objeto lo registra dos veces, y `unsubscribe` quita
-  **una sola** copia.
-- **La prioridad ordena, y a igualdad manda el orden de suscripción.** `insert()` solo adelanta a
-  los estrictamente menores.
-- **Cancelar corta el bucle**: ningún oyente posterior ve ese evento.
+- **It does not deduplicate.** Subscribing the same object twice registers it twice, and
+  `unsubscribe` removes **only one** copy.
+- **Priority orders, and ties go to subscription order.** `insert()` only moves ahead of strictly
+  lower ones.
+- **Cancelling stops the loop**: no later listener sees that event.
 
-En un cliente propio, **deduplicar al suscribir** es una línea y ahorra una clase entera de fallos.
+In a client of your own, **deduplicating on subscribe** is one line and saves a whole class of
+failures.
 
-### `mixin/` — 212 ficheros, y la parte que subestima todo el mundo
+### `mixin/` — 212 files, and the part everyone underestimates
 
-Es el pegamento con Minecraft. Cada mixin engancha un método del juego para publicar un evento,
-cambiar un comportamiento o exponer un campo privado.
+This is the glue with Minecraft. Each mixin hooks a game method to publish an event, change a
+behavior, or expose a private field.
 
-**Es el subsistema más grande y el que más se rompe al cambiar de versión de Minecraft.** Si algún
-día vuestro cliente sobrevive a una actualización o muere en ella, se decidirá aquí.
+**It is the biggest subsystem and the one most likely to break on a Minecraft version bump.** If
+your client ever survives an update or dies on one, it will be decided here.
 
-**Consejo con coste real detrás:** cada mixin es deuda. Un cliente con 50 mixins bien elegidos
-sobrevive a una versión nueva en un fin de semana; uno con 212 tarda semanas. Antes de añadir uno,
-mirad si el dato se puede sacar de una API pública.
+**Advice with a real cost behind it:** every mixin is debt. A client with 50 well-chosen mixins
+survives a new version in a weekend; one with 212 takes weeks. Before adding one, check whether the
+data can be pulled from a public API instead.
 
-### `gui/` — 134 ficheros
+### `gui/` — 134 files
 
-ClickGUI, HUD, widgets, temas. Es la parte más vistosa y la que más tiempo come.
+ClickGUI, HUD, widgets, themes. It is the flashiest part and the one that eats the most time.
 
-**Es lo último que haría.** Un cliente con una GUI fea pero funcional y buenos módulos es útil; uno
-con una GUI preciosa y tres módulos, no.
+**It is the last thing I would build.** A client with an ugly but functional GUI and good modules
+is useful; one with a beautiful GUI and three modules is not.
 
-### `utils/` — 128 ficheros
+### `utils/` — 128 files
 
-Lo compartido, y donde está buena parte del valor real de Meteor:
+The shared stuff, and where a good chunk of Meteor's real value is:
 
-| Paquete | Qué resuelve |
+| Package | What it solves |
 |---|---|
-| `utils/player/` | Inventario, vida, daño entrante, agujeros, rotaciones |
-| `utils/entity/` | Objetivos, cálculo de daño de cristales, bloques de rodeado |
-| `utils/world/` | Bloques, chunks, dimensiones |
-| `utils/render/` | Colores, texto, dibujo |
+| `utils/player/` | Inventory, health, incoming damage, holes, rotations |
+| `utils/entity/` | Targets, crystal damage calculation, surround blocks |
+| `utils/world/` | Blocks, chunks, dimensions |
+| `utils/render/` | Colors, text, drawing |
 
-Dos joyas que Xploits usa y que un cliente propio necesita sí o sí:
+Two gems that Xploits uses and that a client of your own will need too:
 
-- **`PlayerUtils.possibleHealthReductions()`** — el daño que ya te apunta: cristales colocados, gente
-  con espada cerca, camas en el Nether, caída. Es el dato con el que se decide todo lo defensivo.
-- **`DamageUtils.crystalDamage(objetivo, posición)`** — cuánto haría un cristal puesto ahí.
+- **`PlayerUtils.possibleHealthReductions()`** — the damage that is already aimed at you: placed
+  crystals, people with a sword nearby, beds in the Nether, fall damage. It is the data everything
+  defensive gets decided from.
+- **`DamageUtils.crystalDamage(target, position)`** — how much a crystal placed there would do.
 
 ### `renderer/`, `commands/`, `addons/`, `pathing/`, `asm/`
 
-- **`renderer/`** (23) — dibujo 3D/2D. Necesario, y más pequeño de lo que parece.
-- **`commands/`** (58) — el sistema de comandos con Brigadier.
-- **`addons/`** (3) — el punto de extensión. Si queréis que otros escriban para vuestro cliente,
-  esto es lo que hay que diseñar bien desde el principio.
-- **`pathing/`** (6) — una abstracción sobre pathfinding. **Ojo:** su detección de Baritone hace un
-  `Class.forName("baritone.api.BaritoneAPI")`, que **falla con el jar standalone ofuscado**. En las
-  instancias de esta máquina, todo lo de Meteor que usa Baritone está muerto en silencio. Ver
-  [Integrar Baritone](integrar-baritone.md).
-- **`asm/`** (6) — manipulación de bytecode en carga.
+- **`renderer/`** (23) — 3D/2D drawing. Necessary, and smaller than it looks.
+- **`commands/`** (58) — the command system, on Brigadier.
+- **`addons/`** (3) — the extension point. If you want others to write for your client, this is
+  what needs to be designed well from the start.
+- **`pathing/`** (6) — an abstraction over pathfinding. **Careful:** its Baritone detection does a
+  `Class.forName("baritone.api.BaritoneAPI")`, which **fails with the obfuscated standalone jar**.
+  On the instances on this machine, everything in Meteor that uses Baritone is silently dead. See
+  [Integrating Baritone](integrating-baritone.md).
+- **`asm/`** (6) — bytecode manipulation at load time.
 
 ---
 
-## Qué replicar, qué mejorar, qué ignorar
+## What to replicate, what to improve, what to ignore
 
-**Replicar casi tal cual** — están bien resueltos y no hay por qué reinventarlos:
+**Replicate almost as-is** — these are well solved and there is no reason to reinvent them:
 
-- El modelo `System` que persiste a disco.
-- Los ajustes tipados con validación y visibilidad condicional.
-- La separación módulo / categoría.
+- The `System` model that persists to disk.
+- Typed settings with validation and conditional visibility.
+- The module / category split.
 
-**Mejorar** — aquí es donde un cliente propio gana de verdad:
+**Improve** — this is where a client of your own really gains ground:
 
-| Qué | Por qué |
+| What | Why |
 |---|---|
-| **El ciclo de vida de un módulo** | Desuscribir antes de `onDeactivate()` y no marcar inactivo al salir del mundo son dos trampas que ya nos costaron rondas |
-| **Deduplicar en el bus** | Una línea; evita que un módulo acabe con sus manejadores ejecutándose por duplicado toda la sesión |
-| **Menos mixins** | Es lo que decide si sobrevivís a la próxima versión de Minecraft |
-| **Rangos duros por defecto** | Que `sliderRange` no clave el valor es una fuente de fallos silenciosos |
-| **Tests** | Meteor prácticamente no tiene. Vosotros tenéis ~640 y esa es vuestra ventaja real |
+| **A module's lifecycle** | Unsubscribing before `onDeactivate()` and not marking a module inactive on world leave are two traps that already cost us rounds |
+| **Deduplicating on the bus** | One line; it stops a module's handlers from ending up duplicated for the rest of the session |
+| **Fewer mixins** | It is what decides whether you survive the next Minecraft version |
+| **Hard ranges by default** | `sliderRange` not pinning the value down is a source of silent failures |
+| **Tests** | Meteor practically has none. You have ~640, and that is your real edge |
 
-**Ignorar al principio:** la GUI entera, los perfiles, los proxies, las cuentas, las macros. Todo eso
-se añade cuando el cliente ya hace algo que merezca la pena configurar.
+**Ignore at the start:** the whole GUI, profiles, proxies, accounts, macros. All of that gets added
+once the client already does something worth configuring.
 
 ---
 
-## Otros clientes que vale la pena leer
+## Other clients worth reading
 
-No para copiar, sino para ver cómo resolvieron lo mismo:
+Not to copy, but to see how they solved the same problems:
 
-- **Meteor** — el que tenéis delante y el mejor documentado por dentro.
-- **Baritone** — no es un cliente, pero su separación entre `api` e implementación es un ejemplo de
-  cómo se publica una frontera estable.
-- **Fabric API** — para entender qué os da la plataforma sin mixins. Cada cosa que saquéis de aquí
-  es un mixin que no escribís.
+- **Meteor** — the one in front of you, and the best documented internally.
+- **Baritone** — not a client, but its split between `api` and implementation is an example of how
+  you publish a stable boundary.
+- **Fabric API** — to understand what the platform gives you with no mixins. Everything you get
+  from here is one mixin you do not have to write.
