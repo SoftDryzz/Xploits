@@ -18,7 +18,7 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.Optional;
 
-/** Vacía shulkers en un ender chest al alcance (spec §6). Mueve uno por tick y nunca camina. */
+/** Empties shulkers into an ender chest in reach (spec §6). Moves one per tick and never walks. */
 public final class EnderDepositor {
     public static final double REACH = 4.5;
 
@@ -26,18 +26,17 @@ public final class EnderDepositor {
     private static final long OPEN_TIMEOUT_MS = 5_000;
     private static final long MOVE_TIMEOUT_MS = 10_000;
     /**
-     * Ventana en la que un candidato -de bloque o de entidad, propio o ajeno- se considera vigente
-     * (spec §6.1, tercera corrección). Igual a {@link #OPEN_TIMEOUT_MS} a propósito: antes eran
-     * independientes (1 s frente a 5 s), y un pico de lag de 6b6t podía caducar el candidato
-     * mientras {@code start()} seguía dentro de su propia ventana de espera, dejando pasar
-     * exactamente la carrera que este campo existe para bloquear. Con las dos ventanas iguales eso
-     * ya no puede pasar: si {@code start()} sigue esperando su pantalla, el candidato tampoco ha
-     * caducado.
+     * Window in which a candidate -block or entity, our own or unrelated- is considered current
+     * (spec §6.1, third fix). Equal to {@link #OPEN_TIMEOUT_MS} on purpose: they used to be
+     * independent (1 s versus 5 s), and a 6b6t lag spike could expire the candidate while
+     * {@code start()} was still within its own waiting window, letting through exactly the race this
+     * field exists to block. With the two windows equal that can no longer happen: if {@code start()}
+     * is still waiting for its screen, the candidate has not expired either.
      *
-     * <p>Solo la usa {@link #start}: caduca el candidato de bloque justo antes de comprobar
-     * {@link CandidateTracker#blocksStart}. {@code tick()} no caduca nada -el candidato ahí solo
-     * importa para la comprobación puntual de {@link CandidateTracker#matches} en {@code OPENING},
-     * que no depende de esta ventana-.
+     * <p>Only {@link #start} uses it: it expires the block candidate right before checking
+     * {@link CandidateTracker#blocksStart}. {@code tick()} does not expire anything -the candidate
+     * there only matters for the one-off check in {@link CandidateTracker#matches} during
+     * {@code OPENING}, which does not depend on this window-.
      */
     private static final long CANDIDATE_TIMEOUT_MS = OPEN_TIMEOUT_MS;
 
@@ -47,16 +46,16 @@ public final class EnderDepositor {
     private long openedAt;
     private long movingSince;
 
-    /** El ender chest que se pidió abrir en {@link #start}. Fija a qué contenedor está atada la operación. */
+    /** The ender chest that {@link #start} asked to open. Fixes which container the operation is tied to. */
     private BlockPos targetPos;
     /**
-     * Candidato y caducidad (spec §6.1): qué interacción -propia o ajena, de bloque o de entidad- se
-     * vio más recientemente. La lógica es pura y vive en {@code kitrequester/core}; aquí solo se
-     * traduce {@link BlockPos} a {@code long} y se decide, con Minecraft, qué bloque de verdad puede
-     * respaldar la pantalla que se espera ({@link #opensContainerScreen}).
+     * Candidate and expiry (spec §6.1): which interaction -our own or unrelated, block or entity- was
+     * seen most recently. The logic is pure and lives in {@code kitrequester/core}; here it only
+     * translates {@link BlockPos} to {@code long} and, with Minecraft, decides which block can really
+     * back the screen being expected ({@link #opensContainerScreen}).
      */
     private final CandidateTracker tracker = new CandidateTracker(CANDIDATE_TIMEOUT_MS);
-    /** syncId del handler ya aceptado como el ender chest de esta operación. Null hasta OPENING→MOVING. */
+    /** syncId of the handler already accepted as this operation's ender chest. Null until OPENING→MOVING. */
     private Integer syncId;
 
     public static Optional<BlockPos> findInReach(MinecraftClient mc) {
@@ -68,11 +67,10 @@ public final class EnderDepositor {
         for (BlockPos pos : BlockPos.iterate(center.add(-SCAN_RADIUS, -SCAN_RADIUS, -SCAN_RADIUS),
                                              center.add(SCAN_RADIUS, SCAN_RADIUS, SCAN_RADIUS))) {
             if (!mc.world.getBlockState(pos).isOf(Blocks.ENDER_CHEST)) continue;
-            // Un bloque sólido encima impide abrirlo: verificado en el bytecode de
-            // EnderChestBlock.onUse -si world.getBlockState(pos.up()).isSolidBlock(...) es cierto,
-            // devuelve ActionResult.SUCCESS sin abrir ninguna pantalla-. Pedir su apertura de todos
-            // modos no produce ningún error visible, solo un OPEN_TIMEOUT_MS entero perdido sin
-            // motivo (spec §6, corregido).
+            // A solid block above it stops it from opening: verified in the bytecode of
+            // EnderChestBlock.onUse -if world.getBlockState(pos.up()).isSolidBlock(...) is true, it
+            // returns ActionResult.SUCCESS without opening any screen-. Requesting it anyway produces
+            // no visible error, just a whole OPEN_TIMEOUT_MS wasted for no reason (spec §6, fixed).
             BlockPos above = pos.up();
             if (mc.world.getBlockState(above).isSolidBlock(mc.world, above)) continue;
             double distance = eyes.distanceTo(Vec3d.ofCenter(pos));
@@ -85,22 +83,22 @@ public final class EnderDepositor {
     }
 
     /**
-     * Abre el ender chest al alcance más cercano. Devuelve false sin mandar nada si no hay ninguno,
-     * si el jugador ya tiene una pantalla abierta, o si hay una interacción ajena reciente sin
-     * resolver -un clic (de bloque o de entidad) que el jugador acaba de mandar y cuya pantalla
-     * todavía no ha llegado ({@link #CANDIDATE_TIMEOUT_MS})-: mandar el interact en cualquiera de
-     * esos casos es exactamente el primer paso del fallo que vacía shulkers en cualquier contenedor
-     * que el jugador tuviera abierto o a punto de abrirse (spec §6.1).
+     * Opens the nearest ender chest in reach. Returns false without sending anything if there is
+     * none, if the player already has a screen open, or if there is a recent, unresolved unrelated
+     * interaction -a click (block or entity) the player just sent whose screen has not arrived yet
+     * ({@link #CANDIDATE_TIMEOUT_MS})-: sending the interact in any of those cases is exactly the
+     * first step of the failure that empties shulkers into any container the player had open or was
+     * about to open (spec §6.1).
      */
     public boolean start(MinecraftClient mc, long now) {
         if (mc.player == null) return false;
         if (!(mc.player.currentScreenHandler instanceof PlayerScreenHandler)) return false;
         tracker.expire(now);
-        // Mientras la fase es IDLE, un candidato vigente solo puede venir de onInteractBlock o
-        // onInteractEntity -esta misma llamada nunca lo deja puesto en IDLE-, así que si sigue
-        // vigente es una interacción del jugador cuya pantalla todavía no ha llegado del servidor.
-        // Empezar ahora es la carrera exacta del fallo: la pantalla ajena llega después, con el
-        // candidato ya reescrito al ender chest, y OPENING la acepta como si fuera la suya.
+        // While the phase is IDLE, a current candidate can only come from onInteractBlock or
+        // onInteractEntity -this very call never leaves it set while IDLE-, so if it is still current
+        // it is a player interaction whose screen has not arrived from the server yet.
+        // Starting now is exactly the failure's race: the unrelated screen arrives afterwards, with
+        // the candidate already rewritten to the ender chest, and OPENING accepts it as its own.
         if (tracker.blocksStart(now)) return false;
         Optional<BlockPos> target = findInReach(mc);
         if (target.isEmpty()) return false;
@@ -116,16 +114,15 @@ public final class EnderDepositor {
     }
 
     /**
-     * Se alimenta de {@code InteractBlockEvent}, que dispara tanto esta misma interacción como
-     * cualquier clic del jugador en otro contenedor mientras se espera la respuesta del servidor
-     * (spec: ventana de {@link #OPEN_TIMEOUT_MS}). Es una de las dos señales para saber, cuando una
-     * pantalla aparece, si el bloque que la respalda es el ender chest que se pidió o algo que el
-     * jugador abrió por su cuenta -la otra es {@link #onInteractEntity}, para vagonetas y barcas-.
+     * Fed by {@code InteractBlockEvent}, which fires both for this very interaction and for any
+     * player click on another container while the server's response is pending (spec: window of
+     * {@link #OPEN_TIMEOUT_MS}). It is one of the two signals for knowing, when a screen appears,
+     * whether the block behind it is the ender chest that was requested or something the player
+     * opened on their own -the other is {@link #onInteractEntity}, for minecarts and boats-.
      *
-     * <p>Se ignora si el bloque no es de un tipo que pueda respaldar una pantalla de contenedor
-     * -colocar un bloque, abrir una puerta, o los {@code BlockUtils.place} de
-     * {@code surround}/{@code auto-trap} no deben poder abortar un depósito en curso ni bloquear el
-     * siguiente (spec §6.1, punto 2)-.
+     * <p>Ignored if the block is not of a type that can back a container screen -placing a block,
+     * opening a door, or the {@code BlockUtils.place} calls of {@code surround}/{@code auto-trap}
+     * must not be able to abort a deposit in progress or block the next one (spec §6.1, point 2)-.
      */
     public void onInteractBlock(MinecraftClient mc, BlockPos pos, long now) {
         if (mc.world == null) return;
@@ -133,29 +130,28 @@ public final class EnderDepositor {
     }
 
     /**
-     * Se alimenta de {@code InteractEntityEvent} (mixin de {@code interactEntity}, dispara para
-     * cualquier clic del jugador en una entidad). Los cofres de vagoneta ({@code ChestMinecartEntity})
-     * y de barca ({@code AbstractChestBoatEntity}) abren una {@code GenericContainerScreenHandler}
-     * 9x3, igual que cualquier cofre de bloque -verificado en el bytecode-, pero
-     * {@code InteractBlockEvent} nunca los ve porque no son bloques: sin este gancho, un clic en
-     * cualquiera de los dos pasaba desapercibido y {@link #start} podía pisarlo igual que antes de
-     * la primera corrección pisaba un cofre de bloque (spec §6.1, tercera corrección).
+     * Fed by {@code InteractEntityEvent} (a mixin on {@code interactEntity}, fires for any player
+     * click on an entity). Minecart chests ({@code ChestMinecartEntity}) and boat chests
+     * ({@code AbstractChestBoatEntity}) open a 9x3 {@code GenericContainerScreenHandler}, same as any
+     * block chest -verified in the bytecode-, but {@code InteractBlockEvent} never sees them because
+     * they are not blocks: without this hook, a click on either one went unnoticed and {@link #start}
+     * could step on it just like, before the first fix, it stepped on a block chest (spec §6.1, third
+     * fix).
      *
-     * <p>No hay {@code BlockPos} que anotar como candidato -una entidad no tiene uno-, así que esto
-     * solo alimenta a {@link #start}: "algo ajeno puede estar en vuelo". La confirmación positiva del
-     * título en {@code OPENING} ({@link #isEnderChestScreen}) es quien de verdad protege esa fase.
+     * <p>There is no {@code BlockPos} to note as a candidate -an entity does not have one-, so this
+     * only feeds {@link #start}: "something unrelated may be in flight". The positive title
+     * confirmation in {@code OPENING} ({@link #isEnderChestScreen}) is what really protects that phase.
      */
     public void onInteractEntity(long now) {
         tracker.noteEntityInteraction(now);
     }
 
     /**
-     * Bloques que abren una pantalla de contenedor, igual que {@code StashKeeper.typeOf}: cofre,
-     * cofre trampa, barril y ender chest respaldan una {@code GenericContainerScreenHandler}; el
-     * shulker box respalda su propia {@code ShulkerBoxScreenHandler} -no la genérica, verificado en
-     * el bytecode de {@code ShulkerBoxBlockEntity.createScreenHandler}-, pero de todas formas es un
-     * contenedor que el jugador puede abrir a mano mientras se espera al ender chest, así que cuenta
-     * igual como candidato.
+     * Blocks that open a container screen, same as {@code StashKeeper.typeOf}: chest, trapped chest,
+     * barrel and ender chest back a {@code GenericContainerScreenHandler}; the shulker box backs its
+     * own {@code ShulkerBoxScreenHandler} -not the generic one, verified in the bytecode of
+     * {@code ShulkerBoxBlockEntity.createScreenHandler}-, but it is a container the player can open
+     * by hand while waiting on the ender chest all the same, so it counts as a candidate too.
      */
     private static boolean opensContainerScreen(Block block) {
         return block == Blocks.CHEST || block == Blocks.TRAPPED_CHEST || block == Blocks.BARREL
@@ -164,31 +160,31 @@ public final class EnderDepositor {
     }
 
     /**
-     * Confirmación positiva de que la pantalla abierta es de verdad un ender chest, no una deducción
-     * por candidato (spec §6.1, tercera corrección). Los cofres de vagoneta y de barca son entidades
-     * y abren la misma {@code GenericContainerScreenHandler} 9x3 que un ender chest, así que el
-     * candidato por sí solo ya no basta como prueba.
+     * Positive confirmation that the open screen really is an ender chest, not a deduction by
+     * candidate (spec §6.1, third fix). Minecart chests and boat chests are entities and open the
+     * same 9x3 {@code GenericContainerScreenHandler} as an ender chest, so the candidate alone is no
+     * longer enough proof.
      *
-     * <p>Verificado en el bytecode de {@code EnderChestBlock.onUse}: abre con
-     * {@code new SimpleNamedScreenHandlerFactory(..., CONTAINER_NAME)}, donde
-     * {@code CONTAINER_NAME = Text.translatable("container.enderchest")}, y ese mismo {@code Text}
-     * es el que {@code ClientPlayNetworkHandler.onOpenScreen} pasa a {@code HandledScreens.open(...)}
-     * -en la misma llamada síncrona que fija {@code mc.player.currentScreenHandler}, sin ningún tick
-     * de por medio- y acaba en {@link HandledScreen#getTitle()}.
+     * <p>Verified in the bytecode of {@code EnderChestBlock.onUse}: it opens with
+     * {@code new SimpleNamedScreenHandlerFactory(..., CONTAINER_NAME)}, where
+     * {@code CONTAINER_NAME = Text.translatable("container.enderchest")}, and that same {@code Text}
+     * is what {@code ClientPlayNetworkHandler.onOpenScreen} passes to {@code HandledScreens.open(...)}
+     * -in the same synchronous call that sets {@code mc.player.currentScreenHandler}, with no tick in
+     * between- and ends up in {@link HandledScreen#getTitle()}.
      *
-     * <p>Se compara el texto ya traducido ({@code getString()}), no las claves de traducción: el
-     * título de la pantalla usa {@code container.enderchest} y {@code Blocks.ENDER_CHEST.getName()}
-     * usa {@code block.minecraft.ender_chest} -claves distintas-, pero producen el mismo texto en
-     * todos los idiomas comprobados contra los ficheros de Mojang (en_us, es_es, fr_fr, de_de,
-     * ru_ru, zh_cn, ja_jp, pt_br, it_it). Un servidor vanilla no puede cambiar ese título: lo fija
-     * {@code EnderChestBlock}, sin pasar por ningún dato que el servidor controle.
+     * <p>The already-translated text is compared ({@code getString()}), not the translation keys:
+     * the screen title uses {@code container.enderchest} and {@code Blocks.ENDER_CHEST.getName()}
+     * uses {@code block.minecraft.ender_chest} -different keys-, but they produce the same text in
+     * every language checked against Mojang's files (en_us, es_es, fr_fr, de_de, ru_ru, zh_cn, ja_jp,
+     * pt_br, it_it). A vanilla server cannot change that title: it is fixed by {@code EnderChestBlock},
+     * without going through any data the server controls.
      */
     private static boolean isEnderChestScreen(MinecraftClient mc) {
         return mc.currentScreen instanceof HandledScreen<?> screen
             && screen.getTitle().getString().equals(Blocks.ENDER_CHEST.getName().getString());
     }
 
-    /** Llamar en cada tick mientras OrderMachine está en DEPOSIT. */
+    /** Call on every tick while OrderMachine is in DEPOSIT. */
     public Optional<Boolean> tick(MinecraftClient mc, long now) {
         if (phase != Phase.IDLE && mc.player == null) {
             reset();
@@ -200,11 +196,10 @@ public final class EnderDepositor {
             }
             case OPENING -> {
                 if (mc.player.currentScreenHandler instanceof GenericContainerScreenHandler handler) {
-                    // Ya no basta con que el candidato coincida con el BlockPos pedido -eso es una
-                    // deducción, y los cofres de vagoneta/barca no generan InteractBlockEvent-: se
-                    // exige además que el título de la pantalla sea de verdad el de un ender chest
-                    // (spec §6.1, tercera corrección). Si cualquiera de las dos falla, ante la duda
-                    // no se toca nada.
+                    // It is no longer enough for the candidate to match the requested BlockPos -that
+                    // is a deduction, and minecart/boat chests do not generate InteractBlockEvent-:
+                    // the screen title is now also required to really be an ender chest's (spec §6.1,
+                    // third fix). If either check fails, nothing is touched, when in doubt.
                     if (tracker.matches(targetPos.asLong()) && isEnderChestScreen(mc)) {
                         syncId = handler.syncId;
                         phase = Phase.MOVING;
@@ -218,11 +213,12 @@ public final class EnderDepositor {
             case MOVING -> {
                 if (now - movingSince > MOVE_TIMEOUT_MS) return finish(mc, false);
                 if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler handler)) return finish(mc, false);
-                // El contenedor pudo cerrarse y abrirse otro distinto entre dos ticks sin pasar
-                // nunca por PlayerScreenHandler (p. ej. el servidor encadena dos ventanas). El
-                // syncId es la única forma de notar que ya no es la ventana que se aceptó en OPENING.
+                // The container could have closed and a different one opened between two ticks
+                // without ever passing through PlayerScreenHandler (e.g. the server chains two
+                // windows). syncId is the only way to notice it is no longer the window accepted in
+                // OPENING.
                 if (syncId == null || handler.syncId != syncId) return finish(mc, false);
-                int containerSlots = handler.getRows() * 9; // 27 o 54: en 6b6t el ender chest puede ser doble
+                int containerSlots = handler.getRows() * 9; // 27 or 54: on 6b6t the ender chest can be double
                 if (!hasEmptySlot(handler, containerSlots)) return finish(mc, true);
                 for (int i = containerSlots; i < handler.slots.size(); i++) {
                     Slot slot = handler.slots.get(i);
@@ -238,10 +234,10 @@ public final class EnderDepositor {
     }
 
     /**
-     * Cierra la pantalla del ender chest si el depositor la abrió, y vuelve a IDLE. Seguro llamar
-     * en cualquier momento. Solo cierra una pantalla que se haya confirmado como la propia
-     * ({@code syncId} atado en OPENING→MOVING): una pantalla ajena que se rechazó en OPENING nunca
-     * llega a tener {@code syncId} y no se toca, para no cerrarle al jugador algo que abrió él.
+     * Closes the ender chest screen if the depositor opened it, and goes back to IDLE. Safe to call
+     * at any time. Only closes a screen that has been confirmed as its own ({@code syncId} tied in
+     * OPENING→MOVING): an unrelated screen rejected in OPENING never gets a {@code syncId} and is
+     * left untouched, so as not to close something the player opened themselves.
      */
     public void reset() {
         if (syncId != null) {
