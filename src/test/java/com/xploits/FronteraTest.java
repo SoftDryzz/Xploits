@@ -148,6 +148,7 @@ class FronteraTest {
         "com/xploits/kitrequester/inventory/",
         "com/xploits/mixin/",
         "com/xploits/shared/core/",
+        "com/xploits/shared/core/migration/",
         "com/xploits/commands/CommandText.java",
         "com/xploits/commands/CommandTextTest.java",
         "com/xploits/console/core/ConsoleText.java",
