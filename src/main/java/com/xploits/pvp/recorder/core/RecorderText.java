@@ -91,7 +91,10 @@ public enum RecorderText implements MessageKey {
     REVIEW_NONE,
     REVIEW_OUT_OF_RANGE,
     REVIEW_CORRUPT,
-    SAVE_FAILED;
+    SAVE_FAILED,
+    /** {@link #SAVE_FAILED} for the console and the log: no detail, it may carry a file path. */
+    SAVE_FAILED_LOG,
+    TICK_FAILED;
 
     @Override
     public String area() {

@@ -11,6 +11,7 @@ import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.recorder.core.CombatEvent;
 import com.xploits.pvp.recorder.core.CombatEvent.AttackerKind;
 import com.xploits.pvp.recorder.core.DamageKind;
+import com.xploits.pvp.recorder.core.DeathSignal;
 import com.xploits.pvp.recorder.core.FightOutcome;
 import com.xploits.pvp.recorder.core.FightRecord;
 import com.xploits.pvp.recorder.core.FightStore;
@@ -23,6 +24,7 @@ import com.xploits.pvp.recorder.core.TickInput.Hostile;
 import com.xploits.pvp.recorder.core.TickInput.SelfState;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.EntityAddedEvent;
@@ -82,7 +84,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *
  * <p><b>Threads.</b> {@code PacketEvent.Receive} is posted on the Netty thread before the packet is
  * applied: the packets are only queued there, and read on the next {@code TickEvent.Post}, on the game
- * thread and with the world already updated. Everything else runs on the game thread.
+ * thread. Everything else runs on the game thread. The client applies received packets in a batch at the
+ * top of {@code MinecraftClient.render} ({@code PacketApplyBatcher.apply()}, before the frame's ticks),
+ * so a packet that arrives between that batch and {@code TickEvent.Post} is read here one frame before
+ * it is applied. Two rare edges follow: a crystal whose spawn is not applied yet is not in
+ * {@link #crystalIds}, so its damage reads as an explosion, not a crystal; and an entity removed before
+ * its status packet is read cannot be resolved, so that pop or death is dropped.
  *
  * <p><b>The tracker is fed every tick</b>, fight or not. It keeps your last tick alive as the health before
  * the first hit, and only when it is from the tick right before: skipping idle ticks would open every
@@ -137,17 +144,18 @@ public class FightRecorder extends XploitsModule {
     private FightStore store;
     /** Whether saving already failed in this activation: said once, not once per fight. */
     private boolean saveWarned;
+    /**
+     * Whether a tick already failed in this activation. The first failure is logged with its stack trace
+     * and said in chat; the next ones only drop the fight in progress, silently: a bug that fails every
+     * tick would otherwise write a stack trace twenty times per second.
+     */
+    private boolean tickFailed;
     private long tick;
 
     /** The player entity of the previous tick: the client builds a new one when you respawn. */
     private ClientPlayerEntity previousPlayer;
-    private boolean previousAlive;
-    /**
-     * The player entity whose death was already reported. The death message and the health reaching 0 both
-     * report it, in either order and on different ticks; an entity dies only once, and after a respawn the
-     * client builds a new one, so keying on it reports every death exactly once.
-     */
-    private ClientPlayerEntity reportedDeath;
+    /** One SelfDied per death, whichever of its signs comes first. */
+    private final DeathSignal deathSignal = new DeathSignal();
 
     /** The combat and Xploits modules on, recomputed only when a module is turned on or off. */
     private Set<String> activeModules = Set.of();
@@ -165,9 +173,8 @@ public class FightRecorder extends XploitsModule {
         playerNames.clear();
         crystalIds.clear();
         saveWarned = false;
-        previousPlayer = null;
-        previousAlive = false;
-        reportedDeath = null;
+        tickFailed = false;
+        forgetWorld();
         modulesChanged = true;
         // Crystals already there when the recorder is turned on never fire EntityAddedEvent.
         if (mc.world != null) {
@@ -180,6 +187,7 @@ public class FightRecorder extends XploitsModule {
     @Override
     public void onDeactivate() {
         abortFight();
+        forgetWorld();
     }
 
     /**
@@ -190,10 +198,15 @@ public class FightRecorder extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
         abortFight();
+        forgetWorld();
+    }
+
+    /** Drops everything tied to the world left behind: queued packets and events, and your player entity. */
+    private void forgetWorld() {
         inbox.clear();
         ownEvents.clear();
         previousPlayer = null;
-        reportedDeath = null;
+        deathSignal.reset();
     }
 
     @EventHandler
@@ -265,11 +278,20 @@ public class FightRecorder extends XploitsModule {
         try {
             record();
         } catch (RuntimeException e) {
-            // A recorder bug must not take the game down with it: the fight in progress is dropped and
-            // recording starts over on the next tick.
-            XploitsAddon.LOG.error("fight-recorder: tick failed, the fight in progress was dropped", e);
-            tracker.reset();
+            failed(e);
         }
+    }
+
+    /**
+     * A recorder bug must not take the game down with it: the fight in progress is dropped and recording
+     * starts over on the next tick. Said once per activation (see {@link #tickFailed}).
+     */
+    private void failed(RuntimeException e) {
+        tracker.reset();
+        if (tickFailed) return;
+        tickFailed = true;
+        XploitsAddon.LOG.error("fight-recorder: tick failed, the fight in progress was dropped", e);
+        warning(RecorderText.TICK_FAILED);
     }
 
     private void record() {
@@ -284,20 +306,9 @@ public class FightRecorder extends XploitsModule {
         drainOwnEvents(allies, events);
 
         boolean alive = me.isAlive();
-        // One SelfDied per death, on the tick of its first sign, after that tick's hits. A death message
-        // read on the tick the client already respawned you belongs to the entity that died.
-        ClientPlayerEntity dying = null;
-        if (deathMessage) dying = respawned ? previousPlayer : me;
-        else if (!respawned && previousAlive && !alive) dying = me;
-        if (dying != null && dying != reportedDeath) {
-            reportedDeath = dying;
-            events.add(new CombatEvent.SelfDied());
-        }
-        // Past the respawn tick nothing can report the old entity's death again, and keeping it would keep
-        // its world (chunks included) alive until the next death.
-        if (reportedDeath != null && reportedDeath != me) reportedDeath = null;
+        // One SelfDied per death, on the tick of its first sign, after that tick's hits.
+        if (deathSignal.tick(respawned, deathMessage, alive)) events.add(new CombatEvent.SelfDied());
         previousPlayer = me;
-        previousAlive = alive;
 
         List<Hostile> hostiles = hostiles(me, allies);
         AutoPvp autoPvp = Modules.get().get(AutoPvp.class);
@@ -481,7 +492,9 @@ public class FightRecorder extends XploitsModule {
         } catch (IOException e) {
             if (!saveWarned) {
                 saveWarned = true;
-                warning(RecorderText.SAVE_FAILED, "detail", String.valueOf(e.getMessage()));
+                // The detail can carry a file path: chat only, as stash-keeper and kit-requester do.
+                warningPrivate(new PositionedMsg(Msg.of(RecorderText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
+                    Msg.of(RecorderText.SAVE_FAILED_LOG)));
             }
         }
         if (liveConsole.get()) {
@@ -490,9 +503,16 @@ public class FightRecorder extends XploitsModule {
         if (record.outcome() == FightOutcome.LOST && deathNotice.get()) info(FightSummary.deathNotice(record));
     }
 
-    /** Cuts the fight in progress short, if it had an exchange: ABORTED. */
+    /**
+     * Cuts the fight in progress short, if it had an exchange: ABORTED. It runs inside Meteor's teardown
+     * ({@code Modules.onGameLeft} walks every module), so nothing may escape from here.
+     */
     private void abortFight() {
-        tracker.abort(System.currentTimeMillis()).ifPresent(this::finish);
+        try {
+            tracker.abort(System.currentTimeMillis()).ifPresent(this::finish);
+        } catch (RuntimeException e) {
+            failed(e);
+        }
     }
 
     /** Where the fights are kept, for the review command too: it works with the module off. */

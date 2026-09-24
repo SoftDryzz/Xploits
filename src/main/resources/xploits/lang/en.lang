@@ -526,6 +526,8 @@ recorder.review-none=You have no recorded fights yet.
 recorder.review-out-of-range=You only have {count} recorded fights.
 recorder.review-corrupt=Fight file {file} is corrupt: {detail}
 recorder.save-failed=Could not save the fight: {detail}
+recorder.save-failed-log=Could not save the fight. The detail is in chat only.
+recorder.tick-failed=The recorder hit an error and dropped the fight in progress. It keeps recording, but this may happen again: the details are in the game log.
 
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.
