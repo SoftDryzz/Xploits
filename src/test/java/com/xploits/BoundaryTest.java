@@ -26,7 +26,7 @@ class BoundaryTest {
     private static final Path SOURCES = Path.of("src", "main", "java");
     private static final Set<String> BASES = Set.of("com/xploits/shared/XploitsModule.java", "com/xploits/shared/XploitsCommandBase.java");
     private static final Pattern EXTENDS_METEOR = Pattern.compile("\\bextends\\s+(Module|Command)\\b");
-    private static final Pattern DIRECT_CHAT = Pattern.compile("ChatUtils\\.(info|warning|error)\\(");
+    private static final Pattern DIRECT_CHAT = Pattern.compile("ChatUtils\\.(info|warning|error)(Prefix)?\\(");
     private static final String MARKER = "// console: logged separately";
     private static final List<String> GAME_PACKAGES =
         List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.");

@@ -274,7 +274,7 @@ public class StashKeeper extends XploitsModule {
             dirty = true;
             if (notify.get()) {
                 // console: logged separately
-                ChatUtils.info("Xploits", "%s", Texts.render(StashText.INDEXED, // i18n: allowed (chat prefix and format)
+                ChatUtils.infoPrefix("Xploits", "%s", Texts.render(StashText.INDEXED,
                     "container", openKey.id(), "types", openItems.size(), "shulkers", openNested.size()));
                 logToConsole(Level.INFO, Msg.of(StashText.INDEXED_LOG,
                     "where", openKey.withoutPosition(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
