@@ -20,7 +20,11 @@ abierta antes de arrancar: al primer arranque de la 0.4.0, el addon renombra aut
 ajustes y ficheros que cambiaron de nombre en esa versión (`modules.nbt`, `hud.nbt` y la carpeta
 `xploits/consola/`), hace una copia de cada fichero que toca como `<fichero>.pre-0.4.0.backup.nbt`
 antes de escribirlo, y te avisa por chat de lo que hizo. No pierdes nada; si una ventana de la
-consola sigue teniendo la carpeta abierta, el traslado se reintenta en el siguiente arranque.
+consola sigue teniendo la carpeta abierta, lo que no pudo moverse se reintenta en el siguiente
+arranque: con la ventana antigua ya cerrada, `xploits/consola/` se fusiona con `xploits/console/`
+(el historial pasa a `console/history/`, sin sobrescribir nada; si un mismo día está en las dos, se
+guardan ambos y el antiguo queda como `<día>-old.log`) y la carpeta antigua se borra al quedar vacía.
+Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `console`.
 
 ### Qué necesitas instalado, y qué deja de funcionar si falta
 

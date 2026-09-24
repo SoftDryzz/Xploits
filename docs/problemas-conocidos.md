@@ -102,6 +102,17 @@ casar con el módulo ya renombrado (`console`) y el módulo deja de estar oculto
 **Qué hacer.** Vuelve a ocultarlo una vez con su nombre nuevo; a partir de ahí `config.nbt` ya lo
 guarda correcto y no vuelve a pasar.
 
+### Las macros de Meteor con `.toggle consola` no se migran
+
+**Síntoma:** tras actualizar a la 0.4.0, una macro de Meteor que encendía o apagaba la consola deja
+de hacer nada.
+
+**Qué pasa.** Las macros se guardan en `macros.nbt` como el texto que escriben, y la migración de la
+0.4.0 no toca ese fichero: una macro que escribe `.toggle consola` sigue nombrando el módulo antiguo,
+que ahora se llama `console`.
+
+**Qué hacer.** Edita la macro para que escriba `.toggle console`.
+
 ### Retomar `feat/dupe-audit` va a chocar con el código en inglés
 
 **Síntoma:** al retomar el trabajo sin comitear de `feat/dupe-audit` (checkout raíz, sobre `e902c52`)
