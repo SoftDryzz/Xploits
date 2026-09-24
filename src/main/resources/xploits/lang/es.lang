@@ -507,6 +507,25 @@ recorder.cause-low-health-stayed=Te quedaste con poca vida: {seconds} s seguidos
 recorder.cause-killing-blow= · incluido el golpe final
 recorder.cause-unclear=Sin causa clara{source}
 recorder.cause-top-source= · la mayor parte del daño: {kind} ({percent} %)
+recorder.summary-header=Pelea #{number} · {outcome} · {seconds} s · {opponents} · {mode}
+recorder.summary-self=Tú: {damageTaken,1} de daño recibido · {pops} pops · {totemsEnd} de {totemsStart} tótems restantes
+recorder.summary-damage=Daño por tipo:
+recorder.summary-damage-part=  {kind} {percent} %
+recorder.summary-unseen=  no visto {amount,1} de daño
+recorder.summary-offense=Ofensiva: {attacks} ataques · {placed} cristales puestos · {broken} rotos · {hits} golpes dados
+recorder.summary-modules=Módulos al empezar: {modules}
+recorder.summary-phases=Fases:
+recorder.summary-phase-part=  {second} s · {state} · {posture} · {target}
+recorder.summary-causes=Causa probable:
+recorder.summary-cause-line=  {rank}. {cause}
+recorder.summary-no-causes=  sin causa clara
+recorder.death-notice=Moriste tras {seconds} s contra {opponents}: {cause}. Repaso completo: .xploits pvp review
+recorder.list-header=Últimas {count} peleas:
+recorder.list-line=#{number} · {outcome} · {seconds} s · {opponents} · {mode} · {ago}
+recorder.review-none=Aún no tienes peleas grabadas.
+recorder.review-out-of-range=Solo tienes {count} peleas grabadas.
+recorder.review-corrupt=El fichero de la pelea {file} está corrupto: {detail}
+recorder.save-failed=No se pudo guardar la pelea: {detail}
 
 # elytra
 elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.

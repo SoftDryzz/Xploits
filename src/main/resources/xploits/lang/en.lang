@@ -507,6 +507,25 @@ recorder.cause-low-health-stayed=Stayed at low health: {seconds} s in a row at {
 recorder.cause-killing-blow= · the killing blow included
 recorder.cause-unclear=No clear cause{source}
 recorder.cause-top-source= · most damage: {kind} ({percent}%)
+recorder.summary-header=Fight #{number} · {outcome} · {seconds} s · {opponents} · {mode}
+recorder.summary-self=You: {damageTaken,1} damage taken · {pops} pops · {totemsEnd} of {totemsStart} totems left
+recorder.summary-damage=Damage by kind:
+recorder.summary-damage-part=  {kind} {percent}%
+recorder.summary-unseen=  unseen {amount,1} damage
+recorder.summary-offense=Offense: {attacks} attacks · {placed} crystals placed · {broken} broken · {hits} hits landed
+recorder.summary-modules=Modules at start: {modules}
+recorder.summary-phases=Phases:
+recorder.summary-phase-part=  {second} s · {state} · {posture} · {target}
+recorder.summary-causes=Probable cause:
+recorder.summary-cause-line=  {rank}. {cause}
+recorder.summary-no-causes=  no clear cause found
+recorder.death-notice=You died after {seconds} s against {opponents}: {cause}. Full review: .xploits pvp review
+recorder.list-header=Last {count} fights:
+recorder.list-line=#{number} · {outcome} · {seconds} s · {opponents} · {mode} · {ago}
+recorder.review-none=You have no recorded fights yet.
+recorder.review-out-of-range=You only have {count} recorded fights.
+recorder.review-corrupt=Fight file {file} is corrupt: {detail}
+recorder.save-failed=Could not save the fight: {detail}
 
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.

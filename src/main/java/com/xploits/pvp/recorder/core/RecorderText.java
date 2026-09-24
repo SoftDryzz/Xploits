@@ -72,7 +72,26 @@ public enum RecorderText implements MessageKey {
     CAUSE_KILLING_BLOW,
     CAUSE_UNCLEAR,
     /** Appended to {@link #CAUSE_UNCLEAR}: the kind that dealt the most known damage. */
-    CAUSE_TOP_SOURCE;
+    CAUSE_TOP_SOURCE,
+    SUMMARY_HEADER,
+    SUMMARY_SELF,
+    SUMMARY_DAMAGE,
+    SUMMARY_DAMAGE_PART,
+    SUMMARY_UNSEEN,
+    SUMMARY_OFFENSE,
+    SUMMARY_MODULES,
+    SUMMARY_PHASES,
+    SUMMARY_PHASE_PART,
+    SUMMARY_CAUSES,
+    SUMMARY_CAUSE_LINE,
+    SUMMARY_NO_CAUSES,
+    DEATH_NOTICE,
+    LIST_HEADER,
+    LIST_LINE,
+    REVIEW_NONE,
+    REVIEW_OUT_OF_RANGE,
+    REVIEW_CORRUPT,
+    SAVE_FAILED;
 
     @Override
     public String area() {
