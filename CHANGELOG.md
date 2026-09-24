@@ -167,7 +167,7 @@ Requires Minecraft 1.21.11 and Meteor Client. `auto-travel` and `nether-sweep` a
   directs them; turn `auto-pvp` off to keep them to yourself.
 - `consola`: not tried in-game yet. It needs Windows Terminal with its default window behaviour.
 
-All of them, with causes and pending fixes, in `docs/problemas-conocidos.md`.
+All of them, with causes and pending fixes, in `docs/known-issues.md`.
 
 ## [0.1.0]
 

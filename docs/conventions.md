@@ -1,152 +1,155 @@
-# Convenciones
+# Conventions
 
-Cómo se trabaja en este repo, y por qué. Casi todas estas reglas salen de un fallo concreto que
-costó una ronda de revisión.
-
----
-
-## Idioma
-
-**El repo está pasando a inglés por fases** (versionado, selector de idioma, código, documentación e
-historial). Mientras dure:
-
-- **Los mensajes de commit, en inglés**, desde la 0.2.0. Ver [Versionado](VERSIONING.md).
-- **Todo lo nuevo, en inglés**: código, comentarios, javadoc y documentación que se creen a partir de
-  ahora.
-- **Lo que ya existe sigue en español** hasta que su fase lo traduzca. No se traduce de paso al tocar
-  un fichero: se traduce entero, en su fase, para no dejar ficheros mitad y mitad.
-
-**Excepción: los identificadores de los ajustes de Meteor van en inglés** (`waypoint-margin`,
-`lane-width`, `spiral-radius`). No es incoherencia: son parte de la interfaz de Meteor, que el
-jugador ve junto a los ajustes de los demás módulos. Un módulo con los nombres en español dentro de
-la misma ventana parece otro addon.
-
-**Y un mensaje de rechazo que nombre un ajuste tiene que nombrarlo exactamente como aparece en la
-interfaz.** Si divergen, el mensaje manda al jugador a buscar algo que no existe con ese nombre.
+How work is done in this repo, and why. Almost every one of these rules comes from a concrete failure
+that cost a review round.
 
 ---
 
-## Verificar antes de afirmar
+## Language
 
-**Nunca afirmes qué hace una API de Meteor, de Minecraft o de Baritone sin haberlo leído.** El
-sources jar de Meteor está en el caché de Gradle; el de Minecraft remapeado, en el del proyecto;
-Baritone hay que desensamblarlo con `javap` porque viene ofuscado.
+**The repo is in English.** Code, comments, javadoc, commit messages and documentation are written in
+English. See [Versioning](VERSIONING.md) for the commit format.
 
-Esta regla existe porque **se han dado por buenas dos cosas falsas sobre Meteor** por razonar en vez
-de leer. Y la tercera vez que se leyó de verdad, apareció esto: `blocksMovement()` considera sólida
-una losa, así que estar de pie sobre una losa clasificaba al enemigo como enterrado y apagaba el aura
-de cristales en mitad del combate.
+- **Player text lives only in the catalogs**, `xploits/lang/es.lang` and `xploits/lang/en.lang`, and
+  every key exists in both. The code never writes a sentence for the player: it names a key.
+- **`README.md` (English) and `README.es.md` (Spanish) change together.** A change to one is made to
+  the other in the same commit, section by section.
+- **Specs and plans live in `docs/superpowers/` locally and are never committed.** The folder is
+  ignored; code comments may cite a spec by name, for whoever has the local copy.
 
-**Las specs llevan una sección «Hechos verificados de la API»** con el dato y la consecuencia. Si un
-hecho no está ahí, no está verificado.
+**Meteor setting ids are English too** (`waypoint-margin`, `lane-width`, `spiral-radius`), in both
+languages. They are part of Meteor's interface, which the player sees next to the settings of every
+other module; they do not change with the chosen language.
 
----
-
-## Núcleo puro y adaptador fino
-
-La regla está en [Arquitectura](arquitectura.md). En la práctica:
-
-- Si te ves escribiendo una decisión en el adaptador, **va al núcleo**.
-- El núcleo no importa `net.minecraft` ni `meteordevelopment`. Ni uno.
-- El adaptador **mide y ejecuta**; no decide.
-
-Se ha roto tres veces y las tres costaron una ronda.
+**And a rejection message that names a setting has to name it exactly as it appears in the
+interface**, in both catalogs. If they diverge, the message sends the player looking for something that
+does not exist under that name.
 
 ---
 
-## Tests: la mutación no es opcional
+## Verify before claiming
 
-**Un test verde solo demuestra que el test pasa.**
+**Never claim what a Meteor, Minecraft or Baritone API does without having read it.** Meteor's sources
+jar is in the Gradle cache; the remapped Minecraft one, in the project's; Baritone has to be
+disassembled with `javap` because it ships obfuscated.
 
-Antes de dar por buena una protección, **rompe a propósito lo que protege y comprueba que algún test
-se pone en rojo**. Si sobrevive, ese test no protege nada.
+This rule exists because **two false things about Meteor were taken as true** by reasoning instead of
+reading. And the third time it was actually read, this turned up: `blocksMovement()` considers a slab
+solid, so standing on a slab classified the enemy as buried and turned off the crystal aura in the
+middle of the fight.
 
-Esto no es teoría. En este repo:
-
-- Un test del planificador llevaba **dos rondas en verde** protegiendo código que podía romperse sin
-  que se enterara, porque otro arreglo del mismo commit tapaba el hueco.
-- El test que comprobaba la cobertura del área **afirmaba la propiedad correcta** y aun así no la
-  comprobaba: la tolerancia coincidía con la separación entre pasadas, así que solo restringía eso.
-- Una mutación pasó en verde porque el `sed` no llegó a aplicarse. **Verifica que mutaste de verdad**
-  antes de aceptar el resultado.
-
-**Compara contra valores calculados a mano**, no contra la misma fórmula que usa el código: si
-comparten el error, el test pasa igual.
+**Specs carry a "Verified API facts" section** with the fact and its consequence. If a fact is not
+there, it is not verified.
 
 ---
 
-## Rechazar antes que degradar
+## Pure core and thin adapter
 
-Cuando algo no se puede hacer como se pidió, **se rechaza diciendo qué ajuste tocar y a qué valor**.
-Nunca se hace algo parecido en silencio.
+The rule is in [Architecture](architecture.md). In practice:
 
-La doctrina literal, que está escrita en el código: *«se acota lo que sigue funcionando acotado; se
-rechaza lo que no»*.
+- If you find yourself writing a decision in the adapter, **it goes to the core**.
+- The core does not import `net.minecraft` or `meteordevelopment`. Not one.
+- The adapter **measures and executes**; it does not decide.
 
-El caso que la justifica: un patrón de despiste que no cabe en la distancia del viaje devolvía la
-ruta recta. El jugador creía que ondulaba, ajustaba su comportamiento a una protección que no existía
-y volaba una línea recta hasta su base. **Cinco puertas distintas llevaban a ese mismo fallo** y se
-cerraron una a una.
-
-**Un rechazo que no dice cómo salir del atasco es casi tan malo como el silencio.** El mensaje nombra
-el ajuste, su valor actual y a cuánto ponerlo.
+It has been broken three times and all three cost a round.
 
 ---
 
-## El sesgo importa: pregunta hacia qué lado se equivoca
+## Tests: mutation is not optional
 
-Cuando elijas un redondeo, un umbral o un valor por defecto, pregúntate **qué pasa si te equivocas en
-cada dirección**. Casi nunca es simétrico.
+**A green test only proves that the test passes.**
 
-- Estrechar una pasada de más cuesta vuelo. Ensancharla de más deja franjas sin mirar **marcadas
-  como peinadas**. Se redondea hacia abajo.
-- Subestimar la distancia que queda parece prudente y es lo contrario: hace que el módulo diga «te
-  llegan los cohetes» cuando no llegan.
-- Dejar el aura de cristales encendida de más cuesta unos cristales. Apagarla de menos cuesta la
-  pelea.
+Before accepting a protection, **break what it protects on purpose and check that some test goes
+red**. If it survives, that test protects nothing.
+
+This is not theory. In this repo:
+
+- A planner test spent **two rounds green** protecting code that could break without it noticing,
+  because another fix in the same commit covered the gap.
+- The test that checked the area coverage **asserted the right property** and still did not check it:
+  the tolerance matched the spacing between lanes, so it only constrained that.
+- A mutation passed green because the `sed` never got applied. **Check that you really mutated**
+  before accepting the result.
+
+**Compare against values worked out by hand**, not against the same formula the code uses: if they
+share the error, the test passes anyway.
 
 ---
 
-## Un fallo nunca puede parecerse a un resultado normal
+## Reject rather than degrade
 
-Es el principio que gobierna todo lo demás.
+When something cannot be done as asked, **it is rejected, saying which setting to change and to what
+value**. Something similar is never done silently.
 
-- Una medida que no existe **lanza**, no devuelve cero.
-- Una zona mal cubierta **avisa fuerte con toast**, no sale en un `info` que se puede apagar.
-- Un método llamado «total» **incluye todo** lo que dice incluir. Ese fallo concreto se arregló
-  **dos veces** en la misma rama, un nivel más arriba cada vez.
-- «No lo sé» es motivo de cautela, nunca de continuar callando.
+The literal doctrine, written in the code: *"what still works when capped is capped; what does not is rejected"*.
+
+The case that justifies it: a decoy pattern that did not fit the travel distance returned the straight
+route. The player thought it was weaving, adjusted their behavior to a protection that did not exist,
+and flew a straight line to their base. **Five different doors led to that same failure** and they
+were closed one by one.
+
+**A rejection that does not say how to get unstuck is almost as bad as silence.** The message names
+the setting, its current value and what to set it to.
+
+---
+
+## Bias matters: ask which way it errs
+
+When you choose a rounding, a threshold or a default value, ask yourself **what happens if you are
+wrong in each direction**. It is almost never symmetric.
+
+- Making a lane too narrow costs flight. Making it too wide leaves strips unseen **marked as combed**.
+  Round down.
+- Underestimating the distance left looks prudent and is the opposite: it makes the module say "your
+  fireworks will last" when they will not.
+- Leaving the crystal aura on too long costs a few crystals. Turning it off too early costs the fight.
+
+---
+
+## A failure can never look like a normal result
+
+This is the principle that governs everything else.
+
+- A measurement that does not exist **throws**; it does not return zero.
+- A badly covered area **warns loudly with a toast**; it does not come out in an `info` that can be
+  turned off.
+- A method called "total" **includes everything** it says it includes. That exact failure was fixed
+  **twice** in the same branch, one level higher each time.
+- "I don't know" is a reason for caution, never for carrying on quietly.
 
 ---
 
 ## Commits
 
-**Ninguna línea de atribución, de ninguna clase.** Ni `Co-Authored-By`, ni `Generated with`, ni
-mención a ninguna herramienta. El commit termina en su última línea de texto.
+**No attribution line of any kind.** No `Co-Authored-By`, no `Generated with`, no mention of any tool.
+The commit ends at its last line of text.
 
-**El mensaje explica el porqué, no el qué.** El diff ya dice qué cambió. Lo que no se puede
-reconstruir después es por qué se eligió eso y no lo otro.
+**The message explains the why, not the what.** The diff already says what changed. What cannot be
+reconstructed later is why this was chosen and not the other thing.
 
-`git add` por nombre de fichero, nunca `git add -A`.
-
----
-
-## Flujo de trabajo
-
-1. **Diseño primero**, en `docs/superpowers/specs/`, con los hechos de la API verificados.
-2. **Plan** en `docs/superpowers/plans/`, partido en tareas con su deliverable y sus tests.
-3. **Implementación** tarea a tarea, cada una con su revisión antes de pasar a la siguiente.
-4. **Revisión de rama completa** al final, que es la única que ve los **huecos entre tareas**.
-
-El paso 4 no es ceremonia. En la última rama encontró dos fallos críticos que las seis revisiones
-por tarea no podían ver, porque cada una miraba su trozo y en su trozo no faltaba nada.
+`git add` by file name, never `git add -A`.
 
 ---
 
-## Lo que no se hace
+## Workflow
 
-**No se reimplementa lo que ya funciona.** Antes de construir algo, mira si alguno de los mods
-instalados ya lo hace. En la última rama se estuvo a punto de reescribir un detector de bases, un
-mapa de cobertura y un registro de chunks — los tres existían ya, instalados y mejores.
+1. **Design first**, in `docs/superpowers/specs/` (local, never committed), with the API facts
+   verified.
+2. **Plan** in `docs/superpowers/plans/` (local too), split into tasks with their deliverable and
+   their tests.
+3. **Implementation** task by task, each with its review before moving to the next.
+4. **Whole-branch review** at the end, which is the only one that sees the **gaps between tasks**.
 
-La mitad del diseño de un módulo puede ser **la lista de lo que no hace y quién lo hace en su lugar**.
+Step 4 is not ceremony. On the last branch it found two critical failures that the six per-task
+reviews could not see, because each one looked at its own piece and in its own piece nothing was
+missing.
+
+---
+
+## What is not done
+
+**What already works is not reimplemented.** Before building something, check whether one of the
+installed mods already does it. On the last branch we came close to rewriting a base detector, a
+coverage map and a chunk logger — all three already existed, installed and better.
+
+Half of a module's design can be **the list of what it does not do and who does it instead**.

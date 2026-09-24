@@ -55,7 +55,7 @@ Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
 | `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco |
 
-Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/seguridad.md).
+Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/security.md).
 
 ---
 
@@ -132,7 +132,7 @@ vuelas ahí cubre **64 veces** más superficie.
 3. **Al aterrizar te dice cuánto cubrió de verdad**, no solo que terminó. Si entrega menos del 95 %
    el aviso sale **fuerte, con toast**: esa zona no está peinada entera y hay que relanzar el mismo
    rectángulo, que se replanifica solo sobre lo que falte. **Ese aviso es la red de dos fallos
-   conocidos** — ver [Problemas conocidos](docs/problemas-conocidos.md).
+   conocidos** — ver [Problemas conocidos](docs/known-issues.md).
 
 ### `auto-pvp` — que los módulos de combate se enciendan cuando toca
 
@@ -146,7 +146,7 @@ enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que 
 **No ataca a los tuyos**: tus amigos de Meteor, los couriers de `kit-requester` y tu lista de
 `auto-tpy`. Y como los cinco módulos de combate eligen su propio objetivo, mientras está encendido
 **mete a los tuyos en tu lista de amigos de Meteor** para que ellos tampoco. Al apagarlo quita solo
-los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/seguridad.md).
+los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/security.md).
 
 ### `elytra-replace` — cambiar la elytra antes de que se rompa
 
@@ -245,7 +245,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 ⚠️ **Tus coordenadas viven en más sitios de los que crees**: en `modules.nbt` si pones un destino
 absoluto, en los logs de Minecraft anteriores a la 0.3.1 (desde entonces se tapan, ver [Coordenadas
 en los logs](#coordenadas-en-los-logs)) y en los datos de Xaero. Si compartes un log para que te
-ayuden con algo, **límpialo antes**. Ver [Seguridad](docs/seguridad.md).
+ayuden con algo, **límpialo antes**. Ver [Seguridad](docs/security.md).
 
 ---
 
@@ -280,7 +280,7 @@ Los logs anteriores a la 0.3.1 no se limpian.
 
 ## Si algo no funciona
 
-Lee **[Problemas conocidos](docs/problemas-conocidos.md)**: están los fallos que sabemos que existen,
+Lee **[Problemas conocidos](docs/known-issues.md)**: están los fallos que sabemos que existen,
 con su síntoma y qué hacer.
 
 Lo más habitual:
@@ -296,10 +296,10 @@ Lo más habitual:
 
 | Documento | Para qué |
 |---|---|
-| [Arquitectura](docs/arquitectura.md) | Cómo está montado, y qué sería portable a otro cliente |
-| [Seguridad](docs/seguridad.md) | Qué toca cada módulo, qué persiste a disco, qué puede filtrarse |
-| [Problemas conocidos](docs/problemas-conocidos.md) | Fallos con nombre y apellidos |
-| [Convenciones](docs/convenciones.md) | Cómo se trabaja aquí y por qué |
+| [Arquitectura](docs/architecture.md) | Cómo está montado, y qué sería portable a otro cliente |
+| [Seguridad](docs/security.md) | Qué toca cada módulo, qué persiste a disco, qué puede filtrarse |
+| [Problemas conocidos](docs/known-issues.md) | Fallos con nombre y apellidos |
+| [Convenciones](docs/conventions.md) | Cómo se trabaja aquí y por qué |
 | [Construir un cliente propio](docs/cliente-propio/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
 
 **Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.

@@ -1,142 +1,151 @@
-# Arquitectura
+# Architecture
 
-## La regla que gobierna todo el repo
+## The rule that governs the whole repo
 
-Cada módulo se parte en dos, y la frontera es dura:
-
-```
-  <módulo>/core/     Núcleo puro. No importa net.minecraft ni meteordevelopment.
-                     Toda la lógica que decide. Con tests unitarios.
-
-  <módulo>/          Adaptador. Habla con Minecraft, Meteor y Baritone.
-                     No decide nada. Sin tests: se verifica jugando.
-```
-
-**Si algo se puede decidir sin arrancar Minecraft, va en el núcleo.** No es purismo: es que el
-adaptador no se puede probar, y lo que no se prueba se rompe sin que nadie lo note. Esta regla se ha
-saltado tres veces en la vida del repo y las tres costaron una ronda entera de revisión.
-
-El caso que mejor lo explica: en `nether-sweep`, el cálculo de la distancia que queda por volar
-alimenta la proyección de cohetes, que decide si cortar el vuelo. Estaba en el adaptador, sin red.
-Bajarlo al núcleo costó una clase y quince tests; dejarlo arriba habría costado que alguien se
-quedara sin cohetes a cien mil bloques de casa sin que ningún test dijera nada.
-
-`FronteraTest` lee el código fuente y hace cumplir tres cosas que ningún test de un núcleo puede ver:
-que todo módulo y comando herede de las bases, que nadie escriba al chat por `ChatUtils` sin
-registrarlo aparte, y que ni los núcleos ni la ventana importen nada del juego.
-
-## Qué hay dentro
+Every module is split in two, and the boundary is hard:
 
 ```
-com/xploits/                    Registro de módulos y comando (XploitsAddon).
-com/xploits/commands/           El comando .xploits.
-com/xploits/shared/chat/        Protocolo de chat de SnifferBuddy, compartido.
-com/xploits/shared/XploitsModule.java   Base de todos los módulos; ComandoBase.java, de todos los
-                                        comandos. Lo que dicen por el chat va también a la consola.
+  <module>/core/     Pure core. Does not import net.minecraft or meteordevelopment.
+                     All the logic that decides. With unit tests.
 
-com/xploits/kitrequester/       Pedir kits y aceptar al courier.
-      .../core/                 Máquina de estados, cola y progreso.
-      .../inventory/            Vaciado de shulkers en el ender chest.
-
-com/xploits/autotpy/            Aceptar TPAs.
-      .../core/                 Política de aceptación.
-
-com/xploits/stash/              Índice pasivo de contenedores.
-      .../core/                 Índice, claves y búsqueda.
-
-com/xploits/elytra/             Cambio de elytra.
-      .../core/                 Política de cambio.
-
-com/xploits/pvp/                Dirección de los módulos de combate.
-      .../core/                 Fase ofensiva, postura defensiva, catálogo de módulos
-                                dirigidos, quién es de los nuestros, y qué se escribe
-                                en la lista de amigos de Meteor.
-
-com/xploits/travel/             Viaje con patrón de despiste.
-      .../core/                 Geometría de la ruta, los patrones, el guion de comandos
-                                de Baritone, la red de chat, el vigilante de atasco y el
-                                préstamo de módulos ajenos.
-
-com/xploits/sweep/              Barrido del Nether.
-      .../core/                 Rectángulo, planificador de pasadas, cobertura previa,
-                                recuento de lo que llega, presupuesto de cohetes,
-                                cuentakilómetros y sonda de anchura.
-
-com/xploits/console/            El adaptador: el módulo, el colector de la cabecera y el sumidero,
-                                que escribe desde el único hilo propio del addon.
-      .../core/                 Todo lo que decide la consola: formato de los ficheros, qué se pinta
-                                y cómo se degrada, la vida de la ventana, el centinela de coordenadas.
-                                Puro y con tests.
-      .../ventana/              La ventana. Se ejecuta en otro proceso, fuera del juego, con
-                                java -cp <jar del mod>; por eso solo puede tocar el JDK y console/core.
+  <module>/          Adapter. Talks to Minecraft, Meteor and Baritone.
+                     Decides nothing. No tests: verified by playing.
 ```
 
-## Lo que sería portable a otro cliente
+**If something can be decided without starting Minecraft, it goes in the core.** This is not purism:
+the adapter cannot be tested, and what is not tested breaks without anyone noticing. This rule has been
+broken three times in the life of the repo, and all three cost a whole review round.
 
-Esto importa si algún día esto deja de ser un addon de Meteor.
+The case that explains it best: in `nether-sweep`, the calculation of the distance left to fly feeds
+the firework projection, which decides whether to cut the flight short. It lived in the adapter, with
+no net. Moving it down to the core cost one class and fifteen tests; leaving it up there would have
+cost someone running out of fireworks a hundred thousand blocks from home with no test saying a word.
 
-**Portable tal cual — son Java puro, sin una sola dependencia del cliente:**
+`BoundaryTest` reads the source code and enforces what no core test can see: that every module and
+command inherits from the bases, that nobody writes to chat through `ChatUtils` without logging it
+separately, that neither the cores nor the console window import anything from the game, and that
+player text comes from the language catalogs and the code is in English.
 
-| Pieza | Qué resuelve |
+## What is inside
+
+```
+com/xploits/                    Module and command registration (XploitsAddon).
+com/xploits/commands/           The .xploits command.
+com/xploits/mixin/              Coordinate masking in the copy of chat and stdout that goes to latest.log.
+com/xploits/shared/chat/        SnifferBuddy's chat protocol, shared.
+com/xploits/shared/XploitsModule.java   Base of every module; XploitsCommandBase.java, of every
+                                        command. What they say in chat also goes to the console.
+com/xploits/shared/             Also: the xploits settings module, the language and the 0.4.0
+                                settings migration, on the adapter side.
+      .../core/                 Coordinate masks for the log and messages split into chat and log halves.
+      .../core/i18n/            Languages, message keys and the catalogs (xploits/lang/es.lang, en.lang).
+      .../core/migration/       Renaming of old saved names in modules.nbt and hud.nbt, and of the
+                                old consola folder into console.
+
+com/xploits/kitrequester/       Requesting kits and accepting the courier.
+      .../core/                 State machine, queue and progress.
+      .../inventory/            Emptying shulkers into the ender chest.
+
+com/xploits/autotpy/            Accepting TPAs.
+      .../core/                 Acceptance policy.
+
+com/xploits/stash/              Passive container index.
+      .../core/                 Index, keys and search.
+
+com/xploits/elytra/             Elytra swapping.
+      .../core/                 Swap policy.
+
+com/xploits/pvp/                Directing the combat modules.
+      .../core/                 Offensive phase, defensive posture, catalog of directed
+                                modules, who is one of ours, and what is written
+                                to Meteor's friends list.
+
+com/xploits/travel/             Travel with a decoy pattern.
+      .../core/                 Route geometry, the patterns, the Baritone command
+                                script, the chat safety net, the stall watch, the firework
+                                watch and borrowing other modules.
+
+com/xploits/sweep/              Nether sweep.
+      .../core/                 Rectangle, lane planner, prior coverage, tally of what
+                                arrives, firework budget, odometer and width probe.
+
+com/xploits/console/            The adapter: the module, the header collector and the sink,
+                                which writes from the addon's only thread of its own.
+      .../core/                 Everything the console decides: file format, what is drawn
+                                and how it degrades, the window's life, the coordinate sentinel.
+                                Pure and tested.
+      .../window/               The window. Runs in another process, outside the game, with
+                                java -cp <mod jar>; that is why it can only touch the JDK,
+                                console/core and shared/core.
+```
+
+## What would be portable to another client
+
+This matters if one day this stops being a Meteor addon.
+
+**Portable as is — pure Java, without a single client dependency:**
+
+| Piece | What it solves |
 |---|---|
-| `travel/core/RoutePlanner` | Geometría de los cuatro patrones de despiste y sus rechazos |
-| `travel/core/BaritoneScript` | El vocabulario exacto de comandos de Baritone |
-| `travel/core/SafetyNet` | Reconocer si un texto es un comando dirigido por nosotros |
-| `travel/core/StallWatch` | Detectar que no se avanza, atado al waypoint por construcción |
-| `travel/core/BorrowedModule` | Prestar un módulo ajeno y devolverlo al estado real |
-| `pvp/core/*` | El criterio de combate entero: fases, postura, propiedad de módulos |
-| `sweep/core/*` | Planificación de pasadas, cobertura, presupuesto de cohetes |
-| `elytra/core/ElytraPolicy` | Cuándo cambiar la elytra y por cuál |
-| `stash/core/*` | El índice de contenedores |
+| `travel/core/RoutePlanner` | Geometry of the four decoy patterns and their rejections |
+| `travel/core/BaritoneScript` | Baritone's exact command vocabulary |
+| `travel/core/SafetyNet` | Recognizing whether a text is a command we are directing |
+| `travel/core/StallWatch` | Detecting that there is no progress, tied to the waypoint by construction |
+| `travel/core/BorrowedModule` | Borrowing another module and returning it to its real state |
+| `pvp/core/*` | The whole combat judgement: phases, posture, module ownership |
+| `sweep/core/*` | Lane planning, coverage, firework budget |
+| `elytra/core/ElytraPolicy` | When to swap the elytra and for which one |
+| `stash/core/*` | The container index |
+| `shared/core/i18n/*` | The ES/EN catalogs and how a message is looked up |
 
-**No portable — es la traducción a este cliente concreto:**
+**Not portable — it is the translation to this particular client:**
 
-Los adaptadores (`NetherSweep.java`, `AutoTravel.java`, `AutoPvp.java`…). Cada uno hace tres cosas:
-suscribirse a eventos, traducir el estado del juego a los valores simples que el núcleo entiende, y
-ejecutar lo que el núcleo decide.
+The adapters (`NetherSweep.java`, `AutoTravel.java`, `AutoPvp.java`…). Each one does three things:
+subscribe to events, translate the game state into the simple values the core understands, and carry
+out what the core decides.
 
-**La proporción no es casual.** Los adaptadores son grandes en líneas pero delgados en decisiones. Un
-puerto a otro cliente reescribe los adaptadores y **no toca el núcleo**, que es donde están las
-horas de pensar y todas las cicatrices.
+**The proportion is no accident.** The adapters are large in lines but thin in decisions. A port to
+another client rewrites the adapters and **does not touch the core**, which is where the hours of
+thinking and all the scars are.
 
-## La frontera: `CombatSnapshot` como ejemplo
+## The boundary: `CombatSnapshot` as an example
 
-El mejor ejemplo de cómo se dibuja la frontera es `pvp/core/CombatSnapshot`: un record de valores
-simples —distancias, booleanos, conteos— que el adaptador rellena y el núcleo consume.
+The best example of how the boundary is drawn is `pvp/core/CombatSnapshot`: a record of simple values
+—distances, booleans, counts— that the adapter fills in and the core consumes.
 
-Nada de `PlayerEntity`, `BlockState` ni `World` cruza esa línea. Eso es lo que hace que la decisión
-de combate entera se pueda probar con 169 tests sin arrancar el juego, y lo que haría que portarla
-fuese cambiar quién rellena el record.
+No `PlayerEntity`, `BlockState` or `World` crosses that line. That is what lets the whole combat
+decision be tested with more than 200 tests without starting the game, and what would make porting it
+a matter of changing who fills in the record.
 
-Lo mismo con `Coverage`, que recibe **líneas de texto ya leídas** en vez de rutas: quien toca el
-disco es el adaptador, así que el parseo —donde está el riesgo de contar como visto un chunk que no
-se vio— queda con red.
+The same goes for `Coverage`, which receives **lines of text already read** instead of paths: the
+adapter is the one touching the disk, so the parsing —where the risk of counting as seen a chunk that
+was not seen lies— stays under the net.
 
-## Interfaces con terceros
+## Interfaces with third parties
 
-| Con quién | Cómo | Riesgo |
+| With whom | How | Risk |
 |---|---|---|
-| **Meteor** | API normal. `Module`, `Settings`, `EVENT_BUS` | Meteor desuscribe un módulo **antes** de `onDeactivate()`: cualquier oyente que tenga que sobrevivir a la restauración va suscrito aparte |
-| **Baritone** | **Comandos de chat.** Su API está ofuscada y no se puede compilar contra ella | Un comando que Baritone no intercepte **se publica en el chat del servidor**. De ahí la red de seguridad |
-| **Trouser Streak** | Leyendo sus ficheros de chunks | Replicamos su saneado de nombres carácter por carácter: si divergiera, leeríamos una carpeta que no existe y daríamos por no visto lo que sí se vio |
+| **Meteor** | Normal API. `Module`, `Settings`, `EVENT_BUS` | Meteor unsubscribes a module **before** `onDeactivate()`: any listener that has to survive the restore is subscribed separately |
+| **Baritone** | **Chat commands.** Its API is obfuscated and cannot be compiled against | A command Baritone does not intercept **is published in the server chat**. Hence the safety net |
+| **Trouser Streak** | Reading its chunk files | We replicate its name sanitizing character by character: if it diverged, we would read a folder that does not exist and treat as unseen what was seen |
 
-**Baritone es la interfaz más frágil de todas.** No hay contrato: hay comandos de chat y un mixin
-suyo que puede o no interceptarlos. Todo lo que sabemos de él está verificado leyendo su bytecode, y
-está escrito en las specs con el dato exacto (por ejemplo: empieza a aterrizar a **48 bloques** de su
-objetivo, valor sacado de una comparación contra `2304.0d`).
+**Baritone is the most fragile interface of all.** There is no contract: there are chat commands and a
+mixin of its own that may or may not intercept them. Everything we know about it is verified by reading
+its bytecode, and is written down in the specs with the exact fact (for example: it starts landing
+**48 blocks** from its goal, a value taken from a comparison against `2304.0d`).
 
-## Cómo se verifica que algo funciona
+## How we verify that something works
 
-Tres niveles, y los tres hacen falta:
+Three levels, and all three are needed:
 
-1. **Tests unitarios del núcleo.** ~640 en el repo.
-2. **Verificación por mutación.** Un test verde solo demuestra que el test pasa. Antes de dar por
-   buena una protección, se rompe a propósito lo que protege y se comprueba que algún test grita. En
-   este repo **ha habido tests en verde durante dos rondas protegiendo código que podía romperse sin
-   que se enteraran**.
-3. **Verificación dentro del juego.** Los adaptadores no tienen tests, y los fallos de interfaz con
-   Meteor o Baritone solo aparecen jugando. El caso que lo demuestra: Baritone aterrizaba en cada
-   waypoint del patrón y ninguna de las ocho rondas de revisión lo vio, porque no es un fallo de
-   nuestra lógica sino de una suposición sobre la suya.
+1. **Core unit tests.** ~940 in the repo.
+2. **Mutation checking.** A green test only proves that the test passes. Before accepting a
+   protection, what it protects is broken on purpose and some test must be seen to shout. In this repo
+   **there have been tests green for two rounds protecting code that could break without them
+   noticing**.
+3. **In-game verification.** The adapters have no tests, and interface failures with Meteor or
+   Baritone only show up when playing. The case that proves it: Baritone landed at every waypoint of
+   the pattern and none of the eight review rounds saw it, because it was not a flaw in our logic but
+   in an assumption about its own.
 
-Ver [Convenciones](convenciones.md) para cómo se aplica esto en la práctica.
+See [Conventions](conventions.md) for how this is applied in practice.

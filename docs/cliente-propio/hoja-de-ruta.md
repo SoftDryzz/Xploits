@@ -129,7 +129,7 @@ vez y no vuelve.
 Depende casi entero de cuántos mixins tengáis y de lo frágiles que sean. Un cliente que tarda tres
 meses en actualizarse pierde a sus usuarios en el primer mes.
 
-Y una regla que ya está escrita en [Convenciones](../convenciones.md) y que aquí vale el doble:
+Y una regla que ya está escrita en [Convenciones](../conventions.md) y que aquí vale el doble:
 **no reimplementéis lo que ya funciona**. En la última rama del addon se estuvo a punto de reescribir
 un detector de bases, un mapa de cobertura y un registro de chunks — los tres existían ya,
 instalados y mejores.
