@@ -42,7 +42,10 @@ public final class FightTracker {
     public static final double BIG_HIT = 8.0;
     /** Ten minutes. */
     public static final int MAX_TICKS = 12_000;
-    /** Past this, damage events only add to the totals and to {@code damageEventsDropped}. */
+    /**
+     * Past this, non-lethal damage events only add to the totals and to {@code damageEventsDropped}; lethal
+     * ones (pops and the death, a handful) are always kept.
+     */
     public static final int MAX_DAMAGE_EVENTS = 300;
     /** For module changes and for auto-pvp phases, each. */
     public static final int MAX_CHANGES = 200;

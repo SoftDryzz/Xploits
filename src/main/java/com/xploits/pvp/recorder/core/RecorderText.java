@@ -53,6 +53,10 @@ public enum RecorderText implements MessageKey {
     CAUSE_FALL,
     CAUSE_BURST,
     CAUSE_OUTNUMBERED,
+    /** The {@link #CAUSE_OUTNUMBERED} detail when two or more players hit you. */
+    CAUSE_OUTNUMBERED_HIT,
+    /** The {@link #CAUSE_OUTNUMBERED} detail when only the players close by at once reached two. */
+    CAUSE_OUTNUMBERED_CLOSE,
     CAUSE_CRYSTAL_AURA_OFF,
     CAUSE_CRYSTAL_OUTPACED,
     CAUSE_UNDEFENDED,

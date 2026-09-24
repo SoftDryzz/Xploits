@@ -119,15 +119,37 @@ class FightAnalysisTest {
     }
 
     @Test
-    void aKillingBlowSpreadOverTwoTicksIsNotAPopWhenYouNeverPopped() {
+    void lethalHitsWithinTheWindowAreOneKillingBlow() {
         FightRecord f = lost().totems(8, 5, false)
             .killedBy(DamageKind.CRYSTAL, FOE, 7)
-            .killingHit(1, DamageKind.CRYSTAL, AttackerKind.PLAYER, FOE, 7)
+            .killingHit(DamageLedger.WINDOW_TICKS, DamageKind.CRYSTAL, AttackerKind.PLAYER, FOE, 7)
             .build();
         assertFalse(fires(f, DOUBLE_POP));
         assertTrue(fires(f, TOTEMS_LEFT));
-        // documented bias: only the last tick of the blow counts, 7 of the 14
-        assertFalse(fires(f, BURST));
+        assertEquals(Msg.of(RecorderText.CAUSE_BURST, "health", 14.0), cause(f, BURST).evidence(), "both hits, 7 + 7");
+    }
+
+    @Test
+    void aPopJustOutsideTheWindowIsADoublePopAndOneInsideIsPartOfTheBlow() {
+        FightRecord outside = lost().totems(8, 5, false).pop(DamageLedger.WINDOW_TICKS + 1).build();
+        assertEquals(Msg.of(RecorderText.CAUSE_DOUBLE_POP, "seconds", 0.2, "totems", 5), cause(outside, DOUBLE_POP).evidence());
+        assertFalse(fires(outside, BURST), "the blow is the unseen 4 alone");
+
+        FightRecord inside = lost().totems(8, 5, false).pop(DamageLedger.WINDOW_TICKS).build();
+        assertFalse(fires(inside, DOUBLE_POP));
+        assertEquals(Msg.of(RecorderText.CAUSE_BURST, "health", 14.0), cause(inside, BURST).evidence(), "documented bias: 10 + 4");
+    }
+
+    @Test
+    void anEarlierLethalHitIsNotAPopWhenYouNeverPopped() {
+        FightRecord f = lost().totems(8, 5, false)
+            .killingHit(10, DamageKind.CRYSTAL, AttackerKind.PLAYER, FOE, 7)
+            .killedBy(DamageKind.CRYSTAL, FOE, 4)
+            .build();
+        assertEquals(0, f.self().pops());
+        assertEquals(2, f.damage().stream().filter(FightRecord.DamageEvent::lethal).count());
+        assertFalse(fires(f, DOUBLE_POP));
+        assertTrue(fires(f, TOTEMS_LEFT));
     }
 
     @Test
@@ -199,15 +221,21 @@ class FightAnalysisTest {
     @Test
     void outnumberedFiresWithTwoPlayersHittingYou() {
         FightRecord f = lost().hit(DamageKind.PROJECTILE, FOE, 5).hit(DamageKind.PROJECTILE, OTHER_FOE, 5).build();
-        assertEquals(Msg.of(RecorderText.CAUSE_OUTNUMBERED, "attackers", 2, "near", 1), cause(f, OUTNUMBERED).evidence());
+        Msg evidence = cause(f, OUTNUMBERED).evidence();
+        assertEquals(Msg.of(RecorderText.CAUSE_OUTNUMBERED, "detail", Msg.of(RecorderText.CAUSE_OUTNUMBERED_HIT, "attackers", 2)),
+            evidence);
+        assertEquals("Outnumbered: 2 players hit you", EN.render(evidence));
+        assertEquals("En inferioridad: te golpearon 2 jugadores", ES.render(evidence));
         // an opponent who never hit you (you hit them, or auto-pvp targeted them) is not an attacker
         assertFalse(fires(lost().hit(DamageKind.PROJECTILE, FOE, 5).opponent(OTHER_FOE).build(), OUTNUMBERED));
     }
 
     @Test
     void outnumberedFiresWithTwoHostilesCloseAtOnce() {
-        assertEquals(Msg.of(RecorderText.CAUSE_OUTNUMBERED, "attackers", 0, "near", 2),
-            cause(lost().hostilesNear(2).build(), OUTNUMBERED).evidence());
+        Msg evidence = cause(lost().hostilesNear(2).build(), OUTNUMBERED).evidence();
+        assertEquals(Msg.of(RecorderText.CAUSE_OUTNUMBERED, "detail", Msg.of(RecorderText.CAUSE_OUTNUMBERED_CLOSE, "near", 2)),
+            evidence);
+        assertEquals("Outnumbered: up to 2 players close by at once", EN.render(evidence), "never \"0 players hit you\"");
         assertFalse(fires(lost().hostilesNear(1).build(), OUTNUMBERED));
     }
 
@@ -231,6 +259,25 @@ class FightAnalysisTest {
     @Test
     void crystalAuraOffNeedsSixtyPercentOfTheDamageFromCrystals() {
         assertFalse(fires(crystals(59).modules("auto-totem", "surround").build(), CRYSTAL_AURA_OFF));
+    }
+
+    @Test
+    void yourOwnCrystalsDoNotCountAsTheEnemys() {
+        // 60 % of the damage from crystals, but 10 of them yours: 50 % from the enemy's
+        FightRecord f = mix(lost().ownHit(DamageKind.CRYSTAL, 10).hits(5, DamageKind.CRYSTAL, FOE, 10), DamageKind.PROJECTILE, 40)
+            .modules("auto-totem", "surround").crystals(0, 20).build();
+        assertEquals(0.60, FightAnalysis.share(f, DamageKind.CRYSTAL));
+        assertFalse(fires(f, CRYSTAL_AURA_OFF));
+        assertFalse(fires(f, CRYSTAL_OUTPACED));
+    }
+
+    @Test
+    void aCrystalWithNoAttackerCountsAsTheEnemys() {
+        FightRecord f = mix(unattributed(lost(), DamageKind.CRYSTAL, 60), DamageKind.PROJECTILE, 40)
+            .modules("auto-totem", "surround").crystals(0, 20).build();
+        assertEquals(Msg.of(RecorderText.CAUSE_CRYSTAL_AURA_OFF, "percent", 60, "active", 0, "seconds", 20),
+            cause(f, CRYSTAL_AURA_OFF).evidence());
+        assertTrue(fires(f, CRYSTAL_OUTPACED));
     }
 
     @Test
@@ -411,7 +458,7 @@ class FightAnalysisTest {
         assertEquals(Msg.of(RecorderText.CAUSE_UNCLEAR, "source",
             Msg.of(RecorderText.CAUSE_TOP_SOURCE, "kind", RecorderText.KIND_CRYSTAL, "percent", 40)), main);
         assertEquals("No clear cause · most damage: crystal (40%)", EN.render(main));
-        assertEquals("Sin causa clara · la mayor parte del daño: cristal (40%)", ES.render(main));
+        assertEquals("Sin causa clara · la mayor parte del daño: cristal (40 %)", ES.render(main));
     }
 
     @Test

@@ -25,14 +25,15 @@ import java.util.function.Predicate;
  * Why a lost fight was lost: the probable causes, strongest first. Each cause is a rule over the record
  * with a fixed weight; only a {@link FightOutcome#LOST} fight has causes.
  *
- * <p>The killing blow is the lethal hits on the last tick that has any: a lost fight ends on your death, so
- * nothing lethal comes after it. Earlier lethal hits are pops. A killing blow the ledger spread over two
- * ticks counts only its last tick, and its earlier hits look like a pop (documented bias: a pop is only
- * believed when the fight counted one).
+ * <p>The killing blow is the lethal hits within {@link DamageLedger#WINDOW_TICKS} of the last lethal tick: a
+ * lost fight ends on your death, so nothing lethal comes after it, and the ledger can date the hits of one
+ * blow a few ticks apart. Earlier lethal hits are pops (a pop is only believed when the fight counted one);
+ * a pop inside that window is taken as part of the blow (documented bias). The record keeps every lethal
+ * hit past {@link FightTracker#MAX_DAMAGE_EVENTS}, so a long fight keeps its killing blow and its pops.
  *
  * <p>Shares are of the damage whose source is known: {@link DamageKind#UNSEEN} never counts in the
- * denominator. Past {@link FightTracker#MAX_DAMAGE_EVENTS} the record keeps only totals, so a very long
- * fight can lose its killing blow and the causes that read it.
+ * denominator. The crystal causes about your crystal play blame only enemy crystals (any crystal not
+ * yours); your own are {@link CauseKind#SELF_CRYSTAL}.
  */
 public final class FightAnalysis {
     /** A pop this close before death, with totems still in the inventory: the totem did not get back in time. */
@@ -47,7 +48,7 @@ public final class FightAnalysis {
     public static final double BURST_HEALTH = 12.0;
     /** Players that hit you, or were close at once, for you to be outnumbered. */
     public static final int OUTNUMBERED_PLAYERS = 2;
-    /** Share of the damage from crystals above which your own crystal play is looked at. */
+    /** Share of the damage from enemy crystals above which your own crystal play is looked at. */
     public static final double CRYSTAL_SHARE = 0.60;
     /** Below this fraction of the fight with a crystal, anchor or bed aura on, it counts as off. */
     public static final double CRYSTAL_OFFENSE_SECONDS = 0.50;
@@ -120,8 +121,8 @@ public final class FightAnalysis {
         if (f.outcome() != FightOutcome.LOST) return List.of();
 
         List<Cause> found = new ArrayList<>();
-        List<DamageEvent> blow = killingBlow(f);
-        long deathTick = blow.isEmpty() ? Long.MIN_VALUE : blow.getFirst().tick();
+        Long deathTick = lastLethalTick(f);
+        List<DamageEvent> blow = killingBlow(f, deathTick);
         Long lastPopGap = lastPopGap(f, deathTick);
         FightRecord.SelfTotals self = f.self();
 
@@ -159,10 +160,14 @@ public final class FightAnalysis {
             if (o.hitsOnYou() > 0) attackers++;
         }
         if (attackers >= OUTNUMBERED_PLAYERS || f.maxHostilesNear() >= OUTNUMBERED_PLAYERS) {
-            add(found, CauseKind.OUTNUMBERED, "attackers", attackers, "near", f.maxHostilesNear());
+            Msg detail = attackers >= OUTNUMBERED_PLAYERS
+                ? Msg.of(RecorderText.CAUSE_OUTNUMBERED_HIT, "attackers", attackers)
+                : Msg.of(RecorderText.CAUSE_OUTNUMBERED_CLOSE, "near", f.maxHostilesNear());
+            add(found, CauseKind.OUTNUMBERED, "detail", detail);
         }
 
-        double crystalShare = share(f, DamageKind.CRYSTAL);
+        // Enemy crystals: any crystal that was not yours (no attacker counts as the enemy's).
+        double crystalShare = seenShare(f, d -> d.kind() == DamageKind.CRYSTAL && d.by() != AttackerKind.SELF);
         if (crystalShare >= CRYSTAL_SHARE) {
             int active = secondsActive(f, ModuleRole.CRYSTAL_OFFENSE);
             if (active < CRYSTAL_OFFENSE_SECONDS * f.durationSeconds()) {
@@ -290,23 +295,31 @@ public final class FightAnalysis {
         return false;
     }
 
-    /** The lethal hits on the last tick with any: what killed you. Empty when the record kept none. */
-    private static List<DamageEvent> killingBlow(FightRecord f) {
+    /** The tick of the last lethal hit, the death's; null when the record has none. */
+    private static Long lastLethalTick(FightRecord f) {
         Long last = null;
         for (DamageEvent d : f.damage()) {
             if (d.lethal() && (last == null || d.tick() > last)) last = d.tick();
         }
-        if (last == null) return List.of();
-        long tick = last;
-        return f.damage().stream().filter(d -> d.lethal() && d.tick() == tick).toList();
+        return last;
     }
 
-    /** Ticks from your last pop to your death, or null if you did not pop (or the record lost the death). */
-    private static Long lastPopGap(FightRecord f, long deathTick) {
-        if (f.self().pops() == 0 || deathTick == Long.MIN_VALUE) return null;
+    /** The lethal hits within {@link DamageLedger#WINDOW_TICKS} of the death tick: what killed you. */
+    private static List<DamageEvent> killingBlow(FightRecord f, Long deathTick) {
+        if (deathTick == null) return List.of();
+        return f.damage().stream().filter(d -> d.lethal() && inBlow(d, deathTick)).toList();
+    }
+
+    private static boolean inBlow(DamageEvent d, long deathTick) {
+        return d.tick() >= deathTick - DamageLedger.WINDOW_TICKS;
+    }
+
+    /** Ticks from your last pop (a lethal hit before the killing blow) to your death, or null if you did not pop. */
+    private static Long lastPopGap(FightRecord f, Long deathTick) {
+        if (f.self().pops() == 0 || deathTick == null) return null;
         Long pop = null;
         for (DamageEvent d : f.damage()) {
-            if (d.lethal() && d.tick() < deathTick && (pop == null || d.tick() > pop)) pop = d.tick();
+            if (d.lethal() && !inBlow(d, deathTick) && (pop == null || d.tick() > pop)) pop = d.tick();
         }
         return pop == null ? null : deathTick - pop;
     }

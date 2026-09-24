@@ -614,6 +614,34 @@ class FightTrackerTest {
     }
 
     @Test
+    void pastTheCapThePopsAndTheKillingBlowAreStillKept() {
+        ticks.health(1000).hostile("Foo", 3);
+        feed();
+        // An early pop from a lot of health, kept before the cap.
+        ticks.totems(7);
+        feed(crystalBy("Foo"), ownPop());
+        for (int i = 1; i <= 350; i++) {
+            ticks.health(1000 - i);
+            feed(crystalBy("Foo"));
+        }
+        // Past the cap: a pop, and the death twenty ticks later from 5 health.
+        ticks.health(5).totems(6);
+        feed(crystalBy("Foo"), ownPop());
+        idle(19);
+        ticks.alive(false).health(0);
+        FightRecord f = feed(crystalBy("Foo"), selfDied()).finished().orElseThrow();
+
+        assertEquals(FightTracker.MAX_DAMAGE_EVENTS + 2, f.damage().size());
+        assertEquals(51, f.damageEventsDropped());
+        assertEquals(List.of(1000.0, 650.0, 5.0), f.damage().stream().filter(DamageEvent::lethal).map(DamageEvent::before).toList());
+
+        // The analysis reads the real killing blow, not the early pop: no burst, and the late pop is a double pop.
+        List<FightAnalysis.CauseKind> causes = FightAnalysis.causes(f).stream().map(FightAnalysis.Cause::kind).toList();
+        assertFalse(causes.contains(FightAnalysis.CauseKind.BURST), causes.toString());
+        assertTrue(causes.contains(FightAnalysis.CauseKind.DOUBLE_POP), causes.toString());
+    }
+
+    @Test
     void changesAreCappedAndTheLastPhaseIsKept() {
         attackFoo();
         for (int i = 0; i < 250; i++) {

@@ -297,7 +297,9 @@ final class FightBuilder {
                 t.damageToYou += amount;
             }
         }
-        if (damage.size() < FightTracker.MAX_DAMAGE_EVENTS) {
+        // Lethal hits are always kept, past the cap too: one cluster per pop plus the death, and the
+        // analysis needs them to tell the killing blow from the pops.
+        if (d.lethal() || damage.size() < FightTracker.MAX_DAMAGE_EVENTS) {
             damage.add(d);
         } else {
             damageEventsDropped++;
