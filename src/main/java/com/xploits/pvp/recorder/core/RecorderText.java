@@ -91,6 +91,8 @@ public enum RecorderText implements MessageKey {
     REVIEW_NONE,
     REVIEW_OUT_OF_RANGE,
     REVIEW_CORRUPT,
+    /** {@link #REVIEW_CORRUPT} for the console and the log: no file name, no detail, chat only. */
+    REVIEW_CORRUPT_LOG,
     SAVE_FAILED,
     /** {@link #SAVE_FAILED} for the console and the log: no detail, it may carry a file path. */
     SAVE_FAILED_LOG,

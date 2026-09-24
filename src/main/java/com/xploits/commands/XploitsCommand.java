@@ -1,10 +1,16 @@
 package com.xploits.commands;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.pvp.recorder.FightRecorder;
+import com.xploits.pvp.recorder.core.FightRecord;
+import com.xploits.pvp.recorder.core.FightStore;
+import com.xploits.pvp.recorder.core.FightSummary;
+import com.xploits.pvp.recorder.core.RecorderText;
 import com.xploits.shared.XploitsCommandBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
@@ -23,6 +29,8 @@ import net.minecraft.command.CommandSource;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,6 +39,7 @@ import java.util.Set;
 
 public class XploitsCommand extends XploitsCommandBase {
     private static final int MAX_HITS = 10;
+    private static final int LIST_LIMIT = 10;
 
     public XploitsCommand() {
         super("xploits", Texts.startupText(LanguageText.COMMAND_DESC));
@@ -54,10 +63,24 @@ public class XploitsCommand extends XploitsCommandBase {
             find(StringArgumentType.getString(context, "item"));
             return SINGLE_SUCCESS;
         })));
-        builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
-            return SINGLE_SUCCESS;
-        }));
+        builder.then(literal("pvp")
+            .executes(context -> {
+                pvp().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
+                return SINGLE_SUCCESS;
+            })
+            .then(literal("review")
+                .executes(context -> {
+                    review(1);
+                    return SINGLE_SUCCESS;
+                })
+                .then(argument("n", IntegerArgumentType.integer(1, FightStore.KEEP)).executes(context -> {
+                    review(IntegerArgumentType.getInteger(context, "n"));
+                    return SINGLE_SUCCESS;
+                })))
+            .then(literal("fights").executes(context -> {
+                fights();
+                return SINGLE_SUCCESS;
+            })));
         builder.then(literal("travel")
             .executes(context -> {
                 travel().ifPresent(module -> reply(Level.INFO, module.name, module.status()));
@@ -193,6 +216,85 @@ public class XploitsCommand extends XploitsCommandBase {
         if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));
     }
 
+    /**
+     * The full breakdown of fight {@code n} (1 = most recent), sent as the recorder. Works whether the
+     * module is on or off: it only reads {@link FightStore}. Empty history, an out-of-range {@code n} and
+     * a corrupt file each get their own warning instead of a stack trace.
+     */
+    private void review(int n) {
+        Optional<FightRecorder> maybeRecorder = recorder();
+        if (maybeRecorder.isEmpty()) return;
+        FightRecorder recorder = maybeRecorder.get();
+        FightStore store = recorder.store();
+
+        List<Path> files;
+        try {
+            files = store.list();
+        } catch (IOException e) {
+            reportCorrupt(recorder, store.folder(), e);
+            return;
+        }
+        if (files.isEmpty()) {
+            reply(Level.WARNING, recorder.name, PositionedMsg.same(Msg.of(RecorderText.REVIEW_NONE)));
+            return;
+        }
+        if (n > files.size()) {
+            reply(Level.WARNING, recorder.name, PositionedMsg.same(Msg.of(RecorderText.REVIEW_OUT_OF_RANGE, "count", files.size())));
+            return;
+        }
+
+        Path file = files.get(n - 1);
+        FightRecord record;
+        try {
+            record = store.load(file);
+        } catch (IOException e) {
+            reportCorrupt(recorder, file, e);
+            return;
+        }
+        for (Msg line : FightSummary.review(record, n)) reply(Level.INFO, recorder.name, PositionedMsg.same(line));
+    }
+
+    /** The last {@value #LIST_LIMIT} fights, newest first, one line each. */
+    private void fights() {
+        Optional<FightRecorder> maybeRecorder = recorder();
+        if (maybeRecorder.isEmpty()) return;
+        FightRecorder recorder = maybeRecorder.get();
+        FightStore store = recorder.store();
+
+        List<Path> files;
+        try {
+            files = store.list();
+        } catch (IOException e) {
+            reportCorrupt(recorder, store.folder(), e);
+            return;
+        }
+        if (files.isEmpty()) {
+            reply(Level.WARNING, recorder.name, PositionedMsg.same(Msg.of(RecorderText.REVIEW_NONE)));
+            return;
+        }
+
+        List<Path> shown = files.subList(0, Math.min(LIST_LIMIT, files.size()));
+        reply(Level.INFO, recorder.name, PositionedMsg.same(Msg.of(RecorderText.LIST_HEADER, "count", shown.size())));
+        int number = 1;
+        for (Path file : shown) {
+            FightRecord record;
+            try {
+                record = store.load(file);
+            } catch (IOException e) {
+                reportCorrupt(recorder, file, e);
+                return;
+            }
+            reply(Level.INFO, recorder.name, PositionedMsg.same(FightSummary.listLine(number++, record, ago(record.endedAt()))));
+        }
+    }
+
+    /** A corrupt fight file, said once: the name and the detail stay in chat, never in the console or its log. */
+    private void reportCorrupt(FightRecorder recorder, Path file, IOException e) {
+        Msg chat = Msg.of(RecorderText.REVIEW_CORRUPT, "file", file.getFileName().toString(), "detail", String.valueOf(e.getMessage()));
+        Msg log = Msg.of(RecorderText.REVIEW_CORRUPT_LOG);
+        reply(Level.WARNING, recorder.name, new PositionedMsg(chat, log));
+    }
+
     /** Matches the query against the item id and its translated name, so that a translated name such as "obsidiana" works. */
     private static Set<String> resolve(String query) {
         String needle = query.toLowerCase().strip();
@@ -243,6 +345,16 @@ public class XploitsCommand extends XploitsCommandBase {
         AutoPvp module = Modules.get().get(AutoPvp.class);
         if (module == null) {
             warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "auto-pvp"));
+            return Optional.empty();
+        }
+        return Optional.of(module);
+    }
+
+    /** Returns the module, or warns that it is not registered and returns nothing. */
+    private Optional<FightRecorder> recorder() {
+        FightRecorder module = Modules.get().get(FightRecorder.class);
+        if (module == null) {
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "fight-recorder"));
             return Optional.empty();
         }
         return Optional.of(module);

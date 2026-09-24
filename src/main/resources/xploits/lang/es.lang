@@ -525,6 +525,7 @@ recorder.list-line=#{number} · {outcome} · {seconds} s · {opponents} · {mode
 recorder.review-none=Aún no tienes peleas grabadas.
 recorder.review-out-of-range=Solo tienes {count} peleas grabadas.
 recorder.review-corrupt=El fichero de la pelea {file} está corrupto: {detail}
+recorder.review-corrupt-log=Un fichero de pelea está corrupto. Su nombre y el detalle, solo en el chat.
 recorder.save-failed=No se pudo guardar la pelea: {detail}
 recorder.save-failed-log=No se pudo guardar la pelea. El detalle, solo en el chat.
 recorder.tick-failed=El grabador tuvo un error y descartó la pelea en curso. Sigue grabando, pero puede volver a pasar: los detalles están en el log del juego.

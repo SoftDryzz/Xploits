@@ -525,6 +525,7 @@ recorder.list-line=#{number} · {outcome} · {seconds} s · {opponents} · {mode
 recorder.review-none=You have no recorded fights yet.
 recorder.review-out-of-range=You only have {count} recorded fights.
 recorder.review-corrupt=Fight file {file} is corrupt: {detail}
+recorder.review-corrupt-log=A fight file is corrupt. Its name and the detail are in chat only.
 recorder.save-failed=Could not save the fight: {detail}
 recorder.save-failed-log=Could not save the fight. The detail is in chat only.
 recorder.tick-failed=The recorder hit an error and dropped the fight in progress. It keeps recording, but this may happen again: the details are in the game log.
