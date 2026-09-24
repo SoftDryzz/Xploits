@@ -133,6 +133,34 @@ class FightSummaryTest {
     }
 
     @Test
+    void twentyPhasesShowOnlyTheLastEightWithAnEarlierLineFirst() {
+        Fights.Builder builder = Fights.ending(FightOutcome.ENDED).seconds(25).totems(8, 8, true).modules("auto-totem");
+        for (int i = 0; i < 20; i++) builder.phase(i, CombatState.SURFACE, FOE);
+        List<String> rendered = FightSummary.review(builder.build(), 1).stream().map(EN::render).toList();
+
+        assertTrue(rendered.contains("  12 earlier changes not shown."), rendered.toString());
+        // The 8 most recent (seconds 12..19) are shown; anything before second 12 is not.
+        assertFalse(rendered.contains("  11 s · SURFACE · CALM · Foo"), rendered.toString());
+        assertTrue(rendered.contains("  12 s · SURFACE · CALM · Foo"), rendered.toString());
+        assertTrue(rendered.contains("  19 s · SURFACE · CALM · Foo"), rendered.toString());
+        long phaseLines = rendered.stream().filter(l -> l.startsWith("  ") && l.contains(" s ·")).count();
+        assertEquals(8, phaseLines);
+    }
+
+    @Test
+    void exactlyEightPhasesShowNoEarlierLine() {
+        Fights.Builder builder = Fights.ending(FightOutcome.ENDED).seconds(25).totems(8, 8, true).modules("auto-totem");
+        for (int i = 0; i < 8; i++) builder.phase(i, CombatState.SURFACE, FOE);
+        List<String> rendered = FightSummary.review(builder.build(), 1).stream().map(EN::render).toList();
+
+        assertTrue(rendered.stream().noneMatch(l -> l.endsWith("earlier changes not shown.")), rendered.toString());
+        assertTrue(rendered.contains("  0 s · SURFACE · CALM · Foo"), rendered.toString());
+        assertTrue(rendered.contains("  7 s · SURFACE · CALM · Foo"), rendered.toString());
+        long phaseLines = rendered.stream().filter(l -> l.startsWith("  ") && l.contains(" s ·")).count();
+        assertEquals(8, phaseLines);
+    }
+
+    @Test
     void listLineShowsTheNumberOutcomeAndHowLongAgoForSeveralOutcomes() {
         assertEquals("#3 · lost · 43 s · Foo · auto-pvp · 2 h ago", EN.render(FightSummary.listLine(3, Fights.crystalDeath(), "2 h ago")));
         assertEquals("#1 · won · 25 s · Foo, Bar · manual · just now", EN.render(FightSummary.listLine(1, won(), "just now")));

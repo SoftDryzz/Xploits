@@ -516,6 +516,7 @@ recorder.summary-offense=Offense: {attacks} attacks · {placed} crystals placed 
 recorder.summary-modules=Modules at start: {modules}
 recorder.summary-phases=Phases:
 recorder.summary-phase-part=  {second} s · {state} · {posture} · {target}
+recorder.summary-phases-earlier=  {count} earlier changes not shown.
 recorder.summary-causes=Probable cause:
 recorder.summary-cause-line=  {rank}. {cause}
 recorder.summary-no-causes=  no clear cause found

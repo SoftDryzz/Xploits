@@ -21,6 +21,9 @@ import java.util.Map;
  * none of them ever carries a position (design's no-coordinates rule).
  */
 public final class FightSummary {
+    /** How many of the most recent phase changes are shown in a review; older ones are summed up in one line. */
+    public static final int PHASES_SHOWN = 8;
+
     private FightSummary() {
     }
 
@@ -101,9 +104,12 @@ public final class FightSummary {
     }
 
     private static void addPhases(FightRecord f, List<Msg> lines) {
-        if (f.phases().isEmpty()) return;
+        List<PhaseChange> phases = f.phases();
+        if (phases.isEmpty()) return;
         lines.add(Msg.of(RecorderText.SUMMARY_PHASES));
-        for (PhaseChange c : f.phases()) {
+        int earlier = Math.max(0, phases.size() - PHASES_SHOWN);
+        if (earlier > 0) lines.add(Msg.of(RecorderText.SUMMARY_PHASES_EARLIER, "count", earlier));
+        for (PhaseChange c : phases.subList(earlier, phases.size())) {
             lines.add(Msg.of(RecorderText.SUMMARY_PHASE_PART, "second", c.second(), "state", PvpText.of(c.state()),
                 "posture", PvpText.of(c.posture()), "target", c.target() == null ? RecorderText.NOBODY : c.target()));
         }

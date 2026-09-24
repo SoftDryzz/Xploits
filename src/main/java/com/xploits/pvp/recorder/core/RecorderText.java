@@ -82,6 +82,8 @@ public enum RecorderText implements MessageKey {
     SUMMARY_MODULES,
     SUMMARY_PHASES,
     SUMMARY_PHASE_PART,
+    /** Shown before the kept phases when older ones were trimmed: how many are not shown. */
+    SUMMARY_PHASES_EARLIER,
     SUMMARY_CAUSES,
     SUMMARY_CAUSE_LINE,
     SUMMARY_NO_CAUSES,

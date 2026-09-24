@@ -642,7 +642,7 @@ class FightTrackerTest {
     }
 
     @Test
-    void changesAreCappedAndTheLastPhaseIsKept() {
+    void moduleChangesAreCappedAndTheLastPhaseIsStillKept() {
         attackFoo();
         for (int i = 0; i < 250; i++) {
             if (i % 2 == 0) {
@@ -656,8 +656,36 @@ class FightTrackerTest {
         feed();
         FightRecord f = abortNow();
         assertEquals(FightTracker.MAX_CHANGES, f.moduleChanges().size());
-        assertEquals(FightTracker.MAX_CHANGES, f.phases().size());
+        // Phases are capped to one per second (see below), so a tick-by-tick flicker never fills them
+        // to MAX_CHANGES the way module changes do; the phase you ended in is still never lost.
         assertEquals(CombatState.CHASE, f.phases().getLast().state());
+    }
+
+    @Test
+    void aPostureFlickeringEveryTickForThirtySecondsYieldsAtMostThirtyPhaseEntries() {
+        ticks.autoPvp(CombatState.SURFACE, CombatPosture.CALM, "Foo");
+        attackFoo();
+        for (int i = 0; i < 30 * 20; i++) {
+            ticks.autoPvp(CombatState.SURFACE, i % 2 == 0 ? CombatPosture.THREATENED : CombatPosture.CALM, "Foo");
+            feed(attack("Foo"));
+        }
+        FightRecord f = abortNow();
+        assertTrue(f.phases().size() <= 30, f.phases().toString());
+    }
+
+    @Test
+    void aFlipAndBackWithinOneSecondLeavesNoNewPhaseEntry() {
+        ticks.autoPvp(CombatState.SURFACE, CombatPosture.CALM, "Foo");
+        long start = attackFoo();
+        // Stay in second 0, no change.
+        while (ticks.tick() < start + 20) feed(attack("Foo"));
+        // Second 1: flip to THREATENED and back to CALM before the second ends.
+        ticks.autoPvp(CombatState.SURFACE, CombatPosture.THREATENED, "Foo");
+        feed(attack("Foo"));
+        ticks.autoPvp(CombatState.SURFACE, CombatPosture.CALM, "Foo");
+        feed(attack("Foo"));
+        FightRecord f = abortNow();
+        assertEquals(List.of(new PhaseChange(0, CombatState.SURFACE, CombatPosture.CALM, "Foo")), f.phases());
     }
 
     @Test

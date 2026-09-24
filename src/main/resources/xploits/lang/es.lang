@@ -516,6 +516,7 @@ recorder.summary-offense=Ofensiva: {attacks} ataques · {placed} cristales puest
 recorder.summary-modules=Módulos al empezar: {modules}
 recorder.summary-phases=Fases:
 recorder.summary-phase-part=  {second} s · {state} · {posture} · {target}
+recorder.summary-phases-earlier=  {count} cambios anteriores no mostrados.
 recorder.summary-causes=Causa probable:
 recorder.summary-cause-line=  {rank}. {cause}
 recorder.summary-no-causes=  sin causa clara

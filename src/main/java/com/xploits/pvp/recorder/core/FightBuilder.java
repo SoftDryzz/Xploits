@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
@@ -310,13 +311,31 @@ final class FightBuilder {
         if (moduleChanges.size() < FightTracker.MAX_CHANGES) moduleChanges.add(c);
     }
 
-    /** Past the cap the newest phase replaces the last one kept: the phase you ended in is never lost. */
+    /**
+     * At most one phase entry per second: a change landing in the same second as the last one kept
+     * replaces it instead of appending, so a posture flickering every tick does not flood the review.
+     * When that replacement leaves the last entry equal to the one before it, it is dropped instead,
+     * so a flip-and-back within one second leaves no trace. Past {@link FightTracker#MAX_CHANGES}
+     * distinct seconds the newest still replaces the last one kept: the phase you ended in is never
+     * lost.
+     */
     private void phase(PhaseChange c) {
+        if (!phases.isEmpty() && phases.getLast().second() == c.second()) {
+            phases.set(phases.size() - 1, c);
+            if (phases.size() > 1 && samePhase(phases.get(phases.size() - 2), phases.getLast())) {
+                phases.removeLast();
+            }
+            return;
+        }
         if (phases.size() < FightTracker.MAX_CHANGES) {
             phases.add(c);
         } else {
             phases.set(phases.size() - 1, c);
         }
+    }
+
+    private static boolean samePhase(PhaseChange a, PhaseChange b) {
+        return a.state() == b.state() && a.posture() == b.posture() && Objects.equals(a.target(), b.target());
     }
 
     private void sample(int second) {
