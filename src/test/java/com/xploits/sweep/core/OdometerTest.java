@@ -10,109 +10,110 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests del cuentakilómetros del vuelo: que un teletransporte no se cuente como vuelo y no infle la
- * tasa de bloques por cohete (spec Nether Sweep §6).
+ * Tests of the flight odometer: a teleport must not count as flight and must not inflate the
+ * blocks-per-firework rate (Nether Sweep spec §6).
  *
- * <p>Todas las distancias de estos tests son inventadas: lo que se comprueba es aritmética, no
- * ningún sitio concreto del mundo.
+ * <p>All the distances in these tests are made up: what is checked is arithmetic, not any concrete
+ * place in the world.
  */
 class OdometerTest {
     @Test
-    void sinNadaRegistradoNoSeHaVoladoNada() {
-        Odometer cuenta = new Odometer();
+    void withNothingRecordedNothingHasBeenFlown() {
+        Odometer odometer = new Odometer();
 
-        assertEquals(0, cuenta.blocksFlown());
-        assertEquals(0, cuenta.jumps());
+        assertEquals(0, odometer.blocksFlown());
+        assertEquals(0, odometer.jumps());
     }
 
     @Test
-    void losPasosNormalesSeSuman() {
-        Odometer cuenta = new Odometer();
+    void normalStepsAreAdded() {
+        Odometer odometer = new Odometer();
 
-        assertTrue(cuenta.advance(1.6));
-        assertTrue(cuenta.advance(1.7));
+        assertTrue(odometer.advance(1.6));
+        assertTrue(odometer.advance(1.7));
 
-        assertEquals(3.3, cuenta.blocksFlown(), 1e-9);
-        assertEquals(0, cuenta.jumps());
+        assertEquals(3.3, odometer.blocksFlown(), 1e-9);
+        assertEquals(0, odometer.jumps());
     }
 
     @Test
-    void unSaltoNiSeSumaNiSeReparte() {
-        Odometer cuenta = new Odometer();
-        cuenta.advance(1.6);
+    void aJumpIsNeitherAddedNorSpread() {
+        Odometer odometer = new Odometer();
+        odometer.advance(1.6);
 
-        assertFalse(cuenta.advance(4_000));
+        assertFalse(odometer.advance(4_000));
 
-        assertEquals(1.6, cuenta.blocksFlown(), 1e-9);
-        assertEquals(1, cuenta.jumps());
+        assertEquals(1.6, odometer.blocksFlown(), 1e-9);
+        assertEquals(1, odometer.jumps());
     }
 
     @Test
-    void unPasoJustoEnElTopeSigueSiendoVuelo() {
-        Odometer cuenta = new Odometer();
+    void aStepExactlyAtTheCapIsStillFlight() {
+        Odometer odometer = new Odometer();
 
-        assertTrue(cuenta.advance(Odometer.BLOQUES_POR_TICK_MAXIMOS));
+        assertTrue(odometer.advance(Odometer.MAX_BLOCKS_PER_TICK));
 
-        assertEquals(Odometer.BLOQUES_POR_TICK_MAXIMOS, cuenta.blocksFlown(), 1e-9);
-        assertEquals(0, cuenta.jumps());
+        assertEquals(Odometer.MAX_BLOCKS_PER_TICK, odometer.blocksFlown(), 1e-9);
+        assertEquals(0, odometer.jumps());
     }
 
     @Test
-    void elVueloMasRapidoQueSePuedeSostenerNoEsUnSalto() {
-        // Elytra con cohetes encadenados en picado, unos 60 bloques por segundo: 3 por tick. Si esto
-        // se descartara, el cuentakilómetros no contaría el vuelo de verdad y la tasa saldría al
-        // revés -menos bloques por cohete de los reales-, que corta barridos que sí llegaban.
-        Odometer cuenta = new Odometer();
+    void theFastestSustainableFlightIsNotAJump() {
+        // Elytra with chained fireworks in a dive, about 60 blocks per second: 3 per tick. If this
+        // were discarded, the odometer would not count the real flight and the rate would come out
+        // the other way round -fewer blocks per firework than the real ones-, which cuts sweeps
+        // that would have made it.
+        Odometer odometer = new Odometer();
 
-        assertTrue(cuenta.advance(3));
+        assertTrue(odometer.advance(3));
 
-        assertEquals(3, cuenta.blocksFlown(), 1e-9);
+        assertEquals(3, odometer.blocksFlown(), 1e-9);
     }
 
     @Test
-    void elUltimoPasoSeEntregaEnBrutoAunqueSeaUnSalto() {
-        // La sonda de anchura lo usa como velocidad del jugador: un tick con un teletransporte
-        // dentro es el peor momento para medir el alcance del servidor, así que tiene que verlo
-        // grande y descartar la muestra, no verlo filtrado a cero.
-        Odometer cuenta = new Odometer();
+    void theLastStepIsReportedRawEvenIfItIsAJump() {
+        // The width probe uses it as the player's speed: a tick with a teleport inside is the worst
+        // moment to measure the server's reach, so it has to see it as large and discard the
+        // sample, not see it filtered down to zero.
+        Odometer odometer = new Odometer();
 
-        cuenta.advance(4_000);
+        odometer.advance(4_000);
 
-        assertEquals(4_000, cuenta.lastStep(), 1e-9);
+        assertEquals(4_000, odometer.lastStep(), 1e-9);
     }
 
     @Test
-    void unaDistanciaQueNoEsUnaDistanciaSeRechaza() {
-        Odometer cuenta = new Odometer();
+    void aDistanceThatIsNotADistanceIsRejected() {
+        Odometer odometer = new Odometer();
 
-        assertThrows(IllegalArgumentException.class, () -> cuenta.advance(-1));
-        assertThrows(IllegalArgumentException.class, () -> cuenta.advance(Double.NaN));
-        assertEquals(0, cuenta.blocksFlown());
+        assertThrows(IllegalArgumentException.class, () -> odometer.advance(-1));
+        assertThrows(IllegalArgumentException.class, () -> odometer.advance(Double.NaN));
+        assertEquals(0, odometer.blocksFlown());
     }
 
     @Test
-    void unTeletransporteNoInflaLaTasaDeBloquesPorCohete() {
-        // El fallo completo, hasta la decisión que dependía de él: el jugador vuela 1.000 bloques
-        // gastando 10 cohetes -100 bloques por cohete-, cruza un portal que le mueve 4.000, y vuela
-        // otros 1.000 gastando otros 10. Sumando el salto, la tasa saldría de 6.000 bloques entre
-        // 20 cohetes: 300 por cohete, el triple de la real, y con ella willRunOut contesta que los
-        // cohetes llegan cuando no llegan.
-        Odometer cuenta = new Odometer();
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(cuenta.blocksFlown(), 100);
+    void aTeleportDoesNotInflateTheBlocksPerFireworkRate() {
+        // The complete failure, up to the decision that depended on it: the player flies 1,000
+        // blocks spending 10 fireworks -100 blocks per firework-, goes through a portal that moves
+        // them 4,000, and flies another 1,000 spending another 10. Adding the jump, the rate would
+        // come out of 6,000 blocks over 20 fireworks: 300 per firework, three times the real one,
+        // and with it willRunOut answers that the fireworks will last when they will not.
+        Odometer odometer = new Odometer();
+        FuelBudget budget = new FuelBudget();
+        budget.sample(odometer.blocksFlown(), 100);
 
-        for (int i = 0; i < 625; i++) cuenta.advance(1.6);
-        presupuesto.sample(cuenta.blocksFlown(), 90);
-        cuenta.advance(4_000);
-        for (int i = 0; i < 625; i++) cuenta.advance(1.6);
-        presupuesto.sample(cuenta.blocksFlown(), 80);
+        for (int i = 0; i < 625; i++) odometer.advance(1.6);
+        budget.sample(odometer.blocksFlown(), 90);
+        odometer.advance(4_000);
+        for (int i = 0; i < 625; i++) odometer.advance(1.6);
+        budget.sample(odometer.blocksFlown(), 80);
 
-        OptionalDouble tasa = presupuesto.blocksPerRocket();
-        assertTrue(tasa.isPresent());
-        assertEquals(100, tasa.getAsDouble(), 1e-9);
-        // Y la decisión que cuelga de ella: con 80 cohetes a 100 bloques cada uno quedan 8.000
-        // bloques de autonomía, así que 9.000 por delante con un 20 % de reserva no llegan.
-        assertTrue(presupuesto.willRunOut(9_000, 80, 0.2),
-            "con la tasa real la proyección corta; con la inflada por el salto diría que llegan");
+        OptionalDouble rate = budget.blocksPerRocket();
+        assertTrue(rate.isPresent());
+        assertEquals(100, rate.getAsDouble(), 1e-9);
+        // And the decision that hangs on it: with 80 fireworks at 100 blocks each there are 8,000
+        // blocks of range left, so 9,000 ahead with a 20% reserve do not make it.
+        assertTrue(budget.willRunOut(9_000, 80, 0.2),
+            "with the real rate the projection cuts; with the one inflated by the jump it would say they last");
     }
 }

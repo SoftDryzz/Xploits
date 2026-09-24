@@ -6,290 +6,290 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * El viaje entero que supone volar un plan de barrido: los vértices en el orden en que se vuelan y
- * <b>todas</b> las distancias que hay que presupuestar, desde donde está el jugador hasta que vuelve.
+ * The whole trip that flying a sweep plan involves: the vertices in the order they are flown and
+ * <b>every</b> distance that has to be budgeted, from where the player is until they come back.
  *
- * <p><b>Esta clase existe por un fallo que ya se coló dos veces en este módulo</b>, y por eso la
- * aritmética vive aquí y no en el adaptador. {@link SweepPlanner.SweepPlan#totalBlocks()} mide el
- * barrido —del arranque de la primera pasada al final de la última, enlaces incluidos— y <b>no</b> el
- * viaje: le falta la <b>aproximación</b>, el trayecto desde donde esté el jugador hasta el arranque de
- * la primera pasada, que en un barrido de los que justifican este módulo es la pata más larga de
- * todas. Estimar cohetes con el «total» del plan da cohetes de menos, y entonces el módulo dice «te
- * llegan» a un jugador al que no le llegan: la comprobación previa, que es justo la que existe para
- * evitar el viaje, la pasa en falso.
+ * <p><b>This class exists because of a bug that has already slipped into this module twice</b>, and
+ * that is why the arithmetic lives here and not in the adapter.
+ * {@link SweepPlanner.SweepPlan#totalBlocks()} measures the sweep —from the start of the first lane
+ * to the end of the last, links included— and <b>not</b> the trip: it lacks the <b>approach</b>, the
+ * stretch from wherever the player is to the start of the first lane, which in a sweep of the kind
+ * that justifies this module is the longest leg of all. Estimating fireworks with the plan's "total"
+ * gives too few fireworks, and then the module says "you have enough" to a player who does not: the
+ * advance check, which is exactly the one that exists to prevent the trip, passes falsely.
  *
- * <p>Un {@code SweepPlan} no puede arreglarlo porque es geometría del área y no sabe dónde está el
- * jugador. {@code SweepRoute} sí lo sabe —se construye con su posición— y por eso es el sitio donde
- * el viaje completo se puede calcular una vez, con tests, en vez de rehacerse a mano en el adaptador
- * cada vez que hace falta.
+ * <p>A {@code SweepPlan} cannot fix it because it is geometry of the area and does not know where the
+ * player is. {@code SweepRoute} does know —it is built with their position— and that is why it is the
+ * place where the complete trip can be computed once, with tests, instead of being redone by hand in
+ * the adapter every time it is needed.
  *
- * <p>De aquí sale el número que alimenta la proyección de cohetes de {@link FuelBudget#willRunOut},
- * que es la que decide si se corta el vuelo: {@link #remainingFrom(int, Waypoint)} es exactamente la
- * {@code blocksRemaining} que esa clase pide, con la vuelta dentro si el presupuesto la contempla.
+ * <p>This is where the number feeding the firework projection of {@link FuelBudget#willRunOut} comes
+ * from, which is the one that decides whether the flight is cut: {@link #remainingFrom(int, Waypoint)}
+ * is exactly the {@code blocksRemaining} that class asks for, with the return inside if the budget
+ * includes it.
  *
- * <p>Esta clase no toca Minecraft ni Meteor: trabaja sobre {@link Lane} y {@link Waypoint} como
- * números.
+ * <p>This class does not touch Minecraft or Meteor: it works on {@link Lane} and {@link Waypoint} as
+ * numbers.
  */
 public final class SweepRoute {
     private final List<Waypoint> waypoints;
 
     /**
-     * Cuántos bloques quedan desde el vértice {@code i} hasta el final del viaje, regreso incluido si
-     * se cuenta. Se precalcula de atrás hacia delante una sola vez, para que preguntarlo en vuelo
-     * cueste una lectura y no un recorrido de toda la ruta.
+     * How many blocks are left from vertex {@code i} to the end of the trip, return included if it
+     * counts. It is precomputed from back to front only once, so that asking for it in flight costs a
+     * read and not a walk of the whole route.
      */
-    private final double[] restanteDesde;
+    private final double[] remainingFrom;
 
-    private final double aproximacion;
-    private final double regreso;
-    private final double pasadaMasCorta;
-    private final double enlaceMasCorto;
+    private final double approach;
+    private final double returnTrip;
+    private final double shortestLane;
+    private final double shortestLink;
 
-    private SweepRoute(List<Waypoint> waypoints, double[] restanteDesde, double aproximacion,
-                       double regreso, double pasadaMasCorta, double enlaceMasCorto) {
+    private SweepRoute(List<Waypoint> waypoints, double[] remainingFrom, double approach,
+                       double returnTrip, double shortestLane, double shortestLink) {
         this.waypoints = waypoints;
-        this.restanteDesde = restanteDesde;
-        this.aproximacion = aproximacion;
-        this.regreso = regreso;
-        this.pasadaMasCorta = pasadaMasCorta;
-        this.enlaceMasCorto = enlaceMasCorto;
+        this.remainingFrom = remainingFrom;
+        this.approach = approach;
+        this.returnTrip = returnTrip;
+        this.shortestLane = shortestLane;
+        this.shortestLink = shortestLink;
     }
 
     /**
-     * Construye el viaje a partir de las pasadas del plan y de dónde está el jugador.
+     * Builds the trip from the plan's lanes and where the player is.
      *
-     * <p>Cada pasada aporta dos vértices, su principio y su final, en ese orden. Las pasadas ya salen
-     * de {@link SweepPlanner} alternando el sentido, así que cada una arranca donde terminó la
-     * anterior y el enlace entre dos es el salto entre bandas; aquí no se reordena nada.
+     * <p>Every lane contributes two vertices, its start and its end, in that order. The lanes already
+     * come out of {@link SweepPlanner} alternating direction, so each one starts where the previous
+     * one ended and the link between two is the hop between bands; nothing is reordered here.
      *
-     * @param lanes       las pasadas a volar, en el orden en que salen del plan
-     * @param origin      dónde está el jugador al lanzar, que es de donde sale la aproximación y a
-     *                    donde vuelve el regreso
-     * @param countReturn si el presupuesto contempla volver al punto de partida
-     * @throws IllegalArgumentException si no hay ninguna pasada: un plan sin pasadas no es una ruta
-     *                                  corta, es que no hay nada que volar —el área ya está vista
-     *                                  entera—, y construir una ruta vacía dejaría que alguien
-     *                                  despegara hacia ninguna parte
-     * @throws NullPointerException     si {@code lanes} u {@code origin} son nulos
+     * @param lanes       the lanes to fly, in the order they come out of the plan
+     * @param origin      where the player is at launch, which is where the approach starts from and
+     *                    where the return goes back to
+     * @param countReturn whether the budget includes flying back to the starting point
+     * @throws IllegalArgumentException if there is no lane at all: a plan without lanes is not a
+     *                                  short route, it means there is nothing to fly —the area is
+     *                                  already fully seen—, and building an empty route would let
+     *                                  someone take off towards nowhere
+     * @throws NullPointerException     if {@code lanes} or {@code origin} are null
      */
     public static SweepRoute of(List<Lane> lanes, Waypoint origin, boolean countReturn) {
-        if (lanes == null) throw new NullPointerException("la ruta necesita las pasadas del plan");
-        if (origin == null) throw new NullPointerException("la ruta necesita saber desde dónde se despega");
+        if (lanes == null) throw new NullPointerException("the route needs the plan's lanes");
+        if (origin == null) throw new NullPointerException("the route needs to know where it takes off from");
         if (lanes.isEmpty()) {
             throw new IllegalArgumentException(
-                "un plan sin pasadas no produce ninguna ruta: significa que el área ya está vista" // i18n: allowed (exception message, continuation line)
-                    + " entera y que no hay nada que volar, no que el viaje sea corto");
+                "a plan without lanes produces no route: it means the area is already fully"
+                    + " seen and there is nothing to fly, not that the trip is short");
         }
 
         List<Waypoint> vertices = new ArrayList<>(lanes.size() * 2);
-        for (Lane pasada : lanes) {
-            vertices.add(new Waypoint(pasada.fromX(), pasada.fromZ()));
-            vertices.add(new Waypoint(pasada.toX(), pasada.toZ()));
+        for (Lane lane : lanes) {
+            vertices.add(new Waypoint(lane.fromX(), lane.fromZ()));
+            vertices.add(new Waypoint(lane.toX(), lane.toZ()));
         }
 
-        double regreso = countReturn ? vertices.get(vertices.size() - 1).distanceTo(origin) : 0;
+        double returnTrip = countReturn ? vertices.get(vertices.size() - 1).distanceTo(origin) : 0;
 
-        double[] restante = new double[vertices.size()];
-        restante[vertices.size() - 1] = regreso;
+        double[] remaining = new double[vertices.size()];
+        remaining[vertices.size() - 1] = returnTrip;
         for (int i = vertices.size() - 2; i >= 0; i--) {
-            restante[i] = vertices.get(i).distanceTo(vertices.get(i + 1)) + restante[i + 1];
+            remaining[i] = vertices.get(i).distanceTo(vertices.get(i + 1)) + remaining[i + 1];
         }
 
-        // Los vértices salen en parejas -principio y final de cada pasada-, así que el hueco entre
-        // el 2i y el 2i+1 es una pasada y el del 2i+1 al 2i+2 es el enlace hasta la siguiente. Los
-        // dos mínimos se separan porque significan cosas distintas: ver sus métodos.
-        double pasadaMasCorta = Double.MAX_VALUE;
-        double enlaceMasCorto = Double.MAX_VALUE;
+        // The vertices come in pairs -start and end of each lane-, so the gap between 2i and 2i+1 is a
+        // lane and the one from 2i+1 to 2i+2 is the link to the next. The two minimums are kept
+        // apart because they mean different things: see their methods.
+        double shortestLane = Double.MAX_VALUE;
+        double shortestLink = Double.MAX_VALUE;
         for (int i = 0; i + 1 < vertices.size(); i++) {
-            double hueco = vertices.get(i).distanceTo(vertices.get(i + 1));
-            if (i % 2 == 0) pasadaMasCorta = Math.min(pasadaMasCorta, hueco);
-            else enlaceMasCorto = Math.min(enlaceMasCorto, hueco);
+            double gap = vertices.get(i).distanceTo(vertices.get(i + 1));
+            if (i % 2 == 0) shortestLane = Math.min(shortestLane, gap);
+            else shortestLink = Math.min(shortestLink, gap);
         }
 
-        double aproximacion = origin.distanceTo(vertices.get(0));
-        return new SweepRoute(List.copyOf(vertices), restante, aproximacion, regreso, pasadaMasCorta,
-            enlaceMasCorto);
+        double approach = origin.distanceTo(vertices.get(0));
+        return new SweepRoute(List.copyOf(vertices), remaining, approach, returnTrip, shortestLane,
+            shortestLink);
     }
 
-    /** Los vértices en el orden en que se vuelan: principio y final de cada pasada. */
+    /** The vertices in the order they are flown: start and end of each lane. */
     public List<Waypoint> waypoints() {
         return waypoints;
     }
 
-    /** Cuántos vértices tiene la ruta, que es el doble del número de pasadas. */
+    /** How many vertices the route has, which is twice the number of lanes. */
     public int size() {
         return waypoints.size();
     }
 
     /**
-     * La aproximación: de donde estaba el jugador al lanzar hasta el arranque de la primera pasada.
-     * Es la pata que le falta a {@link SweepPlanner.SweepPlan#totalBlocks()} y la más larga de todas
-     * en un barrido lejos de casa.
+     * The approach: from where the player was at launch to the start of the first lane. It is the
+     * leg {@link SweepPlanner.SweepPlan#totalBlocks()} lacks and the longest of all in a sweep far
+     * from home.
      */
     public double approachBlocks() {
-        return aproximacion;
+        return approach;
     }
 
     /**
-     * El barrido en sí: las pasadas más los enlaces que las unen. <b>Tiene que valer exactamente lo
-     * mismo</b> que {@link SweepPlanner.SweepPlan#totalBlocks()} del plan del que salió esta ruta, y
-     * hay un test que lo comprueba contra el planificador de verdad: son dos caminos distintos al
-     * mismo número —aquel suma longitudes de pasada y saltos, éste suma distancias entre vértices
-     * consecutivos— y si alguna vez dejaran de coincidir sería que uno de los dos se ha roto.
+     * The sweep itself: the lanes plus the links joining them. <b>It has to be worth exactly the
+     * same</b> as {@link SweepPlanner.SweepPlan#totalBlocks()} of the plan this route came from, and
+     * there is a test that checks it against the real planner: they are two different paths to the
+     * same number —that one adds lane lengths and hops, this one adds distances between consecutive
+     * vertices— and if they ever stopped matching it would mean one of the two had broken.
      */
     public double sweepBlocks() {
-        return restanteDesde[0] - regreso;
+        return remainingFrom[0] - returnTrip;
     }
 
-    /** La vuelta desde el final de la última pasada al punto de partida, o cero si no se cuenta. */
+    /** The way back from the end of the last lane to the starting point, or zero if it does not count. */
     public double returnBlocks() {
-        return regreso;
+        return returnTrip;
     }
 
     /**
-     * El viaje entero: aproximación, barrido y regreso. <b>Este</b> es el número con el que se estima
-     * el combustible antes de despegar, y no el del plan.
+     * The whole trip: approach, sweep and return. <b>This</b> is the number the fuel is estimated
+     * with before takeoff, and not the plan's.
      */
     public double totalBlocks() {
-        return aproximacion + sweepBlocks() + regreso;
+        return approach + sweepBlocks() + returnTrip;
     }
 
     /**
-     * Lo que queda por volar desde el vértice {@code index} hasta terminar el viaje, regreso incluido
-     * si se cuenta. No incluye dónde esté el jugador ahora mismo: para eso está
-     * {@link #remainingFrom(int, Waypoint)}.
+     * What is left to fly from vertex {@code index} to the end of the trip, return included if it
+     * counts. It does not include where the player is right now: that is what
+     * {@link #remainingFrom(int, Waypoint)} is for.
      *
-     * @throws IndexOutOfBoundsException si {@code index} no es un vértice de esta ruta
+     * @throws IndexOutOfBoundsException if {@code index} is not a vertex of this route
      */
     public double remainingFrom(int index) {
-        if (index < 0 || index >= restanteDesde.length) {
+        if (index < 0 || index >= remainingFrom.length) {
             throw new IndexOutOfBoundsException(
-                "el vértice " + index + " no existe en una ruta de " + restanteDesde.length // i18n: allowed (exception message, continuation line)
-                    + " vértices"); // i18n: allowed (exception message, continuation line)
+                "vertex " + index + " does not exist in a route of " + remainingFrom.length
+                    + " vertices");
         }
-        return restanteDesde[index];
+        return remainingFrom[index];
     }
 
     /**
-     * Lo que le queda por volar al jugador: de donde está hasta el vértice al que va, más el resto de
-     * la ruta, más el regreso si se cuenta.
+     * What the player still has to fly: from where they are to the vertex they are heading for, plus
+     * the rest of the route, plus the return if it counts.
      *
-     * <p>Es exactamente la {@code blocksRemaining} que pide {@link FuelBudget#willRunOut}, y el
-     * motivo por el que esa cuenta no se hace en el adaptador: de ella sale la decisión de cortar el
-     * vuelo, y una distancia de menos hace que la proyección diga que los cohetes llegan cuando no
-     * llegan.
+     * <p>It is exactly the {@code blocksRemaining} that {@link FuelBudget#willRunOut} asks for, and the
+     * reason why that sum is not done in the adapter: the decision to cut the flight comes from it,
+     * and too short a distance makes the projection say the fireworks will last when they will not.
      *
-     * @throws IndexOutOfBoundsException si {@code index} no es un vértice de esta ruta
-     * @throws NullPointerException      si {@code player} es nulo
+     * @throws IndexOutOfBoundsException if {@code index} is not a vertex of this route
+     * @throws NullPointerException      if {@code player} is null
      */
     public double remainingFrom(int index, Waypoint player) {
-        if (player == null) throw new NullPointerException("hace falta saber dónde está el jugador");
+        if (player == null) throw new NullPointerException("where the player is must be known");
         return player.distanceTo(waypoints.get(index)) + remainingFrom(index);
     }
 
     /**
-     * La separación mínima que se le puede exigir a dos vértices seguidos de un <b>barrido</b> con
-     * el margen de waypoint configurado: el margen a secas.
+     * The minimum spacing that can be required of two consecutive vertices of a <b>sweep</b> with the
+     * configured waypoint margin: the margin, plain and simple.
      *
-     * <p><b>No es {@code RoutePlanner.minimumSpacing}, y esa diferencia es el arreglo.</b> Aquel
-     * número es el doble del margen y además nunca baja de 300 bloques, y los dos sumandos vienen de
-     * un problema que aquí no se da:
+     * <p><b>It is not {@code RoutePlanner.minimumSpacing}, and that difference is the fix.</b> That
+     * number is twice the margin and moreover never drops below 300 blocks, and both terms come from
+     * a problem that does not arise here:
      *
      * <ul>
-     *   <li><b>El doble del margen sale de dos vértices alineados.</b> En una ruta de evasión el
-     *       waypoint siguiente puede estar justo detrás del actual y en la misma dirección: al
-     *       soltar el primero ya se está a un margen de él, y el segundo cae dentro del otro margen.
-     *       En un barrido no puede pasar, porque <b>los vértices forman ángulo recto</b>: al que
-     *       remata una pasada se llega <i>a lo largo</i> de la pasada, y el que arranca la siguiente
-     *       está <i>perpendicular</i>, a una banda de distancia. Si el primero se suelta estando a
-     *       {@code d ≤ margen} de él, la distancia al segundo es {@code hipotenusa(d, hueco)}, que
-     *       nunca baja del hueco. Basta, pues, con que el hueco pase del margen.</li>
-     *   <li><b>Los 300 bloques salen de la física de la elytra</b>: por debajo de unos cuantos
-     *       radios de giro, Baritone se pasa de largo y vuelve a por el vértice. Eso hace el vuelo
-     *       más feo, pero <b>no pierde ninguna pasada</b> —el vértice sigue siendo el objetivo y se
-     *       acaba alcanzando—, mientras que la mentira de spec §9 solo la produce un vértice
-     *       consumido sin haberlo volado. Un suelo que no protege de eso no puede ser el que decide
-     *       si el barrido se rechaza; quien lo quiera decir, que lo avise.</li>
+     *   <li><b>Twice the margin comes from two aligned vertices.</b> In an evasion route the next
+     *       waypoint can be right behind the current one and in the same direction: on dropping the
+     *       first one you are already one margin away from it, and the second falls inside the other
+     *       margin. In a sweep that cannot happen, because <b>the vertices form a right angle</b>: the
+     *       one that ends a lane is reached <i>along</i> the lane, and the one that starts the next
+     *       is <i>perpendicular</i>, one band away. If the first is dropped while at
+     *       {@code d ≤ margin} from it, the distance to the second is {@code hypotenuse(d, gap)},
+     *       which never drops below the gap. It is enough, then, for the gap to exceed the
+     *       margin.</li>
+     *   <li><b>The 300 blocks come from elytra physics</b>: below a few turning radii, Baritone
+     *       overshoots and comes back for the vertex. That makes the flight uglier, but <b>it loses
+     *       no lane</b> —the vertex is still the target and ends up being reached—, whereas the lie
+     *       of spec §9 is only produced by a vertex consumed without having been flown. A floor that
+     *       does not protect against that cannot be the one that decides whether the sweep is
+     *       rejected; whoever wants to say it can warn about it.</li>
      * </ul>
      *
-     * <p><b>Lo que costaba importarlo:</b> el hueco más corto de un barrido es el enlace entre
-     * pasadas, {@code anchura × 16} bloques. Con el margen de fábrica, un suelo de 300 exigía
-     * anchura ≥ 19 chunks, o sea un radio observado ≥ 12; un servidor que declarase 8, 10 u 11
-     * —normal en anarchy— veía <b>rechazado todo barrido medido, siempre, para cualquier
-     * rectángulo</b>, y ninguna de las salidas que el rechazo ofrecía servía ahí: por debajo de 150
-     * el margen no movía el suelo, agrandar el área no separa las bandas y subir la anchura a mano
-     * no aplica a quien la tiene medida. Con esta regla, ese mismo radio de 8 da anchura 12 y hueco
-     * 192, que pasa de sobra, y el margen vuelve a ser una salida de verdad: en su mínimo admite
-     * hasta un radio observado de 5.
+     * <p><b>What importing it cost:</b> the shortest gap of a sweep is the link between lanes,
+     * {@code width × 16} blocks. With the factory margin, a floor of 300 required width ≥ 19 chunks,
+     * that is an observed radius ≥ 12; a server that declared 8, 10 or 11 —normal on anarchy— saw
+     * <b>every measured sweep rejected, always, for any rectangle</b>, and none of the ways out the
+     * rejection offered worked there: below 150 the margin did not move the floor, enlarging the
+     * area does not separate the bands, and raising the width by hand does not apply to whoever has
+     * it measured. With this rule, that same radius of 8 gives width 12 and gap 192, which passes
+     * with room to spare, and the margin is a real way out again: at its minimum it accepts down to
+     * an observed radius of 5.
      *
-     * @param waypointMargin cuántos bloques antes de cada vértice intermedio se le cambia el
-     *                       objetivo a Baritone
+     * @param waypointMargin how many blocks before each intermediate vertex Baritone's target is
+     *                       changed
      */
     public static double minimumGap(double waypointMargin) {
         return waypointMargin;
     }
 
     /**
-     * La pasada más corta del plan, en bloques: el hueco entre el vértice que la arranca y el que la
-     * remata.
+     * The shortest lane of the plan, in blocks: the gap between the vertex that starts it and the one
+     * that ends it.
      *
-     * <p><b>Este es el número que decide si un barrido se puede volar</b>, porque es el único hueco
-     * cuya pérdida es la mentira de spec §9. Si una pasada cabe dentro del margen de waypoint, sus
-     * dos vértices se consumen casi seguidos y <b>la pasada no se vuela nunca</b>: el adaptador pasa
-     * de aimarla a darla por hecha, el barrido la cuenta como suya y esa franja del rectángulo queda
-     * marcada como peinada sin que nadie la haya mirado.
+     * <p><b>This is the number that decides whether a sweep can be flown</b>, because it is the only
+     * gap whose loss is the lie of spec §9. If a lane fits inside the waypoint margin, its two
+     * vertices are consumed almost back to back and <b>the lane is never flown</b>: the adapter goes
+     * from aiming at it to taking it as done, the sweep counts it as its own and that strip of the
+     * rectangle is marked as combed without anyone having looked at it.
      *
-     * <p>Compárese con {@link #minimumGap(double)}. Solo puede quedarse corta en un área diminuta por
-     * su eje largo: las pasadas van de punta a punta, así que la más corta mide el lado largo del
-     * rectángulo entero.
+     * <p>Compare with {@link #minimumGap(double)}. It can only fall short in an area that is tiny
+     * along its long axis: the lanes run from end to end, so the shortest one measures the long side
+     * of the whole rectangle.
      */
     public double shortestLane() {
-        return pasadaMasCorta;
+        return shortestLane;
     }
 
     /**
-     * El enlace más corto entre dos pasadas seguidas, en bloques: el salto perpendicular de una banda
-     * a la siguiente.
+     * The shortest link between two consecutive lanes, in blocks: the perpendicular hop from one band
+     * to the next.
      *
-     * <p><b>Que este se quede corto no pierde ninguna pasada</b>, y por eso no es motivo de rechazo
-     * sino de aviso. Si el enlace cabe dentro del margen, el adaptador suelta el vértice que remata
-     * una pasada y en el tick siguiente suelta también el que arranca la otra, así que Baritone nunca
-     * recibe la esquina: su objetivo pasa a ser <b>el final de la pasada siguiente</b>, y vuela hasta
-     * él en diagonal. Esa diagonal recorre el eje largo entero derivando una banda a lo ancho, o sea
-     * que cruza la banda de la pasada perdida igual —lo que se pierde es la esquina limpia, no el
-     * terreno—. Lo que el barrido nunca puede hacer es saltarse una pasada entera, y eso lo vigila
-     * {@link #shortestLane()}.
+     * <p><b>This one falling short loses no lane</b>, and that is why it is a reason to warn and not
+     * to reject. If the link fits inside the margin, the adapter drops the vertex that ends one lane
+     * and on the next tick also drops the one that starts the other, so Baritone never receives the
+     * corner: its target becomes <b>the end of the next lane</b>, and it flies there diagonally. That
+     * diagonal covers the whole long axis while drifting one band across, that is it crosses the
+     * band of the lost lane anyway —what is lost is the clean corner, not the terrain—. What the
+     * sweep can never do is skip a whole lane, and that is watched by {@link #shortestLane()}.
      *
-     * <p>Y no se puede encadenar: consumido el enlace, el vértice siguiente es el final de la pasada,
-     * que está a una pasada entera de distancia. Como mucho se pierde una esquina por curva.
+     * <p>And it cannot chain: once the link is consumed, the next vertex is the end of the lane,
+     * which is a whole lane away. At most one corner per turn is lost.
      *
-     * <p>Suele ser el hueco más corto de la ruta, y suele medir la anchura de pasada por 16. El
-     * mínimo aparece en la última banda cuando el área no es múltiplo exacto de la anchura: esa banda
-     * sale más estrecha, su pasada se centra más cerca de la anterior, y el enlace llega a valer
-     * poco más de media anchura.
+     * <p>It is usually the shortest gap of the route, and it usually measures the lane width times
+     * 16. The minimum shows up in the last band when the area is not an exact multiple of the width:
+     * that band comes out narrower, its lane is centred closer to the previous one, and the link gets
+     * to be worth little more than half a width.
      */
     public double shortestLink() {
-        return enlaceMasCorto;
+        return shortestLink;
     }
 
     /**
-     * La separación más corta entre dos vértices consecutivos de la ruta, sean del tipo que sean.
+     * The shortest spacing between two consecutive vertices of the route, whatever their kind.
      *
-     * <p><b>No es el número con el que se decide si un barrido se vuela</b>, y confundirlo con eso
-     * costó una ronda entera: los dos tipos de hueco pesan cosas distintas. Si el que se queda corto
-     * es una pasada, esa pasada no se vuela y el barrido la da por peinada igual —la mentira de spec
-     * §9, y eso se rechaza—; si es un enlace entre pasadas, lo que se pierde es la esquina y no el
-     * terreno, y eso se avisa. Para decidir, {@link #shortestLane()} y {@link #shortestLink()}; esto
-     * es la consulta general, útil para describir la ruta o para compararla con el suelo físico de la
-     * elytra.
+     * <p><b>It is not the number that decides whether a sweep is flown</b>, and mistaking it for that
+     * cost a whole round: the two kinds of gap weigh different things. If the one that falls short is
+     * a lane, that lane is not flown and the sweep counts it as combed anyway —the lie of spec §9,
+     * and that is rejected—; if it is a link between lanes, what is lost is the corner and not the
+     * terrain, and that is warned about. To decide, {@link #shortestLane()} and
+     * {@link #shortestLink()}; this is the general query, useful to describe the route or to compare
+     * it with the elytra's physical floor.
      *
-     * <p>Una ruta de una sola pasada tiene un único hueco, el de la propia pasada.
+     * <p>A single-lane route has one single gap, that of the lane itself.
      */
     public double tightestGap() {
-        double minimo = Double.MAX_VALUE;
+        double minimum = Double.MAX_VALUE;
         for (int i = 0; i + 1 < waypoints.size(); i++) {
-            minimo = Math.min(minimo, waypoints.get(i).distanceTo(waypoints.get(i + 1)));
+            minimum = Math.min(minimum, waypoints.get(i).distanceTo(waypoints.get(i + 1)));
         }
-        return minimo;
+        return minimum;
     }
 }

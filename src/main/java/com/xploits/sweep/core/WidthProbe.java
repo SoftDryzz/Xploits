@@ -1,250 +1,249 @@
 package com.xploits.sweep.core;
 
 /**
- * Mide la anchura real a la que el servidor manda chunks, observando el propio flujo en vez de
- * suponerla (spec Nether Sweep §5). Cada chunk recibido es una muestra: la distancia entre la
- * posición del jugador en ese instante y el chunk que acaba de llegar dice hasta dónde llega el
- * servidor ahora mismo, en este servidor y a esta velocidad.
+ * Measures the real width at which the server sends chunks, by observing the stream itself instead
+ * of assuming it (Nether Sweep spec §5). Every chunk received is a sample: the distance between the
+ * player's position at that instant and the chunk that has just arrived says how far the server
+ * reaches right now, on this server and at this speed.
  *
- * <p><b>La distancia es de Chebyshev</b>, {@code max(|dx|, |dz|)} en chunks, porque el servidor
- * manda en un cuadrado, no en un círculo. Medirla en euclídea daría un radio mayor que el real en
- * las diagonales -un chunk a (3,3) mediría 4,24 en vez de 3- y {@link SweepPlanner} separaría las
- * pasadas más de lo que el servidor de verdad cubre, abriendo huecos justo entre ellas: el fallo
- * que este módulo no puede cometer (spec §9), terreno sin ver marcado como peinado.
+ * <p><b>The distance is Chebyshev</b>, {@code max(|dx|, |dz|)} in chunks, because the server sends
+ * in a square, not in a circle. Measuring it as Euclidean would give a radius larger than the real
+ * one on the diagonals -a chunk at (3,3) would measure 4.24 instead of 3- and {@link SweepPlanner}
+ * would space the lanes further apart than the server really covers, opening gaps right between
+ * them: the failure this module cannot make (spec §9), unseen terrain marked as combed.
  *
- * <p><b>El resultado es el máximo observado, no la media.</b> Una ráfaga lenta -el servidor se
- * atasca un instante y manda de golpe un puñado de chunks cercanos- no puede estrechar la anchura
- * de pasada: lo que importa es hasta dónde ha llegado a mandar el servidor, no el promedio de lo
- * que ha llegado hasta ahora.
+ * <p><b>The result is the observed maximum, not the mean.</b> A slow burst -the server stalls for an
+ * instant and sends a handful of nearby chunks at once- cannot narrow the lane width: what matters is
+ * how far the server has got to send, not the average of what has arrived so far.
  *
- * <p><b>Y por eso mismo hace falta un techo.</b> Que el máximo no baje nunca es lo correcto frente a
- * una ráfaga lenta y es exactamente lo que convierte <b>un solo chunk tardío</b> en un barrido con
- * agujeros: el servidor encola un lote cuando el jugador está en un sitio y se lo entrega cuando ya
- * está diez chunks más allá, así que esa muestra mide radio real + 10 y se queda de máximo el resto
- * de la sesión. Con un radio real de 8 chunks, un máximo de 18 da pasadas de 28 chunks -448
- * bloques- sobre un servidor que cubre 256: una franja de 12 chunks entre cada dos pasadas que nunca
- * pasa por delante del cliente y que el barrido anuncia como peinada. Es la mentira de spec §9, y
- * además persistente: mientras el máximo siga ahí, cada relanzamiento repite los mismos huecos en el
- * mismo sitio.
+ * <p><b>And that is exactly why a ceiling is needed.</b> The maximum never going down is right
+ * against a slow burst, and it is exactly what turns <b>a single late chunk</b> into a sweep with
+ * holes: the server queues a batch when the player is at one spot and delivers it when they are
+ * already ten chunks further on, so that sample measures real radius + 10 and stays as the maximum
+ * for the rest of the session. With a real radius of 8 chunks, a maximum of 18 gives lanes of 28
+ * chunks -448 blocks- over a server that covers 256: a 12-chunk strip between every two lanes that
+ * never passes in front of the client and that the sweep announces as combed. It is the lie of spec
+ * §9, and a persistent one too: as long as the maximum stays there, every relaunch repeats the same
+ * gaps in the same place.
  *
- * <p>La spec ya da el techo en §3: <i>«la distancia de renderizado del cliente en esta instancia es
- * 16 chunks… el límite lo pone el menor de los dos»</i>. El servidor no puede mandar más allá de la
- * distancia que el cliente le declaró, así que <b>toda muestra por encima de ella es demostrablemente
- * un artefacto</b> y {@link #sample} la descarta al entrar, sin contarla siquiera como muestra: no es
- * una observación del alcance del servidor, es una observación de cuánto se ha movido el jugador
- * mientras el paquete estaba en cola.
+ * <p>The spec already gives the ceiling in §3: <i>"the client's render distance on this instance is
+ * 16 chunks… the limit is set by the smaller of the two"</i>. The server cannot send beyond the
+ * distance the client declared to it, so <b>every sample above it is demonstrably an artifact</b> and
+ * {@link #sample} discards it on entry, without even counting it as a sample: it is not an
+ * observation of the server's reach, it is an observation of how far the player moved while the
+ * packet was queued.
  *
- * <p><b>Pero el techo solo caza las muestras infladas que se pasan de él, y ese es el caso raro.</b>
- * Toda muestra tomada con el jugador en movimiento mide <i>radio real + lo que el jugador se movió
- * mientras el paquete estaba en cola</i>; las que con esa suma se salen del techo se tiran, y
- * <b>todas las que quedan por debajo se aceptan como medida buena</b>. Como el máximo no baja nunca,
- * la medida se va acercando al techo cuanto más retraso lleve el servidor -más cola, más deriva-, y
- * el retraso es justo cuando su alcance efectivo <b>baja</b>: la medida subiría cuanto menos cubre el
- * servidor, invertida y hacia el lado que abre huecos. Los números del caso normal son techo 16 y un
- * servidor que bajo carga entrega 8: el máximo se acerca a 16, la anchura sale 25, media banda son
- * 12,5 chunks y el servidor cubre 8. Son 4,5 chunks sin ver a cada lado de cada pasada, el 36 % del
- * rectángulo, anunciado como peinado.
+ * <p><b>But the ceiling only catches the inflated samples that go past it, and that is the rare
+ * case.</b> Every sample taken with the player moving measures <i>real radius + how far the player
+ * moved while the packet was queued</i>; those that go past the ceiling with that sum are thrown
+ * away, and <b>all those that stay below it are accepted as a good measurement</b>. Since the maximum
+ * never goes down, the measurement creeps towards the ceiling the more the server lags -more queue,
+ * more drift-, and lag is exactly when its effective reach <b>drops</b>: the measurement would rise
+ * the less the server covers, inverted and towards the side that opens gaps. The numbers of the
+ * normal case are a ceiling of 16 and a server that under load delivers 8: the maximum approaches
+ * 16, the width comes out as 25, half a band is 12.5 chunks and the server covers 8. That is 4.5
+ * unseen chunks on each side of every lane, 36% of the rectangle, announced as combed.
  *
- * <p><b>Por eso la muestra trae también a qué velocidad iba el jugador</b>, y se descarta entera si
- * iba a más de {@link #BLOQUES_POR_TICK_MAXIMOS}. No es una corrección aproximada de la deriva -no
- * hay forma de saber cuándo se encoló cada paquete-, es negarse a medir cuando la medida está
- * contaminada: quieto o andando, la deriva de un segundo entero de cola no llega a un chunk y la
- * observación es del alcance del servidor; volando con elytra son tres chunks por segundo de cola y
- * la observación es de la cola, no del servidor. Medir sigue siendo barato -basta andar unos
- * segundos con el módulo encendido, que es justo lo que pide el rechazo de «todavía no hay muestras
- * suficientes»-, y en cambio volar media hora hacia la zona ya no mete ni una sola muestra inflada.
+ * <p><b>That is why the sample also carries how fast the player was going</b>, and it is discarded
+ * entirely if they were going faster than {@link #MAX_BLOCKS_PER_TICK}. It is not an approximate
+ * correction of the drift -there is no way to know when each packet was queued-, it is refusing to
+ * measure when the measurement is contaminated: standing still or walking, the drift of a whole
+ * second of queue does not reach one chunk and the observation is of the server's reach; flying an
+ * elytra it is three chunks per second of queue and the observation is of the queue, not of the
+ * server. Measuring stays cheap -it is enough to walk for a few seconds with the module on, which is
+ * exactly what the "not enough samples yet" rejection asks for-, and in exchange flying half an hour
+ * towards the area no longer lets in a single inflated sample.
  *
- * <p>Esta clase no toca Minecraft ni Meteor: recibe posiciones ya convertidas a {@link ChunkPos} y
- * el techo ya leído, no consulta ningún evento ni ningún chunk. Quien la alimenta es el adaptador,
- * suscrito al evento de recepción de chunks del cliente.
+ * <p>This class does not touch Minecraft or Meteor: it receives positions already converted to
+ * {@link ChunkPos} and the ceiling already read, it does not query any event or any chunk. What feeds
+ * it is the adapter, subscribed to the client's chunk-received event.
  */
 public final class WidthProbe {
     /**
-     * Muestras mínimas para que {@link #hasEnoughSamples()} sea cierto.
+     * Minimum samples for {@link #hasEnoughSamples()} to be true.
      *
-     * <p>No lo fija la spec; es una decisión de implementación. Con menos muestras que esto el
-     * máximo observado puede ser solo el primer chunk que ha llegado -normalmente uno de los más
-     * cercanos-, y planificar la anchura de pasada sobre eso repetiría el fallo que la spec señala
-     * para los chunks cargados al lanzar (§5): un número que no ha tenido tiempo de estabilizarse
-     * disfrazado de medida. Si en el uso real hace falta otro valor, se ajusta aquí, en un solo
-     * sitio.
+     * <p>The spec does not set it; it is an implementation decision. With fewer samples than this the
+     * observed maximum may be just the first chunk that arrived -normally one of the nearest-, and
+     * planning the lane width on that would repeat the failure the spec points out for the chunks
+     * loaded at launch (§5): a number that has not had time to settle disguised as a measurement. If
+     * real use calls for another value, it is adjusted here, in a single place.
      */
-    public static final int MUESTRAS_MINIMAS = 8;
+    public static final int MIN_SAMPLES = 8;
 
     /**
-     * A qué velocidad como mucho puede ir el jugador para que su muestra cuente, en bloques por
-     * tick, y de dónde sale el número.
+     * How fast at most the player can be going for their sample to count, in blocks per tick, and
+     * where the number comes from.
      *
-     * <p>Lo que contamina una muestra es la <b>deriva</b>: lo que el jugador se ha movido entre que
-     * el servidor encoló el paquete y el cliente lo recibió. No se puede medir -el paquete no dice
-     * cuándo se encoló-, pero sí se puede acotar: a {@code v} bloques por tick, un segundo entero de
-     * cola -veinte ticks, que ya es un servidor yendo muy mal- desplaza al jugador {@code 20 v}
-     * bloques, o sea {@code 20 v / 16} chunks.
+     * <p>What contaminates a sample is the <b>drift</b>: how far the player moved between the server
+     * queuing the packet and the client receiving it. It cannot be measured -the packet does not say
+     * when it was queued-, but it can be bounded: at {@code v} blocks per tick, a whole second of
+     * queue -twenty ticks, which is already a server doing very badly- moves the player {@code 20 v}
+     * blocks, that is {@code 20 v / 16} chunks.
      *
-     * <p>Con 0,5 esa cota son 10 bloques, <b>0,63 chunks</b>: por debajo de uno, así que ni con un
-     * segundo de cola puede una muestra inflarse un chunk entero y ensanchar la pasada. Y deja
-     * cómodamente dentro todo lo que no es vuelo: andar son 4,3 bloques por segundo (0,215 por
-     * tick), correr 5,6 (0,28) y correr saltando unos 7,1 (0,36). Deja fuera, también cómodamente,
-     * lo único que de verdad infla: una elytra empujada por cohetes va a unos 33 bloques por segundo
-     * -1,65 por tick, más del triple del tope-, y ahí un segundo de cola son más de dos chunks de
-     * deriva.
+     * <p>At 0.5 that bound is 10 blocks, <b>0.63 chunks</b>: below one, so not even with a second of
+     * queue can a sample inflate by a whole chunk and widen the lane. And it comfortably lets in
+     * everything that is not flight: walking is 4.3 blocks per second (0.215 per tick), sprinting 5.6
+     * (0.28) and sprint-jumping about 7.1 (0.36). It also comfortably leaves out the only thing that
+     * really inflates: an elytra pushed by fireworks goes at about 33 blocks per second -1.65 per
+     * tick, more than three times the cap-, and there one second of queue is more than two chunks of
+     * drift.
      */
-    public static final double BLOQUES_POR_TICK_MAXIMOS = 0.5;
+    public static final double MAX_BLOCKS_PER_TICK = 0.5;
 
-    private int muestras = 0;
-    private int muestrasDescartadas = 0;
-    private int muestrasEnMovimiento = 0;
-    private int radioMaximoObservado = 0;
+    private int samples = 0;
+    private int discardedSamples = 0;
+    private int movingSamples = 0;
+    private int maxObservedRadius = 0;
 
     /**
-     * Registra un chunk recibido del servidor, <b>salvo que sea un artefacto</b>.
+     * Records a chunk received from the server, <b>unless it is an artifact</b>.
      *
-     * <p>Una muestra por encima de {@code maxRadiusInChunks} no dice hasta dónde manda el servidor
-     * -no puede mandar más allá de lo que el cliente le declaró-, dice cuánto se ha movido el jugador
-     * mientras ese paquete estaba encolado. Se descarta entera: ni fija el máximo ni cuenta para
-     * {@link #hasEnoughSamples()}, porque contarla sería dar por medido algo que no se ha medido.
-     * Ver el javadoc de la clase para el vuelo completo del fallo que esto cierra.
+     * <p>A sample above {@code maxRadiusInChunks} does not say how far the server sends -it cannot send
+     * beyond what the client declared to it-, it says how far the player moved while that packet was
+     * queued. It is discarded entirely: it neither sets the maximum nor counts towards
+     * {@link #hasEnoughSamples()}, because counting it would be taking as measured something that has
+     * not been measured. See the class javadoc for the full course of the failure this closes.
      *
-     * <p><b>Y una muestra tomada en movimiento tampoco se cuenta</b>, aunque quepa bajo el techo: mide
-     * el alcance del servidor más la deriva del jugador, y el máximo se queda con la más inflada de
-     * todas. Ver el javadoc de la clase para el vuelo entero de ese fallo y
-     * {@link #BLOQUES_POR_TICK_MAXIMOS} para de dónde sale el tope.
+     * <p><b>And a sample taken while moving does not count either</b>, even if it fits under the
+     * ceiling: it measures the server's reach plus the player's drift, and the maximum keeps the most
+     * inflated of all. See the class javadoc for the full course of that failure and
+     * {@link #MAX_BLOCKS_PER_TICK} for where the cap comes from.
      *
-     * <p>El techo va por muestra y no en el constructor a propósito: puede cambiar a mitad de sesión
-     * -el jugador toca su distancia de renderizado, o el servidor declara otra-, y entonces cada
-     * observación tiene que juzgarse contra el techo que había cuando llegó.
+     * <p>The ceiling comes with each sample and not in the constructor on purpose: it can change
+     * mid-session -the player touches their render distance, or the server declares another one-,
+     * and then each observation has to be judged against the ceiling there was when it arrived.
      *
-     * @param player             la posición del jugador, en chunks, en el instante en que se recibió
-     * @param received           el chunk que acaba de llegar
-     * @param maxRadiusInChunks  el radio más grande que el servidor puede estar mandando ahora mismo,
-     *                           en chunks; por encima de él la muestra es un artefacto
-     * @param blocksPerTick      cuánto se movió el jugador en el último tick, en bloques; por encima
-     *                           de {@link #BLOQUES_POR_TICK_MAXIMOS} la muestra mide la cola del
-     *                           servidor y no su alcance, así que no se cuenta
-     * @throws IllegalArgumentException si {@code maxRadiusInChunks} es menor que 1 -un techo así
-     *                                  descartaría absolutamente todo y la sonda se quedaría muda
-     *                                  para siempre sin que nadie supiera por qué- o si
-     *                                  {@code blocksPerTick} es negativo o {@code NaN}, que no es
-     *                                  una velocidad y dejaría pasar la muestra sin comprobarla
+     * @param player             the player's position, in chunks, at the instant it was received
+     * @param received           the chunk that has just arrived
+     * @param maxRadiusInChunks  the largest radius the server can be sending right now, in chunks;
+     *                           above it the sample is an artifact
+     * @param blocksPerTick      how far the player moved in the last tick, in blocks; above
+     *                           {@link #MAX_BLOCKS_PER_TICK} the sample measures the server's queue
+     *                           and not its reach, so it does not count
+     * @throws IllegalArgumentException if {@code maxRadiusInChunks} is less than 1 -a ceiling like
+     *                                  that would discard absolutely everything and the probe would
+     *                                  stay silent forever without anyone knowing why- or if
+     *                                  {@code blocksPerTick} is negative or {@code NaN}, which is not
+     *                                  a speed and would let the sample through unchecked
      */
     public void sample(ChunkPos player, ChunkPos received, int maxRadiusInChunks, double blocksPerTick) {
         if (maxRadiusInChunks < 1) {
             throw new IllegalArgumentException(
-                "el techo de la sonda tiene que ser de 1 chunk o más (recibido " + maxRadiusInChunks // i18n: allowed (exception message, continuation line)
-                    + "): con menos se descartaría toda muestra y la sonda no llegaría a medir nunca"); // i18n: allowed (exception message, continuation line)
+                "the probe's ceiling must be 1 chunk or more (got " + maxRadiusInChunks
+                    + "): with less every sample would be discarded and the probe would never get to measure");
         }
-        // Escrito en negativo para que un NaN -que compara falso contra todo- caiga aquí y no se
-        // cuele como velocidad válida por la puerta de atrás.
+        // Written negated so that a NaN -which compares false against everything- falls here and does
+        // not slip through the back door as a valid speed.
         if (!(blocksPerTick >= 0)) {
             throw new IllegalArgumentException(
-                "la velocidad del jugador tiene que ser cero o positiva (recibido " + blocksPerTick
-                    + "): sin una velocidad de verdad no se puede saber si la muestra viene inflada"
-                    + " por la deriva, y dejarla pasar sería aceptarla sin comprobarla"); // i18n: allowed (exception message, continuation line)
+                "the player's speed must be zero or positive (got " + blocksPerTick
+                    + "): without a real speed there is no knowing whether the sample comes inflated"
+                    + " by drift, and letting it through would be accepting it unchecked");
         }
 
-        if (blocksPerTick > BLOQUES_POR_TICK_MAXIMOS) {
-            muestrasEnMovimiento++;
+        if (blocksPerTick > MAX_BLOCKS_PER_TICK) {
+            movingSamples++;
             return;
         }
 
-        int distancia = Math.max(Math.abs(received.x() - player.x()), Math.abs(received.z() - player.z()));
-        if (distancia > maxRadiusInChunks) {
-            muestrasDescartadas++;
+        int distance = Math.max(Math.abs(received.x() - player.x()), Math.abs(received.z() - player.z()));
+        if (distance > maxRadiusInChunks) {
+            discardedSamples++;
             return;
         }
-        radioMaximoObservado = Math.max(radioMaximoObservado, distancia);
-        muestras++;
+        maxObservedRadius = Math.max(maxObservedRadius, distance);
+        samples++;
     }
 
-    /** Cuántas muestras se han descartado por pasarse del techo, para poder decirlo. */
+    /** How many samples have been discarded for going past the ceiling, so that it can be said. */
     public int discardedSamples() {
-        return muestrasDescartadas;
+        return discardedSamples;
     }
 
     /**
-     * Cuántas muestras se han descartado por haberse tomado con el jugador en movimiento. Se cuenta
-     * aparte de {@link #discardedSamples()} porque significa otra cosa y se arregla de otra manera:
-     * aquélla es un servidor con retraso, ésta es que el jugador está volando y hay que parar unos
-     * segundos para que la anchura se mida.
+     * How many samples have been discarded for being taken with the player moving. It is counted
+     * apart from {@link #discardedSamples()} because it means something else and is fixed another way:
+     * that one is a lagging server, this one is the player flying, who has to stop for a few seconds
+     * for the width to be measured.
      */
     public int movingSamples() {
-        return muestrasEnMovimiento;
+        return movingSamples;
     }
 
-    /** Cuántas muestras buenas lleva la sonda. */
+    /** How many good samples the probe has. */
     public int sampleCount() {
-        return muestras;
+        return samples;
     }
 
     /**
-     * El radio observado, en chunks: el máximo de todas las muestras registradas.
+     * The observed radius, in chunks: the maximum of all the recorded samples.
      *
-     * <p>Lanza si aún no hay muestras suficientes en vez de devolver un cero o el máximo parcial
-     * como si fuera la medida final -sería exactamente el número inventado con aspecto de medida
-     * que la spec descarta en §6 para la estimación de cohetes, y aquí aplica igual: quien llame a
-     * esto debe comprobar primero {@link #hasEnoughSamples()}.
+     * <p>It throws if there are not enough samples yet instead of returning a zero or the partial
+     * maximum as if it were the final measurement -that would be exactly the made-up number that
+     * looks like a measurement which the spec rules out in §6 for the firework estimate, and it
+     * applies here just the same: whoever calls this must first check {@link #hasEnoughSamples()}.
      *
-     * @throws IllegalStateException si {@link #hasEnoughSamples()} es falso
+     * @throws IllegalStateException if {@link #hasEnoughSamples()} is false
      */
     public int observedRadiusInChunks() {
         if (!hasEnoughSamples()) {
             throw new IllegalStateException(
-                "todavía no hay muestras suficientes (" + muestras + " de " + MUESTRAS_MINIMAS // i18n: allowed (exception message, continuation line)
-                    + ") para dar un radio observado: comprueba hasEnoughSamples() antes de llamar"
-                    + " a esto");
+                "not enough samples yet (" + samples + " of " + MIN_SAMPLES
+                    + ") to give an observed radius: check hasEnoughSamples() before calling"
+                    + " this");
         }
-        return radioMaximoObservado;
+        return maxObservedRadius;
     }
 
-    /** Si ya hay muestras suficientes para que {@link #observedRadiusInChunks()} signifique algo. */
+    /** Whether there are already enough samples for {@link #observedRadiusInChunks()} to mean something. */
     public boolean hasEnoughSamples() {
-        return muestras >= MUESTRAS_MINIMAS;
+        return samples >= MIN_SAMPLES;
     }
 
     /**
-     * La anchura de pasada segura para {@link SweepPlanner#plan}, a partir del radio observado y
-     * con el margen de seguridad de la spec aplicado (§5: «volar rápido puede dejar huecos aunque
-     * la distancia nominal sea correcta, porque los chunks tardan en llegar»).
+     * The safe lane width for {@link SweepPlanner#plan}, from the observed radius and with the spec's
+     * safety margin applied (§5: "flying fast can leave gaps even if the nominal distance is right,
+     * because chunks take time to arrive").
      *
-     * <p><b>Por qué hace falta un margen aunque el radio ya sea una medida real, no una
-     * suposición.</b> {@link #observedRadiusInChunks()} es hasta dónde llegó el servidor mientras
-     * se tomaban las muestras, <b>a la velocidad a la que se voló entonces</b>. Si el barrido se
-     * vuela más rápido que eso, el jugador se adelanta a la entrega de chunks: para cuando el
-     * chunk que antes llegaba a radio R llega ahora, el jugador ya está más lejos, así que la
-     * cobertura real cae por debajo de R. El margen no es un colchón inventado sobre una medida ya
-     * de por sí incierta -es la diferencia entre «lo que llegó a esta velocidad» y «lo que habría
-     * llegado si se hubiera ido más rápido», y solo quien va a volar el barrido sabe cuánto más
-     * rápido puede ir respecto a cuando se tomaron las muestras. Por eso {@code safetyMargin} lo
-     * aporta quien llama, igual que {@code reserveFraction} en {@link FuelBudget#willRunOut}: esta
-     * clase no puede adivinarlo, solo aplicarlo correctamente.
+     * <p><b>Why a margin is needed even though the radius is already a real measurement, not an
+     * assumption.</b> {@link #observedRadiusInChunks()} is how far the server got while the samples
+     * were being taken, <b>at the speed flown back then</b>. If the sweep is flown faster than that,
+     * the player gets ahead of the chunk delivery: by the time the chunk that used to arrive at radius
+     * R arrives now, the player is already further on, so the real coverage falls below R. The margin
+     * is not a made-up cushion over a measurement that is uncertain anyway -it is the difference
+     * between "what arrived at this speed" and "what would have arrived going faster", and only
+     * whoever is going to fly the sweep knows how much faster they may go compared with when the
+     * samples were taken. That is why {@code safetyMargin} is supplied by the caller, just like
+     * {@code reserveFraction} in {@link FuelBudget#willRunOut}: this class cannot guess it, only apply
+     * it correctly.
      *
-     * <p><b>De radio a anchura.</b> {@link SweepPlanner} coloca cada pasada en el centro de su
-     * banda, así que ningún chunk de la banda queda a más de media anchura de ella (ver su
-     * javadoc); para que esa media anchura quepa dentro del radio seguro, la anchura de pasada es
-     * <b>el doble</b> del radio ya reducido por el margen.
+     * <p><b>From radius to width.</b> {@link SweepPlanner} places each lane in the center of its band,
+     * so no chunk of the band is more than half a width away from it (see its javadoc); for that half
+     * width to fit inside the safe radius, the lane width is <b>twice</b> the radius already reduced
+     * by the margin.
      *
-     * <p><b>El redondeo va hacia abajo</b>, nunca al más cercano ni hacia arriba. Un radio
-     * observado sobre el que redondear <i>menos</i> anchura de pasada cuesta pasadas de más -vuelo
-     * caro, pero completo-; redondear <i>más</i> anchura de la que el margen permite es el fallo
-     * que este módulo existe para no cometer: terreno sin ver marcado como peinado. Ante los dos
-     * redondeos posibles, este método elige siempre el que sobreestima el riesgo.
+     * <p><b>Rounding goes down</b>, never to the nearest nor up. An observed radius on which to round
+     * <i>less</i> lane width costs extra lanes -expensive flight, but complete-; rounding <i>more</i>
+     * width than the margin allows is the failure this module exists not to make: unseen terrain
+     * marked as combed. Faced with the two possible roundings, this method always picks the one that
+     * overestimates the risk.
      *
-     * @param safetyMargin fracción del radio observado que se descuenta como margen, en
-     *                      {@code [0, 1)}; 0 no descuenta nada, 0.2 se queda con el 80 % del radio
-     * @return la anchura de pasada, en chunks, lista para {@link SweepPlanner#plan}
-     * @throws IllegalStateException   si {@link #hasEnoughSamples()} es falso -mismo criterio que
+     * @param safetyMargin fraction of the observed radius taken off as margin, in {@code [0, 1)}; 0
+     *                      takes off nothing, 0.2 keeps 80% of the radius
+     * @return the lane width, in chunks, ready for {@link SweepPlanner#plan}
+     * @throws IllegalStateException   if {@link #hasEnoughSamples()} is false -same criterion as
      *                                 {@link #observedRadiusInChunks()}-
-     * @throws IllegalArgumentException si {@code safetyMargin} no está en {@code [0, 1)}
+     * @throws IllegalArgumentException if {@code safetyMargin} is not in {@code [0, 1)}
      */
     public int laneWidthInChunks(double safetyMargin) {
         if (!(safetyMargin >= 0) || !(safetyMargin < 1)) {
             throw new IllegalArgumentException(
-                "safetyMargin tiene que estar en [0, 1) (recibido " + safetyMargin + "): fuera de"
-                    + " ese rango la anchura segura sale cero o negativa, que no es una anchura de"
-                    + " pasada volable");
+                "safetyMargin must be in [0, 1) (got " + safetyMargin + "): outside"
+                    + " that range the safe width comes out zero or negative, which is not a flyable"
+                    + " lane width");
         }
-        int radio = observedRadiusInChunks();
-        double radioSeguro = radio * (1 - safetyMargin);
-        return (int) Math.floor(2 * radioSeguro);
+        int radius = observedRadiusInChunks();
+        double safeRadius = radius * (1 - safetyMargin);
+        return (int) Math.floor(2 * safeRadius);
     }
 }

@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests del planificador de pasadas (spec Nether Sweep §10).
+ * Tests of the lane planner (Nether Sweep spec §10).
  *
- * <p>Todas las coordenadas de estos tests son inventadas y pequeñas: lo que se comprueba es
- * geometría, no ningún sitio concreto del mundo.
+ * <p>All the coordinates in these tests are made up and small: what is checked is geometry, not any
+ * concrete place in the world.
  */
 class SweepPlannerTest {
     private static final Catalog ES = Catalog.load(Language.ES, p -> {
@@ -29,119 +29,120 @@ class SweepPlannerTest {
         return msg == null ? "null" : ES.render(msg);
     }
 
-    private static final int BLOQUES_POR_CHUNK = 16;
+    private static final int BLOCKS_PER_CHUNK = 16;
 
     // ---------------------------------------------------------------------------------------
-    // La propiedad que de verdad importa: nada del área queda sin mirar
+    // The property that really matters: nothing in the area is left unlooked-at
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void conCoberturaVaciaNingunChunkDelAreaQuedaLejosDeAlgunaPasada() {
-        // Se barren TODOS los chunks del área y se mide cada uno contra las pasadas. Contar las
-        // pasadas no demostraría nada: veinte pasadas mal colocadas dejan franjas sin ver igual.
+    void withEmptyCoverageNoChunkOfTheAreaIsFarFromEveryLane() {
+        // EVERY chunk of the area is swept and each one is measured against the lanes. Counting the
+        // lanes would prove nothing: twenty badly placed lanes leave unseen strips just the same.
         SweepArea area = SweepArea.ofChunks(0, 0, 39, 27);
-        int anchuraDePasada = 5;
+        int laneWidth = 5;
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), laneWidth);
 
         assertFalse(plan.isRejected());
-        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+        assertWholeAreaIsCovered(area, plan.lanes(), laneWidth);
     }
 
     @Test
-    void laCoberturaTambienSaleConAnchuraParYConUnaBandaFinalIncompleta() {
-        // Anchura par (el centro de banda cae entre dos chunks) y un eje que no es múltiplo de la
-        // anchura, así que la última banda sale más estrecha que las demás.
+    void coverageAlsoHoldsWithAnEvenWidthAndAnIncompleteLastBand() {
+        // Even width (the band center falls between two chunks) and an axis that is not a multiple
+        // of the width, so the last band comes out narrower than the others.
         SweepArea area = SweepArea.ofChunks(-7, 3, 18, 30);
-        int anchuraDePasada = 4;
+        int laneWidth = 4;
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), laneWidth);
 
         assertFalse(plan.isRejected());
-        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+        assertWholeAreaIsCovered(area, plan.lanes(), laneWidth);
     }
 
     @Test
-    void conElEjeApiladoMultiploExactoDeLaAnchuraLaPasadaTieneQueIrEnElCentroDeLaBanda() {
-        // Los dos casos de arriba miden la SEPARACIÓN entre pasadas, pero casi no miden dónde cae
-        // cada una: la tolerancia (media anchura) coincide con media separación, así que una pasada
-        // corrida dentro de su banda queda tapada por la pasada vecina. Salvo en la última banda,
-        // que no tiene vecina por fuera -y las dos áreas de arriba la tienen corta, que es justo la
-        // forma que lo esconde-.
+    void withTheStackedAxisAnExactMultipleOfTheWidthTheLaneMustRunThroughTheBandCenter() {
+        // The two cases above measure the SPACING between lanes, but they barely measure where each
+        // one falls: the tolerance (half a width) matches half the spacing, so a lane shifted
+        // within its band is covered up by the neighbouring lane. Except in the last band, which
+        // has no neighbour on the outside -and both areas above have it short, which is exactly the
+        // shape that hides it-.
         //
-        // Con el eje apilado múltiplo exacto de la anchura, la última banda va completa y su borde
-        // exterior queda expuesto: colocar la pasada al principio de la banda en vez de al centro
-        // deja ese borde a (W-1) chunks de la pasada más cercana, por encima de los W/2 de alcance
-        // para cualquier W > 2. Con W=5 eso son dos filas de chunks por banda sin mirar en todo el
-        // barrido.
+        // With the stacked axis an exact multiple of the width, the last band is full and its outer
+        // edge is exposed: placing the lane at the start of the band instead of at the center
+        // leaves that edge (W-1) chunks from the nearest lane, above the W/2 of reach for any
+        // W > 2. With W=5 that is two rows of chunks per band left unlooked-at across the whole
+        // sweep.
         SweepArea area = SweepArea.ofChunks(0, 0, 39, 19);
-        int anchuraDePasada = 5;
+        int laneWidth = 5;
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), laneWidth);
 
         assertFalse(plan.isRejected());
         assertEquals(4, plan.lanes().size());
-        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+        assertWholeAreaIsCovered(area, plan.lanes(), laneWidth);
     }
 
     @Test
-    void elCentroDeLaBandaTambienMandaConAnchuraParYEjeMultiploExacto() {
-        // El mismo caso con anchura par: el centro de banda cae entre dos chunks y la banda final va
-        // completa, así que su borde exterior también queda sin vecina que lo tape.
+    void theBandCenterAlsoRulesWithAnEvenWidthAndAnExactMultipleAxis() {
+        // The same case with an even width: the band center falls between two chunks and the last
+        // band is full, so its outer edge is also left without a neighbour to cover it.
         SweepArea area = SweepArea.ofChunks(0, 0, 39, 15);
-        int anchuraDePasada = 4;
+        int laneWidth = 4;
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), anchuraDePasada);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), laneWidth);
 
         assertFalse(plan.isRejected());
         assertEquals(4, plan.lanes().size());
-        assertTodoElAreaQuedaCubierta(area, plan.lanes(), anchuraDePasada);
+        assertWholeAreaIsCovered(area, plan.lanes(), laneWidth);
     }
 
     @Test
-    void unAreaMasEstrechaQueUnaPasadaDaUnaPasadaNoCero() {
+    void anAreaNarrowerThanALaneGivesOneLaneNotZero() {
         SweepArea area = SweepArea.ofChunks(10, 10, 11, 11);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 16);
 
         assertFalse(plan.isRejected());
         assertEquals(1, plan.lanes().size());
-        assertTodoElAreaQuedaCubierta(area, plan.lanes(), 16);
+        assertWholeAreaIsCovered(area, plan.lanes(), 16);
     }
 
     @Test
-    void unAreaDeUnSoloChunkDaUnaPasadaVolableNoUnPuntoDoble() {
-        // Con los extremos sobre el centro del primer y del último chunk del eje largo, un área de
-        // 1x1 los dejaría encima: una "pasada" de longitud cero, que no es una instrucción de vuelo
-        // sino un vector nulo y un objetivo idéntico al origen para Baritone. No emitirla tampoco
-        // vale: ese chunk se quedaría sin ver y el barrido lo daría por peinado igual.
+    void aSingleChunkAreaGivesAFlyableLaneNotADoublePoint() {
+        // With the ends on the center of the first and the last chunk of the long axis, a 1x1 area
+        // would put them on top of each other: a "lane" of zero length, which is not a flight
+        // instruction but a null vector and a target identical to the origin for Baritone. Not
+        // emitting it does not work either: that chunk would stay unseen and the sweep would count
+        // it as combed anyway.
         SweepArea area = SweepArea.ofChunks(-4, 9, -4, 9);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 8);
 
         assertFalse(plan.isRejected());
         assertEquals(1, plan.lanes().size());
-        Lane pasada = plan.lanes().get(0);
-        assertTrue(pasada.fromX() != pasada.toX() || pasada.fromZ() != pasada.toZ(),
-            "la pasada salió con los dos extremos en el mismo punto: " + pasada);
-        assertEquals(BLOQUES_POR_CHUNK, pasada.lengthInBlocks(), 1e-9,
-            "la pasada de un área de un solo chunk debería medir el chunk entero: " + pasada);
-        // Y el chunk sigue cayendo sobre la pasada: darle longitud no puede mover la cobertura.
-        assertEquals(0.0, distanciaMinima(new ChunkPos(-4, 9), plan.lanes()), 1e-9);
-        assertEquals(BLOQUES_POR_CHUNK, plan.totalBlocks(), 1e-9);
+        Lane lane = plan.lanes().get(0);
+        assertTrue(lane.fromX() != lane.toX() || lane.fromZ() != lane.toZ(),
+            "the lane came out with both ends at the same point: " + lane);
+        assertEquals(BLOCKS_PER_CHUNK, lane.lengthInBlocks(), 1e-9,
+            "the lane of a single-chunk area should measure the whole chunk: " + lane);
+        // And the chunk still falls on the lane: giving it length cannot move the coverage.
+        assertEquals(0.0, minDistance(new ChunkPos(-4, 9), plan.lanes()), 1e-9);
+        assertEquals(BLOCKS_PER_CHUNK, plan.totalBlocks(), 1e-9);
     }
 
     // ---------------------------------------------------------------------------------------
-    // Planificar solo sobre lo que falta por ver (spec §5.1)
+    // Planning only over what is left to see (spec §5.1)
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unAreaYaCubiertaEnteraDaCeroPasadasYNoSeRechaza() {
-        // No hay nada que volar, y eso no es un error: es el barrido terminado.
+    void aFullyCoveredAreaGivesZeroLanesAndIsNotRejected() {
+        // There is nothing to fly, and that is not an error: it is the sweep finished.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
-        Coverage vista = coberturaDe(area);
+        Coverage seen = coverageOf(area);
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 4);
 
         assertFalse(plan.isRejected());
         assertTrue(plan.lanes().isEmpty());
@@ -149,144 +150,146 @@ class SweepPlannerTest {
     }
 
     @Test
-    void unAreaCubiertaAMediasSoloProducePasadasSobreLosHuecos() {
-        // Área cuadrada: las pasadas van en X y se apilan en Z. Con anchura 4 salen cuatro bandas
-        // en Z (0-3, 4-7, 8-11, 12-15) y las dos primeras están vistas enteras.
+    void aHalfCoveredAreaOnlyProducesLanesOverTheGaps() {
+        // Square area: the lanes run along X and are stacked along Z. With width 4 there are four
+        // bands along Z (0-3, 4-7, 8-11, 12-15) and the first two are fully seen.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
-        Coverage vista = coberturaDe(SweepArea.ofChunks(0, 0, 15, 7));
+        Coverage seen = coverageOf(SweepArea.ofChunks(0, 0, 15, 7));
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 4);
 
         assertFalse(plan.isRejected());
         assertEquals(2, plan.lanes().size());
-        for (Lane pasada : plan.lanes()) {
-            // Ninguna pasada se gasta sobre la mitad ya vista.
-            assertTrue(pasada.fromZ() > 7 * BLOQUES_POR_CHUNK,
-                "una pasada cayó sobre terreno ya visto: " + pasada);
+        for (Lane lane : plan.lanes()) {
+            // No lane is wasted on the half already seen.
+            assertTrue(lane.fromZ() > 7 * BLOCKS_PER_CHUNK,
+                "a lane fell on terrain already seen: " + lane);
         }
     }
 
     @Test
-    void unHuecoMasEstrechoQueUnaPasadaNoSeIgnora() {
-        // Un único chunk sin ver dentro de una banda de ocho. Descartarlo por pequeño ahorraría
-        // una pasada entera y dejaría ese chunk marcado como peinado sin haberlo mirado nunca:
-        // es el fallo que este módulo no puede cometer.
+    void aGapNarrowerThanALaneIsNotIgnored() {
+        // A single unseen chunk inside a band of eight. Discarding it for being small would save a
+        // whole lane and would leave that chunk marked as combed without ever having looked at it:
+        // it is the failure this module cannot make.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
-        ChunkPos hueco = new ChunkPos(5, 3);
-        Coverage vista = coberturaDeSalvo(area, hueco);
+        ChunkPos gap = new ChunkPos(5, 3);
+        Coverage seen = coverageExcept(area, gap);
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 8);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 8);
 
         assertFalse(plan.isRejected());
         assertEquals(1, plan.lanes().size());
-        assertTrue(distanciaMinima(hueco, plan.lanes()) <= 8 / 2.0 * BLOQUES_POR_CHUNK,
-            "el único chunk sin ver quedó fuera del alcance de las pasadas");
+        assertTrue(minDistance(gap, plan.lanes()) <= 8 / 2.0 * BLOCKS_PER_CHUNK,
+            "the only unseen chunk was left out of the lanes' reach");
     }
 
     @Test
-    void unHuecoDeUnChunkEnCadaBandaProduceUnaPasadaPorBanda() {
-        // El mismo caso repartido: dos huecos de un chunk, uno en cada banda. Ninguno se ignora.
+    void aOneChunkGapInEachBandProducesOneLanePerBand() {
+        // The same case spread out: two one-chunk gaps, one in each band. Neither is ignored.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
-        ChunkPos huecoArriba = new ChunkPos(2, 1);
-        ChunkPos huecoAbajo = new ChunkPos(13, 14);
-        Coverage vista = coberturaDeSalvo(area, huecoArriba, huecoAbajo);
+        ChunkPos topGap = new ChunkPos(2, 1);
+        ChunkPos bottomGap = new ChunkPos(13, 14);
+        Coverage seen = coverageExcept(area, topGap, bottomGap);
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 8);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 8);
 
         assertEquals(2, plan.lanes().size());
-        assertTrue(distanciaMinima(huecoArriba, plan.lanes()) <= 8 / 2.0 * BLOQUES_POR_CHUNK);
-        assertTrue(distanciaMinima(huecoAbajo, plan.lanes()) <= 8 / 2.0 * BLOQUES_POR_CHUNK);
+        assertTrue(minDistance(topGap, plan.lanes()) <= 8 / 2.0 * BLOCKS_PER_CHUNK);
+        assertTrue(minDistance(bottomGap, plan.lanes()) <= 8 / 2.0 * BLOCKS_PER_CHUNK);
     }
 
     // ---------------------------------------------------------------------------------------
-    // El sentido alterna, y alterna sobre las pasadas que se vuelan
+    // The direction alternates, and it alternates over the lanes that are flown
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void lasPasadasAlternanElSentidoParaNoVolverEnVacio() {
+    void lanesAlternateDirectionToAvoidFlyingBackEmpty() {
         SweepArea area = SweepArea.ofChunks(0, 0, 31, 15);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
         assertEquals(4, plan.lanes().size());
-        assertLasPasadasEncadenan(plan.lanes());
+        assertLanesChain(plan.lanes());
     }
 
     @Test
-    void lasPasadasEnZTambienAlternanElSentido() {
-        // La rama Z de la colocación es código aparte de la rama X, y sin este caso no la miraba
-        // nadie: sin alternar, en esta área el jugador volaría más de tres mil bloques en vacío
-        // -tres enlaces del largo entero del área- y ningún test lo diría.
+    void lanesAlongZAlsoAlternateDirection() {
+        // The Z branch of the placement is separate code from the X branch, and without this case
+        // nobody looked at it: without alternating, in this area the player would fly more than
+        // three thousand blocks empty -three links the whole length of the area- and no test would
+        // say so.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 63);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
         assertEquals(4, plan.lanes().size());
-        for (Lane pasada : plan.lanes()) {
-            assertEquals(pasada.fromX(), pasada.toX(), "esta prueba asume pasadas paralelas a Z");
+        for (Lane lane : plan.lanes()) {
+            assertEquals(lane.fromX(), lane.toX(), "this test assumes lanes parallel to Z");
         }
-        assertLasPasadasEncadenan(plan.lanes());
+        assertLanesChain(plan.lanes());
     }
 
     @Test
-    void enZLaAlternanciaTambienCuentaLasPasadasVoladasNoLasBandasSaltadas() {
-        // El mismo hueco de paridad de la rama X, en la rama Z: una banda ya vista por el medio.
+    void alongZTheAlternationAlsoCountsFlownLanesNotSkippedBands() {
+        // The same parity gap as in the X branch, in the Z branch: a band already seen in the middle.
         SweepArea area = SweepArea.ofChunks(0, 0, 23, 63);
-        Coverage vista = coberturaDe(SweepArea.ofChunks(4, 0, 7, 63));
+        Coverage seen = coverageOf(SweepArea.ofChunks(4, 0, 7, 63));
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 4);
 
         assertEquals(5, plan.lanes().size());
-        assertLasPasadasEncadenan(plan.lanes());
+        assertLanesChain(plan.lanes());
     }
 
     @Test
-    void laAlternanciaCuentaLasPasadasVoladasNoLasBandasSaltadas() {
-        // Con una banda entera ya vista, alternar por número de banda dejaría dos pasadas seguidas
-        // en el mismo sentido y el jugador volvería el largo del área en vacío entre ellas.
+    void theAlternationCountsFlownLanesNotSkippedBands() {
+        // With a whole band already seen, alternating by band number would leave two consecutive
+        // lanes in the same direction and the player would fly back the length of the area empty
+        // between them.
         SweepArea area = SweepArea.ofChunks(0, 0, 31, 23);
-        Coverage vista = coberturaDe(SweepArea.ofChunks(0, 4, 31, 7));
+        Coverage seen = coverageOf(SweepArea.ofChunks(0, 4, 31, 7));
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 4);
 
         assertEquals(5, plan.lanes().size());
-        assertLasPasadasEncadenan(plan.lanes());
+        assertLanesChain(plan.lanes());
     }
 
     // ---------------------------------------------------------------------------------------
-    // Las pasadas van paralelas al eje largo
+    // Lanes run parallel to the long axis
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void enUnAreaMasAnchaQueAltaLasPasadasVanEnX() {
+    void inAnAreaWiderThanItIsTallLanesRunAlongX() {
         SweepArea area = SweepArea.ofChunks(0, 0, 63, 15);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
         assertEquals(4, plan.lanes().size());
-        for (Lane pasada : plan.lanes()) {
-            assertEquals(pasada.fromZ(), pasada.toZ(), "una pasada no salió paralela al eje X");
+        for (Lane lane : plan.lanes()) {
+            assertEquals(lane.fromZ(), lane.toZ(), "a lane did not come out parallel to the X axis");
         }
     }
 
     @Test
-    void enUnAreaMasAltaQueAnchaLasPasadasVanEnZ() {
+    void inAnAreaTallerThanItIsWideLanesRunAlongZ() {
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 63);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
 
         assertEquals(4, plan.lanes().size());
-        for (Lane pasada : plan.lanes()) {
-            assertEquals(pasada.fromX(), pasada.toX(), "una pasada no salió paralela al eje Z");
+        for (Lane lane : plan.lanes()) {
+            assertEquals(lane.fromX(), lane.toX(), "a lane did not come out parallel to the Z axis");
         }
     }
 
     // ---------------------------------------------------------------------------------------
-    // Anchura de pasada inservible: se rechaza con motivo, no se degrada
+    // Unusable lane width: rejected with a reason, not degraded
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void anchuraDePasadaCeroSeRechazaEnVezDeDegradarse() {
+    void aZeroLaneWidthIsRejectedInsteadOfDegraded() {
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 0);
@@ -297,7 +300,7 @@ class SweepPlannerTest {
     }
 
     @Test
-    void anchuraDePasadaNegativaSeRechazaEnVezDeDegradarse() {
+    void aNegativeLaneWidthIsRejectedInsteadOfDegraded() {
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), -3);
@@ -307,81 +310,81 @@ class SweepPlannerTest {
     }
 
     @Test
-    void elMotivoDelRechazoNombraElAjusteSuValorYAQueSubirlo() {
-        // Estilo de travel/core/RoutePlanner: el motivo dice qué tocar y a qué valor, no solo que
-        // algo está mal.
+    void theRejectionReasonNamesTheSettingItsValueAndWhatToRaiseItTo() {
+        // The style of travel/core/RoutePlanner: the reason says what to change and to which value,
+        // not only that something is wrong.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
-        String motivoCero = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
-        assertTrue(motivoCero.contains("anchura de pasada"), motivoCero);
-        assertTrue(motivoCero.contains("0"), motivoCero);
-        assertTrue(motivoCero.contains("1 chunk"), motivoCero);
+        String zeroReason = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
+        assertTrue(zeroReason.contains("anchura de pasada"), zeroReason);
+        assertTrue(zeroReason.contains("0"), zeroReason);
+        assertTrue(zeroReason.contains("1 chunk"), zeroReason);
 
-        String motivoNegativo = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
-        assertTrue(motivoNegativo.contains("anchura de pasada"), motivoNegativo);
-        assertTrue(motivoNegativo.contains("-3"), motivoNegativo);
-        assertTrue(motivoNegativo.contains("1 chunk"), motivoNegativo);
+        String negativeReason = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
+        assertTrue(negativeReason.contains("anchura de pasada"), negativeReason);
+        assertTrue(negativeReason.contains("-3"), negativeReason);
+        assertTrue(negativeReason.contains("1 chunk"), negativeReason);
     }
 
     @Test
-    void elMotivoDelRechazoNombraLosAjustesComoAparecenEnLaInterfaz() {
-        // Nombrar el ajuste solo en prosa -"la anchura de pasada"- manda al jugador a buscar en la
-        // ClickGUI algo que no existe con ese nombre. Los identificadores que fija este test son los
-        // de los ajustes del módulo sweep/NetherSweep, y tienen que moverse juntos.
+    void theRejectionReasonNamesTheSettingsAsTheyAppearInTheUi() {
+        // Naming the setting only in prose -"the lane width"- sends the player to look in the
+        // ClickGUI for something that does not exist under that name. The ids this test pins are
+        // those of the settings of the sweep/NetherSweep module, and they have to move together.
         SweepArea area = SweepArea.ofChunks(0, 0, 15, 15);
 
-        String motivoCero = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
-        assertTrue(motivoCero.contains("lane-width"), motivoCero);
-        assertTrue(motivoCero.contains("lane-width-margin"), motivoCero);
+        String zeroReason = es(SweepPlanner.plan(area, Coverage.empty(), 0).rejection());
+        assertTrue(zeroReason.contains("lane-width"), zeroReason);
+        assertTrue(zeroReason.contains("lane-width-margin"), zeroReason);
 
-        String motivoNegativo = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
-        assertTrue(motivoNegativo.contains("lane-width"), motivoNegativo);
-        assertTrue(motivoNegativo.contains("lane-width-margin"), motivoNegativo);
+        String negativeReason = es(SweepPlanner.plan(area, Coverage.empty(), -3).rejection());
+        assertTrue(negativeReason.contains("lane-width"), negativeReason);
+        assertTrue(negativeReason.contains("lane-width-margin"), negativeReason);
     }
 
     // ---------------------------------------------------------------------------------------
-    // El plan como valor
+    // The plan as a value
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void totalBlocksCuentaLosEnlacesEntrePasadasYNoSoloLasPasadas() {
-        // De este número sale la estimación de cohetes que se enseña ANTES de despegar (spec §6):
-        // si sale por debajo de la distancia real, el módulo dice "te llegan" a quien no le llegan.
-        // El caso lleva DOS bandas saltadas seguidas a propósito, para que uno de los enlaces sea
-        // largo: un caso sin bandas saltadas pasaría igual aunque los enlaces no se contaran.
+    void totalBlocksCountsTheLinksBetweenLanesNotJustTheLanes() {
+        // The firework estimate shown BEFORE takeoff comes from this number (spec §6): if it comes
+        // out below the real distance, the module says "you have enough" to someone who does not.
+        // The case has TWO consecutive skipped bands on purpose, so that one of the links is long:
+        // a case without skipped bands would pass just the same even if the links were not counted.
         //
-        // Área 0..31 x 0..23 chunks, más ancha que alta: pasadas en X, apiladas en Z. Con anchura 4
-        // salen seis bandas en Z (0-3, 4-7, 8-11, 12-15, 16-19, 20-23) y las bandas 4-7 y 8-11 están
-        // vistas enteras, así que se vuelan cuatro pasadas.
+        // Area 0..31 x 0..23 chunks, wider than tall: lanes along X, stacked along Z. With width 4
+        // there are six bands along Z (0-3, 4-7, 8-11, 12-15, 16-19, 20-23) and bands 4-7 and 8-11
+        // are fully seen, so four lanes are flown.
         //
-        // Centros de banda en Z, en bloques:  banda 0-3 -> 32;  12-15 -> 224;  16-19 -> 288;
-        // 20-23 -> 352. El eje X va del centro del chunk 0 (bloque 8) al del chunk 31 (bloque 504),
-        // así que cada pasada mide 496 bloques.
+        // Band centers along Z, in blocks:  band 0-3 -> 32;  12-15 -> 224;  16-19 -> 288;
+        // 20-23 -> 352. The X axis goes from the center of chunk 0 (block 8) to that of chunk 31
+        // (block 504), so every lane measures 496 blocks.
         //
-        //   4 pasadas x 496                                              = 1984
-        //   enlace tras saltarse dos bandas:      |224 - 32|             =  192
-        //   enlace entre bandas seguidas:         |288 - 224|            =   64
-        //   enlace entre bandas seguidas:         |352 - 288|            =   64
+        //   4 lanes x 496                                                = 1984
+        //   link after skipping two bands:       |224 - 32|             =  192
+        //   link between adjacent bands:         |288 - 224|            =   64
+        //   link between adjacent bands:         |352 - 288|            =   64
         //                                                          total = 2304
         SweepArea area = SweepArea.ofChunks(0, 0, 31, 23);
-        Coverage vista = coberturaDe(SweepArea.ofChunks(0, 4, 31, 11));
+        Coverage seen = coverageOf(SweepArea.ofChunks(0, 4, 31, 11));
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, 4);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, 4);
 
         assertEquals(4, plan.lanes().size());
         assertEquals(2304.0, plan.totalBlocks(), 1e-9);
 
-        double soloLasPasadas = 0.0;
-        for (Lane pasada : plan.lanes()) {
-            soloLasPasadas += pasada.lengthInBlocks();
+        double lanesOnly = 0.0;
+        for (Lane lane : plan.lanes()) {
+            lanesOnly += lane.lengthInBlocks();
         }
-        assertEquals(1984.0, soloLasPasadas, 1e-9);
-        assertTrue(plan.totalBlocks() > soloLasPasadas,
-            "totalBlocks se quedó en la suma de las pasadas: la estimación de cohetes saldría corta");
+        assertEquals(1984.0, lanesOnly, 1e-9);
+        assertTrue(plan.totalBlocks() > lanesOnly,
+            "totalBlocks stayed at the sum of the lanes: the firework estimate would come out short");
     }
 
     @Test
-    void totalBlocksDeUnaSolaPasadaEsEsaPasadaPorqueNoHayEnlace() {
+    void totalBlocksOfASingleLaneIsThatLaneBecauseThereIsNoLink() {
         SweepArea area = SweepArea.ofChunks(0, 0, 31, 3);
 
         SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, Coverage.empty(), 4);
@@ -391,16 +394,16 @@ class SweepPlannerTest {
     }
 
     @Test
-    void unPlanRechazadoNoPuedeLlevarPasadas() {
-        // Nadie debe poder construir un plan que diga "rechazado" y a la vez traiga pasadas: quien
-        // leyera solo la lista volaría un barrido que se había rechazado.
-        List<Lane> pasadas = List.of(new Lane(0, 0, 100, 0));
+    void aRejectedPlanCannotCarryLanes() {
+        // Nobody must be able to build a plan that says "rejected" and at the same time carries
+        // lanes: whoever read only the list would fly a sweep that had been rejected.
+        List<Lane> lanes = List.of(new Lane(0, 0, 100, 0));
         assertThrows(IllegalArgumentException.class,
-            () -> new SweepPlanner.SweepPlan(pasadas, Msg.of(SweepText.LANE_WIDTH_ZERO)));
+            () -> new SweepPlanner.SweepPlan(lanes, Msg.of(SweepText.LANE_WIDTH_ZERO)));
     }
 
     @Test
-    void laListaDePasadasDelPlanEsInmutable() {
+    void thePlansLaneListIsImmutable() {
         SweepPlanner.SweepPlan plan =
             SweepPlanner.plan(SweepArea.ofChunks(0, 0, 15, 15), Coverage.empty(), 4);
 
@@ -409,104 +412,103 @@ class SweepPlannerTest {
     }
 
     // ---------------------------------------------------------------------------------------
-    // Ayudas
+    // Helpers
     // ---------------------------------------------------------------------------------------
 
-    /** Cobertura con todos los chunks del área marcados como vistos. */
-    private static Coverage coberturaDe(SweepArea area) {
-        return Coverage.ofLines(lineasDe(area, new ChunkPos[0]));
+    /** Coverage with every chunk of the area marked as seen. */
+    private static Coverage coverageOf(SweepArea area) {
+        return Coverage.ofLines(linesOf(area, new ChunkPos[0]));
     }
 
-    /** Cobertura con todos los chunks del área vistos salvo los huecos indicados. */
-    private static Coverage coberturaDeSalvo(SweepArea area, ChunkPos... huecos) {
-        return Coverage.ofLines(lineasDe(area, huecos));
+    /** Coverage with every chunk of the area seen except the given gaps. */
+    private static Coverage coverageExcept(SweepArea area, ChunkPos... gaps) {
+        return Coverage.ofLines(linesOf(area, gaps));
     }
 
-    private static List<String> lineasDe(SweepArea area, ChunkPos[] huecos) {
-        List<ChunkPos> excluidos = List.of(huecos);
-        List<String> lineas = new ArrayList<>();
+    private static List<String> linesOf(SweepArea area, ChunkPos[] gaps) {
+        List<ChunkPos> excluded = List.of(gaps);
+        List<String> lines = new ArrayList<>();
         for (int x = area.minChunkX(); x <= area.maxChunkX(); x++) {
             for (int z = area.minChunkZ(); z <= area.maxChunkZ(); z++) {
                 ChunkPos chunk = new ChunkPos(x, z);
-                if (!excluidos.contains(chunk)) {
-                    lineas.add(x + "," + z);
+                if (!excluded.contains(chunk)) {
+                    lines.add(x + "," + z);
                 }
             }
         }
-        return lineas;
+        return lines;
     }
 
     /**
-     * Ningún chunk del área puede quedar a más de media anchura de pasada de alguna pasada. Es la
-     * propiedad de cobertura entera: si un solo chunk la incumple, hay terreno que el barrido daría
-     * por peinado sin haberlo mirado.
+     * No chunk of the area can be more than half a lane width away from some lane. It is the whole
+     * coverage property: if a single chunk breaks it, there is terrain the sweep would count as
+     * combed without having looked at it.
      */
-    private static void assertTodoElAreaQuedaCubierta(SweepArea area, List<Lane> pasadas,
-                                                      int anchuraDePasada) {
-        double alcance = anchuraDePasada / 2.0 * BLOQUES_POR_CHUNK;
+    private static void assertWholeAreaIsCovered(SweepArea area, List<Lane> lanes,
+                                                      int laneWidth) {
+        double reach = laneWidth / 2.0 * BLOCKS_PER_CHUNK;
         for (int x = area.minChunkX(); x <= area.maxChunkX(); x++) {
             for (int z = area.minChunkZ(); z <= area.maxChunkZ(); z++) {
                 ChunkPos chunk = new ChunkPos(x, z);
-                double distancia = distanciaMinima(chunk, pasadas);
-                assertTrue(distancia <= alcance + 1e-9,
-                    "el chunk " + x + "," + z + " quedó a " + distancia + " bloques de la pasada más"
-                        + " cercana, y el alcance de una pasada es " + alcance);
+                double distance = minDistance(chunk, lanes);
+                assertTrue(distance <= reach + 1e-9,
+                    "chunk " + x + "," + z + " ended up " + distance + " blocks from the nearest"
+                        + " lane, and a lane's reach is " + reach);
             }
         }
     }
 
     /**
-     * Las pasadas se vuelan en secuencia, así que cada una tiene que arrancar donde terminó la
-     * anterior en el eje largo; si no, el jugador recorre el área entera en vacío entre pasada y
-     * pasada.
+     * The lanes are flown in sequence, so each one has to start where the previous one ended on the
+     * long axis; otherwise the player flies the whole area empty between one lane and the next.
      *
-     * <p>Mira el eje largo de cada pasada, no siempre X. Comparando {@code toX} con {@code fromX} a
-     * pelo, este helper solo dice algo de las áreas más anchas que altas: en las más altas que
-     * anchas las pasadas corren en Z y sus X son centros de banda distintos, así que la afirmación
-     * se volvía trivialmente falsa -o, si se hubiera aflojado, trivialmente cierta- y dejaba la
-     * rama Z de la alternancia sin proteger.
+     * <p>It looks at the long axis of each lane, not always X. Comparing {@code toX} with
+     * {@code fromX} as is, this helper only says something about areas wider than tall: in those
+     * taller than wide the lanes run along Z and their X are different band centers, so the
+     * assertion became trivially false -or, had it been loosened, trivially true- and left the Z
+     * branch of the alternation unprotected.
      */
-    private static void assertLasPasadasEncadenan(List<Lane> pasadas) {
-        for (int i = 0; i + 1 < pasadas.size(); i++) {
-            Lane actual = pasadas.get(i);
-            Lane siguiente = pasadas.get(i + 1);
-            assertTrue(actual.fromX() != actual.toX() || actual.fromZ() != actual.toZ(),
-                "la pasada " + i + " no va a ninguna parte: " + actual);
-            boolean enX = actual.fromZ() == actual.toZ();
-            String eje = enX ? "X" : "Z";
-            double finDeLaActual = enX ? actual.toX() : actual.toZ();
-            double arranqueDeLaSiguiente = enX ? siguiente.fromX() : siguiente.fromZ();
-            assertEquals(finDeLaActual, arranqueDeLaSiguiente, 1e-9,
-                "la pasada " + (i + 1) + " no arranca en " + eje + " donde terminó la " + i
-                    + ": el jugador recorre el largo del área en vacío entre las dos");
-            assertEquals(esDeIda(actual), !esDeIda(siguiente),
-                "dos pasadas seguidas en el mismo sentido: se vuelve en vacío entre ellas");
+    private static void assertLanesChain(List<Lane> lanes) {
+        for (int i = 0; i + 1 < lanes.size(); i++) {
+            Lane current = lanes.get(i);
+            Lane next = lanes.get(i + 1);
+            assertTrue(current.fromX() != current.toX() || current.fromZ() != current.toZ(),
+                "lane " + i + " goes nowhere: " + current);
+            boolean alongX = current.fromZ() == current.toZ();
+            String axis = alongX ? "X" : "Z";
+            double currentEnd = alongX ? current.toX() : current.toZ();
+            double nextStart = alongX ? next.fromX() : next.fromZ();
+            assertEquals(currentEnd, nextStart, 1e-9,
+                "lane " + (i + 1) + " does not start on " + axis + " where lane " + i
+                    + " ended: the player flies the length of the area empty between the two");
+            assertEquals(isOutbound(current), !isOutbound(next),
+                "two consecutive lanes in the same direction: flying back empty between them");
         }
     }
 
-    private static boolean esDeIda(Lane pasada) {
-        return pasada.fromX() < pasada.toX() || pasada.fromZ() < pasada.toZ();
+    private static boolean isOutbound(Lane lane) {
+        return lane.fromX() < lane.toX() || lane.fromZ() < lane.toZ();
     }
 
-    /** Distancia en bloques del centro del chunk al segmento de pasada más cercano. */
-    private static double distanciaMinima(ChunkPos chunk, List<Lane> pasadas) {
-        double px = chunk.x() * (double) BLOQUES_POR_CHUNK + BLOQUES_POR_CHUNK / 2.0;
-        double pz = chunk.z() * (double) BLOQUES_POR_CHUNK + BLOQUES_POR_CHUNK / 2.0;
-        double minima = Double.POSITIVE_INFINITY;
-        for (Lane pasada : pasadas) {
-            minima = Math.min(minima, distanciaAlSegmento(px, pz, pasada));
+    /** Distance in blocks from the chunk's center to the nearest lane segment. */
+    private static double minDistance(ChunkPos chunk, List<Lane> lanes) {
+        double px = chunk.x() * (double) BLOCKS_PER_CHUNK + BLOCKS_PER_CHUNK / 2.0;
+        double pz = chunk.z() * (double) BLOCKS_PER_CHUNK + BLOCKS_PER_CHUNK / 2.0;
+        double minimum = Double.POSITIVE_INFINITY;
+        for (Lane lane : lanes) {
+            minimum = Math.min(minimum, distanceToSegment(px, pz, lane));
         }
-        return minima;
+        return minimum;
     }
 
-    private static double distanciaAlSegmento(double px, double pz, Lane pasada) {
-        double dx = pasada.toX() - pasada.fromX();
-        double dz = pasada.toZ() - pasada.fromZ();
-        double longitudCuadrada = dx * dx + dz * dz;
-        double t = longitudCuadrada == 0.0
+    private static double distanceToSegment(double px, double pz, Lane lane) {
+        double dx = lane.toX() - lane.fromX();
+        double dz = lane.toZ() - lane.fromZ();
+        double squaredLength = dx * dx + dz * dz;
+        double t = squaredLength == 0.0
             ? 0.0
             : Math.max(0.0, Math.min(1.0,
-                ((px - pasada.fromX()) * dx + (pz - pasada.fromZ()) * dz) / longitudCuadrada));
-        return Math.hypot(px - (pasada.fromX() + t * dx), pz - (pasada.fromZ() + t * dz));
+                ((px - lane.fromX()) * dx + (pz - lane.fromZ()) * dz) / squaredLength));
+        return Math.hypot(px - (lane.fromX() + t * dx), pz - (lane.fromZ() + t * dz));
     }
 }

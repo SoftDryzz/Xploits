@@ -18,12 +18,12 @@ class SweepTextTest {
 
     private static SweepTally tallyWithGaps() {
         SweepArea area = new SweepArea(0, 0, 9, 9);
-        java.util.List<String> fila = new java.util.ArrayList<>();
-        for (int z = 0; z <= 9; z++) fila.add("0," + z);
-        SweepTally cuenta = SweepTally.of(area, Coverage.ofLines(fila));
-        cuenta.record(5, 5);
-        cuenta.record(5, 6);
-        return cuenta;
+        java.util.List<String> row = new java.util.ArrayList<>();
+        for (int z = 0; z <= 9; z++) row.add("0," + z);
+        SweepTally tally = SweepTally.of(area, Coverage.ofLines(row));
+        tally.record(5, 5);
+        tally.record(5, 6);
+        return tally;
     }
 
     @Test

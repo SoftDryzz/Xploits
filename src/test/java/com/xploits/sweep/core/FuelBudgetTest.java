@@ -10,10 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests de la medición del gasto real de cohetes y su proyección (spec Nether Sweep §6 y §10).
+ * Tests of the measurement of real firework spending and its projection (Nether Sweep spec §6 and
+ * §10).
  *
- * <p>Todos los bloques y cohetes de estos tests son inventados y pequeños: lo que se comprueba es
- * la aritmética del gasto, no ningún vuelo real.
+ * <p>All the blocks and fireworks in these tests are made up and small: what is checked is the
+ * spending arithmetic, not any real flight.
  */
 class FuelBudgetTest {
 
@@ -22,228 +23,229 @@ class FuelBudgetTest {
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void sinNingunaMuestraBlocksPerRocketEstaVacio() {
-        FuelBudget presupuesto = new FuelBudget();
+    void withNoSampleBlocksPerRocketIsEmpty() {
+        FuelBudget budget = new FuelBudget();
 
-        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+        assertTrue(budget.blocksPerRocket().isEmpty());
     }
 
     @Test
-    void conUnaSolaMuestraBlocksPerRocketSigueVacio() {
-        // Un solo punto no es una diferencia: no hay tramo del que sacar un gasto.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 20);
+    void withASingleSampleBlocksPerRocketIsStillEmpty() {
+        // A single point is not a difference: there is no leg to get a spending rate from.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 20);
 
-        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+        assertTrue(budget.blocksPerRocket().isEmpty());
     }
 
     @Test
-    void conMuestrasElGastoSaleDeBloquesRecorridosEntreCohetesGastados() {
-        // Referencia en (0 bloques, 20 cohetes); tras volar 800 bloques quedan 16 -se han gastado
-        // 4-, así que el gasto es 800/4 = 200 bloques por cohete.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 20);
-        presupuesto.sample(800.0, 16);
+    void withSamplesTheRateIsBlocksFlownOverFireworksSpent() {
+        // Reference at (0 blocks, 20 fireworks); after flying 800 blocks 16 are left -4 have been
+        // spent-, so the rate is 800/4 = 200 blocks per firework.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 20);
+        budget.sample(800.0, 16);
 
-        OptionalDouble gasto = presupuesto.blocksPerRocket();
+        OptionalDouble rate = budget.blocksPerRocket();
 
-        assertTrue(gasto.isPresent());
-        assertEquals(200.0, gasto.getAsDouble(), 1e-9);
+        assertTrue(rate.isPresent());
+        assertEquals(200.0, rate.getAsDouble(), 1e-9);
     }
 
     @Test
-    void elGastoSeAcumulaSobreVariosTramos() {
-        // Dos tramos de gasto real: 400 bloques por 2 cohetes, luego 600 bloques por 4 cohetes.
-        // Total: 1000 bloques / 6 cohetes.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 20);
-        presupuesto.sample(400.0, 18);
-        presupuesto.sample(1000.0, 14);
+    void spendingAccumulatesOverSeveralLegs() {
+        // Two legs of real spending: 400 blocks for 2 fireworks, then 600 blocks for 4 fireworks.
+        // Total: 1000 blocks / 6 fireworks.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 20);
+        budget.sample(400.0, 18);
+        budget.sample(1000.0, 14);
 
-        assertEquals(1000.0 / 6.0, presupuesto.blocksPerRocket().getAsDouble(), 1e-9);
+        assertEquals(1000.0 / 6.0, budget.blocksPerRocket().getAsDouble(), 1e-9);
     }
 
     @Test
-    void reponerCohetesAMitadDeVueloNoProduceUnGastoNegativoNiRompeLaProyeccion() {
-        // El jugador repone de 8 a 12 cohetes en el tramo intermedio: ese tramo se ignora entero
-        // -ni sus bloques ni su variación de cohetes cuentan-, y el gasto final tiene que coincidir
-        // con el que habría salido sin la reposición: 1000 bloques / 4 cohetes = 250.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(500.0, 8);   // gasta 2 cohetes en 500 bloques
-        presupuesto.sample(600.0, 12);  // repone: sube de 8 a 12, tramo ignorado
-        presupuesto.sample(1100.0, 10); // gasta 2 cohetes más en 500 bloques
+    void restockingMidFlightNeitherProducesNegativeSpendingNorBreaksTheProjection() {
+        // The player restocks from 8 to 12 fireworks in the middle leg: that leg is ignored entirely
+        // -neither its blocks nor its change in fireworks count-, and the final rate has to match
+        // the one that would have come out without the restock: 1000 blocks / 4 fireworks = 250.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(500.0, 8);   // spends 2 fireworks in 500 blocks
+        budget.sample(600.0, 12);  // restocks: goes up from 8 to 12, leg ignored
+        budget.sample(1100.0, 10); // spends 2 more fireworks in 500 blocks
 
-        OptionalDouble gasto = presupuesto.blocksPerRocket();
+        OptionalDouble rate = budget.blocksPerRocket();
 
-        assertTrue(gasto.isPresent());
-        assertTrue(gasto.getAsDouble() > 0, "el gasto no puede salir negativo tras una reposición");
-        assertEquals(250.0, gasto.getAsDouble(), 1e-9);
+        assertTrue(rate.isPresent());
+        assertTrue(rate.getAsDouble() > 0, "the rate cannot come out negative after a restock");
+        assertEquals(250.0, rate.getAsDouble(), 1e-9);
     }
 
     @Test
-    void unTramoDondeLosCohetesSeMantienenIgualesNoCuentaComoGasto() {
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(300.0, 10); // vuela sin gastar cohetes -planeando, por ejemplo-
+    void aLegWhereTheFireworkCountStaysTheSameDoesNotCountAsSpending() {
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(300.0, 10); // flies without spending fireworks -gliding, for example-
 
-        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+        assertTrue(budget.blocksPerRocket().isEmpty());
     }
 
     // ---------------------------------------------------------------------------------------
-    // El gasto medido caduca si pasa demasiado vuelo sin confirmarlo (reposición frecuente)
+    // The measured rate expires if too much flight goes by without confirming it (frequent restocks)
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unGastoMedidoSeDaPorCaducadoTrasVolarSinConfirmarloTantoComoLoQueCostoConfirmarlo() {
-        // Se confirma un gasto de 400 bloques / 2 cohetes = 200 bloques/cohete. Luego el jugador
-        // repone a menudo -cada muestra siguiente sube o mantiene los cohetes-, así que ningún
-        // tramo vuelve a confirmar gasto real. Sin caducidad, blocksPerRocket() se quedaría
-        // congelado en 200 para siempre, aunque el consumo real de después fuera distinto.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
+    void aMeasuredRateExpiresAfterFlyingUnconfirmedAsFarAsItTookToConfirmIt() {
+        // A rate of 400 blocks / 2 fireworks = 200 blocks/firework is confirmed. Then the player
+        // restocks often -every following sample raises or keeps the fireworks-, so no leg confirms
+        // real spending again. Without expiry, blocksPerRocket() would stay frozen at 200 forever,
+        // even if the real consumption afterwards were different.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(400.0, 8); // confirms 400/2 = 200
 
-        assertEquals(200.0, presupuesto.blocksPerRocket().getAsDouble(), 1e-9,
-            "el gasto tiene que estar disponible justo tras confirmarlo");
+        assertEquals(200.0, budget.blocksPerRocket().getAsDouble(), 1e-9,
+            "the rate has to be available right after confirming it");
 
-        presupuesto.sample(700.0, 9);  // repone: 8 -> 9, ignorado, 300 bloques sin confirmar
-        presupuesto.sample(900.0, 9);  // se mantiene: 9 -> 9, ignorado, 500 bloques sin confirmar
+        budget.sample(700.0, 9);  // restocks: 8 -> 9, ignored, 300 blocks unconfirmed
+        budget.sample(900.0, 9);  // stays: 9 -> 9, ignored, 500 blocks unconfirmed
 
-        // 500 bloques sin confirmar superan los 400 que costó confirmar la tasa: caducada.
-        assertTrue(presupuesto.blocksPerRocket().isEmpty(),
-            "un gasto viejo sin confirmar no puede seguir usándose como si fuera actual");
+        // 500 unconfirmed blocks exceed the 400 it took to confirm the rate: expired.
+        assertTrue(budget.blocksPerRocket().isEmpty(),
+            "an old unconfirmed rate cannot keep being used as if it were current");
     }
 
     @Test
-    void exactamenteElMismoVueloQueCostoConfirmarElGastoTodaviaNoLoCaduca() {
-        // Límite exacto: 400 bloques sin confirmar contra 400 que costó confirmar. Todavía cuenta
-        // como vigente -la caducidad exige superarlo, no solo igualarlo-, y un bloque más lo pasa.
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
-        presupuesto.sample(800.0, 8); // se mantiene: 400 bloques sin confirmar, igual a lo confirmado
+    void exactlyTheFlightItTookToConfirmTheRateDoesNotExpireItYet() {
+        // Exact limit: 400 unconfirmed blocks against 400 it took to confirm. It still counts as
+        // valid -expiry requires exceeding it, not just matching it-, and one more block passes it.
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(400.0, 8); // confirms 400/2 = 200
+        budget.sample(800.0, 8); // stays: 400 blocks unconfirmed, equal to what was confirmed
 
-        assertTrue(presupuesto.blocksPerRocket().isPresent(),
-            "en el límite exacto el dato todavía es de fiar");
+        assertTrue(budget.blocksPerRocket().isPresent(),
+            "at the exact limit the figure can still be trusted");
 
-        presupuesto.sample(801.0, 8); // un bloque más sin confirmar y ya supera el límite
+        budget.sample(801.0, 8); // one more unconfirmed block and it is already past the limit
 
-        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+        assertTrue(budget.blocksPerRocket().isEmpty());
     }
 
     @Test
-    void unTramoConGastoRealTrasLaCaducidadRestableceLaConfianzaDeInmediato() {
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(400.0, 8); // confirma 400/2 = 200
-        presupuesto.sample(900.0, 8); // 500 sin confirmar: caducado
+    void aLegWithRealSpendingAfterExpiryRestoresConfidenceImmediately() {
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(400.0, 8); // confirms 400/2 = 200
+        budget.sample(900.0, 8); // 500 unconfirmed: expired
 
-        assertTrue(presupuesto.blocksPerRocket().isEmpty());
+        assertTrue(budget.blocksPerRocket().isEmpty());
 
-        presupuesto.sample(1100.0, 7); // gasta 1 cohete en 200 bloques: vuelve a confirmar
+        budget.sample(1100.0, 7); // spends 1 firework in 200 blocks: confirms again
 
-        assertTrue(presupuesto.blocksPerRocket().isPresent(),
-            "un tramo con gasto real tiene que restablecer la confianza aunque el dato anterior"
-                + " hubiera caducado");
+        assertTrue(budget.blocksPerRocket().isPresent(),
+            "a leg with real spending has to restore confidence even though the previous figure"
+                + " had expired");
     }
 
     @Test
-    void willRunOutLanzaSiElGastoMedidoHaCaducado() {
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 10);
-        presupuesto.sample(400.0, 8);
-        presupuesto.sample(900.0, 8); // 500 sin confirmar: caducado
+    void willRunOutThrowsIfTheMeasuredRateHasExpired() {
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 10);
+        budget.sample(400.0, 8);
+        budget.sample(900.0, 8); // 500 unconfirmed: expired
 
         assertThrows(java.util.NoSuchElementException.class,
-            () -> presupuesto.willRunOut(1000.0, 10, 0.2));
+            () -> budget.willRunOut(1000.0, 10, 0.2));
     }
 
     // ---------------------------------------------------------------------------------------
-    // willRunOut(): corta antes de llegar a cero, respetando la reserva
+    // willRunOut(): cuts before reaching zero, keeping the reserve
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void conReservaDelVeintePorCientoCortaConCohetesTodaviaEnLaMano() {
-        // Gasto medido: 100 bloques por cohete. Quedan 5000 bloques -> hacen falta 50 cohetes sin
-        // reserva; con un 20% de reserva el umbral sube a 60. Con 55 cohetes en mano -por encima de
-        // los 50 que hacen falta a pelo- ya debe cortar, porque 55 < 60.
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void withATwentyPercentReserveItCutsWithFireworksStillInHand() {
+        // Measured rate: 100 blocks per firework. 5000 blocks left -> 50 fireworks are needed with
+        // no reserve; with a 20% reserve the threshold rises to 60. With 55 fireworks in hand -above
+        // the bare 50 needed- it must already cut, because 55 < 60.
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        assertTrue(presupuesto.willRunOut(5000.0, 55, 0.2));
+        assertTrue(budget.willRunOut(5000.0, 55, 0.2));
     }
 
     @Test
-    void conReservaDelVeintePorCientoNoCortaSiHayMasDeLoNecesarioMasLaReserva() {
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void withATwentyPercentReserveItDoesNotCutIfThereIsMoreThanNeededPlusTheReserve() {
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        assertFalse(presupuesto.willRunOut(5000.0, 65, 0.2));
+        assertFalse(budget.willRunOut(5000.0, 65, 0.2));
     }
 
     @Test
-    void sinReservaCortaSoloAlQuedarsePorDebajoDeLoNecesario() {
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void withoutAReserveItCutsOnlyWhenBelowWhatIsNeeded() {
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        // Hacen falta exactamente 50 cohetes para 5000 bloques a 100 bloques/cohete.
-        assertFalse(presupuesto.willRunOut(5000.0, 51, 0.0));
-        assertTrue(presupuesto.willRunOut(5000.0, 49, 0.0));
+        // Exactly 50 fireworks are needed for 5000 blocks at 100 blocks/firework.
+        assertFalse(budget.willRunOut(5000.0, 51, 0.0));
+        assertTrue(budget.willRunOut(5000.0, 49, 0.0));
     }
 
     @Test
-    void willRunOutLanzaSiTodaviaNoHayNingunaMedicionDeGasto() {
-        FuelBudget presupuesto = new FuelBudget();
+    void willRunOutThrowsIfThereIsNoRateMeasurementYet() {
+        FuelBudget budget = new FuelBudget();
 
         assertThrows(java.util.NoSuchElementException.class,
-            () -> presupuesto.willRunOut(1000.0, 10, 0.2));
+            () -> budget.willRunOut(1000.0, 10, 0.2));
     }
 
     // ---------------------------------------------------------------------------------------
-    // reserveFraction negativo invertiría la garantía de seguridad: se rechaza
+    // A negative reserveFraction would invert the safety guarantee: it is rejected
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unaReservaNegativaLanzaEnVezDeDecirQueLlegaConCeroCohetes() {
-        // Caso límite real: tasa 100 bloques/cohete, 5000 bloques por delante -> hacen falta 50
-        // cohetes. Con reserva -1.0 el umbral sale en 50 * (1 + (-1.0)) = 0, así que sin la
-        // validación willRunOut(5000, 0, -1.0) devolvería false -"no hace falta cortar"- con CERO
-        // cohetes en la mano. Tiene que lanzar antes de llegar a ese cálculo.
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void aNegativeReserveThrowsInsteadOfSayingItArrivesWithZeroFireworks() {
+        // Real edge case: rate 100 blocks/firework, 5000 blocks ahead -> 50 fireworks are needed.
+        // With a reserve of -1.0 the threshold comes out as 50 * (1 + (-1.0)) = 0, so without the
+        // validation willRunOut(5000, 0, -1.0) would return false -"no need to cut"- with ZERO
+        // fireworks in hand. It has to throw before getting to that calculation.
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        assertThrows(IllegalArgumentException.class, () -> presupuesto.willRunOut(5000.0, 0, -1.0));
+        assertThrows(IllegalArgumentException.class, () -> budget.willRunOut(5000.0, 0, -1.0));
     }
 
     @Test
-    void unaReservaNegativaMasSuaveTambienLanza() {
-        // Con -0.5 el umbral baja a 25 en vez de subir a 50 + reserva: con 30 cohetes -veinte menos
-        // de los que hacen falta a pelo- willRunOut diría "no corta" sin la validación.
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void aMilderNegativeReserveAlsoThrows() {
+        // With -0.5 the threshold drops to 25 instead of rising to 50 + reserve: with 30 fireworks
+        // -twenty fewer than the bare number needed- willRunOut would say "no cut" without the
+        // validation.
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        assertThrows(IllegalArgumentException.class, () -> presupuesto.willRunOut(5000.0, 30, -0.5));
+        assertThrows(IllegalArgumentException.class, () -> budget.willRunOut(5000.0, 30, -0.5));
     }
 
     @Test
-    void unaReservaNaNTambienLanza() {
-        // NaN compara siempre a falso: rocketsLeft < umbral(NaN) también sería falso sin la
-        // validación, colando el mismo fallo por otra puerta.
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void aNaNReserveAlsoThrows() {
+        // NaN always compares as false: rocketsLeft < threshold(NaN) would also be false without the
+        // validation, letting the same failure in through another door.
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
         assertThrows(IllegalArgumentException.class,
-            () -> presupuesto.willRunOut(5000.0, 0, Double.NaN));
+            () -> budget.willRunOut(5000.0, 0, Double.NaN));
     }
 
     @Test
-    void unaReservaCeroSigueSiendoValida() {
-        // Regresión: la validación no puede rechazar el caso normal de "sin margen".
-        FuelBudget presupuesto = presupuestoConGastoDe100BloquesPorCohete();
+    void aZeroReserveIsStillValid() {
+        // Regression: the validation cannot reject the normal "no margin" case.
+        FuelBudget budget = budgetAt100BlocksPerFirework();
 
-        assertFalse(presupuesto.willRunOut(5000.0, 51, 0.0));
+        assertFalse(budget.willRunOut(5000.0, 51, 0.0));
     }
 
-    /** Un presupuesto con un único tramo medido: 1000 bloques por 10 cohetes, 100 por cohete. */
-    private static FuelBudget presupuestoConGastoDe100BloquesPorCohete() {
-        FuelBudget presupuesto = new FuelBudget();
-        presupuesto.sample(0.0, 30);
-        presupuesto.sample(1000.0, 20);
-        return presupuesto;
+    /** A budget with a single measured leg: 1000 blocks for 10 fireworks, 100 per firework. */
+    private static FuelBudget budgetAt100BlocksPerFirework() {
+        FuelBudget budget = new FuelBudget();
+        budget.sample(0.0, 30);
+        budget.sample(1000.0, 20);
+        return budget;
     }
 }

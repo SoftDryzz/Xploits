@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests de la cuenta de cobertura del barrido: que al terminar se sepa <b>cuánto se miró</b> y no
- * solo que se terminó (spec Nether Sweep §9).
+ * Tests of the sweep's coverage tally: at the end it must be known <b>how much was looked at</b> and
+ * not only that it finished (Nether Sweep spec §9).
  *
- * <p>Todas las coordenadas de estos tests son inventadas y pequeñas: lo que se comprueba es
- * aritmética de rectángulos, no ningún sitio concreto del mundo.
+ * <p>All the coordinates in these tests are made up and small: what is checked is rectangle
+ * arithmetic, not any concrete place in the world.
  */
 class SweepTallyTest {
     private static final Catalog ES = Catalog.load(Language.ES, p -> {
@@ -33,177 +33,177 @@ class SweepTallyTest {
     private static final SweepArea AREA = new SweepArea(0, 0, 9, 9);
 
     @Test
-    void sinCoberturaPreviaNiChunksRecibidosNoHayNadaCubierto() {
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void withoutPriorCoverageOrReceivedChunksNothingIsCovered() {
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
 
-        assertEquals(100, cuenta.areaChunks());
-        assertEquals(0, cuenta.alreadySeen());
-        assertEquals(0, cuenta.arrived());
-        assertEquals(0, cuenta.covered());
-        assertEquals(100, cuenta.missing());
-        assertEquals(0.0, cuenta.coveredFraction(), 1e-9);
+        assertEquals(100, tally.areaChunks());
+        assertEquals(0, tally.alreadySeen());
+        assertEquals(0, tally.arrived());
+        assertEquals(0, tally.covered());
+        assertEquals(100, tally.missing());
+        assertEquals(0.0, tally.coveredFraction(), 1e-9);
     }
 
     @Test
-    void laCoberturaPreviaDelAreaCuentaDesdeElPrincipio() {
-        // Las bandas ya vistas enteras se las salta el planificador, así que sus chunks no van a
-        // llegar durante el vuelo: contarlos como huecos haría que todo barrido sobre un área medio
-        // conocida pareciera fallido.
-        SweepTally cuenta = SweepTally.of(AREA, cubrirFila(0));
+    void priorCoverageOfTheAreaCountsFromTheStart() {
+        // The planner skips the bands already fully seen, so their chunks are not going to arrive
+        // during the flight: counting them as gaps would make every sweep over a half-known area
+        // look like a failure.
+        SweepTally tally = SweepTally.of(AREA, coverRow(0));
 
-        assertEquals(10, cuenta.alreadySeen());
-        assertEquals(10, cuenta.covered());
-        assertEquals(0, cuenta.arrived());
-        assertEquals(90, cuenta.missing());
+        assertEquals(10, tally.alreadySeen());
+        assertEquals(10, tally.covered());
+        assertEquals(0, tally.arrived());
+        assertEquals(90, tally.missing());
     }
 
     @Test
-    void laCoberturaPreviaDeFueraDelAreaNoCuenta() {
-        Coverage fuera = Coverage.ofLines(List.of("500,500", "-40,7"));
+    void priorCoverageOutsideTheAreaDoesNotCount() {
+        Coverage outside = Coverage.ofLines(List.of("500,500", "-40,7"));
 
-        SweepTally cuenta = SweepTally.of(AREA, fuera);
+        SweepTally tally = SweepTally.of(AREA, outside);
 
-        assertEquals(0, cuenta.alreadySeen());
-        assertEquals(100, cuenta.missing());
+        assertEquals(0, tally.alreadySeen());
+        assertEquals(100, tally.missing());
     }
 
     @Test
-    void unChunkRecibidoDentroDelAreaCuenta() {
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void aChunkReceivedInsideTheAreaCounts() {
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
 
-        assertTrue(cuenta.record(4, 4));
+        assertTrue(tally.record(4, 4));
 
-        assertEquals(1, cuenta.covered());
-        assertEquals(1, cuenta.arrived());
-        assertEquals(99, cuenta.missing());
+        assertEquals(1, tally.covered());
+        assertEquals(1, tally.arrived());
+        assertEquals(99, tally.missing());
     }
 
     @Test
-    void unChunkRecibidoFueraDelAreaNoCuenta() {
-        // Durante la aproximación llegan miles, y ninguno es terreno del rectángulo pedido.
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void aChunkReceivedOutsideTheAreaDoesNotCount() {
+        // During the approach thousands arrive, and none of them is terrain of the requested rectangle.
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
 
-        assertFalse(cuenta.record(-1, 4));
-        assertFalse(cuenta.record(4, 10));
-        assertFalse(cuenta.record(1_000, 1_000));
+        assertFalse(tally.record(-1, 4));
+        assertFalse(tally.record(4, 10));
+        assertFalse(tally.record(1_000, 1_000));
 
-        assertEquals(0, cuenta.covered());
+        assertEquals(0, tally.covered());
     }
 
     @Test
-    void elMismoChunkDosVecesNoCuentaDosVeces() {
-        // El servidor reenvía chunks al volver a pasar por encima: sin esto, un barrido que pasara
-        // dos veces por media banda anunciaría más cobertura de la que hay.
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void theSameChunkTwiceDoesNotCountTwice() {
+        // The server resends chunks when passing over them again: without this, a sweep that passed
+        // twice over half a band would announce more coverage than there is.
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
 
-        assertTrue(cuenta.record(4, 4));
-        assertFalse(cuenta.record(4, 4));
+        assertTrue(tally.record(4, 4));
+        assertFalse(tally.record(4, 4));
 
-        assertEquals(1, cuenta.covered());
+        assertEquals(1, tally.covered());
     }
 
     @Test
-    void unChunkQueYaEstabaVistoNoSeCuentaOtraVezAlLlegar() {
-        SweepTally cuenta = SweepTally.of(AREA, cubrirFila(0));
+    void aChunkAlreadySeenIsNotCountedAgainOnArrival() {
+        SweepTally tally = SweepTally.of(AREA, coverRow(0));
 
-        assertFalse(cuenta.record(0, 3));
+        assertFalse(tally.record(0, 3));
 
-        assertEquals(10, cuenta.covered());
-        assertEquals(0, cuenta.arrived());
+        assertEquals(10, tally.covered());
+        assertEquals(0, tally.arrived());
     }
 
     @Test
-    void cadaEsquinaDelAreaTieneSuPropioSitio() {
-        // Si el índice del BitSet se desalineara, dos chunks distintos compartirían bit y la cuenta
-        // final mentiría en silencio, que es justo el fallo que esta clase existe para no repetir.
-        SweepArea rectangulo = new SweepArea(-5, 7, -2, 11);
-        SweepTally cuenta = SweepTally.of(rectangulo, Coverage.empty());
+    void eachCornerOfTheAreaHasItsOwnSlot() {
+        // If the BitSet index got misaligned, two different chunks would share a bit and the final
+        // count would silently lie, which is exactly the failure this class exists not to repeat.
+        SweepArea rectangle = new SweepArea(-5, 7, -2, 11);
+        SweepTally tally = SweepTally.of(rectangle, Coverage.empty());
 
         for (int x = -5; x <= -2; x++) {
             for (int z = 7; z <= 11; z++) {
-                assertTrue(cuenta.record(x, z), "el chunk " + x + "," + z + " tenía que ser nuevo");
+                assertTrue(tally.record(x, z), "chunk " + x + "," + z + " had to be new");
             }
         }
 
-        assertEquals(rectangulo.chunkCount(), cuenta.covered());
-        assertEquals(0, cuenta.missing());
+        assertEquals(rectangle.chunkCount(), tally.covered());
+        assertEquals(0, tally.missing());
     }
 
     @Test
-    void unBarridoQueNoHaVistoLaMitadSeQuedaPorDebajoDelSuelo() {
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void aSweepThatHasNotSeenHalfStaysBelowTheFloor() {
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
         for (int x = 0; x <= 4; x++) {
             for (int z = 0; z <= 9; z++) {
-                cuenta.record(x, z);
+                tally.record(x, z);
             }
         }
 
-        assertEquals(0.5, cuenta.coveredFraction(), 1e-9);
-        assertTrue(cuenta.shortOfCoverage(0.95));
-        assertFalse(cuenta.shortOfCoverage(0.5), "el suelo es un mínimo, no un umbral estricto");
+        assertEquals(0.5, tally.coveredFraction(), 1e-9);
+        assertTrue(tally.shortOfCoverage(0.95));
+        assertFalse(tally.shortOfCoverage(0.5), "the floor is a minimum, not a strict threshold");
     }
 
     @Test
-    void unAreaCubiertaEnteraNoSeQuedaCortaConNingunSuelo() {
-        SweepTally cuenta = SweepTally.of(AREA, Coverage.empty());
+    void aFullyCoveredAreaFallsShortOfNoFloor() {
+        SweepTally tally = SweepTally.of(AREA, Coverage.empty());
         for (int x = 0; x <= 9; x++) {
             for (int z = 0; z <= 9; z++) {
-                cuenta.record(x, z);
+                tally.record(x, z);
             }
         }
 
-        assertEquals(1.0, cuenta.coveredFraction(), 1e-9);
-        assertFalse(cuenta.shortOfCoverage(1.0));
-        assertTrue(es(cuenta.summary()).contains("100 %"));
-        assertTrue(es(cuenta.summary()).contains("No falta ninguno"));
+        assertEquals(1.0, tally.coveredFraction(), 1e-9);
+        assertFalse(tally.shortOfCoverage(1.0));
+        assertTrue(es(tally.summary()).contains("100 %"));
+        assertTrue(es(tally.summary()).contains("No falta ninguno"));
     }
 
     @Test
-    void elPorcentajeSeRedondeaHaciaAbajoParaNoAnunciarUnCienConHuecos() {
-        // 999 de 1.000 son 99,9 %: redondeado al más cercano saldría "100 %" con un chunk sin ver,
-        // que es la misma mentira de siempre redactada por el redondeo.
-        SweepArea mil = new SweepArea(0, 0, 24, 39);
-        SweepTally cuenta = SweepTally.of(mil, Coverage.empty());
-        int puestos = 0;
-        for (int x = 0; x <= 24 && puestos < 999; x++) {
-            for (int z = 0; z <= 39 && puestos < 999; z++) {
-                cuenta.record(x, z);
-                puestos++;
+    void thePercentageRoundsDownSoItNeverAnnouncesAHundredWithGaps() {
+        // 999 of 1,000 is 99.9%: rounded to the nearest it would come out as "100 %" with one chunk
+        // unseen, which is the same old lie worded by the rounding.
+        SweepArea thousand = new SweepArea(0, 0, 24, 39);
+        SweepTally tally = SweepTally.of(thousand, Coverage.empty());
+        int recorded = 0;
+        for (int x = 0; x <= 24 && recorded < 999; x++) {
+            for (int z = 0; z <= 39 && recorded < 999; z++) {
+                tally.record(x, z);
+                recorded++;
             }
         }
 
-        assertEquals(1, cuenta.missing());
-        assertTrue(es(cuenta.summary()).contains("99 %"), es(cuenta.summary()));
-        assertFalse(es(cuenta.summary()).contains("100 %"), es(cuenta.summary()));
+        assertEquals(1, tally.missing());
+        assertTrue(es(tally.summary()).contains("99 %"), es(tally.summary()));
+        assertFalse(es(tally.summary()).contains("100 %"), es(tally.summary()));
     }
 
     @Test
-    void elResumenDiceCuantosLlegaronDeCuantosYDeDondeSalen() {
-        SweepTally cuenta = SweepTally.of(AREA, cubrirFila(0));
-        cuenta.record(5, 5);
-        cuenta.record(5, 6);
+    void theSummarySaysHowManyArrivedOutOfHowManyAndWhereTheyCameFrom() {
+        SweepTally tally = SweepTally.of(AREA, coverRow(0));
+        tally.record(5, 5);
+        tally.record(5, 6);
 
-        String resumen = es(cuenta.summary());
+        String summary = es(tally.summary());
 
-        assertTrue(resumen.contains("12 de 100"), resumen);
-        assertTrue(resumen.contains("12 %"), resumen);
-        assertTrue(resumen.contains("10 que ya estaban"), resumen);
-        assertTrue(resumen.contains("2 que han llegado"), resumen);
-        assertTrue(resumen.contains("88 chunks"), resumen);
+        assertTrue(summary.contains("12 de 100"), summary);
+        assertTrue(summary.contains("12 %"), summary);
+        assertTrue(summary.contains("10 que ya estaban"), summary);
+        assertTrue(summary.contains("2 que han llegado"), summary);
+        assertTrue(summary.contains("88 chunks"), summary);
     }
 
     @Test
-    void sinAreaOSinCoberturaPreviaSeLanzaEnVezDeContarSobreLaNada() {
+    void withoutAreaOrPriorCoverageItThrowsInsteadOfCountingOverNothing() {
         assertThrows(NullPointerException.class, () -> SweepTally.of(null, Coverage.empty()));
         assertThrows(NullPointerException.class, () -> SweepTally.of(AREA, null));
     }
 
-    /** Una cobertura previa con la fila {@code x} entera del área ya vista. */
-    private static Coverage cubrirFila(int x) {
-        List<String> lineas = new ArrayList<>();
+    /** A prior coverage with the whole row {@code x} of the area already seen. */
+    private static Coverage coverRow(int x) {
+        List<String> lines = new ArrayList<>();
         for (int z = 0; z <= 9; z++) {
-            lineas.add(x + "," + z);
+            lines.add(x + "," + z);
         }
-        return Coverage.ofLines(lineas);
+        return Coverage.ofLines(lines);
     }
 }

@@ -1,101 +1,101 @@
 package com.xploits.sweep.core;
 
 /**
- * El cuentakilómetros del vuelo: suma lo que el jugador <b>ha volado de verdad</b>, tick a tick, y
- * se salta los saltos que no se volaron.
+ * The flight odometer: it adds up what the player <b>has really flown</b>, tick by tick, and skips
+ * the jumps that were not flown.
  *
- * <p><b>Por qué no vale sumar la distancia entre dos ticks y ya.</b> Un teletransporte -un portal,
- * un {@code /tpa}, un reaparecer, un tirón del servidor- mete de golpe cientos o miles de bloques
- * entre un tick y el siguiente. Ese trayecto no se voló y no costó ni un cohete, pero se suma a los
- * bloques recorridos, y de ahí sale el número que alimenta {@link FuelBudget}: el gasto medido
- * queda <b>dividido entre más bloques de los que se volaron</b>, o sea más bloques por cohete de
- * los reales.
+ * <p><b>Why just adding the distance between two ticks will not do.</b> A teleport -a portal, a
+ * {@code /tpa}, a respawn, a server rubber-band- puts hundreds or thousands of blocks between one
+ * tick and the next in one go. That stretch was not flown and did not cost a single firework, but it
+ * is added to the blocks flown, and that is where the number feeding {@link FuelBudget} comes from:
+ * the measured spending ends up <b>divided by more blocks than were flown</b>, that is more blocks
+ * per firework than the real ones.
  *
- * <p>Y esa dirección del error es justo la peligrosa, no la prudente. Con una tasa inflada,
- * {@link FuelBudget#willRunOut} proyecta que los cohetes dan para más de lo que dan y contesta que
- * llegan cuando no llegan: es exactamente el redondeo que el javadoc de {@code FuelBudget} dice que
- * esta parte del módulo nunca hace -«ante dos redondeos posibles, se elige siempre el que
- * sobreestima el riesgo»- colándose por la puerta de la distancia en vez de por la del gasto. El
- * precio es quedarse tirado lejos de casa, que es lo que la protección de cohetes existe para
- * evitar.
+ * <p>And that direction of the error is exactly the dangerous one, not the cautious one. With an
+ * inflated rate, {@link FuelBudget#willRunOut} projects that the fireworks go further than they do
+ * and answers that they will last when they will not: it is exactly the rounding that the javadoc of
+ * {@code FuelBudget} says this part of the module never makes -"faced with two possible roundings,
+ * the one that overestimates the risk is always picked"- slipping in through the distance door
+ * instead of the spending one. The price is being stranded far from home, which is what the firework
+ * protection exists to prevent.
  *
- * <p><b>Cómo se distingue un salto de un vuelo rápido:</b> por la velocidad, que en un tick es una
- * cota física. Ver {@link #BLOQUES_POR_TICK_MAXIMOS}. El tramo descartado no se suma y no se
- * reparte: no se voló, así que no existe para el presupuesto.
+ * <p><b>How a jump is told apart from fast flight:</b> by the speed, which within a tick is a
+ * physical bound. See {@link #MAX_BLOCKS_PER_TICK}. The discarded stretch is neither added nor
+ * spread: it was not flown, so it does not exist for the budget.
  *
- * <p>El último paso se guarda aparte porque sirve para otra cosa: es la velocidad con la que
- * {@link WidthProbe#sample} decide si una muestra de anchura está contaminada por la deriva. Ahí se
- * entrega <b>el paso en bruto</b>, sin filtrar, y a propósito: un tick con un teletransporte dentro
- * es el peor momento posible para medir el alcance del servidor, así que conviene que la sonda lo
- * vea grande y descarte la muestra.
+ * <p>The last step is kept apart because it serves another purpose: it is the speed with which
+ * {@link WidthProbe#sample} decides whether a width sample is contaminated by drift. There <b>the raw
+ * step</b> is handed over, unfiltered, and on purpose: a tick with a teleport inside is the worst
+ * possible moment to measure the server's reach, so the probe should see it as large and discard
+ * the sample.
  *
- * <p>Esta clase no toca Minecraft ni Meteor: recibe distancias ya medidas.
+ * <p>This class does not touch Minecraft or Meteor: it receives distances already measured.
  */
 public final class Odometer {
     /**
-     * A partir de cuántos bloques en un solo tick se da por hecho que el jugador no voló ese tramo,
-     * y de dónde sale el número.
+     * From how many blocks in a single tick it is taken for granted that the player did not fly that
+     * stretch, and where the number comes from.
      *
-     * <p>Por abajo tiene que dejar pasar cualquier vuelo real: una elytra empujada por cohetes va a
-     * unos 33 bloques por segundo -1,65 por tick- y un picado con cohete encadenado no pasa de unos
-     * 60 -3 por tick-. Diez bloques por tick son 200 por segundo, tres veces el vuelo más rápido que
-     * se puede sostener: ningún tick volado llega ahí.
+     * <p>From below it has to let any real flight through: an elytra pushed by fireworks goes at
+     * about 33 blocks per second -1.65 per tick- and a dive with chained fireworks does not exceed
+     * about 60 -3 per tick-. Ten blocks per tick are 200 per second, three times the fastest
+     * sustainable flight: no flown tick gets there.
      *
-     * <p>Por arriba tiene que cazar lo que de verdad importa. Un teletransporte útil mueve cientos o
-     * miles de bloques; el más corto que este módulo puede encontrarse es un portal del Nether, y
-     * aun ese cambia de dimensión y de coordenadas de golpe. Un salto de menos de diez bloques que
-     * se colara no cambia una tasa medida sobre tramos de mil.
+     * <p>From above it has to catch what really matters. A useful teleport moves hundreds or
+     * thousands of blocks; the shortest this module can run into is a Nether portal, and even that
+     * one changes dimension and coordinates in one go. A jump of fewer than ten blocks that slipped
+     * in does not change a rate measured over stretches of a thousand.
      */
-    public static final double BLOQUES_POR_TICK_MAXIMOS = 10;
+    public static final double MAX_BLOCKS_PER_TICK = 10;
 
-    private double bloquesVolados;
-    private double ultimoPaso;
-    private int saltos;
+    private double blocksFlown;
+    private double lastStep;
+    private int jumps;
 
     /**
-     * Registra lo que el jugador se ha desplazado en este tick.
+     * Records how far the player has moved in this tick.
      *
-     * @param blocks distancia recorrida desde el tick anterior, en bloques; nunca negativa
-     * @return si el paso se contó como vuelo. {@code false} significa que se descartó por salto
-     * @throws IllegalArgumentException si {@code blocks} es negativo o {@code NaN}: no es una
-     *                                  distancia, y dejarlo entrar corrompería el total del que sale
-     *                                  la proyección de cohetes
+     * @param blocks distance covered since the previous tick, in blocks; never negative
+     * @return whether the step was counted as flight. {@code false} means it was discarded as a jump
+     * @throws IllegalArgumentException if {@code blocks} is negative or {@code NaN}: it is not a
+     *                                  distance, and letting it in would corrupt the total the
+     *                                  firework projection comes from
      */
     public boolean advance(double blocks) {
-        // En negativo para que un NaN caiga aquí en vez de colarse: comparado con cualquier cosa da
-        // falso, así que un "blocks >= 0" lo dejaría pasar y luego envenenaría el acumulado entero.
+        // Negated so that a NaN falls here instead of slipping through: compared with anything it
+        // gives false, so a "blocks >= 0" would let it pass and then poison the whole total.
         if (!(blocks >= 0)) {
             throw new IllegalArgumentException(
-                "el desplazamiento de un tick tiene que ser cero o positivo (recibido " + blocks
-                    + "): no es una distancia, y sumarlo corrompería los bloques volados de los que" // i18n: allowed (exception message, continuation line)
-                    + " sale la proyección de cohetes"); // i18n: allowed (exception message, continuation line)
+                "a tick's movement must be zero or positive (got " + blocks
+                    + "): it is not a distance, and adding it would corrupt the blocks flown that"
+                    + " the firework projection comes from");
         }
 
-        ultimoPaso = blocks;
-        if (blocks > BLOQUES_POR_TICK_MAXIMOS) {
-            saltos++;
+        lastStep = blocks;
+        if (blocks > MAX_BLOCKS_PER_TICK) {
+            jumps++;
             return false;
         }
-        bloquesVolados += blocks;
+        blocksFlown += blocks;
         return true;
     }
 
-    /** Los bloques volados de verdad desde que se armó el cuentakilómetros. */
+    /** The blocks really flown since the odometer was armed. */
     public double blocksFlown() {
-        return bloquesVolados;
+        return blocksFlown;
     }
 
     /**
-     * El último desplazamiento registrado, <b>en bruto</b>: sin filtrar los saltos. Es la velocidad
-     * del jugador en el último tick, que es lo que {@link WidthProbe#sample} necesita para saber si
-     * una muestra de anchura viene inflada por la deriva -ver el javadoc de la clase-.
+     * The last recorded movement, <b>raw</b>: without filtering out jumps. It is the player's speed
+     * in the last tick, which is what {@link WidthProbe#sample} needs to know whether a width sample
+     * comes in inflated by drift -see the class javadoc-.
      */
     public double lastStep() {
-        return ultimoPaso;
+        return lastStep;
     }
 
-    /** Cuántos pasos se han descartado por ser saltos y no vuelo, para poder decirlo. */
+    /** How many steps have been discarded as jumps and not flight, so that it can be said. */
     public int jumps() {
-        return saltos;
+        return jumps;
     }
 }

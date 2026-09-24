@@ -177,14 +177,12 @@ class BoundaryTest {
         "com/xploits/stash/core/StashIndexTest.java",
         "com/xploits/stash/core/StashStoreTest.java",
         "com/xploits/stash/core/StashText.java",
-        "com/xploits/sweep/core/ChunkPos.java",
-        "com/xploits/sweep/core/Lane.java",
-        "com/xploits/sweep/core/SweepText.java",
         "com/xploits/BoundaryTest.java",
         "com/xploits/XploitsAddon.java",
         "com/xploits/console/",
         "com/xploits/shared/",
-        "com/xploits/travel/"
+        "com/xploits/travel/",
+        "com/xploits/sweep/"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */

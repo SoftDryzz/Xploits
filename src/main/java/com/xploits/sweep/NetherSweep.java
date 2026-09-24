@@ -67,59 +67,60 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
- * Adaptador del barrido del Nether (spec Nether Sweep §2, §5.1, §6 y §8): traduce el rectángulo que
- * pide el jugador a pasadas, lee la cobertura que {@code NewerNewChunks} lleva meses acumulando para
- * volar <b>solo lo que falta</b>, y dirige el vuelo con elytra de Baritone por comandos de chat.
+ * Adapter for the Nether sweep (Nether Sweep spec §2, §5.1, §6 and §8): it turns the rectangle the
+ * player asks for into lanes, reads the coverage that {@code NewerNewChunks} has been piling up for
+ * months so that it flies <b>only what is missing</b>, and steers Baritone's elytra flight through
+ * chat commands.
  *
- * <p>Toda la geometría y toda la contabilidad viven en {@code sweep.core}, que se prueba sin
- * arrancar el juego. Aquí solo queda lo que necesita a Minecraft: leer la posición y el inventario,
- * leer los ficheros del otro mod, emitir los comandos, vigilar el progreso, encender y apagar
- * módulos, y armar la red de seguridad.
+ * <p>All the geometry and all the bookkeeping live in {@code sweep.core}, which is tested without
+ * starting the game. What is left here is only what needs Minecraft: reading the position and the
+ * inventory, reading the other mod's files, sending the commands, watching the progress, turning
+ * modules on and off, and arming the safety net.
  *
- * <p><b>Este módulo vuela; no detecta nada</b> (spec §2, que es normativa). Las bases las encuentra
- * {@code BaseFinder}, los contenedores {@code stash-finder} y la cobertura la registra
- * {@code NewerNewChunks}, los tres ya instalados y mejores que cualquier cosa que se reimplementara
- * aquí. Lo único que ninguno hace es conseguir que el terreno pase por delante del cliente, y eso es
- * exactamente lo que hace este módulo. Por eso {@link #start()} comprueba que los tres estén
- * encendidos <b>antes</b> de despegar: sin ellos el barrido cubre terreno y no registra nada, que es
- * volar tres horas para nada.
+ * <p><b>This module flies; it detects nothing</b> (spec §2, which is normative). Bases are found by
+ * {@code BaseFinder}, containers by {@code stash-finder}, and coverage is recorded by
+ * {@code NewerNewChunks}; all three are already installed and better than anything that could be
+ * reimplemented here. The one thing none of them does is get the terrain to pass in front of the
+ * client, and that is exactly what this module does. That is why {@link #start()} checks that all
+ * three are on <b>before</b> taking off: without them the sweep covers terrain and records nothing,
+ * which is flying for three hours for nothing.
  *
- * <p><b>Encender el módulo no vuela.</b> El barrido lo lanza el jugador con {@code .xploits sweep
- * go}, igual que en {@code auto-travel}: un módulo que despega solo al activarse te manda a horas de
- * casa por un clic. Mientras está encendido y no vuela hace una sola cosa útil, y es importante:
- * alimentar {@link WidthProbe} con los chunks que va recibiendo, para que al lanzar la anchura de
- * pasada salga <b>medida</b> y no inventada (spec §5).
+ * <p><b>Turning the module on does not fly.</b> The player launches the sweep with {@code .xploits
+ * sweep go}, just as in {@code auto-travel}: a module that takes off by itself when enabled sends you
+ * hours away from home with one click. While it is on and not flying it does a single useful thing,
+ * and an important one: it feeds {@link WidthProbe} with the chunks it receives, so that at launch
+ * the lane width comes out <b>measured</b> and not made up (spec §5).
  *
- * <p><b>La red de seguridad vive en {@link ChatNet}, suscrito al bus por su cuenta</b> y no como
- * parte del módulo. Meteor desuscribe el módulo justo <i>antes</i> de {@code onDeactivate()}, que es
- * cuando la restauración emite su ráfaga de comandos con prefijo: una red montada sobre un
- * {@code @EventHandler} del propio módulo estaría muerta justo entonces y las seis líneas saldrían
- * al chat público de un servidor anarchy. Es el mismo arreglo que {@code travel/AutoTravel}, y está
- * razonado entero en su javadoc.
+ * <p><b>The safety net lives in {@link ChatNet}, subscribed to the bus on its own</b> and not as
+ * part of the module. Meteor unsubscribes the module just <i>before</i> {@code onDeactivate()},
+ * which is when the restoration sends its burst of prefixed commands: a net built on an
+ * {@code @EventHandler} of the module itself would be dead right then, and the six lines would go
+ * out to the public chat of an anarchy server. It is the same fix as {@code travel/AutoTravel}, and
+ * the full reasoning is in its javadoc.
  */
 public class NetherSweep extends XploitsModule {
-    /** El id con el que Baritone se registra en el cargador de mods. */
+    /** The id Baritone registers with in the mod loader. */
     private static final String BARITONE_MOD_ID = "baritone";
 
-    /** El nombre con el que {@code NewerNewChunks} se registra como módulo de Meteor. */
-    private static final String MODULO_NEWER_NEW_CHUNKS = "NewerNewChunks";
+    /** The name {@code NewerNewChunks} registers with as a Meteor module. */
+    private static final String MODULE_NEWER_NEW_CHUNKS = "NewerNewChunks";
 
-    /** El nombre con el que {@code BaseFinder} se registra como módulo de Meteor. */
-    private static final String MODULO_BASE_FINDER = "BaseFinder";
+    /** The name {@code BaseFinder} registers with as a Meteor module. */
+    private static final String MODULE_BASE_FINDER = "BaseFinder";
 
-    /** El nombre con el que el buscador de contenedores de Meteor se registra. */
-    private static final String MODULO_STASH_FINDER = "stash-finder";
+    /** The name Meteor's container finder registers with. */
+    private static final String MODULE_STASH_FINDER = "stash-finder";
 
     /**
-     * Los cinco ficheros que {@code NewerNewChunks} mantiene por servidor y dimensión (spec §5.1).
-     * Su unión es exactamente «qué chunks he recibido», y es el registro de cobertura que este
-     * módulo consume en vez de llevar uno propio.
+     * The five files {@code NewerNewChunks} keeps per server and dimension (spec §5.1). Their union is
+     * exactly "which chunks have I received", and it is the coverage record this module consumes
+     * instead of keeping its own.
      *
-     * <p>Nombres leídos del <b>bytecode del jar instalado</b>, {@code trouser-streak-1.6.1}, clase
-     * {@code pwn.noobs.trouserstreak.modules.NewerNewChunks}, y confirmados contra los ficheros que
-     * ya existen en disco en esta instancia.
+     * <p>Names read from the <b>bytecode of the installed jar</b>, {@code trouser-streak-1.6.1}, class
+     * {@code pwn.noobs.trouserstreak.modules.NewerNewChunks}, and confirmed against the files that
+     * already exist on disk in this instance.
      */
-    private static final String[] FICHEROS_DE_COBERTURA = {
+    private static final String[] COVERAGE_FILES = {
         "NewChunkData.txt",
         "OldChunkData.txt",
         "OldGenerationChunkData.txt",
@@ -128,75 +129,76 @@ public class NetherSweep extends XploitsModule {
     };
 
     /**
-     * Todo lo que {@code NewerNewChunks} mete en un nombre de carpeta pasa por este reemplazo, así
-     * que nosotros tenemos que aplicarle <b>exactamente el mismo</b> o buscaríamos en una carpeta
-     * que no existe.
+     * Everything {@code NewerNewChunks} puts into a folder name goes through this replacement, so we
+     * have to apply <b>exactly the same one</b> or we would be looking in a folder that does not exist.
      *
-     * <p>Es una lista blanca, no una lista negra, y por eso <b>no</b> se usa aquí el
-     * {@code Utils.getFileWorldName()} de Meteor: el suyo es {@code [\s\\/:*?"<>|]}, una lista negra
-     * distinta, y para cualquier dirección con un carácter que uno limpie y el otro no -un {@code ~}
-     * o un {@code !}, por ejemplo- los dos nombres divergen y la cobertura previa se leería vacía.
-     * Vacía significa replanificar el rectángulo entero: horas de vuelo repitiendo terreno ya visto.
+     * <p>It is an allow list, not a deny list, and that is why Meteor's
+     * {@code Utils.getFileWorldName()} is <b>not</b> used here: Meteor's is {@code [\s\\/:*?"<>|]}, a
+     * different deny list, and for any address with a character that one cleans and the other does
+     * not -a {@code ~} or a {@code !}, for example- the two names diverge and the previous coverage
+     * would be read as empty. Empty means replanning the whole rectangle: hours of flight repeating
+     * terrain already seen.
      */
-    private static final String CARACTERES_INVALIDOS = "[^a-zA-Z0-9._\\-]";
+    private static final String INVALID_CHARACTERS = "[^a-zA-Z0-9._\\-]";
 
     /**
-     * Cada cuántos bloques volados se le pasa una muestra a {@link FuelBudget}, y por qué no es cada
+     * Every how many blocks flown a sample is handed to {@link FuelBudget}, and why it is not every
      * tick.
      *
-     * <p>{@link FuelBudget#sample} solo cuenta como gasto medido los tramos en los que de verdad
-     * bajaron los cohetes. Muestreando cada tick, un cohete se quema en un tick y los otros cien
-     * ticks del intervalo no cuentan: la tasa saldría de dividir <b>un tick de vuelo</b> -un par de
-     * bloques- entre un cohete, o sea unos 2 bloques por cohete en vez de los cien y pico reales.
-     * Con esa tasa {@link FuelBudget#willRunOut} cortaría el barrido a los pocos segundos, siempre.
+     * <p>{@link FuelBudget#sample} only counts as measured spending the legs in which the fireworks
+     * really went down. Sampling every tick, a firework burns in one tick and the other hundred ticks
+     * of the interval do not count: the rate would come from dividing <b>one tick of flight</b> -a
+     * couple of blocks- by one firework, that is about 2 blocks per firework instead of the real
+     * hundred-odd. With that rate {@link FuelBudget#willRunOut} would cut the sweep after a few
+     * seconds, every time.
      *
-     * <p>Así que el intervalo tiene que ser lo bastante largo como para que en casi todos se queme
-     * algún cohete. Mil bloques son unos treinta segundos de crucero con elytra, dentro de los cuales
-     * Baritone quema del orden de diez cohetes: suficiente para que el tramo mida gasto real y corto
-     * como para que la primera proyección llegue al minuto de vuelo, que es lo que la spec promete
-     * (§6: «la proyección llegará a los pocos minutos de vuelo»).
+     * <p>So the interval has to be long enough for some firework to burn in almost every one. A
+     * thousand blocks are about thirty seconds of elytra cruising, during which Baritone burns on the
+     * order of ten fireworks: enough for the leg to measure real spending, and short enough for the
+     * first projection to arrive within a minute of flight, which is what the spec promises (§6: "the
+     * projection will arrive within a few minutes of flight").
      */
-    private static final double BLOQUES_POR_MUESTRA_DE_COHETES = 1_000;
+    private static final double BLOCKS_PER_FIREWORK_SAMPLE = 1_000;
 
     /**
-     * El suelo de {@code no-projection-grace}, y por qué no puede ser un intervalo de muestreo.
+     * The floor of {@code no-projection-grace}, and why it cannot be one sampling interval.
      *
-     * <p>Una tasa de gasto necesita <b>dos</b> muestras: la primera solo fija la referencia de la
-     * que se mide la segunda (ver {@link FuelBudget#sample}). Así que en la primera muestra
-     * {@link #bloquesSinProyeccion} vale exactamente un intervalo y en la segunda, dos, si para
-     * entonces todavía no ha bajado ningún cohete -que es lo normal al principio de un vuelo con
-     * {@code elytraConserveFireworks} encendido-.
+     * <p>A spending rate needs <b>two</b> samples: the first only sets the reference the second is
+     * measured from (see {@link FuelBudget#sample}). So at the first sample
+     * {@link #blocksWithoutProjection} is exactly one interval and at the second, two, if by then no
+     * firework has gone down yet -which is normal at the start of a flight with
+     * {@code elytraConserveFireworks} on-.
      *
-     * <p>Con la gracia en un solo intervalo, la comparación de la primera muestra era
-     * {@code 1000 < 1000}, falsa, y <b>el barrido se cortaba durante la aproximación</b>: sin haber
-     * llegado a dar el aviso de media gracia, determinista, y con un valor que el propio deslizador
-     * ofrecía. El suelo tiene que dejar pasar las dos muestras que la tasa necesita y alguna más,
-     * así que son tres intervalos: en la segunda se avisa -2.000 ya pasa de la media gracia- y solo
-     * en la tercera se corta.
+     * <p>With the grace at a single interval, the comparison at the first sample was
+     * {@code 1000 < 1000}, false, and <b>the sweep was cut during the approach</b>: without ever
+     * getting to give the half-grace warning, deterministically, and with a value the slider itself
+     * offered. The floor has to let through the two samples the rate needs and a few more, so it is
+     * three intervals: the second one warns -2,000 is already past half the grace- and only the third
+     * one cuts.
      *
-     * <p>A quien tuviera guardado el 1.000 de antes esto no le deja el módulo roto:
-     * {@code Setting.set} de Meteor devuelve {@code false} sin escribir nada cuando el valor no pasa
-     * {@code isValueValid}, y {@code DoubleSetting.load} carga por ahí, así que un valor persistido
-     * por debajo del suelo se descarta al cargar y el ajuste se queda en su valor de fábrica.
+     * <p>This does not leave the module broken for anyone who had the old 1,000 saved: Meteor's
+     * {@code Setting.set} returns {@code false} without writing anything when the value does not pass
+     * {@code isValueValid}, and {@code DoubleSetting.load} loads through it, so a persisted value below
+     * the floor is dropped on load and the setting stays at its factory value.
      */
-    private static final double GRACIA_MINIMA_SIN_PROYECCION = 3 * BLOQUES_POR_MUESTRA_DE_COHETES;
+    private static final double MIN_NO_PROJECTION_GRACE = 3 * BLOCKS_PER_FIREWORK_SAMPLE;
 
-    /** Lo que mide un chunk de lado, en bloques: de aquí sale el enlace entre dos pasadas. */
-    private static final int BLOQUES_POR_CHUNK = 16;
+    /** The side of a chunk, in blocks: the link between two lanes comes from this. */
+    private static final int BLOCKS_PER_CHUNK = 16;
 
-    /** Sin acercarse al waypoint durante este tiempo, el barrido se corta. */
-    private static final double SEGUNDOS_DE_ATASCO = 45;
+    /** Without getting closer to the waypoint for this long, the sweep is cut. */
+    private static final double STALL_SECONDS = 45;
 
-    /** Cuánto tiene que bajar la distancia para contar como avance, en bloques. */
-    private static final double EPSILON_DE_AVANCE = 1.0;
+    /** How much the distance has to drop to count as progress, in blocks. */
+    private static final double PROGRESS_EPSILON = 1.0;
 
     private final SettingGroup sgArea = settings.getDefaultGroup();
-    private final SettingGroup sgPasada = settings.createGroup("Pasada");
-    private final SettingGroup sgCohetes = settings.createGroup("Cohetes");
-    private final SettingGroup sgVuelo = settings.createGroup("Vuelo");
-    private final SettingGroup sgAvisos = settings.createGroup("Avisos");
+    private final SettingGroup sgLane = settings.createGroup("Lane");
+    private final SettingGroup sgFireworks = settings.createGroup("Fireworks");
+    private final SettingGroup sgFlight = settings.createGroup("Flight");
+    private final SettingGroup sgNotify = settings.createGroup("Notify");
 
-    // El rectángulo, en chunks del Nether (spec §4: el rectángulo lo da el jugador).
+    // The rectangle, in Nether chunks (spec §4: the player gives the rectangle).
 
     private final Setting<Integer> chunkX1 = sgArea.add(new IntSetting.Builder()
         .name("chunk-x-1")
@@ -230,12 +232,12 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    // La anchura de pasada (spec §5). Los identificadores "lane-width" y "lane-width-margin" son los
-    // que nombran los motivos de rechazo de SweepPlanner, a propósito y con un test que los fija
-    // allí: si divergieran, el mensaje mandaría al jugador a buscar en la ClickGUI algo que no
-    // existe con ese nombre. Se mueven juntos o no se mueven.
+    // The lane width (spec §5). The ids "lane-width" and "lane-width-margin" are the ones
+    // SweepPlanner's rejection reasons name, on purpose and with a test that pins them there: if they
+    // diverged, the message would send the player to look in the ClickGUI for something that does
+    // not exist under that name. They move together or not at all.
 
-    private final Setting<Integer> anchuraDePasada = sgPasada.add(new IntSetting.Builder()
+    private final Setting<Integer> laneWidth = sgLane.add(new IntSetting.Builder()
         .name("lane-width")
         .description(Texts.startupText(SweepText.SETTING_LANE_WIDTH))
         .defaultValue(0)
@@ -244,7 +246,7 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Double> margenDeAnchura = sgPasada.add(new DoubleSetting.Builder()
+    private final Setting<Double> laneWidthMargin = sgLane.add(new DoubleSetting.Builder()
         .name("lane-width-margin")
         .description(Texts.startupText(SweepText.SETTING_LANE_WIDTH_MARGIN))
         .defaultValue(0.2)
@@ -254,7 +256,7 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Double> margenDeWaypoint = sgPasada.add(new DoubleSetting.Builder()
+    private final Setting<Double> waypointMargin = sgLane.add(new DoubleSetting.Builder()
         .name("waypoint-margin")
         .description(Texts.startupText(SweepText.SETTING_WAYPOINT_MARGIN))
         .defaultValue(RoutePlanner.DEFAULT_WAYPOINT_MARGIN)
@@ -264,9 +266,9 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    // Cohetes (spec §6): el límite real de un barrido no es el tiempo.
+    // Fireworks (spec §6): the real limit of a sweep is not time.
 
-    private final Setting<Double> reservaDeCohetes = sgCohetes.add(new DoubleSetting.Builder()
+    private final Setting<Double> fireworkReserve = sgFireworks.add(new DoubleSetting.Builder()
         .name("firework-reserve")
         .description(Texts.startupText(SweepText.SETTING_FIREWORK_RESERVE))
         .defaultValue(0.2)
@@ -276,14 +278,14 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Boolean> contarElRegreso = sgCohetes.add(new BoolSetting.Builder()
+    private final Setting<Boolean> countReturnTrip = sgFireworks.add(new BoolSetting.Builder()
         .name("count-return-trip")
         .description(Texts.startupText(SweepText.SETTING_COUNT_RETURN_TRIP))
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Double> bloquesPorCohete = sgCohetes.add(new DoubleSetting.Builder()
+    private final Setting<Double> blocksPerFirework = sgFireworks.add(new DoubleSetting.Builder()
         .name("blocks-per-firework")
         .description(Texts.startupText(SweepText.SETTING_BLOCKS_PER_FIREWORK))
         .defaultValue(0)
@@ -293,72 +295,72 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Double> graciaSinProyeccion = sgCohetes.add(new DoubleSetting.Builder()
+    private final Setting<Double> noProjectionGrace = sgFireworks.add(new DoubleSetting.Builder()
         .name("no-projection-grace")
         .description(Texts.startupText(SweepText.SETTING_NO_PROJECTION_GRACE))
         .defaultValue(5_000)
-        .min(GRACIA_MINIMA_SIN_PROYECCION)
-        .sliderRange(GRACIA_MINIMA_SIN_PROYECCION, 50_000)
+        .min(MIN_NO_PROJECTION_GRACE)
+        .sliderRange(MIN_NO_PROJECTION_GRACE, 50_000)
         .decimalPlaces(0)
         .build()
     );
 
-    // Vuelo: el prefijo y los cuatro ajustes de Baritone, cada uno con su valor de vuelo y su valor
-    // de reposo. Los valores de reposo vienen de fábrica con el default REAL de Baritone porque
-    // Baritone PERSISTE sus ajustes a disco: un reposo inventado reconfiguraría para siempre todos
-    // los #elytra que el jugador haga a mano. El razonamiento entero, con el origen de cada número,
-    // está en BaritoneScript.baritoneDefaults().
+    // Flight: the prefix and the four Baritone settings, each with its flight value and its resting
+    // value. The resting values default to Baritone's REAL default because Baritone PERSISTS its
+    // settings to disk: a made-up resting value would reconfigure forever every #elytra the player
+    // runs by hand. The full reasoning, with the source of each number, is in
+    // BaritoneScript.baritoneDefaults().
 
-    private final Setting<String> prefijo = sgVuelo.add(new StringSetting.Builder()
+    private final Setting<String> baritonePrefix = sgFlight.add(new StringSetting.Builder()
         .name("baritone-prefix")
         .description(Texts.startupText(SweepText.SETTING_BARITONE_PREFIX))
         .defaultValue("#")
         .build()
     );
 
-    private final Setting<Boolean> autoSalto = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> autoJump = sgFlight.add(new BoolSetting.Builder()
         .name("auto-jump")
         .description(Texts.startupText(SweepText.SETTING_AUTO_JUMP))
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Boolean> autoSaltoEnReposo = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> autoJumpResting = sgFlight.add(new BoolSetting.Builder()
         .name("auto-jump-resting")
         .description(Texts.startupText(SweepText.SETTING_AUTO_JUMP_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().autoJump())
         .build()
     );
 
-    private final Setting<Boolean> aterrizajeDeUrgencia = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> emergencyLand = sgFlight.add(new BoolSetting.Builder()
         .name("emergency-land")
         .description(Texts.startupText(SweepText.SETTING_EMERGENCY_LAND))
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Boolean> aterrizajeDeUrgenciaEnReposo = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> emergencyLandResting = sgFlight.add(new BoolSetting.Builder()
         .name("emergency-land-resting")
         .description(Texts.startupText(SweepText.SETTING_EMERGENCY_LAND_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().allowEmergencyLand())
         .build()
     );
 
-    private final Setting<Boolean> ahorrarCohetes = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> conserveFireworks = sgFlight.add(new BoolSetting.Builder()
         .name("conserve-fireworks")
         .description(Texts.startupText(SweepText.SETTING_CONSERVE_FIREWORKS))
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Boolean> ahorrarCohetesEnReposo = sgVuelo.add(new BoolSetting.Builder()
+    private final Setting<Boolean> conserveFireworksResting = sgFlight.add(new BoolSetting.Builder()
         .name("conserve-fireworks-resting")
         .description(Texts.startupText(SweepText.SETTING_CONSERVE_FIREWORKS_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().conserveFireworks())
         .build()
     );
 
-    private final Setting<Double> velocidadDeCohete = sgVuelo.add(new DoubleSetting.Builder()
+    private final Setting<Double> fireworkSpeed = sgFlight.add(new DoubleSetting.Builder()
         .name("firework-speed")
         .description(Texts.startupText(SweepText.SETTING_FIREWORK_SPEED))
         .defaultValue(1)
@@ -368,7 +370,7 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Double> velocidadDeCoheteEnReposo = sgVuelo.add(new DoubleSetting.Builder()
+    private final Setting<Double> fireworkSpeedResting = sgFlight.add(new DoubleSetting.Builder()
         .name("firework-speed-resting")
         .description(Texts.startupText(SweepText.SETTING_FIREWORK_SPEED_RESTING))
         .defaultValue(BaritoneScript.baritoneDefaults().fireworkSpeed())
@@ -378,23 +380,23 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<String> semillaDelNether = sgVuelo.add(new StringSetting.Builder()
+    private final Setting<String> netherSeed = sgFlight.add(new StringSetting.Builder()
         .name("nether-seed")
         .description(Texts.startupText(SweepText.SETTING_NETHER_SEED))
         .defaultValue("")
         .build()
     );
 
-    // Avisos
+    // Notify
 
-    private final Setting<Boolean> avisos = sgAvisos.add(new BoolSetting.Builder()
+    private final Setting<Boolean> notify = sgNotify.add(new BoolSetting.Builder()
         .name("notify")
         .description(Texts.startupText(SweepText.SETTING_NOTIFY))
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Double> sueloDeCobertura = sgAvisos.add(new DoubleSetting.Builder()
+    private final Setting<Double> coverageFloor = sgNotify.add(new DoubleSetting.Builder()
         .name("coverage-floor")
         .description(Texts.startupText(SweepText.SETTING_COVERAGE_FLOOR))
         .defaultValue(0.95)
@@ -404,146 +406,147 @@ public class NetherSweep extends XploitsModule {
         .build()
     );
 
-    private final Setting<Boolean> sonidoEnAvisos = sgAvisos.add(new BoolSetting.Builder()
+    private final Setting<Boolean> notifySound = sgNotify.add(new BoolSetting.Builder()
         .name("notify-sound")
         .description(Texts.startupText(SweepText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
         .build()
     );
 
-    /** Si hay un barrido en marcha: lo único que distingue "encendido" de "dirigiendo". */
+    /** Whether a sweep is running: the only thing that tells "on" apart from "steering". */
     private boolean sweeping;
 
     /**
-     * Si lo que está pasando ahora mismo es el desmontaje de salida del mundo, en el que no se puede
-     * encender ni apagar un módulo de Meteor sin dejarlo suscrito dos veces al bus para el resto de
-     * la sesión. Lo pone {@link #onGameLeft(GameLeftEvent)} y lo quita {@link #onActivate()}.
+     * Whether what is happening right now is the teardown on leaving the world, during which a
+     * Meteor module cannot be turned on or off without leaving it subscribed twice to the bus for the
+     * rest of the session. Set by {@link #onGameLeft(GameLeftEvent)} and cleared by
+     * {@link #onActivate()}.
      */
     private boolean leavingWorld;
 
     /**
-     * El oyente de la red de seguridad, <b>suscrito al bus por su cuenta</b> y no como parte del
-     * módulo, porque Meteor desuscribe el módulo justo antes de {@code onDeactivate()} -que es
-     * cuando la restauración emite sus comandos-. El razonamiento entero, con las fuentes de orbit
-     * comprobadas, está en {@code travel/AutoTravel}.
+     * The safety net's listener, <b>subscribed to the bus on its own</b> and not as part of the
+     * module, because Meteor unsubscribes the module just before {@code onDeactivate()} -which is when
+     * the restoration sends its commands-. The full reasoning, with the orbit sources checked, is in
+     * {@code travel/AutoTravel}.
      */
     private final ChatNet net = new ChatNet();
 
-    /** Si la red está armada, que es lo mismo que decir si {@link #net} está suscrito al bus. */
+    /** Whether the net is armed, which is the same as whether {@link #net} is subscribed to the bus. */
     private boolean netArmed;
 
-    /** Si el comando que {@link #send(String)} está emitiendo ahora mismo es nuestro. */
+    /** Whether the command {@link #send(String)} is sending right now is ours. */
     private boolean emitting;
 
-    /** Si la red mató el último comando nuestro: puesto por el oyente, leído por {@link #send(String)}. */
+    /** Whether the net killed our last command: set by the listener, read by {@link #send(String)}. */
     private boolean sendCaught;
 
-    /** Si ya se avisó de que la red ha tenido que cancelar algo en este barrido (una sola vez). */
+    /** Whether the player was already warned that the net had to cancel something in this sweep (once only). */
     private boolean netCaughtWarned;
 
     /**
-     * El prefijo con el que arrancó este barrido. La red y la restauración usan este, no el del
-     * ajuste: si el jugador lo edita a mitad de vuelo, la restauración tiene que hablarle a Baritone
-     * en el mismo idioma en que se le habló al despegar.
+     * The prefix this sweep started with. The net and the restoration use this one, not the
+     * setting's: if the player edits it mid-flight, the restoration has to speak to Baritone in the
+     * same language it was spoken to at takeoff.
      */
     private String activePrefix = "";
 
     /**
-     * Los dos módulos de Meteor que el barrido toma prestados. La decisión de qué hacerles al
-     * despegar y al terminar está en {@link BorrowedModule}, en el núcleo y con tests.
+     * The two Meteor modules the sweep borrows. The decision about what to do with them at takeoff
+     * and at the end lives in {@link BorrowedModule}, in the core and with tests.
      */
     private final BorrowedModule elytraFly = new BorrowedModule("elytra-fly", false);
     private final BorrowedModule elytraReplace = new BorrowedModule("elytra-replace", true);
 
     /**
-     * El viaje que se está volando: los vértices en orden y todas las distancias que hay que
-     * presupuestar, aproximación y regreso incluidos. Es {@code null} mientras no hay barrido en
-     * marcha, y todo lo que lo lee está detrás de {@link #sweeping}.
+     * The trip being flown: the vertices in order and every distance that has to be budgeted,
+     * approach and return included. It is {@code null} while no sweep is running, and everything
+     * that reads it is behind {@link #sweeping}.
      */
     private SweepRoute route;
 
-    /** En qué vértice de {@link #route} va el barrido. */
+    /** Which vertex of {@link #route} the sweep is at. */
     private int index;
 
-    /** Cuántas pasadas tiene el plan que se está volando, para el estado y los avisos. */
-    private int pasadasDelPlan;
+    /** How many lanes the plan being flown has, for the status and the notices. */
+    private int planLanes;
 
-    /** La anchura de pasada con la que se planificó, en chunks. */
-    private int anchuraUsada;
+    /** The lane width the plan was made with, in chunks. */
+    private int usedWidth;
 
-    /** Si esa anchura la tecleó el jugador en vez de salir medida del flujo de chunks. */
-    private boolean anchuraTecleada;
+    /** Whether the player typed that width instead of it being measured from the chunk stream. */
+    private boolean typedWidth;
 
     /**
-     * La anchura a la que el servidor manda chunks, medida del propio flujo (spec §5). Se alimenta
-     * <b>con el módulo encendido aunque no se esté volando</b>: así al lanzar ya hay muestras y la
-     * anchura de pasada sale medida en vez de tecleada. Se tira al entrar o salir de un mundo,
-     * porque el alcance del servidor siguiente no tiene por qué ser el de éste.
+     * The width at which the server sends chunks, measured from the stream itself (spec §5). It is
+     * fed <b>with the module on even when not flying</b>: that way there are already samples at
+     * launch and the lane width comes out measured instead of typed. It is thrown away on entering or
+     * leaving a world, because the next server's reach need not be this one's.
      */
     private WidthProbe probe = new WidthProbe();
 
     /**
-     * El techo con el que se tomó la última muestra, en chunks, o 0 si todavía no se ha tomado
-     * ninguna. Sirve para notar que la distancia de renderizado efectiva ha cambiado y tirar una
-     * medida que ya no se puede comparar con la nueva.
+     * The ceiling the last sample was taken with, in chunks, or 0 if none has been taken yet. It is
+     * used to notice that the effective render distance has changed and to throw away a measurement
+     * that can no longer be compared with the new one.
      */
-    private int ultimoTecho;
+    private int lastCeiling;
 
-    /** La medición del gasto de cohetes de <b>este</b> vuelo (spec §6). */
+    /** The measurement of the firework spending of <b>this</b> flight (spec §6). */
     private FuelBudget fuel = new FuelBudget();
 
     /**
-     * El cuentakilómetros del jugador, <b>de toda la sesión y no de un barrido</b>: se alimenta en
-     * cada tick con el módulo encendido, se esté volando o no, porque de él salen dos cosas que hacen
-     * falta en los dos estados. Una es la velocidad del último tick, que es lo que decide si una
-     * muestra de anchura vale (ver {@link WidthProbe#sample}); la otra son los bloques volados, que
-     * se miden por diferencia contra {@link #bloquesAlDespegar} en vez de reiniciando el contador,
-     * para que el paso del tick del despegue no salga falseado a cero justo cuando la sonda lo mira.
+     * The player's odometer, <b>for the whole session and not for one sweep</b>: it is fed every tick
+     * with the module on, flying or not, because two things that are needed in both states come from
+     * it. One is the speed of the last tick, which is what decides whether a width sample is valid
+     * (see {@link WidthProbe#sample}); the other is the blocks flown, which are measured as a
+     * difference against {@link #blocksAtTakeoff} instead of by resetting the counter, so that the
+     * step of the takeoff tick does not come out falsely as zero just when the probe looks at it.
      */
-    private final Odometer odometro = new Odometer();
+    private final Odometer odometer = new Odometer();
 
-    /** En qué kilometraje del cuentakilómetros arrancó este barrido. */
-    private double bloquesAlDespegar;
+    /** At which odometer reading this sweep started. */
+    private double blocksAtTakeoff;
 
-    /** Dónde estaba el jugador en el tick anterior, para medir el desplazamiento real. */
-    private Waypoint posicionAnterior = new Waypoint(0, 0);
+    /** Where the player was on the previous tick, to measure the real movement. */
+    private Waypoint previousPosition = new Waypoint(0, 0);
 
     /**
-     * Si {@link #posicionAnterior} es de verdad la del tick pasado. Es falso al entrar al mundo y
-     * mientras no hay jugador: sin posición anterior no hay desplazamiento que medir, y suponer uno
-     * sería meterle al cuentakilómetros un salto que nadie voló.
+     * Whether {@link #previousPosition} really is the one from the last tick. It is false on entering
+     * the world and while there is no player: without a previous position there is no movement to
+     * measure, and assuming one would feed the odometer a jump nobody flew.
      */
-    private boolean hayPosicionAnterior;
+    private boolean hasPreviousPosition;
 
-    /** En qué kilometraje se tomó la última muestra de cohetes. */
-    private double bloquesDeLaUltimaMuestra;
+    /** At which odometer reading the last firework sample was taken. */
+    private double blocksAtLastSample;
 
-    /** Bloques volados sin que {@link FuelBudget#blocksPerRocket()} haya podido dar una tasa. */
-    private double bloquesSinProyeccion;
+    /** Blocks flown without {@link FuelBudget#blocksPerRocket()} being able to give a rate. */
+    private double blocksWithoutProjection;
 
-    /** Si ya se avisó una vez de que no hay proyección de cohetes, para no repetirlo por muestra. */
-    private boolean avisoSinProyeccionDado;
+    /** Whether the player was already warned once that there is no firework projection, so it is not repeated every sample. */
+    private boolean noProjectionWarningGiven;
 
     /**
-     * La cuenta de cuántos chunks del área han llegado de verdad (spec §9). Se arma al planificar
-     * -con la cobertura previa ya marcada- y se alimenta con cada chunk que llega mientras se vuela,
-     * para que el mensaje final pueda decir <b>cuánto se miró</b> y no solo que el recorrido
-     * terminó. Es {@code null} mientras no hay barrido en marcha.
+     * The count of how many chunks of the area have really arrived (spec §9). It is set up at
+     * planning time -with the previous coverage already marked- and fed with every chunk that
+     * arrives while flying, so that the final message can say <b>how much was looked at</b> and not
+     * only that the route is finished. It is {@code null} while no sweep is running.
      */
     private SweepTally tally;
 
     /**
-     * La vigilancia del atasco, en el núcleo y con tests. El adaptador solo le da el waypoint al que
-     * va y la distancia que queda.
+     * The stall watch, in the core and with tests. The adapter only gives it the waypoint it is
+     * heading for and the distance left.
      */
-    private final StallWatch stallWatch = StallWatch.ofSeconds(SEGUNDOS_DE_ATASCO, EPSILON_DE_AVANCE);
+    private final StallWatch stallWatch = StallWatch.ofSeconds(STALL_SECONDS, PROGRESS_EPSILON);
 
     /**
-     * El aviso de cohetes bajos. El umbral no es un ajuste aquí: en un barrido la protección buena
-     * es la proyección de {@link FuelBudget}, y este aviso es solo el recordatorio de que se están
-     * acabando. Se arma al despegar con el 10 % de los cohetes de partida, que es un número relativo
-     * a lo que el jugador haya decidido cargar en vez de uno fijo que no significa lo mismo con 64
-     * cohetes que con 1.500.
+     * The low-fireworks warning. The threshold is not a setting here: in a sweep the real protection
+     * is {@link FuelBudget}'s projection, and this warning is only the reminder that they are running
+     * out. It is armed at takeoff with 10% of the starting fireworks, a number relative to what the
+     * player decided to carry instead of a fixed one that does not mean the same with 64 fireworks as
+     * with 1,500.
      */
     private FireworkWatch fireworkWatch = new FireworkWatch(0);
 
@@ -553,13 +556,13 @@ public class NetherSweep extends XploitsModule {
 
     @Override
     public void onActivate() {
-        // Encender no vuela: se espera al comando del jugador. Aquí se vuelve también al entrar al
-        // mundo -Modules.onGameJoined suscribe cada módulo activo y le llama a onActivate()-, así
-        // que es el sitio donde se olvida que estábamos saliendo y donde se tira la medida de
-        // anchura del servidor anterior.
+        // Turning it on does not fly: it waits for the player's command. This is also called again on
+        // entering the world -Modules.onGameJoined subscribes every active module and calls its
+        // onActivate()-, so it is the place where we forget that we were leaving and where the
+        // previous server's width measurement is thrown away.
         leavingWorld = false;
         probe = new WidthProbe();
-        ultimoTecho = 0;
+        lastCeiling = 0;
         resetSweep();
 
         info(SweepText.ARMED);
@@ -568,100 +571,101 @@ public class NetherSweep extends XploitsModule {
 
     @Override
     public void onDeactivate() {
-        // Al dejar el mundo también se pasa por aquí, pero para entonces onGameLeft ya ha cerrado el
-        // barrido: corre antes por prioridad y finish() es idempotente.
+        // Leaving the world also goes through here, but by then onGameLeft has already closed the
+        // sweep: it runs first by priority and finish() is idempotent.
         finish(SweepText.REASON_MODULE_OFF, false);
-        // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin barrido en marcha
-        // se comería en silencio todo comando con prefijo que el jugador escribiera a mano.
+        // And whatever happens, the net does not outlive the module: a listener subscribed with no
+        // sweep running would silently swallow every prefixed command the player typed by hand.
         disarmNet();
     }
 
     /**
-     * Salida: desconexión o cambio de mundo. Va en {@code HIGHEST} a propósito para correr antes que
-     * el handler de {@code Modules}, que desmonta los módulos activos: así la restauración sabe que
-     * está en el desmontaje y no enciende ni apaga ningún módulo de Meteor -hacerlo ahí los deja
-     * suscritos dos veces al bus para el resto de la sesión-.
+     * Leaving: disconnection or world change. It runs at {@code HIGHEST} on purpose, to run before
+     * the {@code Modules} handler that tears down the active modules: that way the restoration knows
+     * it is in the teardown and does not turn any Meteor module on or off -doing so there leaves them
+     * subscribed twice to the bus for the rest of the session-.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
         leavingWorld = true;
         finish(SweepText.REASON_LEFT_WORLD, false);
         probe = new WidthProbe();
-        ultimoTecho = 0;
+        lastCeiling = 0;
     }
 
     /**
-     * La medida de la anchura real a la que el servidor manda chunks (spec §5). Llega <b>un evento
-     * por chunk que el servidor envía</b>, publicado desde {@code ClientPlayNetworkHandlerMixin} con
-     * {@code @At("TAIL")} de {@code onChunkData}, que corre en el hilo principal detrás de
-     * {@code forceMainThread}: es la medida honesta de cobertura y se puede tocar el estado del
-     * módulo desde aquí sin carreras.
+     * The measurement of the real width at which the server sends chunks (spec §5). <b>One event
+     * arrives per chunk the server sends</b>, published from {@code ClientPlayNetworkHandlerMixin}
+     * with {@code @At("TAIL")} of {@code onChunkData}, which runs on the main thread behind
+     * {@code forceMainThread}: it is the honest measurement of coverage, and the module's state can
+     * be touched from here without races.
      *
-     * <p>Se alimenta siempre que el módulo esté encendido, se esté volando o no, porque la anchura
-     * tiene que estar medida <b>antes</b> de lanzar. La distancia de Chebyshev, el máximo sobre la
-     * media y el descarte de los artefactos los decide {@link WidthProbe}, en el núcleo y con tests;
-     * aquí solo se lee la posición, la del chunk y el techo.
+     * <p>It is fed whenever the module is on, flying or not, because the width has to be measured
+     * <b>before</b> launching. The Chebyshev distance, the maximum over the mean and the discarding
+     * of artifacts are decided by {@link WidthProbe}, in the core and with tests; here only the
+     * position, the chunk's position and the ceiling are read.
      *
-     * <p><b>El techo es lo único que impide que un chunk tardío ensanche las pasadas el resto de la
-     * sesión</b> (ver el javadoc de {@link WidthProbe}). Sale de {@code getClampedViewDistance()},
-     * cuyo bytecode dice literalmente {@code serverViewDistance > 0 ? min(viewDistance,
-     * serverViewDistance) : viewDistance}: es exactamente «el menor de los dos» de spec §3 -lo que
-     * el jugador tiene puesto y lo que el servidor ha declarado-, que es el límite por encima del
-     * cual una muestra no puede venir del servidor.
+     * <p><b>The ceiling is the only thing that stops a late chunk from widening the lanes for the
+     * rest of the session</b> (see the javadoc of {@link WidthProbe}). It comes from
+     * {@code getClampedViewDistance()}, whose bytecode literally says {@code serverViewDistance > 0 ?
+     * min(viewDistance, serverViewDistance) : viewDistance}: it is exactly "the smaller of the two"
+     * of spec §3 -what the player has set and what the server has declared-, which is the limit above
+     * which a sample cannot come from the server.
      */
     @EventHandler
     private void onChunkData(ChunkDataEvent event) {
         if (mc.player == null || event.chunk() == null) return;
 
-        int techo = mc.options.getClampedViewDistance();
-        // Un techo por debajo de 1 no es un estado real del juego -la distancia de renderizado
-        // mínima es 2-, pero si alguna vez lo fuera, muestrear con él lanzaría una excepción por
-        // cada chunk recibido. Aquí se calla y no se mide, que es el lado seguro: sin muestras el
-        // módulo se niega a despegar en vez de volar con una anchura inventada.
-        if (techo < 1) return;
+        int ceiling = mc.options.getClampedViewDistance();
+        // A ceiling below 1 is not a real game state -the minimum render distance is 2-, but if it
+        // ever were, sampling with it would throw an exception for every chunk received. Here it
+        // stays quiet and does not measure, which is the safe side: without samples the module
+        // refuses to take off instead of flying with a made-up width.
+        if (ceiling < 1) return;
 
-        if (techo != ultimoTecho) {
-            // La distancia de renderizado ha cambiado -la ha tocado el jugador, o el servidor ha
-            // declarado otra-. Las muestras viejas se tomaron contra un techo que ya no vale, y si
-            // el techo ha BAJADO el máximo guardado puede estar por encima de lo que el servidor
-            // manda ahora: exactamente el hueco que el techo existe para cerrar, entrando por la
-            // otra puerta. Se tira la medida y se vuelve a medir.
-            if (ultimoTecho > 0 && probe.sampleCount() > 0) {
-                info(SweepText.RENDER_DISTANCE_CHANGED, "from", ultimoTecho, "to", techo);
+        if (ceiling != lastCeiling) {
+            // The render distance has changed -the player touched it, or the server declared another
+            // one-. The old samples were taken against a ceiling that no longer holds, and if the
+            // ceiling went DOWN the stored maximum may be above what the server sends now: exactly
+            // the gap the ceiling exists to close, coming in through the other door. The measurement
+            // is thrown away and measured again.
+            if (lastCeiling > 0 && probe.sampleCount() > 0) {
+                info(SweepText.RENDER_DISTANCE_CHANGED, "from", lastCeiling, "to", ceiling);
             }
-            ultimoTecho = techo;
+            lastCeiling = ceiling;
             probe = new WidthProbe();
         }
 
-        int jugadorX = (int) Math.floor(mc.player.getX()) >> 4;
-        int jugadorZ = (int) Math.floor(mc.player.getZ()) >> 4;
+        int playerX = (int) Math.floor(mc.player.getX()) >> 4;
+        int playerZ = (int) Math.floor(mc.player.getZ()) >> 4;
         int chunkX = event.chunk().getPos().x;
         int chunkZ = event.chunk().getPos().z;
 
-        // Esta es la comprobación de que el terreno ha llegado de verdad (spec §9), y sale de aquí
-        // y no de releer los ficheros del otro mod porque aquí es donde está el hecho: un evento por
-        // chunk que el servidor manda, sin depender de que NewerNewChunks esté encendido ni de que
-        // haya llegado a volcar a disco.
+        // This is the check that the terrain has really arrived (spec §9), and it comes from here and
+        // not from re-reading the other mod's files because this is where the fact is: one event per
+        // chunk the server sends, without depending on NewerNewChunks being on or on it having
+        // flushed to disk.
         if (sweeping && tally != null) tally.record(chunkX, chunkZ);
 
-        // La velocidad del último tick decide si esta muestra mide el alcance del servidor o la
-        // deriva de su cola: el porqué entero está en el javadoc de WidthProbe. Y mientras no haya
-        // una posición anterior con la que compararse no hay velocidad medida, solo un cero de
-        // arranque: muestrear con él es declarar quieto a un jugador que puede venir volando -el
-        // caso de encender el módulo en pleno vuelo-, y esa muestra entraría inflada. Sin medida no
-        // se mide; el tick siguiente ya la habrá.
-        if (!hayPosicionAnterior) return;
+        // The speed of the last tick decides whether this sample measures the server's reach or the
+        // drift of its queue: the full reason is in WidthProbe's javadoc. And while there is no
+        // previous position to compare with there is no measured speed, only a startup zero:
+        // sampling with it is declaring still a player who may be flying in -the case of turning the
+        // module on mid-flight-, and that sample would come in inflated. Without a measurement
+        // nothing is measured; the next tick will have one.
+        if (!hasPreviousPosition) return;
         probe.sample(
-            new ChunkPos(jugadorX, jugadorZ),
+            new ChunkPos(playerX, playerZ),
             new ChunkPos(chunkX, chunkZ),
-            techo,
-            odometro.lastStep());
+            ceiling,
+            odometer.lastStep());
     }
 
     /**
-     * La mitad de la red de seguridad que necesita a Minecraft: sacar del paquete saliente por qué
-     * canal va y qué texto lleva. Decidir si ese texto es un comando de Baritone de los que
-     * dirigimos es de {@link SafetyNet}, que se prueba sin arrancar el juego.
+     * The half of the safety net that needs Minecraft: getting from the outgoing packet which
+     * channel it goes through and what text it carries. Deciding whether that text is one of the
+     * Baritone commands we steer with belongs to {@link SafetyNet}, which is tested without starting
+     * the game.
      */
     private final class ChatNet {
         @EventHandler
@@ -693,31 +697,30 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Que la red haya tenido que actuar significa que Baritone no está interceptando, y eso el
-     * jugador lo quiere saber: cualquier comando que escriba a mano sí se publicaría. Una sola vez
-     * por barrido, y fuerte.
+     * The net having had to act means Baritone is not intercepting, and the player wants to know
+     * that: any command they type by hand would indeed be published. Once per sweep, and loud.
      */
     private void warnNetCaught(String text) {
         if (netCaughtWarned) return;
         netCaughtWarned = true;
 
         Msg message = Msg.of(SweepText.NET_CAUGHT, "command", text);
-        // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
-        Msg sinArgumentos = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verb(text));
-        warningPrivate(new PositionedMsg(message, sinArgumentos));
+        // The cancelled command may be a #goal with coordinates: only its verb goes to the console.
+        Msg withoutArguments = Msg.of(SweepText.NET_CAUGHT_VERB, "verb", SafetyNet.verb(text));
+        warningPrivate(new PositionedMsg(message, withoutArguments));
         loudToast(message, Items.BARRIER);
     }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        // Lo que quedó por devolver al salir del mundo se devuelve aquí, en el primer tick tras
-        // volver a entrar: para entonces Modules.onGameJoined ya ha terminado de suscribir a todos.
+        // Whatever was left to hand back on leaving the world is handed back here, on the first tick
+        // after entering again: by then Modules.onGameJoined has finished subscribing everyone.
         applyPendingModules();
 
-        // El cuentakilómetros va siempre, se esté volando o no: con el módulo encendido y sin
-        // barrido su único trabajo útil es medir la anchura de pasada, y para saber si una muestra
-        // vale hace falta saber a qué velocidad iba el jugador cuando llegó.
-        medirDesplazamiento();
+        // The odometer always runs, flying or not: with the module on and no sweep, its only useful
+        // job is measuring the lane width, and to know whether a sample is valid we need to know how
+        // fast the player was going when it arrived.
+        measureMovement();
 
         if (!sweeping) return;
 
@@ -726,40 +729,40 @@ public class NetherSweep extends XploitsModule {
             return;
         }
         if (!mc.player.isAlive()) {
-            // No hay evento de muerte en Meteor, así que se observa aquí; el jugador sigue existiendo
-            // en la pantalla de muerte, así que la restauración todavía puede hablarle a Baritone.
+            // Meteor has no death event, so it is observed here; the player still exists on the
+            // death screen, so the restoration can still talk to Baritone.
             finish(SweepText.REASON_DIED, true);
             return;
         }
 
-        Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
+        Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
 
         checkFireworks();
-        if (muestrearCohetes()) return;
+        if (sampleFireworks()) return;
 
-        double distancia = aqui.distanceTo(route.waypoints().get(index));
+        double distance = here.distanceTo(route.waypoints().get(index));
 
-        // El margen con el que se da por alcanzado un waypoint no es el mismo para todos -el último
-        // es el único sitio donde Baritone debe aterrizar-, y esa decisión vive en el núcleo.
-        if (distancia <= RoutePlanner.reachedMargin(index, route.size(), margenDeWaypoint.get())) {
+        // The margin at which a waypoint counts as reached is not the same for all of them -the last
+        // one is the only place where Baritone should land-, and that decision lives in the core.
+        if (distance <= RoutePlanner.reachedMargin(index, route.size(), waypointMargin.get())) {
             index++;
             if (index >= route.size()) {
                 finish(SweepText.REASON_DONE, false);
                 return;
             }
-            if (avisos.get() && index % 2 == 0) {
-                info(SweepText.LANE_PROGRESS, "lane", index / 2 + 1, "total", pasadasDelPlan);
+            if (notify.get() && index % 2 == 0) {
+                info(SweepText.LANE_PROGRESS, "lane", index / 2 + 1, "total", planLanes);
             }
             aimAtCurrentWaypoint();
             return;
         }
 
-        // Lo único observable desde fuera es si la distancia baja; Baritone no informa de nada más.
-        // El índice va en la llamada a propósito: es lo que hace que el salto de distancia al cambiar
-        // de waypoint no se lea como cuarenta y cinco segundos sin avanzar.
-        if (stallWatch.tick(index, distancia)) {
+        // The only thing observable from outside is whether the distance goes down; Baritone reports
+        // nothing else. The index goes into the call on purpose: it is what keeps the jump in
+        // distance when switching waypoints from being read as forty-five seconds without progress.
+        if (stallWatch.tick(index, distance)) {
             Msg message = Msg.of(SweepText.STALLED, "index", index + 1, "seconds", stallWatch.limitSeconds(),
-                "distance", Math.round(distancia));
+                "distance", Math.round(distance));
             warning(message);
             loudToast(message, Items.ELYTRA);
             finish(SweepText.REASON_STALL, false);
@@ -767,123 +770,125 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Mide lo que el jugador se ha desplazado en este tick y se lo pasa al cuentakilómetros, que es
-     * quien decide si eso fue vuelo o fue un salto.
+     * Measures how far the player has moved in this tick and passes it to the odometer, which decides
+     * whether that was flight or a jump.
      *
-     * <p><b>Un teletransporte no es vuelo</b> -un portal, un {@code /tpa}, reaparecer, un tirón del
-     * servidor- y sumarlo a los bloques recorridos infla la tasa de bloques por cohete hacia el lado
-     * peligroso: la proyección contesta que los cohetes llegan cuando no llegan. El filtro y su
-     * razonamiento viven en {@link Odometer}, en el núcleo y con tests.
+     * <p><b>A teleport is not flight</b> -a portal, a {@code /tpa}, respawning, a server
+     * rubber-band- and adding it to the blocks flown inflates the blocks-per-firework rate towards
+     * the dangerous side: the projection answers that the fireworks will last when they will not.
+     * The filter and its reasoning live in {@link Odometer}, in the core and with tests.
      *
-     * <p>Sin posición anterior -al entrar al mundo, o tras un tick sin jugador- no hay
-     * desplazamiento que medir, así que se registra cero: inventar uno sería justo meterle al
-     * cuentakilómetros el salto que existe para no contar.
+     * <p>Without a previous position -on entering the world, or after a tick with no player- there
+     * is no movement to measure, so zero is recorded: making one up would be feeding the odometer
+     * exactly the jump it exists not to count.
      */
-    private void medirDesplazamiento() {
+    private void measureMovement() {
         if (mc.player == null) {
-            hayPosicionAnterior = false;
-            odometro.advance(0);
+            hasPreviousPosition = false;
+            odometer.advance(0);
             return;
         }
 
-        Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
-        odometro.advance(hayPosicionAnterior ? aqui.distanceTo(posicionAnterior) : 0);
-        posicionAnterior = aqui;
-        hayPosicionAnterior = true;
+        Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
+        odometer.advance(hasPreviousPosition ? here.distanceTo(previousPosition) : 0);
+        previousPosition = here;
+        hasPreviousPosition = true;
     }
 
     /**
-     * Los bloques volados desde el despegue de este barrido, que es lo que se le pasa a
-     * {@link FuelBudget}. Sale por diferencia contra el cuentakilómetros de la sesión -ver
-     * {@link #odometro}- y ya viene sin los tramos que no se volaron.
+     * The blocks flown since this sweep's takeoff, which is what is passed to {@link FuelBudget}. It
+     * comes as a difference against the session odometer -see {@link #odometer}- and already comes
+     * without the legs that were not flown.
      */
-    private double bloquesVolados() {
-        return odometro.blocksFlown() - bloquesAlDespegar;
+    private double sweepBlocksFlown() {
+        return odometer.blocksFlown() - blocksAtTakeoff;
     }
 
     /**
-     * El recordatorio de cohetes bajos. La protección de verdad es {@link #muestrearCohetes()}; esto
-     * solo avisa de que se están acabando, y {@link FireworkWatch} decide cuándo y si ya salió.
+     * The low-fireworks reminder. The real protection is {@link #sampleFireworks()}; this only warns
+     * that they are running out, and {@link FireworkWatch} decides when and whether it already went
+     * out.
      *
-     * <p>{@code InvUtils.find(Item...)} recorre el inventario del jugador y suma los {@code count}
-     * de las pilas que casen: cubre la barra rápida, el inventario principal, la armadura y la mano
-     * secundaria, y devuelve {@code count 0} sin jugador en vez de reventar. Lo que vaya dentro de un
-     * shulker no se cuenta.
+     * <p>{@code InvUtils.find(Item...)} walks the player's inventory and adds up the {@code count} of
+     * the matching stacks: it covers the hotbar, the main inventory, the armor and the offhand, and
+     * returns {@code count 0} with no player instead of blowing up. Whatever is inside a shulker is
+     * not counted.
      */
     private void checkFireworks() {
-        int cohetes = InvUtils.find(Items.FIREWORK_ROCKET).count();
-        if (!fireworkWatch.observe(cohetes)) return;
+        int fireworks = InvUtils.find(Items.FIREWORK_ROCKET).count();
+        if (!fireworkWatch.observe(fireworks)) return;
 
-        Msg message = cohetes == 0
+        Msg message = fireworks == 0
             ? Msg.of(SweepText.OUT_OF_FIREWORKS)
-            : Msg.of(SweepText.LOW_FIREWORKS, "count", cohetes, "threshold", fireworkWatch.threshold());
+            : Msg.of(SweepText.LOW_FIREWORKS, "count", fireworks, "threshold", fireworkWatch.threshold());
         warning(message);
         loudToast(message, Items.FIREWORK_ROCKET);
     }
 
     /**
-     * La medición del gasto de cohetes y la proyección de si van a llegar (spec §6, segunda mitad:
-     * <i>«Durante: se mide el gasto real por bloque recorrido y se proyecta. Si la proyección no
-     * llega, corta y lo dice antes de dejarle tirado»</i>).
+     * The measurement of firework spending and the projection of whether they will last (spec §6,
+     * second half: <i>"During: the real spending per block flown is measured and projected. If the
+     * projection falls short, it cuts and says so before leaving you stranded"</i>).
      *
-     * <p><b>La rama que importa es la de "no lo sé", y no puede ser un silencio.</b>
-     * {@link FuelBudget#blocksPerRocket()} está vacío en dos situaciones normales: al principio,
-     * hasta que dos muestras seguidas midan gasto real, y a mitad de vuelo, si el jugador repone
-     * cohetes más a menudo de lo que se muestrea y la tasa medida caduca. En las dos,
-     * {@link FuelBudget#willRunOut} <b>lanza</b> a propósito, porque fabricar una medida que no
-     * existe es peor que admitirlo. Lo que este método <b>no</b> hace es capturar esa excepción y
-     * seguir volando: eso haría desaparecer la protección de cohetes en silencio, que es justo la
-     * clase de fallo que el módulo existe para no cometer. Así que ni se llama a {@code willRunOut}
-     * sin tasa, ni se sigue indefinidamente sin ella: se avisa, y pasada la gracia se corta.
+     * <p><b>The branch that matters is the "I don't know" one, and it cannot be a silence.</b>
+     * {@link FuelBudget#blocksPerRocket()} is empty in two normal situations: at the start, until two
+     * consecutive samples measure real spending, and mid-flight, if the player restocks fireworks
+     * more often than it samples and the measured rate expires. In both,
+     * {@link FuelBudget#willRunOut} <b>throws</b> on purpose, because making up a measurement that
+     * does not exist is worse than admitting it. What this method does <b>not</b> do is catch that
+     * exception and keep flying: that would silently make the firework protection disappear, which
+     * is exactly the kind of failure the module exists not to make. So {@code willRunOut} is neither
+     * called without a rate, nor is flying continued indefinitely without one: it warns, and past the
+     * grace it cuts.
      *
-     * @return si el barrido se ha cortado y quien llame tiene que dejar de tocar su estado
+     * @return whether the sweep has been cut and the caller has to stop touching its state
      */
-    private boolean muestrearCohetes() {
-        double volados = bloquesVolados();
-        double desdeLaUltima = volados - bloquesDeLaUltimaMuestra;
-        if (desdeLaUltima < BLOQUES_POR_MUESTRA_DE_COHETES) return false;
-        bloquesDeLaUltimaMuestra = volados;
+    private boolean sampleFireworks() {
+        double flown = sweepBlocksFlown();
+        double sinceLast = flown - blocksAtLastSample;
+        if (sinceLast < BLOCKS_PER_FIREWORK_SAMPLE) return false;
+        blocksAtLastSample = flown;
 
-        int cohetes = InvUtils.find(Items.FIREWORK_ROCKET).count();
-        fuel.sample(volados, cohetes);
+        int fireworks = InvUtils.find(Items.FIREWORK_ROCKET).count();
+        fuel.sample(flown, fireworks);
 
-        OptionalDouble tasa = fuel.blocksPerRocket();
-        if (tasa.isEmpty()) {
-            bloquesSinProyeccion += desdeLaUltima;
-            if (bloquesSinProyeccion < graciaSinProyeccion.get()) {
-                if (!avisoSinProyeccionDado && bloquesSinProyeccion >= graciaSinProyeccion.get() / 2) {
-                    avisoSinProyeccionDado = true;
-                    warning(SweepText.NO_PROJECTION_WARNING, "flown", Math.round(bloquesSinProyeccion),
-                        "left", Math.round(graciaSinProyeccion.get() - bloquesSinProyeccion));
+        OptionalDouble rate = fuel.blocksPerRocket();
+        if (rate.isEmpty()) {
+            blocksWithoutProjection += sinceLast;
+            if (blocksWithoutProjection < noProjectionGrace.get()) {
+                if (!noProjectionWarningGiven && blocksWithoutProjection >= noProjectionGrace.get() / 2) {
+                    noProjectionWarningGiven = true;
+                    warning(SweepText.NO_PROJECTION_WARNING, "flown", Math.round(blocksWithoutProjection),
+                        "left", Math.round(noProjectionGrace.get() - blocksWithoutProjection));
                 }
                 return false;
             }
 
-            Msg message = Msg.of(SweepText.NO_PROJECTION_CUT, "flown", Math.round(bloquesSinProyeccion),
-                "grace", Math.round(graciaSinProyeccion.get()));
+            Msg message = Msg.of(SweepText.NO_PROJECTION_CUT, "flown", Math.round(blocksWithoutProjection),
+                "grace", Math.round(noProjectionGrace.get()));
             warning(message);
             loudToast(message, Items.FIREWORK_ROCKET);
             finish(SweepText.REASON_NO_PROJECTION, false);
             return true;
         }
 
-        bloquesSinProyeccion = 0;
-        avisoSinProyeccionDado = false;
+        blocksWithoutProjection = 0;
+        noProjectionWarningGiven = false;
 
-        double restante = bloquesRestantes();
-        if (!fuel.willRunOut(restante, cohetes, reservaDeCohetes.get())) return false;
+        double remaining = remainingBlocks();
+        if (!fuel.willRunOut(remaining, fireworks, fireworkReserve.get())) return false;
 
-        long necesarios = (long) Math.ceil(restante / tasa.getAsDouble() * (1 + reservaDeCohetes.get()));
-        // Es el único mensaje de corte que llega con el jugador lejos de casa, así que nombra los
-        // dos ajustes de los que salen sus números: sin ellos, "unos 420 cohetes" es una cifra que
-        // no se sabe de dónde viene y el jugador no tiene qué tocar para la próxima vez.
-        Msg message = Msg.of(SweepText.FIREWORKS_SHORT, "rate", Math.round(tasa.getAsDouble()),
-            "remaining", Math.round(restante),
-            "return", contarElRegreso.get()
+        long needed = (long) Math.ceil(remaining / rate.getAsDouble() * (1 + fireworkReserve.get()));
+        // It is the only cut message that arrives with the player far from home, so it names the two
+        // settings its numbers come from: without them, "about 420 fireworks" is a figure nobody
+        // knows the source of, and the player has nothing to change for next time.
+        Msg message = Msg.of(SweepText.FIREWORKS_SHORT, "rate", Math.round(rate.getAsDouble()),
+            "remaining", Math.round(remaining),
+            "return", countReturnTrip.get()
                 ? SweepText.FIREWORKS_SHORT_WITH_RETURN
                 : SweepText.FIREWORKS_SHORT_WITHOUT_RETURN,
-            "reserve", Math.round(reservaDeCohetes.get() * 100), "needed", necesarios, "count", cohetes,
-            "counts", contarElRegreso.get() ? SweepText.RETURN_COUNTED : SweepText.RETURN_NOT_COUNTED);
+            "reserve", Math.round(fireworkReserve.get() * 100), "needed", needed, "count", fireworks,
+            "counts", countReturnTrip.get() ? SweepText.RETURN_COUNTED : SweepText.RETURN_NOT_COUNTED);
         warning(message);
         loudToast(message, Items.FIREWORK_ROCKET);
         finish(SweepText.REASON_OUT_OF_FIREWORKS, false);
@@ -891,42 +896,42 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Lo que le queda por volar al jugador hasta terminar: de donde está al vértice al que va, más el
-     * resto de la ruta, más el regreso si se cuenta. Es exactamente la distancia que
-     * {@link FuelBudget#willRunOut} pide, y no {@code SweepPlan.totalBlocks()}, que mide solo el
-     * barrido.
+     * What the player still has to fly to finish: from where they are to the vertex they are heading
+     * for, plus the rest of the route, plus the return if it counts. It is exactly the distance
+     * {@link FuelBudget#willRunOut} asks for, and not {@code SweepPlan.totalBlocks()}, which measures
+     * only the sweep.
      */
-    private double bloquesRestantes() {
+    private double remainingBlocks() {
         if (mc.player == null) return route.remainingFrom(index);
         return route.remainingFrom(index, new Waypoint(mc.player.getX(), mc.player.getZ()));
     }
 
     /**
-     * Lanza el barrido. Devuelve el mensaje que el comando tiene que enseñar, sea el del lanzamiento
-     * o el motivo por el que no se vuela; ante la duda, no se manda un solo comando.
+     * Launches the sweep. Returns the message the command has to show, whether it is the launch one
+     * or the reason why it does not fly; when in doubt, not a single command is sent.
      *
-     * <p>Los avisos de §8 -detectores apagados, anchura tecleada- salen por el chat <b>antes</b> del
-     * despegue y no en el valor de vuelta, porque son varios y cada uno merece su línea.
+     * <p>The §8 warnings -detectors off, typed width- go out through the chat <b>before</b> takeoff
+     * and not in the return value, because there are several and each one deserves its own line.
      */
     public Msg start() {
         if (!isActive()) return Msg.of(SweepText.START_MODULE_OFF);
         if (sweeping) return Msg.of(SweepText.START_ALREADY_SWEEPING);
-        Msg viajeEnMarcha = rechazoPorAutoTravel();
-        if (viajeEnMarcha != null) return viajeEnMarcha;
+        Msg travelRunning = autoTravelRejection();
+        if (travelRunning != null) return travelRunning;
         if (mc.player == null || mc.world == null) return Msg.of(SweepText.START_NO_WORLD);
         if (!mc.player.isAlive()) return Msg.of(SweepText.START_DEAD);
         if (!World.NETHER.equals(mc.world.getRegistryKey())) {
-            // El módulo entero está construido sobre que un bloque del Nether cubre 64 veces más
-            // superficie del Overworld: el área se teclea en chunks del Nether y lo que se anuncia
-            // como cobertura equivalente sale de multiplicar por 8. Volarlo en otra dimensión no
-            // rompe la geometría, pero convierte ese anuncio en mentira, y es el número por el que
-            // el jugador decide si el barrido vale las horas que cuesta.
+            // The whole module is built on one Nether block covering 64 times more Overworld surface:
+            // the area is typed in Nether chunks and what is announced as equivalent coverage comes
+            // from multiplying by 8. Flying it in another dimension does not break the geometry, but
+            // it turns that announcement into a lie, and it is the number by which the player decides
+            // whether the sweep is worth the hours it costs.
             return Msg.of(SweepText.START_NOT_NETHER);
         }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
-            // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
-            // Class.forName sobre una clase que el jar ofuscado no expone, así que ahí vale false
-            // aunque Baritone esté perfectamente instalado.
+            // BaritoneUtils.IS_AVAILABLE is NOT used on purpose: Meteor sets it to true after a
+            // Class.forName on a class the obfuscated jar does not expose, so there it is false
+            // even though Baritone is perfectly installed.
             return Msg.of(SweepText.START_NO_BARITONE);
         }
         if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) return Msg.of(SweepText.START_NO_FIREWORKS);
@@ -934,307 +939,310 @@ public class NetherSweep extends XploitsModule {
         Msg chestSwapRejection = chestSwapRejection();
         if (chestSwapRejection != null) return chestSwapRejection;
 
-        String launchPrefix = prefijo.get();
+        String launchPrefix = baritonePrefix.get();
         Msg prefixRejection = SafetyNet.prefixRejection(launchPrefix);
         if (prefixRejection != null) {
-            // Antes de armar la red y antes del primer comando: armarla sobre un prefijo inservible
-            // es tener red sin saber qué vigila.
+            // Before arming the net and before the first command: arming it on an unusable prefix is
+            // having a net without knowing what it watches.
             return Msg.of(SweepText.NOT_SWEEPING_PREFIX, "reason", prefixRejection);
         }
 
         SweepArea area = SweepArea.ofChunks(chunkX1.get(), chunkZ1.get(), chunkX2.get(), chunkZ2.get());
 
-        // El tamaño se comprueba aquí, ANTES de leer la cobertura y antes de planificar, porque los
-        // dos recorren el rectángulo entero chunk a chunk en el hilo principal -Coverage.seenIn para
-        // contar lo ya visto y SweepPlanner para decidir qué bandas saltarse-. Con un área tecleada
-        // de más, el cliente se queda colgado dentro de un comando y ni siquiera llega el rechazo.
-        Msg tamanoRechazo = area.oversizeRejection();
-        if (tamanoRechazo != null) return Msg.of(SweepText.NOT_SWEEPING, "reason", tamanoRechazo);
+        // The size is checked here, BEFORE reading the coverage and before planning, because both
+        // walk the whole rectangle chunk by chunk on the main thread -Coverage.seenIn to count what
+        // was already seen and SweepPlanner to decide which bands to skip-. With an area typed too
+        // big, the client hangs inside a command and not even the rejection arrives.
+        Msg sizeRejection = area.oversizeRejection();
+        if (sizeRejection != null) return Msg.of(SweepText.NOT_SWEEPING, "reason", sizeRejection);
 
-        Msg anchuraRechazo = resolverAnchura();
-        if (anchuraRechazo != null) return anchuraRechazo;
+        Msg widthRejection = resolveWidth();
+        if (widthRejection != null) return widthRejection;
 
-        LecturaDeCobertura lectura = leerCobertura();
-        Coverage vista = lectura.cobertura();
-        // Del área, no de la dimensión entera: lo que le dice al jugador cuánto le ahorra su
-        // cobertura previa es lo que cae DENTRO del rectángulo que ha pedido. Con size() el mensaje
-        // llegaba a anunciar más chunks vistos que chunks tiene el área.
+        CoverageRead reading = readCoverage();
+        Coverage seen = reading.coverage();
+        // Of the area, not of the whole dimension: what tells the player how much their previous
+        // coverage saves them is what falls INSIDE the rectangle they asked for. With size() the
+        // message went as far as announcing more chunks seen than the area has.
         //
-        // Y la cuenta se arma aquí, no al terminar, porque tiene que arrancar sabiendo qué chunks
-        // del área NO hacía falta volver a ver: los de las bandas que el planificador se salta. De
-        // ella sale el "cuánto he mirado" del mensaje final (spec §9).
-        SweepTally cuenta = SweepTally.of(area, vista);
+        // And the tally is set up here, not at the end, because it has to start knowing which chunks
+        // of the area did NOT need to be seen again: those of the bands the planner skips. The
+        // "how much have I looked at" of the final message comes from it (spec §9).
+        SweepTally newTally = SweepTally.of(area, seen);
 
-        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, vista, anchuraUsada);
+        SweepPlanner.SweepPlan plan = SweepPlanner.plan(area, seen, usedWidth);
         if (plan.isRejected()) return Msg.of(SweepText.NOT_SWEEPING, "reason", plan.rejection());
         if (plan.lanes().isEmpty()) {
-            return Msg.of(SweepText.NOTHING_TO_SWEEP, "chunks", area.chunkCount(), "reading", lectura.resumen(),
+            return Msg.of(SweepText.NOTHING_TO_SWEEP, "chunks", area.chunkCount(), "reading", reading.summary(),
                 "equivalent", area.overworldEquivalent());
         }
 
-        Waypoint aqui = new Waypoint(mc.player.getX(), mc.player.getZ());
-        // Todas las distancias del viaje -aproximación incluida- las calcula SweepRoute, en el núcleo
-        // y con tests: aquí no se rehace ninguna a mano, que es por donde se coló dos veces un
-        // "total" que no incluía la aproximación y que acabó decidiendo si había cohetes.
-        SweepRoute ruta = SweepRoute.of(plan.lanes(), aqui, contarElRegreso.get());
+        Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
+        // Every distance of the trip -approach included- is computed by SweepRoute, in the core and
+        // with tests: none is redone by hand here, which is how a "total" that did not include the
+        // approach slipped in twice and ended up deciding whether there were enough fireworks.
+        SweepRoute plannedRoute = SweepRoute.of(plan.lanes(), here, countReturnTrip.get());
 
-        Msg separacionRechazo = rechazoPorSeparacion(ruta);
-        if (separacionRechazo != null) return separacionRechazo;
+        Msg spacingRejection = spacingRejection(plannedRoute);
+        if (spacingRejection != null) return spacingRejection;
 
-        avisarDeLosDetectores();
-        avisarDeEnlacesCortos(ruta);
-        if (lectura.servidorDesconocido()) {
-            // No es "no hay nada registrado": es "ni he mirado". El plan sale igual que si empezara
-            // de cero, así que sin decirlo el jugador vuela tres horas repitiendo terreno que lleva
-            // meses acumulando sin enterarse de que su cobertura previa no ha entrado en la cuenta.
+        warnAboutDetectors();
+        warnAboutShortLinks(plannedRoute);
+        if (reading.unknownServer()) {
+            // It is not "nothing recorded": it is "I did not even look". The plan comes out the same
+            // as if starting from scratch, so without saying so the player flies three hours
+            // repeating terrain they have been piling up for months, without noticing that their
+            // previous coverage did not make it into the count.
             Msg message = Msg.of(SweepText.UNKNOWN_SERVER);
             warning(message);
             loudToast(message, Items.BARRIER);
         }
-        if (anchuraTecleada) {
-            Msg message = Msg.of(SweepText.TYPED_WIDTH, "width", anchuraUsada);
+        if (typedWidth) {
+            Msg message = Msg.of(SweepText.TYPED_WIDTH, "width", usedWidth);
             warning(message);
             loudToast(message, Items.BARRIER);
         }
 
         activePrefix = launchPrefix;
-        route = ruta;
-        tally = cuenta;
-        posicionAnterior = aqui;
-        hayPosicionAnterior = true;
+        route = plannedRoute;
+        tally = newTally;
+        previousPosition = here;
+        hasPreviousPosition = true;
         index = 0;
-        pasadasDelPlan = plan.lanes().size();
-        bloquesAlDespegar = odometro.blocksFlown();
-        bloquesDeLaUltimaMuestra = 0;
-        bloquesSinProyeccion = 0;
-        avisoSinProyeccionDado = false;
+        planLanes = plan.lanes().size();
+        blocksAtTakeoff = odometer.blocksFlown();
+        blocksAtLastSample = 0;
+        blocksWithoutProjection = 0;
+        noProjectionWarningGiven = false;
         fuel = new FuelBudget();
         stallWatch.reset();
-        fireworkWatch = new FireworkWatch(umbralDeAviso());
+        fireworkWatch = new FireworkWatch(warningThreshold());
         sweeping = true;
 
-        // El orden importa: la red ANTES de emitir el primer comando.
+        // Order matters: the net BEFORE sending the first command.
         armNet();
         prepare();
 
-        // Y una última comprobación antes del #elytra, porque preparar mueve armadura: apagar
-        // elytra-fly con chest-swap en Always te pone la pechera en el sitio de la elytra. Eso se
-        // rechaza arriba, así que aquí ya no debería poder pasar; esto es la red por si otro módulo
-        // se lleva la elytra entre una línea y la siguiente.
+        // And one last check before the #elytra, because preparing moves armor: turning off
+        // elytra-fly with chest-swap on Always puts the chestplate where the elytra was. That is
+        // rejected above, so here it should no longer be able to happen; this is the net in case
+        // another module takes the elytra away between one line and the next.
         if (!wearsElytra()) return undoLaunch();
 
         aimAtCurrentWaypoint();
 
-        // Y la sonda se tira aquí, ya volando. Un barrido no puede planificar con el máximo que
-        // quedó del anterior: la anchura tiene que salir de muestras tomadas con el jugador parado
-        // -las de un vuelo se descartan, ver WidthProbe-, y arrastrar la medida vieja es planificar
-        // sobre un alcance que el servidor tenía hace tres horas. Para relanzar se vuelve a medir,
-        // que son unos segundos andando.
+        // And the probe is thrown away here, already flying. A sweep cannot plan with the maximum
+        // left over from the previous one: the width has to come from samples taken with the player
+        // standing still -those from a flight are discarded, see WidthProbe-, and dragging the old
+        // measurement along is planning on a reach the server had three hours ago. To relaunch it is
+        // measured again, which is a few seconds of walking.
         probe = new WidthProbe();
 
-        return Msg.of(SweepText.LAUNCHED, "lanes", plan.lanes().size(), "width", anchuraUsada,
-            "how", anchuraTecleada ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED, "chunks", area.chunkCount(),
-            "seen", cuenta.alreadySeen(), "reading", lectura.resumen(), "approach", Math.round(ruta.approachBlocks()),
-            "sweep", Math.round(ruta.sweepBlocks()),
-            "return", contarElRegreso.get()
-                ? Msg.of(SweepText.LAUNCHED_RETURN, "blocks", Math.round(ruta.returnBlocks()))
+        return Msg.of(SweepText.LAUNCHED, "lanes", plan.lanes().size(), "width", usedWidth,
+            "how", typedWidth ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED, "chunks", area.chunkCount(),
+            "seen", newTally.alreadySeen(), "reading", reading.summary(), "approach", Math.round(plannedRoute.approachBlocks()),
+            "sweep", Math.round(plannedRoute.sweepBlocks()),
+            "return", countReturnTrip.get()
+                ? Msg.of(SweepText.LAUNCHED_RETURN, "blocks", Math.round(plannedRoute.returnBlocks()))
                 : Msg.of(SweepText.NOTHING),
-            "total", Math.round(ruta.totalBlocks()), "equivalent", area.overworldEquivalent(),
-            "estimate", estimacionDeCohetes(ruta.totalBlocks()));
+            "total", Math.round(plannedRoute.totalBlocks()), "equivalent", area.overworldEquivalent(),
+            "estimate", fireworkEstimate(plannedRoute.totalBlocks()));
     }
 
     /**
-     * Resuelve con qué anchura de pasada se planifica y la deja en {@link #anchuraUsada}, o devuelve
-     * el motivo por el que todavía no se puede barrer.
+     * Resolves which lane width the plan is made with and leaves it in {@link #usedWidth}, or returns
+     * the reason why it cannot sweep yet.
      *
-     * <p>La medida manda (spec §5 y §9: <i>«ningún número que se pueda medir se supone»</i>). Si el
-     * jugador la ha tecleado, se respeta pero se avisa fuerte al lanzar; si no la ha tecleado y la
-     * sonda todavía no tiene muestras, <b>no se vuela</b>: inventarse la separación es exactamente la
-     * forma de acabar con franjas sin mirar creyendo que la zona está limpia.
+     * <p>The measurement rules (spec §5 and §9: <i>"no number that can be measured is assumed"</i>).
+     * If the player typed it, it is respected but loudly warned about at launch; if they did not type
+     * it and the probe has no samples yet, <b>it does not fly</b>: making up the spacing is exactly
+     * the way to end up with unlooked-at strips while believing the area is clean.
      */
-    private Msg resolverAnchura() {
-        if (anchuraDePasada.get() > 0) {
-            anchuraUsada = anchuraDePasada.get();
-            anchuraTecleada = true;
+    private Msg resolveWidth() {
+        if (laneWidth.get() > 0) {
+            usedWidth = laneWidth.get();
+            typedWidth = true;
             return null;
         }
         if (!probe.hasEnoughSamples()) {
             return Msg.of(SweepText.NOT_ENOUGH_SAMPLES, "samples", probe.sampleCount(),
-                "needed", WidthProbe.MUESTRAS_MINIMAS, "discarded", descartadas());
+                "needed", WidthProbe.MIN_SAMPLES, "discarded", discardedSamplesNote());
         }
-        anchuraUsada = probe.laneWidthInChunks(margenDeAnchura.get());
-        anchuraTecleada = false;
+        usedWidth = probe.laneWidthInChunks(laneWidthMargin.get());
+        typedWidth = false;
         return null;
     }
 
     /**
-     * El motivo por el que la ruta no se puede volar con el margen de waypoint configurado, o
-     * {@code null} si se puede.
+     * The reason why the route cannot be flown with the configured waypoint margin, or {@code null}
+     * if it can.
      *
-     * <p><b>Lo que se mira es la pasada más corta, no el hueco más corto</b>, y ahí está medio
-     * arreglo. Dos vértices que caben dentro del margen se consumen casi seguidos: el adaptador
-     * suelta el primero y al tick siguiente suelta el segundo, así que Baritone nunca llega a volar
-     * hacia el de en medio. Si esos dos vértices son <b>los extremos de una pasada</b>, esa pasada no
-     * se vuela nunca y el barrido la da por peinada igual: la mentira de spec §9. Si son el final de
-     * una pasada y el arranque de la siguiente, lo que se pierde es la esquina y no el terreno -el
-     * objetivo pasa a ser el final de la pasada siguiente y Baritone cruza la banda en diagonal-, así
-     * que eso se avisa en {@link #avisarDeEnlacesCortos(SweepRoute)} y no se rechaza. El porqué
-     * entero, en {@link SweepRoute#shortestLane()} y {@link SweepRoute#shortestLink()}.
+     * <p><b>What is checked is the shortest lane, not the shortest gap</b>, and that is half the fix.
+     * Two vertices that fit inside the margin are consumed almost back to back: the adapter drops the
+     * first and on the next tick drops the second, so Baritone never gets to fly towards the one in
+     * between. If those two vertices are <b>the ends of a lane</b>, that lane is never flown and the
+     * sweep counts it as combed anyway: the lie of spec §9. If they are the end of one lane and the
+     * start of the next, what is lost is the corner and not the terrain -the target becomes the end
+     * of the next lane and Baritone crosses the band diagonally-, so that is warned about in
+     * {@link #warnAboutShortLinks(SweepRoute)} and not rejected. The full reason is in
+     * {@link SweepRoute#shortestLane()} and {@link SweepRoute#shortestLink()}.
      *
-     * <p><b>Lo que costaba no distinguirlos:</b> el hueco más corto de un barrido casi siempre es un
-     * enlace, y contra el suelo de las rutas de evasión -{@code RoutePlanner.minimumSpacing}, el
-     * doble del margen y nunca menos de 300 bloques- hacía falta una anchura de 19 chunks, o sea un
-     * radio observado de 12. Un servidor que entregara 8, 10 u 11 -normal en un anarchy cargado- veía
-     * <b>rechazado todo barrido medido, siempre y para cualquier rectángulo</b>, y ninguna de las tres
-     * salidas que el mensaje ofrecía servía: por debajo de 150 el margen no movía el suelo, agrandar
-     * el área no separa las bandas y subir la anchura a mano no aplica a quien la tiene medida. Ahora
-     * lo único que se rechaza es lo que de verdad pierde terreno, y eso solo pasa en un área diminuta
-     * por su eje largo, donde «agranda el área» sí es una salida.
+     * <p><b>What not telling them apart cost:</b> the shortest gap of a sweep is almost always a
+     * link, and against the floor of the evasion routes -{@code RoutePlanner.minimumSpacing}, twice
+     * the margin and never less than 300 blocks- it took a width of 19 chunks, that is an observed
+     * radius of 12. A server that sent 8, 10 or 11 -normal on a busy anarchy- saw <b>every measured
+     * sweep rejected, always and for any rectangle</b>, and none of the three ways out the message
+     * offered worked: below 150 the margin did not move the floor, enlarging the area does not
+     * separate the bands, and raising the width by hand does not apply to whoever has it measured.
+     * Now the only thing rejected is what really loses terrain, and that only happens in an area that
+     * is tiny along its long axis, where "enlarge the area" is indeed a way out.
      */
-    private Msg rechazoPorSeparacion(SweepRoute ruta) {
-        double minima = SweepRoute.minimumGap(margenDeWaypoint.get());
-        double pasada = ruta.shortestLane();
-        if (pasada > minima) return null;
+    private Msg spacingRejection(SweepRoute plannedRoute) {
+        double minimum = SweepRoute.minimumGap(waypointMargin.get());
+        double lane = plannedRoute.shortestLane();
+        if (lane > minimum) return null;
 
-        return Msg.of(SweepText.LANE_TOO_SHORT, "lane", Math.round(pasada),
-            "margin", Math.round(margenDeWaypoint.get()), "minimum", Math.round(minima),
-            "chunks", (long) Math.ceil(minima / BLOQUES_POR_CHUNK),
-            "fix", pasada > RoutePlanner.MIN_WAYPOINT_MARGIN
-                ? Msg.of(SweepText.LANE_TOO_SHORT_LOWER_MARGIN, "lane", Math.round(pasada),
+        return Msg.of(SweepText.LANE_TOO_SHORT, "lane", Math.round(lane),
+            "margin", Math.round(waypointMargin.get()), "minimum", Math.round(minimum),
+            "chunks", (long) Math.ceil(minimum / BLOCKS_PER_CHUNK),
+            "fix", lane > RoutePlanner.MIN_WAYPOINT_MARGIN
+                ? Msg.of(SweepText.LANE_TOO_SHORT_LOWER_MARGIN, "lane", Math.round(lane),
                     "min", Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN))
                 : Msg.of(SweepText.LANE_TOO_SHORT_MARGIN_NOT_ENOUGH, "min", Math.round(RoutePlanner.MIN_WAYPOINT_MARGIN)));
     }
 
     /**
-     * Los avisos sobre los enlaces entre pasadas: lo que se pierde cuando las bandas quedan juntas.
-     * <b>Avisan, no rechazan</b>, y la diferencia es el criterio de siempre: ninguno de los dos casos
-     * pierde una pasada, y lo único que este módulo no puede hacer es dar por peinado lo que no miró.
+     * The warnings about the links between lanes: what is lost when the bands end up close together.
+     * <b>They warn, they do not reject</b>, and the difference is the usual criterion: neither case
+     * loses a lane, and the one thing this module cannot do is count as combed what it did not look
+     * at.
      *
      * <ul>
-     *   <li><b>El enlace cabe dentro del margen.</b> El adaptador lo consume sin volarlo, así que
-     *       Baritone nunca recibe la esquina: su objetivo pasa a ser el final de la pasada siguiente
-     *       y vuela hasta él en diagonal, cruzando la banda igual. Se pierde la esquina limpia, no el
-     *       terreno -razonado en {@link SweepRoute#shortestLink()}-, pero el jugador tiene que
-     *       saberlo porque los bordes de esa banda pasan más lejos del cliente de lo previsto.</li>
-     *   <li><b>El enlace es más corto de lo que una elytra vuela como tramo</b>
-     *       ({@link RoutePlanner#MIN_WAYPOINT_SPACING}, unos cuatro radios de giro). Baritone se pasa
-     *       de largo y vuelve a por el vértice: más lento y más cohetes, pero la pasada se vuela
-     *       entera.</li>
+     *   <li><b>The link fits inside the margin.</b> The adapter consumes it without flying it, so
+     *       Baritone never receives the corner: its target becomes the end of the next lane and it
+     *       flies there diagonally, crossing the band anyway. The clean corner is lost, not the
+     *       terrain -reasoned in {@link SweepRoute#shortestLink()}-, but the player has to know
+     *       because the edges of that band pass further from the client than planned.</li>
+     *   <li><b>The link is shorter than what an elytra flies as a leg</b>
+     *       ({@link RoutePlanner#MIN_WAYPOINT_SPACING}, about four turning radii). Baritone overshoots
+     *       and comes back for the vertex: slower and more fireworks, but the lane is flown in
+     *       full.</li>
      * </ul>
      *
-     * <p>Una ruta de una sola pasada no tiene ningún enlace, y entonces {@code shortestLink()} vale
-     * {@code Double.MAX_VALUE}: no entra en ninguno de los dos avisos, que es lo correcto.
+     * <p>A single-lane route has no link at all, and then {@code shortestLink()} is
+     * {@code Double.MAX_VALUE}: it falls into neither warning, which is correct.
      */
-    private void avisarDeEnlacesCortos(SweepRoute ruta) {
-        double enlace = ruta.shortestLink();
-        if (enlace <= SweepRoute.minimumGap(margenDeWaypoint.get())) {
-            warning(SweepText.LINK_INSIDE_MARGIN, "link", Math.round(enlace),
-                "margin", Math.round(margenDeWaypoint.get()));
+    private void warnAboutShortLinks(SweepRoute plannedRoute) {
+        double link = plannedRoute.shortestLink();
+        if (link <= SweepRoute.minimumGap(waypointMargin.get())) {
+            warning(SweepText.LINK_INSIDE_MARGIN, "link", Math.round(link),
+                "margin", Math.round(waypointMargin.get()));
             return;
         }
-        if (enlace >= RoutePlanner.MIN_WAYPOINT_SPACING) return;
+        if (link >= RoutePlanner.MIN_WAYPOINT_SPACING) return;
 
-        warning(SweepText.LINK_TOO_SHORT, "link", Math.round(enlace),
+        warning(SweepText.LINK_TOO_SHORT, "link", Math.round(link),
             "spacing", Math.round(RoutePlanner.MIN_WAYPOINT_SPACING));
     }
 
     /**
-     * El motivo por el que no se puede barrer con {@code auto-travel} volando, o {@code null} si no
-     * lo está.
+     * The reason why it cannot sweep with {@code auto-travel} flying, or {@code null} if it is not.
      *
-     * <p><b>Los dos módulos dirigen al mismo Baritone por los mismos comandos</b>, y ninguno
-     * preguntaba por el otro pese a que se usan en el mismo viaje -se vuela hasta la zona con
-     * {@code auto-travel} y se barre al llegar-. Lo que pasa si se solapan, en orden: {@code #goal}
-     * solo admite un objetivo, así que el segundo en lanzar se queda con Baritone; el primero ve
-     * crecer su distancia al suyo, a los 45 s salta su vigilancia de atasco y emite su {@code
-     * #cancel} y su restauración entera, que <b>para el vuelo del segundo a mitad</b> y además le
-     * devuelve {@code elytraFireworkSpeed} a un valor de reposo distinto del que él cree estar
-     * usando; el segundo no se entera de nada y 45 s después diagnostica un atasco que no existe.
-     * Y como cada uno se presta {@code elytra-fly} y {@code elytra-replace} con su propio
-     * {@code BorrowedModule}, el segundo anota como «reposo del jugador» el estado que dejó el
-     * primero, y al terminar lo deja ahí.
+     * <p><b>Both modules steer the same Baritone through the same commands</b>, and neither asked
+     * about the other even though they are used on the same trip -you fly to the area with
+     * {@code auto-travel} and sweep on arrival-. What happens if they overlap, in order: {@code #goal}
+     * only takes one target, so the second to launch keeps Baritone; the first sees the distance to
+     * its own target grow, after 45 s its stall watch fires and sends its {@code #cancel} and its
+     * whole restoration, which <b>stops the second one's flight halfway</b> and also sets
+     * {@code elytraFireworkSpeed} back to a resting value different from the one it believes it is
+     * using; the second notices nothing and 45 s later diagnoses a stall that does not exist. And
+     * since each one borrows {@code elytra-fly} and {@code elytra-replace} with its own
+     * {@code BorrowedModule}, the second records as "the player's resting state" the state the first
+     * one left, and leaves it there when it finishes.
      *
-     * <p>Es simétrico: la misma guarda está en {@code AutoTravel.start()} mirando hacia aquí.
+     * <p>It is symmetric: the same guard is in {@code AutoTravel.start()} looking this way.
      */
-    private Msg rechazoPorAutoTravel() {
-        AutoTravel viaje = Modules.get().get(AutoTravel.class);
-        if (viaje == null || !viaje.isTravelling()) return null;
+    private Msg autoTravelRejection() {
+        AutoTravel travel = Modules.get().get(AutoTravel.class);
+        if (travel == null || !travel.isTravelling()) return null;
 
         return Msg.of(SweepText.AUTO_TRAVEL_RUNNING);
     }
 
     /**
-     * La estimación de cohetes de antes de despegar (spec §6). Sale del gasto medido en barridos
-     * anteriores, que el módulo guarda entre sesiones en su propio ajuste; <b>sin ningún barrido
-     * previo se dice que no hay dato</b> en vez de enseñar un número inventado con aspecto de medida.
+     * The firework estimate before takeoff (spec §6). It comes from the spending measured in earlier
+     * sweeps, which the module keeps between sessions in its own setting; <b>without any previous
+     * sweep it says there is no data</b> instead of showing a made-up number that looks like a
+     * measurement.
      *
-     * <p>La distancia que se le pasa es el viaje entero -aproximación, barrido y regreso-, no
-     * {@code SweepPlan.totalBlocks()}: ese mide del arranque de la primera pasada al final de la
-     * última, y en un barrido lejos de casa la aproximación es la pata más larga de todas.
+     * <p>The distance passed in is the whole trip -approach, sweep and return-, not
+     * {@code SweepPlan.totalBlocks()}: that one measures from the start of the first lane to the end
+     * of the last, and in a sweep far from home the approach is the longest leg of all.
      */
-    private Msg estimacionDeCohetes(double bloquesTotales) {
-        int llevas = InvUtils.find(Items.FIREWORK_ROCKET).count();
-        double tasa = bloquesPorCohete.get();
-        if (tasa <= 0) {
-            return Msg.of(SweepText.ESTIMATE_NO_DATA, "count", llevas);
+    private Msg fireworkEstimate(double totalBlocks) {
+        int carried = InvUtils.find(Items.FIREWORK_ROCKET).count();
+        double rate = blocksPerFirework.get();
+        if (rate <= 0) {
+            return Msg.of(SweepText.ESTIMATE_NO_DATA, "count", carried);
         }
-        long necesarios = (long) Math.ceil(bloquesTotales / tasa * (1 + reservaDeCohetes.get()));
-        if (necesarios <= llevas) {
-            return Msg.of(SweepText.ESTIMATE_ENOUGH, "needed", necesarios, "rate", Math.round(tasa), "count", llevas);
+        long needed = (long) Math.ceil(totalBlocks / rate * (1 + fireworkReserve.get()));
+        if (needed <= carried) {
+            return Msg.of(SweepText.ESTIMATE_ENOUGH, "needed", needed, "rate", Math.round(rate), "count", carried);
         }
-        return Msg.of(SweepText.ESTIMATE_SHORT, "needed", necesarios, "rate", Math.round(tasa), "count", llevas,
-            "missing", necesarios - llevas);
+        return Msg.of(SweepText.ESTIMATE_SHORT, "needed", needed, "rate", Math.round(rate), "count", carried,
+            "missing", needed - carried);
     }
 
     /**
-     * El umbral del aviso de cohetes bajos: el 10 % de los que se lleven al despegar, y nunca menos
-     * de uno. Relativo y no fijo porque «te quedan 16» no significa lo mismo saliendo con 64 que
-     * saliendo con 1.500.
+     * The threshold of the low-fireworks warning: 10% of those carried at takeoff, and never less
+     * than one. Relative and not fixed because "you have 16 left" does not mean the same leaving with
+     * 64 as leaving with 1,500.
      */
-    private int umbralDeAviso() {
+    private int warningThreshold() {
         return Math.max(1, InvUtils.find(Items.FIREWORK_ROCKET).count() / 10);
     }
 
     /**
-     * Los avisos de spec §5.1 y §8, los que hay que dar <b>antes</b> de despegar y no después de tres
-     * horas: este módulo vuela y no detecta nada. Con los detectores apagados el barrido cubre
-     * terreno y no registra nada, y con {@code NewerNewChunks} apagado además ni se aprovecha lo
-     * anterior ni queda rastro para la próxima vez.
+     * The warnings of spec §5.1 and §8, the ones that have to be given <b>before</b> takeoff and not
+     * after three hours: this module flies and detects nothing. With the detectors off the sweep
+     * covers terrain and records nothing, and with {@code NewerNewChunks} off, on top of that, the
+     * earlier coverage is not used and no trace is left for next time.
      *
-     * <p>Los tres módulos se buscan <b>por nombre</b> y no por clase a propósito: dos de ellos son de
-     * otro mod, {@code trouser-streak}, que no es dependencia de compilación de este addon. Buscar
-     * por nombre significa que si el jugador lo desinstala, esto dice «no está instalado» en vez de
-     * reventar con un {@code NoClassDefFoundError} al cargar el módulo.
+     * <p>The three modules are looked up <b>by name</b> and not by class on purpose: two of them come
+     * from another mod, {@code trouser-streak}, which is not a compile dependency of this addon.
+     * Looking up by name means that if the player uninstalls it, this says "not installed" instead of
+     * blowing up with a {@code NoClassDefFoundError} when the module loads.
      */
-    private void avisarDeLosDetectores() {
-        avisarDeUnDetector(MODULO_NEWER_NEW_CHUNKS, SweepText.DETECTOR_NEWER_NEW_CHUNKS);
-        avisarDeUnDetector(MODULO_BASE_FINDER, SweepText.DETECTOR_BASE_FINDER);
-        avisarDeUnDetector(MODULO_STASH_FINDER, SweepText.DETECTOR_STASH_FINDER);
+    private void warnAboutDetectors() {
+        warnAboutDetector(MODULE_NEWER_NEW_CHUNKS, SweepText.DETECTOR_NEWER_NEW_CHUNKS);
+        warnAboutDetector(MODULE_BASE_FINDER, SweepText.DETECTOR_BASE_FINDER);
+        warnAboutDetector(MODULE_STASH_FINDER, SweepText.DETECTOR_STASH_FINDER);
     }
 
-    private void avisarDeUnDetector(String nombre, SweepText consecuencia) {
-        Module module = Modules.get().get(nombre);
+    private void warnAboutDetector(String name, SweepText consequence) {
+        Module module = Modules.get().get(name);
         if (module != null && module.isActive()) return;
 
-        Msg message = Msg.of(SweepText.DETECTOR_WARNING, "name", nombre,
+        Msg message = Msg.of(SweepText.DETECTOR_WARNING, "name", name,
             "state", module == null ? SweepText.DETECTOR_NOT_INSTALLED : SweepText.DETECTOR_OFF,
-            "consequence", consecuencia);
+            "consequence", consequence);
         warning(message);
         loudToast(message, Items.BARRIER);
     }
 
-    /** Si la pechera lleva una elytra puesta, que es lo único con lo que Baritone puede volar. */
+    /** Whether the chest slot holds an elytra, which is the only thing Baritone can fly with. */
     private boolean wearsElytra() {
         return mc.player != null && mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA;
     }
 
     /**
-     * El motivo por el que no se puede lanzar con el {@code chest-swap} de {@code elytra-fly}
-     * configurado, o {@code null} si no hay conflicto. {@code ElytraFly.onDeactivate()} te cambia la
-     * elytra por la pechera si {@code chest-swap} está en {@code Always}, y deja un oyente que hace
-     * ese cambio al tocar suelo si está en {@code WaitForGround}: la preparación lo apaga como primer
-     * paso y manda {@code #elytra} dos líneas después. Se rechaza en vez de acotarse porque acotarlo
-     * sería tocar a espaldas del jugador un ajuste que Meteor persiste a disco.
+     * The reason why it cannot launch with {@code elytra-fly}'s {@code chest-swap} as configured, or
+     * {@code null} if there is no conflict. {@code ElytraFly.onDeactivate()} swaps the elytra for the
+     * chestplate if {@code chest-swap} is on {@code Always}, and leaves a listener that makes that
+     * swap on touching the ground if it is on {@code WaitForGround}: the preparation turns it off as
+     * its first step and sends {@code #elytra} two lines later. It is rejected instead of worked
+     * around because working around it would mean touching, behind the player's back, a setting that
+     * Meteor persists to disk.
      */
     private Msg chestSwapRejection() {
         ElytraFly module = Modules.get().get(ElytraFly.class);
@@ -1244,16 +1252,16 @@ public class NetherSweep extends XploitsModule {
         if (mode == ElytraFly.ChestSwapMode.Never) return null;
 
         Msg consequence = mode == ElytraFly.ChestSwapMode.Always
-            ? Msg.of(SweepText.CHEST_SWAP_ALWAYS, "prefix", prefijo.get())
+            ? Msg.of(SweepText.CHEST_SWAP_ALWAYS, "prefix", baritonePrefix.get())
             : Msg.of(SweepText.CHEST_SWAP_WAIT_FOR_GROUND);
 
         return Msg.of(SweepText.CHEST_SWAP_REJECTED, "mode", mode.toString(), "consequence", consequence);
     }
 
     /**
-     * Deshace una preparación que ya no puede terminar en vuelo y contesta por qué. No se llama a
-     * {@link #finish(SweepText, boolean)} a propósito: aquí no hay ningún barrido que dar por terminado
-     * -no se ha mandado ni un {@code goal} ni un {@code elytra}-.
+     * Undoes a preparation that can no longer end in flight and answers why. It does not call
+     * {@link #finish(SweepText, boolean)} on purpose: there is no sweep here to declare finished
+     * -neither a {@code goal} nor an {@code elytra} has been sent-.
      */
     private Msg undoLaunch() {
         sweeping = false;
@@ -1265,7 +1273,7 @@ public class NetherSweep extends XploitsModule {
         return Msg.of(SweepText.UNDONE_NOT_RESTORED, "pending", pending);
     }
 
-    /** Cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
+    /** Cancellation by the player. Returns the message the command has to show. */
     public Msg stop() {
         if (!sweeping) return Msg.of(SweepText.STOP_NOT_SWEEPING);
         if (finish(SweepText.REASON_CANCELLED, false).arrived()) return Msg.of(SweepText.STOP_RESTORED);
@@ -1276,85 +1284,85 @@ public class NetherSweep extends XploitsModule {
         return sweeping;
     }
 
-    /** Por dónde va el barrido: pasada, total y bloques que faltan, regreso incluido si se cuenta. */
+    /** How far the sweep has got: lane, total and blocks left, return included if it counts. */
     public Optional<GameSnapshot.Progress> progress() {
         if (!sweeping || route == null) return Optional.empty();
-        return Optional.of(new GameSnapshot.Progress(Math.min(index / 2 + 1, pasadasDelPlan), pasadasDelPlan,
-            Math.round(bloquesRestantes())));
+        return Optional.of(new GameSnapshot.Progress(Math.min(index / 2 + 1, planLanes), planLanes,
+            Math.round(remainingBlocks())));
     }
 
     @Override
     public String activity() {
         return sweeping
-            ? Texts.render(SweepText.NOW_LANE, "lane", Math.min(index / 2 + 1, pasadasDelPlan), "total", pasadasDelPlan)
+            ? Texts.render(SweepText.NOW_LANE, "lane", Math.min(index / 2 + 1, planLanes), "total", planLanes)
             : Texts.render(SweepText.NOW_ARMED);
     }
 
     /**
-     * Preparación: los dos módulos prestados y, de una pieza, la secuencia de ajustes de Baritone que
-     * el núcleo construye y prueba como una sola cosa.
+     * Preparation: the two borrowed modules and, in one piece, the sequence of Baritone settings that
+     * the core builds and tests as a single thing.
      */
     private void prepare() {
-        // Antes de anotar nada, devolver lo que quedara pendiente de un barrido anterior: si no, lo
-        // que se anotaría como "reposo del jugador" sería el estado que dejó ese barrido.
+        // Before recording anything, hand back whatever was left pending from an earlier sweep:
+        // otherwise what would be recorded as "the player's resting state" would be the state that
+        // sweep left behind.
         applyPendingModules();
         takeModule(Modules.get().get(ElytraFly.class), elytraFly);
         takeModule(Modules.get().get(ElytraReplace.class), elytraReplace);
         for (String command : BaritoneScript.preparation(activePrefix, flightSettings())) send(command);
     }
 
-    /** Fija el vértice actual y relanza el vuelo: Baritone toma el objetivo al arrancar, no después. */
+    /** Sets the current vertex and relaunches the flight: Baritone takes the target at start, not afterwards. */
     private void aimAtCurrentWaypoint() {
         send(BaritoneScript.goTo(activePrefix, route.waypoints().get(index)));
         send(BaritoneScript.launch(activePrefix));
     }
 
     /**
-     * El único final de todos los caminos de salida. Es idempotente: quien llegue segundo no hace
-     * nada, que es justo lo que hace falta cuando el apagado del módulo y la salida del mundo se
-     * solapan.
+     * The single end of every exit path. It is idempotent: whoever arrives second does nothing, which
+     * is exactly what is needed when turning the module off and leaving the world overlap.
      *
-     * <p><b>Aquí es donde se comprueba que el terreno llegó</b>, y no darlo por hecho es lo único que
-     * separa este módulo de la única mentira que no puede contar (spec §9). Antes, el barrido
-     * recorría los vértices y al llegar al último anunciaba «terminado» sin haber mirado nunca si los
-     * chunks del rectángulo habían llegado: con el servidor entregando con retraso, o volando más
-     * rápido de lo que entrega, una fracción de cada banda no llega nunca, y el jugador lee «Barrido
-     * terminado», tacha la zona y no vuelve. La autocorrección de spec §7 -relanzar replanifica sobre
-     * los huecos- solo sirve si el jugador sabe que tiene que relanzar, y el único que puede saberlo
-     * es el módulo.
+     * <p><b>This is where it is checked that the terrain arrived</b>, and not taking it for granted
+     * is the only thing that separates this module from the one lie it cannot tell (spec §9). Before,
+     * the sweep walked the vertices and on reaching the last one announced "finished" without ever
+     * having checked whether the rectangle's chunks had arrived: with the server delivering late, or
+     * flying faster than it delivers, a fraction of every band never arrives, and the player reads
+     * "Sweep finished", crosses the area off and does not come back. The self-correction of spec §7
+     * -relaunching replans over the gaps- only works if the player knows they have to relaunch, and
+     * the only one that can know is the module.
      *
-     * <p>Lo que se cuenta y cómo está en {@link SweepTally}; aquí solo se lee antes de restaurar
-     * -{@link #restore()} deja el estado del barrido a cero- y se decide el tono. <b>Por debajo de
-     * {@code coverage-floor} el aviso sale fuerte y con toast</b>, no en un {@code info} que además
-     * se puede apagar: un barrido que cubrió la mitad no puede parecerse a uno que cubrió todo,
-     * porque los dos terminan y solo uno hay que repetirlo.
+     * <p>What is counted and how is in {@link SweepTally}; here it is only read before restoring
+     * -{@link #restore()} resets the sweep state- and the tone is decided. <b>Below
+     * {@code coverage-floor} the warning goes out loud and with a toast</b>, not in an {@code info}
+     * that can moreover be turned off: a sweep that covered half cannot look like one that covered
+     * everything, because both finish and only one has to be repeated.
      *
-     * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después
+     * @return what really happened with the restoration, for whoever has to answer something later
      */
     private SafetyNet.Restoration finish(SweepText reason, boolean warn) {
         if (!sweeping) return SafetyNet.Restoration.DELIVERED;
         sweeping = false;
 
-        // Lo medido en este vuelo se guarda para la estimación previa del siguiente (spec §6), y solo
-        // si hay medida: una tasa caducada o inexistente NO pisa la buena que hubiera guardada, que
-        // sería cambiar un dato por un "no lo sé".
-        fuel.blocksPerRocket().ifPresent(tasa -> bloquesPorCohete.set(tasa));
+        // What was measured in this flight is kept for the next one's advance estimate (spec §6), and
+        // only if there is a measurement: an expired or missing rate does NOT overwrite a good one
+        // that was saved, which would be trading a fact for an "I don't know".
+        fuel.blocksPerRocket().ifPresent(rate -> blocksPerFirework.set(rate));
 
-        // Antes de restaurar: restore() llama a resetSweep() en un finally y ahí la cuenta se tira.
-        Msg cobertura = tally == null ? null : tally.summary();
-        boolean seQuedoCorto = tally != null && tally.shortOfCoverage(sueloDeCobertura.get());
-        int faltan = tally == null ? 0 : tally.missing();
+        // Before restoring: restore() calls resetSweep() in a finally and the tally is thrown away there.
+        Msg coverageSummary = tally == null ? null : tally.summary();
+        boolean fellShort = tally != null && tally.shortOfCoverage(coverageFloor.get());
+        int missing = tally == null ? 0 : tally.missing();
 
         SafetyNet.Restoration restoration = restore();
         Msg pending = restoration.warning(activePrefix);
         warnPendingModules();
 
-        Msg coverage = cobertura == null
+        Msg coverage = coverageSummary == null
             ? Msg.of(SweepText.NOTHING)
-            : Msg.of(SweepText.FINISHED_COVERAGE, "summary", cobertura);
-        SweepText relaunch = seQuedoCorto ? SweepText.FINISHED_RELAUNCH : SweepText.NOTHING;
-        // Emitir no es llegar, y decir "entorno restaurado" sin que haya llegado nada es la mentira
-        // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando.
+            : Msg.of(SweepText.FINISHED_COVERAGE, "summary", coverageSummary);
+        SweepText relaunch = fellShort ? SweepText.FINISHED_RELAUNCH : SweepText.NOTHING;
+        // Sending is not arriving, and saying "environment restored" when nothing has arrived is the
+        // module's most expensive lie: the player thinks they have landed and Baritone keeps flying.
         Msg message = pending == null
             ? Msg.of(SweepText.FINISHED, "reason", reason, "coverage", coverage, "relaunch", relaunch)
             : Msg.of(SweepText.FINISHED_NOT_RESTORED, "reason", reason, "pending", pending, "coverage", coverage,
@@ -1365,22 +1373,22 @@ public class NetherSweep extends XploitsModule {
             loudToast(Msg.of(SweepText.TOAST_FINISHED_NOT_RESTORED), Items.BARRIER);
             return restoration;
         }
-        if (seQuedoCorto) {
+        if (fellShort) {
             warning(message);
-            loudToast(Msg.of(SweepText.TOAST_SHORT_OF_COVERAGE, "missing", faltan), Items.BARRIER);
+            loudToast(Msg.of(SweepText.TOAST_SHORT_OF_COVERAGE, "missing", missing), Items.BARRIER);
             return restoration;
         }
         if (warn) warning(message);
-        else if (avisos.get()) info(message);
+        else if (notify.get()) info(message);
         return restoration;
     }
 
     /**
-     * Devuelve todo lo que se tocó a su estado de reposo y dice si de verdad llegó. La red se desarma
-     * la última, cuando ya no queda ni un comando por emitir: desarmarla antes dejaría el
-     * {@code cancel} y la restauración sin cubrir, que es exactamente cuando más comandos se mandan
-     * de golpe. Y va en un {@code finally} porque una red armada que sobreviviera a una excepción se
-     * comería en silencio todo comando que el jugador escribiera a mano.
+     * Returns everything that was touched to its resting state and says whether it really arrived.
+     * The net is disarmed last, when there is not a single command left to send: disarming it earlier
+     * would leave the {@code cancel} and the restoration uncovered, which is exactly when the most
+     * commands are sent at once. And it goes in a {@code finally} because an armed net that survived
+     * an exception would silently swallow every command the player typed by hand.
      */
     private SafetyNet.Restoration restore() {
         try {
@@ -1389,8 +1397,8 @@ public class NetherSweep extends XploitsModule {
                 outcome = SafetyNet.Restoration.NO_PLAYER;
             }
             else {
-                // El && va detrás a propósito: primero se manda, siempre, y luego se acumula. Con la
-                // condición delante, el primer comando cancelado se llevaría por delante los demás.
+                // The && goes after on purpose: first it sends, always, and then it accumulates. With
+                // the condition first, the first cancelled command would take the rest down with it.
                 boolean delivered = send(BaritoneScript.cancel(activePrefix));
                 for (String command : BaritoneScript.restoration(activePrefix, restingSettings())) {
                     delivered = send(command) && delivered;
@@ -1410,9 +1418,9 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * El aviso de los módulos que no se han podido devolver todavía. Sale fuerte y con toast porque
-     * el único momento en que esto pasa es al salir del mundo, donde el chat se va con la desconexión
-     * y lo único que el jugador llega a leer es el toast.
+     * The warning about the modules that could not be handed back yet. It goes out loud and with a
+     * toast because the only time this happens is on leaving the world, where the chat goes away with
+     * the disconnection and the only thing the player gets to read is the toast.
      */
     private void warnPendingModules() {
         Object names;
@@ -1433,16 +1441,16 @@ public class NetherSweep extends XploitsModule {
         route = null;
         tally = null;
         index = 0;
-        pasadasDelPlan = 0;
-        bloquesAlDespegar = odometro.blocksFlown();
-        bloquesDeLaUltimaMuestra = 0;
-        bloquesSinProyeccion = 0;
-        avisoSinProyeccionDado = false;
+        planLanes = 0;
+        blocksAtTakeoff = odometer.blocksFlown();
+        blocksAtLastSample = 0;
+        blocksWithoutProjection = 0;
+        noProjectionWarningGiven = false;
         stallWatch.reset();
         fireworkWatch.reset();
     }
 
-    /** Suscribe el oyente de la red al bus. Idempotente: armar dos veces no duplica la suscripción. */
+    /** Subscribes the net's listener to the bus. Idempotent: arming twice does not duplicate the subscription. */
     private void armNet() {
         netCaughtWarned = false;
         if (netArmed) return;
@@ -1450,14 +1458,14 @@ public class NetherSweep extends XploitsModule {
         MeteorClient.EVENT_BUS.subscribe(net);
     }
 
-    /** Desuscribe el oyente. Idempotente, que es lo que hace segura la llamada de {@code onDeactivate}. */
+    /** Unsubscribes the listener. Idempotent, which is what makes the {@code onDeactivate} call safe. */
     private void disarmNet() {
         if (!netArmed) return;
         netArmed = false;
         MeteorClient.EVENT_BUS.unsubscribe(net);
     }
 
-    /** Anota cómo está el módulo y lo deja en su estado de vuelo. */
+    /** Records how the module is and leaves it in its flight state. */
     private static void takeModule(Module module, BorrowedModule loan) {
         if (module == null) {
             loan.forget();
@@ -1466,7 +1474,7 @@ public class NetherSweep extends XploitsModule {
         apply(module, loan.take(module.isActive()));
     }
 
-    /** Devuelve el módulo a donde estaba, o deja la devolución pendiente si no se puede tocar. */
+    /** Puts the module back where it was, or leaves the hand-back pending if it cannot be touched. */
     private void releaseModule(Module module, BorrowedModule loan) {
         if (module == null) {
             loan.forget();
@@ -1476,8 +1484,8 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Hace lo que quedó pendiente del desmontaje de salida del mundo. Es idempotente y barato: sin
-     * nada pendiente no consulta ni el registro de módulos.
+     * Does what was left pending from the teardown on leaving the world. It is idempotent and cheap:
+     * with nothing pending it does not even query the module registry.
      */
     private void applyPendingModules() {
         if (elytraFly.hasPending()) applyPending(Modules.get().get(ElytraFly.class), elytraFly);
@@ -1505,15 +1513,15 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Manda un comando por el chat del jugador. {@code ChatUtils.sendPlayerMsg} manda el texto "como
-     * si el usuario lo hubiera escrito en el chat", que es exactamente lo que Baritone escucha; se
-     * pasa {@code addToHistory = false} para no dejar comandos con almohadilla a un intro de
-     * publicarse en el historial del chat.
+     * Sends a command through the player's chat. {@code ChatUtils.sendPlayerMsg} sends the text "as
+     * if the user had typed it in the chat", which is exactly what Baritone listens to;
+     * {@code addToHistory = false} is passed so as not to leave hash-prefixed commands one Enter away
+     * from being published in the chat history.
      *
-     * @return si el comando salió del cliente hacia Baritone. {@code false} significa que la red tuvo
-     *         que cancelarlo -Baritone no lo interceptó, así que no tenía a quién llegar- o que no
-     *         había jugador. Todo el camino es síncrono, así que {@link #sendCaught} ya está decidido
-     *         cuando esta llamada vuelve.
+     * @return whether the command left the client towards Baritone. {@code false} means that the net
+     *         had to cancel it -Baritone did not intercept it, so it had no one to reach- or that
+     *         there was no player. The whole path is synchronous, so {@link #sendCaught} is already
+     *         decided when this call returns.
      */
     private boolean send(String command) {
         if (mc.player == null) return false;
@@ -1531,23 +1539,23 @@ public class NetherSweep extends XploitsModule {
     }
 
     private BaritoneScript.FlightSettings flightSettings() {
-        return new BaritoneScript.FlightSettings(autoSalto.get(), aterrizajeDeUrgencia.get(), ahorrarCohetes.get(),
-            velocidadDeCohete.get(), semillaDelNether.get().strip());
+        return new BaritoneScript.FlightSettings(autoJump.get(), emergencyLand.get(), conserveFireworks.get(),
+            fireworkSpeed.get(), netherSeed.get().strip());
     }
 
     private BaritoneScript.FlightSettings restingSettings() {
-        // La semilla no se restaura: nunca fue un cambio nuestro, solo un dato que se le pasó a
-        // Baritone si lo teníamos, y el núcleo no la escribe en la restauración.
-        return new BaritoneScript.FlightSettings(autoSaltoEnReposo.get(), aterrizajeDeUrgenciaEnReposo.get(),
-            ahorrarCohetesEnReposo.get(), velocidadDeCoheteEnReposo.get(), "");
+        // The seed is not restored: it was never a change of ours, only a fact passed to Baritone if
+        // we had it, and the core does not write it in the restoration.
+        return new BaritoneScript.FlightSettings(autoJumpResting.get(), emergencyLandResting.get(),
+            conserveFireworksResting.get(), fireworkSpeedResting.get(), "");
     }
 
-    /** La mitad visual de un aviso fuerte: el toast que acompaña al chat. */
+    /** The visual half of a loud warning: the toast that goes with the chat. */
     private void loudToast(Msg message, Item icon) {
         MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(icon);
-        // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo
-        // dereferencia: NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero.
-        if (!sonidoEnAvisos.get()) {
+        // MeteorToast.update() calls play(customSound) without checking for null and vanilla
+        // dereferences it: NPE on the render thread. Never pass null; it is silenced with zero volume.
+        if (!notifySound.get()) {
             toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
         }
         mc.getToastManager().add(toast.build());
@@ -1557,9 +1565,9 @@ public class NetherSweep extends XploitsModule {
         if (!isActive()) return Msg.of(SweepText.STATUS_OFF);
 
         if (!sweeping) {
-            return Msg.of(SweepText.STATUS_IDLE, "width", descripcionDeLaAnchura(),
-                "rate", bloquesPorCohete.get() > 0
-                    ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(bloquesPorCohete.get()))
+            return Msg.of(SweepText.STATUS_IDLE, "width", widthDescription(),
+                "rate", blocksPerFirework.get() > 0
+                    ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(blocksPerFirework.get()))
                     : Msg.of(SweepText.STATUS_NO_RATE));
         }
 
@@ -1568,171 +1576,171 @@ public class NetherSweep extends XploitsModule {
             : Msg.of(SweepText.STATUS_COVERAGE, "summary", tally.summary());
         Msg left = mc.player == null
             ? Msg.of(SweepText.NOTHING)
-            : Msg.of(SweepText.STATUS_LEFT, "blocks", Math.round(bloquesRestantes()),
-                "return", contarElRegreso.get() ? SweepText.STATUS_WITH_RETURN : SweepText.STATUS_WITHOUT_RETURN);
-        OptionalDouble tasa = fuel.blocksPerRocket();
-        Msg rate = tasa.isPresent()
-            ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(tasa.getAsDouble()))
-            : Msg.of(SweepText.STATUS_NO_FLIGHT_RATE, "blocks", Math.round(bloquesSinProyeccion));
-        return Msg.of(SweepText.STATUS_SWEEPING, "lane", Math.min(index / 2 + 1, pasadasDelPlan),
-            "total", pasadasDelPlan, "width", anchuraUsada,
-            "how", anchuraTecleada ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED,
-            "coverage", coverage, "flown", Math.round(bloquesVolados()), "left", left, "rate", rate,
+            : Msg.of(SweepText.STATUS_LEFT, "blocks", Math.round(remainingBlocks()),
+                "return", countReturnTrip.get() ? SweepText.STATUS_WITH_RETURN : SweepText.STATUS_WITHOUT_RETURN);
+        OptionalDouble measuredRate = fuel.blocksPerRocket();
+        Msg rate = measuredRate.isPresent()
+            ? Msg.of(SweepText.STATUS_RATE, "rate", Math.round(measuredRate.getAsDouble()))
+            : Msg.of(SweepText.STATUS_NO_FLIGHT_RATE, "blocks", Math.round(blocksWithoutProjection));
+        return Msg.of(SweepText.STATUS_SWEEPING, "lane", Math.min(index / 2 + 1, planLanes),
+            "total", planLanes, "width", usedWidth,
+            "how", typedWidth ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED,
+            "coverage", coverage, "flown", Math.round(sweepBlocksFlown()), "left", left, "rate", rate,
             "net", netArmed ? SweepText.NET_ARMED : SweepText.NET_DISARMED,
             "caught", netCaughtWarned ? SweepText.STATUS_NET_CAUGHT : SweepText.NOTHING);
     }
 
-    private Msg descripcionDeLaAnchura() {
-        if (anchuraDePasada.get() > 0) {
-            return Msg.of(SweepText.WIDTH_TYPED_DESC, "width", anchuraDePasada.get());
+    private Msg widthDescription() {
+        if (laneWidth.get() > 0) {
+            return Msg.of(SweepText.WIDTH_TYPED_DESC, "width", laneWidth.get());
         }
         if (!probe.hasEnoughSamples()) {
             return Msg.of(SweepText.WIDTH_MEASURING, "samples", probe.sampleCount(),
-                "needed", WidthProbe.MUESTRAS_MINIMAS, "discarded", descartadas());
+                "needed", WidthProbe.MIN_SAMPLES, "discarded", discardedSamplesNote());
         }
-        return Msg.of(SweepText.WIDTH_MEASURED_DESC, "width", probe.laneWidthInChunks(margenDeAnchura.get()),
-            "radius", probe.observedRadiusInChunks(), "ceiling", ultimoTecho, "margin", margenDeAnchura.get(),
-            "discarded", descartadas());
+        return Msg.of(SweepText.WIDTH_MEASURED_DESC, "width", probe.laneWidthInChunks(laneWidthMargin.get()),
+            "radius", probe.observedRadiusInChunks(), "ceiling", lastCeiling, "margin", laneWidthMargin.get(),
+            "discarded", discardedSamplesNote());
     }
 
     /**
-     * La coletilla de las muestras descartadas. Se enseña porque es la explicación de por qué la
-     * medida es la que es, y <b>los dos descartes significan cosas distintas</b>: uno es un servidor
-     * con retraso y el otro es que el jugador está volando, que se arregla parando. Sin verlos, lo
-     * único que se ve es que la anchura no sale.
+     * The tail note about discarded samples. It is shown because it is the explanation of why the
+     * measurement is what it is, and <b>the two kinds of discard mean different things</b>: one is a
+     * lagging server and the other is the player flying, which is fixed by stopping. Without seeing
+     * them, all one sees is that the width does not come out.
      */
-    private Msg descartadas() {
-        Msg tarde = probe.discardedSamples() > 0
+    private Msg discardedSamplesNote() {
+        Msg late = probe.discardedSamples() > 0
             ? Msg.of(SweepText.DISCARDED_LATE, "count", probe.discardedSamples())
             : Msg.of(SweepText.NOTHING);
-        Msg enMovimiento = probe.movingSamples() > 0
+        Msg moving = probe.movingSamples() > 0
             ? Msg.of(SweepText.DISCARDED_MOVING, "count", probe.movingSamples())
             : Msg.of(SweepText.NOTHING);
-        return Msg.of(SweepText.DISCARDED, "late", tarde, "moving", enMovimiento);
+        return Msg.of(SweepText.DISCARDED, "late", late, "moving", moving);
     }
 
-    // --- La cobertura que ya existe (spec §5.1) -----------------------------------------------
+    // --- The coverage that already exists (spec §5.1) -------------------------------------------
 
     /**
-     * Lo que salió de leer los cinco ficheros de {@code NewerNewChunks}: la cobertura unida y de
-     * cuántos ficheros salió, para poder decirlo sin fingir que se leyó más de lo que había.
+     * What came out of reading the five {@code NewerNewChunks} files: the merged coverage and how
+     * many files it came from, so that it can be said without pretending more was read than there
+     * was.
      *
-     * <p><b>«No he podido saber dónde mirar» y «no había nada registrado» son cosas distintas</b> y
-     * llevan campo propio. Las dos dan la misma cobertura vacía y el mismo plan -el rectángulo
-     * entero-, pero significan lo contrario para el jugador: una es «empiezas de cero», que es
-     * correcto y no cuesta nada; la otra es «ni he mirado», y entonces las tres horas de vuelo van a
-     * repetir terreno que lleva meses acumulando. Contarlas como la misma cosa es dejarle despegar
-     * creyendo lo primero cuando pasa lo segundo.
+     * <p><b>"I could not find out where to look" and "nothing was recorded" are different things</b>
+     * and have a field of their own. Both give the same empty coverage and the same plan -the whole
+     * rectangle-, but they mean the opposite to the player: one is "you start from scratch", which
+     * is correct and costs nothing; the other is "I did not even look", and then the three hours of
+     * flight are going to repeat terrain that has been piling up for months. Counting them as the
+     * same thing is letting them take off believing the first when the second is happening.
      */
-    private record LecturaDeCobertura(Coverage cobertura, int leidos, int rotos, boolean servidorDesconocido) {
-        /** La lectura que no llegó a hacerse porque no se supo en qué carpeta mirar. */
-        static LecturaDeCobertura sinSaberDondeMirar() {
-            return new LecturaDeCobertura(Coverage.empty(), 0, 0, true);
+    private record CoverageRead(Coverage coverage, int read, int broken, boolean unknownServer) {
+        /** The read that never happened because it was not known which folder to look in. */
+        static CoverageRead nowhereToLook() {
+            return new CoverageRead(Coverage.empty(), 0, 0, true);
         }
 
-        Msg resumen() {
-            if (servidorDesconocido) return Msg.of(SweepText.READING_UNKNOWN_SERVER);
-            if (leidos == 0 && rotos == 0) return Msg.of(SweepText.READING_NONE);
-            return rotos == 0
-                ? Msg.of(SweepText.READING_FILES, "read", leidos, "total", FICHEROS_DE_COBERTURA.length)
-                : Msg.of(SweepText.READING_FILES_BROKEN, "read", leidos, "total", FICHEROS_DE_COBERTURA.length,
-                    "broken", rotos);
+        Msg summary() {
+            if (unknownServer) return Msg.of(SweepText.READING_UNKNOWN_SERVER);
+            if (read == 0 && broken == 0) return Msg.of(SweepText.READING_NONE);
+            return broken == 0
+                ? Msg.of(SweepText.READING_FILES, "read", read, "total", COVERAGE_FILES.length)
+                : Msg.of(SweepText.READING_FILES_BROKEN, "read", read, "total", COVERAGE_FILES.length,
+                    "broken", broken);
         }
     }
 
     /**
-     * Lee los cinco ficheros de {@code NewerNewChunks} del servidor y la dimensión activos y los une
-     * (spec §5.1). Con 17.000 chunks ya vistos, empezar de cero sería repetir terreno que el jugador
-     * lleva meses acumulando.
+     * Reads the five {@code NewerNewChunks} files for the active server and dimension and merges them
+     * (spec §5.1). With 17,000 chunks already seen, starting from scratch would be repeating terrain
+     * the player has been piling up for months.
      *
-     * <p><b>Que falte un fichero no es un error</b>: {@code NewerNewChunks} solo escribe los que tiene
-     * algo que escribir, y que no exista ninguno equivale a empezar de cero. Que uno no se pueda leer
-     * tampoco tira el resto -se cuenta y se dice-, por el mismo motivo por el que {@link Coverage} se
-     * salta una línea rota en vez de abortar: tirar la lectura entera manda al jugador a repetir
-     * terreno ya visto.
+     * <p><b>A missing file is not an error</b>: {@code NewerNewChunks} only writes the ones it has
+     * something to write in, and none existing amounts to starting from scratch. One that cannot be
+     * read does not drop the rest either -it is counted and reported-, for the same reason that
+     * {@link Coverage} skips a broken line instead of aborting: dropping the whole read sends the
+     * player to repeat terrain already seen.
      *
-     * <p>Se lee en {@code ISO-8859-1} y no en UTF-8 a propósito: el contenido son dígitos, comas y
-     * saltos de línea, y ese juego de caracteres no puede lanzar {@code MalformedInputException}
-     * sobre un fichero que el otro mod haya dejado a medio escribir al cerrarse el cliente de golpe.
+     * <p>It is read as {@code ISO-8859-1} and not UTF-8 on purpose: the content is digits, commas and
+     * newlines, and that charset cannot throw {@code MalformedInputException} on a file the other mod
+     * left half-written when the client closed abruptly.
      *
-     * <p>Y se lee el fichero <b>entero</b> con {@code readString}, no línea a línea, porque
-     * {@link Coverage#ofFileContent} necesita ver si termina en salto de línea: es lo único que
-     * distingue un fichero cerrado de uno cortado a mitad de escritura, y una línea cortada puede
-     * parsear como un chunk perfectamente válido que nunca se vio. El porqué entero está en su
-     * javadoc.
+     * <p>And the <b>whole</b> file is read with {@code readString}, not line by line, because
+     * {@link Coverage#ofFileContent} needs to see whether it ends in a newline: it is the only thing
+     * that tells a closed file apart from one cut off mid-write, and a cut line can parse as a
+     * perfectly valid chunk that was never seen. The full reason is in its javadoc.
      */
-    private LecturaDeCobertura leerCobertura() {
-        Path carpeta = carpetaDeCobertura();
-        if (carpeta == null) return LecturaDeCobertura.sinSaberDondeMirar();
+    private CoverageRead readCoverage() {
+        Path folder = coverageFolder();
+        if (folder == null) return CoverageRead.nowhereToLook();
 
-        List<Coverage> partes = new ArrayList<>(FICHEROS_DE_COBERTURA.length);
-        int leidos = 0;
-        int rotos = 0;
-        for (String fichero : FICHEROS_DE_COBERTURA) {
-            Path ruta = carpeta.resolve(fichero);
-            if (!Files.isRegularFile(ruta)) continue;
+        List<Coverage> parts = new ArrayList<>(COVERAGE_FILES.length);
+        int read = 0;
+        int broken = 0;
+        for (String fileName : COVERAGE_FILES) {
+            Path path = folder.resolve(fileName);
+            if (!Files.isRegularFile(path)) continue;
             try {
-                partes.add(Coverage.ofFileContent(Files.readString(ruta, StandardCharsets.ISO_8859_1)));
-                leidos++;
+                parts.add(Coverage.ofFileContent(Files.readString(path, StandardCharsets.ISO_8859_1)));
+                read++;
             } catch (IOException | RuntimeException e) {
-                rotos++;
-                warning(SweepText.UNREADABLE_FILE, "file", fichero, "error", e.getClass().getSimpleName());
+                broken++;
+                warning(SweepText.UNREADABLE_FILE, "file", fileName, "error", e.getClass().getSimpleName());
             }
         }
-        return new LecturaDeCobertura(Coverage.merge(partes), leidos, rotos, false);
+        return new CoverageRead(Coverage.merge(parts), read, broken, false);
     }
 
     /**
-     * La carpeta donde {@code NewerNewChunks} guarda la cobertura del servidor y la dimensión
-     * activos, o {@code null} si no se puede saber cuál es.
+     * The folder where {@code NewerNewChunks} keeps the coverage of the active server and dimension,
+     * or {@code null} if it cannot be known which one it is.
      *
-     * <p><b>Verificado leyendo el bytecode del jar instalado</b> -{@code trouser-streak-1.6.1},
-     * {@code pwn.noobs.trouserstreak.modules.NewerNewChunks}- y confirmado contra las carpetas que ya
-     * existen en disco, porque una ruta supuesta se leería vacía y «vacío» aquí significa
-     * replanificar el rectángulo entero y repetir horas de terreno ya visto:
+     * <p><b>Verified by reading the bytecode of the installed jar</b> -{@code trouser-streak-1.6.1},
+     * {@code pwn.noobs.trouserstreak.modules.NewerNewChunks}- and confirmed against the folders that
+     * already exist on disk, because a guessed path would be read as empty, and "empty" here means
+     * replanning the whole rectangle and repeating hours of terrain already seen:
      *
      * <ul>
-     *   <li>La raíz es {@code FabricLoader.getGameDir() / "TrouserStreak" / "NewChunks"}.</li>
-     *   <li>El servidor es {@code mc.getCurrentServerEntry().address} -el mismo sitio del que lo saca
-     *       {@code Utils.getWorldName()} de Meteor-, o, en un mundo local, el nombre de la carpeta
-     *       que contiene la del mundo.</li>
-     *   <li>La dimensión es {@code mc.world.getRegistryKey().getValue().toString()}, es decir
+     *   <li>The root is {@code FabricLoader.getGameDir() / "TrouserStreak" / "NewChunks"}.</li>
+     *   <li>The server is {@code mc.getCurrentServerEntry().address} -the same place Meteor's
+     *       {@code Utils.getWorldName()} takes it from-, or, in a local world, the name of the folder
+     *       that contains the world's folder.</li>
+     *   <li>The dimension is {@code mc.world.getRegistryKey().getValue().toString()}, that is
      *       {@code "minecraft:the_nether"}.</li>
-     *   <li>Los dos pasan por el mismo reemplazo de {@link #CARACTERES_INVALIDOS}, que es lo que
-     *       convierte {@code minecraft:the_nether} en {@code minecraft_the_nether}.</li>
+     *   <li>Both go through the same {@link #INVALID_CHARACTERS} replacement, which is what turns
+     *       {@code minecraft:the_nether} into {@code minecraft_the_nether}.</li>
      * </ul>
      */
-    private Path carpetaDeCobertura() {
+    private Path coverageFolder() {
         if (mc.world == null) return null;
 
-        String servidor = nombreDelServidor();
-        if (servidor == null) return null;
+        String server = serverName();
+        if (server == null) return null;
 
-        String dimension = limpiar(mc.world.getRegistryKey().getValue().toString());
+        String dimension = sanitize(mc.world.getRegistryKey().getValue().toString());
         return FabricLoader.getInstance().getGameDir()
             .resolve("TrouserStreak")
             .resolve("NewChunks")
-            .resolve(servidor)
+            .resolve(server)
             .resolve(dimension);
     }
 
-    /** El nombre de carpeta del servidor, con la misma lógica que {@code NewerNewChunks}. */
-    private String nombreDelServidor() {
+    /** The server's folder name, with the same logic as {@code NewerNewChunks}. */
+    private String serverName() {
         if (mc.isInSingleplayer()) {
             if (mc.getServer() == null) return "singleplayer";
-            Path padre = mc.getServer().getSavePath(WorldSavePath.ROOT).getParent();
-            if (padre == null || padre.getFileName() == null) return "singleplayer";
-            return limpiar(padre.getFileName().toString());
+            Path parent = mc.getServer().getSavePath(WorldSavePath.ROOT).getParent();
+            if (parent == null || parent.getFileName() == null) return "singleplayer";
+            return sanitize(parent.getFileName().toString());
         }
 
-        ServerInfo entrada = mc.getCurrentServerEntry();
-        if (entrada == null) return null;
-        return limpiar(entrada.address);
+        ServerInfo entry = mc.getCurrentServerEntry();
+        if (entry == null) return null;
+        return sanitize(entry.address);
     }
 
-    /** El mismo saneado de nombres de carpeta que aplica {@code NewerNewChunks}, ni más ni menos. */
-    private static String limpiar(String nombre) {
-        return nombre.replaceAll(CARACTERES_INVALIDOS, "_");
+    /** The same folder-name sanitizing {@code NewerNewChunks} applies, no more and no less. */
+    private static String sanitize(String name) {
+        return name.replaceAll(INVALID_CHARACTERS, "_");
     }
 
 }

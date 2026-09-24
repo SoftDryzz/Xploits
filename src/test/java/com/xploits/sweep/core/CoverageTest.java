@@ -35,7 +35,7 @@ class CoverageTest {
 
     @Test
     void aLineWithOnlyOneFieldIsSkipped() {
-        // El caso típico de un fichero cortado a mitad de escritura: la coma nunca llegó a salir.
+        // The typical case of a file cut off mid-write: the comma never made it out.
         Coverage coverage = Coverage.ofLines(List.of("4", "4,9"));
         assertEquals(1, coverage.size());
         assertTrue(coverage.seen(new ChunkPos(4, 9)));
@@ -50,20 +50,20 @@ class CoverageTest {
 
     @Test
     void aHalfWrittenFileDoesNotLoseTheLinesThatDidMakeItToDisk() {
-        // Simula el cierre brusco: NewerNewChunks va escribiendo línea a línea y el cliente muere
-        // a mitad de la última. Las líneas anteriores, completas, tienen que seguir contando.
+        // Simulates the abrupt shutdown: NewerNewChunks writes line by line and the client dies
+        // halfway through the last one. The earlier, complete lines must still count.
         Coverage coverage = Coverage.ofLines(List.of("1,1", "2,2", "3,2", "3,"));
         assertEquals(3, coverage.size());
         assertTrue(coverage.seen(new ChunkPos(1, 1)));
         assertTrue(coverage.seen(new ChunkPos(2, 2)));
         assertTrue(coverage.seen(new ChunkPos(3, 2)));
-        // La línea rota no puede colarse como si fuera un chunk válido.
+        // The broken line cannot slip in as if it were a valid chunk.
         assertFalse(coverage.seen(new ChunkPos(3, 0)));
     }
 
     @Test
     void aCorruptLineNeverMakesAnAlreadySeenChunkLookUnseen() {
-        // El riesgo real: una línea basura no debe "restar" cobertura ya confirmada por otra línea.
+        // The real risk: a garbage line must not "subtract" coverage already confirmed by another line.
         Coverage coverage = Coverage.ofLines(List.of("5,5", "garbage", "5,5"));
         assertTrue(coverage.seen(new ChunkPos(5, 5)));
         assertEquals(1, coverage.size());
@@ -84,7 +84,7 @@ class CoverageTest {
 
     @Test
     void mergingAnEmptyCollectionIsEmptyNotAnError() {
-        // Que no exista ningún fichero -los cinco ausentes- significa empezar de cero, no fallar.
+        // No file existing at all -all five missing- means starting from scratch, not failing.
         Coverage merged = Coverage.merge(List.of());
         assertEquals(0, merged.size());
     }
@@ -96,11 +96,11 @@ class CoverageTest {
     }
 
     // ---------------------------------------------------------------------------------------
-    // ofFileContent: la última línea de un fichero cortado no se puede creer
+    // ofFileContent: the last line of a cut-off file cannot be believed
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unFicheroTerminadoEnSaltoDeLineaConservaTodasSusLineas() {
+    void aFileEndingInANewlineKeepsAllItsLines() {
         Coverage coverage = Coverage.ofFileContent("12,-7\n4,9\n");
 
         assertEquals(2, coverage.size());
@@ -109,11 +109,11 @@ class CoverageTest {
     }
 
     @Test
-    void unaLineaTruncadaQueParseaNoSeCuelaComoChunkVisto() {
-        // El caso exacto: una línea que iba a ser "-412,1087" y que el cierre brusco del cliente
-        // dejó en "-412,1". Es un x,z perfectamente válido de un chunk que nunca se vio, así que
-        // parseLine no puede cazarlo; si se cuela y era el que le faltaba a su banda, SweepPlanner
-        // se salta la banda entera y da por peinada una pasada que no se voló.
+    void aTruncatedLineThatParsesDoesNotSneakInAsASeenChunk() {
+        // The exact case: a line that was going to be "-412,1087" and that the client's abrupt
+        // shutdown left as "-412,1". It is a perfectly valid x,z of a chunk that was never seen, so
+        // parseLine cannot catch it; if it slips in and it was the one its band was missing,
+        // SweepPlanner skips the whole band and counts as combed a lane that was not flown.
         Coverage coverage = Coverage.ofFileContent("100,200\n-412,1");
 
         assertEquals(1, coverage.size());
@@ -123,14 +123,14 @@ class CoverageTest {
     }
 
     @Test
-    void unFicheroDeUnaSolaLineaSinTerminarNoDejaNadaVisto() {
-        // Esa única línea no terminó de escribirse y no hay ninguna anterior: de este fichero no se
-        // sabe nada, y "nada" es lo correcto, no el chunk que aparenta.
+    void aSingleUnterminatedLineFileLeavesNothingSeen() {
+        // That single line never finished being written and there is none before it: nothing is
+        // known from this file, and "nothing" is right, not the chunk it appears to be.
         assertEquals(0, Coverage.ofFileContent("12,-7").size());
     }
 
     @Test
-    void elFinDeLineaDeWindowsNoCuentaComoDosLineas() {
+    void aWindowsLineEndingDoesNotCountAsTwoLines() {
         Coverage coverage = Coverage.ofFileContent("12,-7\r\n4,9\r\n");
 
         assertEquals(2, coverage.size());
@@ -139,7 +139,7 @@ class CoverageTest {
     }
 
     @Test
-    void unFicheroDeWindowsCortadoTambienPierdeSuUltimaLinea() {
+    void aTruncatedWindowsFileAlsoLosesItsLastLine() {
         Coverage coverage = Coverage.ofFileContent("12,-7\r\n4,9");
 
         assertEquals(1, coverage.size());
@@ -148,13 +148,13 @@ class CoverageTest {
     }
 
     @Test
-    void unFicheroVacioEsEmpezarDeCeroYNoUnError() {
+    void anEmptyFileIsAFreshStartNotAnError() {
         assertEquals(0, Coverage.ofFileContent("").size());
     }
 
     @Test
-    void laBasuraDeEnMedioSeSigueSaltandoSinTirarElResto() {
-        Coverage coverage = Coverage.ofFileContent("12,-7\nbasura\n1,2,3\n\n4,9\n");
+    void garbageInTheMiddleIsSkippedWithoutDroppingTheRest() {
+        Coverage coverage = Coverage.ofFileContent("12,-7\ngarbage\n1,2,3\n\n4,9\n");
 
         assertEquals(2, coverage.size());
         assertTrue(coverage.seen(new ChunkPos(12, -7)));
@@ -162,17 +162,17 @@ class CoverageTest {
     }
 
     @Test
-    void unContenidoNuloNoSeLeeComoFicheroVacio() {
+    void nullContentIsNotReadAsAnEmptyFile() {
         assertThrows(NullPointerException.class, () -> Coverage.ofFileContent(null));
     }
 
     // ---------------------------------------------------------------------------------------
-    // seenIn: lo que ahorra la cobertura previa es lo que cae DENTRO del área
+    // seenIn: what the previous coverage saves is what falls INSIDE the area
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void seenInCuentaSoloLosChunksQueCaenDentroDelArea() {
-        // Tres dentro del rectángulo 0,0..2,2 y dos fuera.
+    void seenInCountsOnlyChunksInsideTheArea() {
+        // Three inside the rectangle 0,0..2,2 and two outside.
         Coverage coverage = Coverage.ofLines(List.of("0,0", "1,1", "2,2", "3,0", "-1,-1"));
 
         assertEquals(5, coverage.size());
@@ -180,10 +180,10 @@ class CoverageTest {
     }
 
     @Test
-    void seenInNuncaPasaDeLosChunksQueTieneElArea() {
-        // El fallo que este método arregla: con size() -la cobertura de toda la dimensión- el
-        // mensaje llegaba a anunciar más chunks vistos que chunks tiene el área. Aquí hay 9 chunks
-        // de área y 12 vistos en total.
+    void seenInNeverExceedsTheAreasChunkCount() {
+        // The bug this method fixes: with size() -the coverage of the whole dimension- the message
+        // went as far as announcing more chunks seen than the area has. Here there are 9 chunks of
+        // area and 12 seen in total.
         Coverage coverage = Coverage.ofLines(List.of(
             "0,0", "0,1", "0,2", "1,0", "1,1", "1,2", "2,0", "2,1", "2,2",
             "50,50", "51,50", "52,50"));
@@ -194,40 +194,40 @@ class CoverageTest {
     }
 
     @Test
-    void seenInSobreUnAreaSinNadaVistoEsCero() {
+    void seenInOverAnAreaWithNothingSeenIsZero() {
         Coverage coverage = Coverage.ofLines(List.of("50,50"));
 
         assertEquals(0, coverage.seenIn(SweepArea.ofChunks(0, 0, 9, 9)));
     }
 
     @Test
-    void seenInCuentaLosBordesDelArea() {
-        // Las cuatro esquinas entran: el área incluye ambos bordes de cada eje.
+    void seenInCountsTheAreasEdges() {
+        // All four corners are in: the area includes both edges of each axis.
         Coverage coverage = Coverage.ofLines(List.of("0,0", "0,3", "3,0", "3,3"));
 
         assertEquals(4, coverage.seenIn(SweepArea.ofChunks(0, 0, 3, 3)));
     }
 
     @Test
-    void seenInNecesitaUnArea() {
+    void seenInNeedsAnArea() {
         assertThrows(NullPointerException.class, () -> Coverage.empty().seenIn(null));
     }
 
     // ---------------------------------------------------------------------------------------
-    // La promesa de saltarse "cualquier otra cosa" se cumple entera, nulos incluidos
+    // The promise to skip "anything else" is kept in full, nulls included
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unaLineaNulaSeSaltaComoCualquierOtraLineaMala() {
-        // El javadoc promete saltarse "cualquier otra cosa" y seguir con las siguientes. Un nulo
-        // rompia esa promesa desde dentro del camino cuyo proposito declarado es no abortar nunca
-        // la lectura por una linea mala.
-        List<String> lineas = new ArrayList<>();
-        lineas.add("1,1");
-        lineas.add(null);
-        lineas.add("2,2");
+    void aNullLineIsSkippedLikeAnyOtherBadLine() {
+        // The javadoc promises to skip "anything else" and carry on with the following lines. A
+        // null broke that promise from inside the path whose stated purpose is never to abort the
+        // read because of a bad line.
+        List<String> lines = new ArrayList<>();
+        lines.add("1,1");
+        lines.add(null);
+        lines.add("2,2");
 
-        Coverage coverage = Coverage.ofLines(lineas);
+        Coverage coverage = Coverage.ofLines(lines);
 
         assertEquals(2, coverage.size());
         assertTrue(coverage.seen(new ChunkPos(1, 1)));
@@ -235,21 +235,21 @@ class CoverageTest {
     }
 
     @Test
-    void ofLinesSinLineasQueLeerSeQuejaEnVezDeFingirUnFicheroVacio() {
+    void ofLinesWithoutLinesComplainsInsteadOfFakingAnEmptyFile() {
         assertThrows(NullPointerException.class, () -> Coverage.ofLines(null));
     }
 
     @Test
-    void unaLecturaNulaNoSeLlevaPorDelanteLasDemas() {
-        // Son cinco ficheros y la union es la respuesta a "se ha visto ya este chunk?": que de uno
-        // no haya salido nada no puede tirar lo que si salio de los otros, porque una cobertura
-        // leida vacia significa replanificar horas de terreno ya visto.
-        List<Coverage> partes = new ArrayList<>();
-        partes.add(Coverage.ofLines(List.of("1,1")));
-        partes.add(null);
-        partes.add(Coverage.ofLines(List.of("2,2")));
+    void aNullReadDoesNotTakeTheOthersDownWithIt() {
+        // There are five files and the union is the answer to "has this chunk been seen yet?":
+        // nothing having come out of one cannot drop what did come out of the others, because a
+        // coverage read as empty means replanning hours of terrain already seen.
+        List<Coverage> parts = new ArrayList<>();
+        parts.add(Coverage.ofLines(List.of("1,1")));
+        parts.add(null);
+        parts.add(Coverage.ofLines(List.of("2,2")));
 
-        Coverage union = Coverage.merge(partes);
+        Coverage union = Coverage.merge(parts);
 
         assertEquals(2, union.size());
         assertTrue(union.seen(new ChunkPos(1, 1)));
@@ -257,7 +257,7 @@ class CoverageTest {
     }
 
     @Test
-    void mergeSinNadaQueUnirSeQuejaEnVezDeFingirQueNoHabiaFicheros() {
+    void mergeWithNothingToMergeComplainsInsteadOfPretendingThereWereNoFiles() {
         assertThrows(NullPointerException.class, () -> Coverage.merge(null));
     }
 }
