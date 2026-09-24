@@ -91,10 +91,7 @@ class BoundaryTest {
         assertEquals(List.of(), bad, "this cannot run outside the game");
     }
 
-    /**
-     * Packages whose player text is fully in the catalogs (language spec §6). Each migration task
-     * adds its prefixes; the last one replaces the list with "com/xploits/".
-     */
+    /** Packages whose player text is fully in the catalogs (language spec §6): all of them. */
     private static final List<String> MIGRATED = List.of("com/xploits/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
     // Msg.of-style calls (e.g. module.info(KEY, "choice", value)) as if they were literal message
@@ -128,9 +125,9 @@ class BoundaryTest {
                 String raw = lines.get(i);
                 if (raw.contains(ALLOWED)) continue;
                 String c = code(raw);
-                boolean exception = c.contains("Exception(") || c.contains("LOG.");
+                boolean logged = c.contains("LOG.");
                 if (LITERAL_TO_PLAYER.matcher(c).find() || LITERAL_TO_UI.matcher(c).find()
-                    || (!exception && SPANISH_LITERAL.matcher(c).find())) {
+                    || (!logged && SPANISH_LITERAL.matcher(c).find())) {
                     found.add(path + ":" + (i + 1) + "  " + c);
                 }
             }
@@ -140,26 +137,14 @@ class BoundaryTest {
 
     /**
      * Source path prefixes whose identifiers and main string literals are fully English (code-in-English
-     * design §8). Each migration task appends its prefixes; the last replaces this with "com/xploits/".
+     * design §8): every source under src/main/java and src/test/java.
      */
-    private static final List<String> ENGLISH = List.of(
-        "com/xploits/kitrequester/",
-        "com/xploits/mixin/",
-        "com/xploits/commands/CommandText.java",
-        "com/xploits/commands/CommandTextTest.java",
-        "com/xploits/BoundaryTest.java",
-        "com/xploits/XploitsAddon.java",
-        "com/xploits/console/",
-        "com/xploits/shared/",
-        "com/xploits/travel/",
-        "com/xploits/sweep/",
-        "com/xploits/pvp/",
-        "com/xploits/elytra/",
-        "com/xploits/autotpy/",
-        "com/xploits/stash/"
-    );
+    private static final List<String> ENGLISH = List.of("com/xploits/");
 
-    /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */
+    /**
+     * Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words, plus the short
+     * ones with no English homograph found by hand in Task 11 (glossary §7.3).
+     */
     private static final Set<String> SPANISH_WORDS = Set.of(
         "accion",
         "acercamiento",
@@ -192,6 +177,7 @@ class BoundaryTest {
         "cerrojo",
         "ciclo",
         "cierre",
+        "cinco",
         "cobertura",
         "codificacion",
         "cohetes",
@@ -200,8 +186,10 @@ class BoundaryTest {
         "combate",
         "consola",
         "coordenadas",
+        "copia",
         "corta",
         "corto",
+        "cuatro",
         "cuenta",
         "desconocida",
         "desconocido",
@@ -235,6 +223,7 @@ class BoundaryTest {
         "instantanea",
         "juego",
         "jugador",
+        "lado",
         "lanza",
         "lanzamiento",
         "lanzando",
@@ -263,6 +252,7 @@ class BoundaryTest {
         "orden",
         "pasada",
         "pasadas",
+        "pasos",
         "pausa",
         "pendiente",
         "perdida",
@@ -297,20 +287,24 @@ class BoundaryTest {
         "sumidero",
         "superficie",
         "tamano",
+        "tarde",
         "techo",
         "teclado",
         "texto",
         "titulo",
         "tranquilo",
+        "tres",
         "ultimo",
         "umbral",
         "una",
         "usuario",
         "vecindario",
         "ventana",
+        "viaje",
         "viva",
         "vivo",
-        "vuelo"
+        "vuelo",
+        "vuelta"
     );
 
     /** Glossary §2 old simple type names and §3 old enum constants that the word list cannot see. */

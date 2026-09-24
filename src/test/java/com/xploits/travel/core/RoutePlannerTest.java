@@ -537,7 +537,7 @@ class RoutePlannerTest {
     }
 
     @Test
-    void aPatternThatDoesNotFitUnderTheWaypointCapIsRefusedInsteadOfOndulatingOnlyTheFirstHalf() {
+    void aPatternThatDoesNotFitUnderTheWaypointCapIsRefusedInsteadOfUndulatingOnlyTheFirstHalf() {
         // This test used to enshrine the bug: it accepted the route and only checked that the COUNT of
         // waypoints was capped, without looking at the shape that came out. And the cap caps the
         // count, not the pattern's reach: with the slider's minimum period (100) and a destination
@@ -580,7 +580,7 @@ class RoutePlannerTest {
     }
 
     @Test
-    void aLateralPatternThatFitsUnderTheCapKeepsOndulatingRightUpToTheDestination() {
+    void aLateralPatternThatFitsUnderTheCapKeepsUndulatingRightUpToTheDestination() {
         // The other side of the rejection, and the test that looks at the SHAPE and not the count:
         // with the period right at the limit (exactly 500 side changes) the route is accepted, and then
         // it has to weave to the end. If someone goes back to truncating the count instead of

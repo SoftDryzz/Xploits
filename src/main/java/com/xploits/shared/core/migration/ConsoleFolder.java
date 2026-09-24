@@ -39,31 +39,31 @@ public final class ConsoleFolder {
 
     public static Outcome run(Path xploitsDir, Mover mover) {
         Path old = xploitsDir.resolve("consola");
-        Path neu = xploitsDir.resolve("console");
+        Path newDir = xploitsDir.resolve("console");
         boolean oldExists = Files.isDirectory(old);
         // Anything at the new path blocks the move, a plain file as much as a folder: moving onto it
         // would fail every start and read as BUSY forever.
-        boolean newExists = Files.exists(neu);
+        boolean newExists = Files.exists(newDir);
         if (oldExists && newExists) return Outcome.NEW_ALREADY_EXISTS;
-        if (!oldExists && !Files.isDirectory(neu)) return Outcome.NOTHING;
+        if (!oldExists && !Files.isDirectory(newDir)) return Outcome.NOTHING;
         if (oldExists) {
             try {
-                mover.move(old, neu);
+                mover.move(old, newDir);
             } catch (IOException e) {
                 return Outcome.BUSY;
             }
         }
-        boolean allRenamed = renameInside(neu, mover);
-        deleteLiveLogs(neu);
+        boolean allRenamed = renameInside(newDir, mover);
+        deleteLiveLogs(newDir);
         return allRenamed ? Outcome.MOVED : Outcome.PARTIAL;
     }
 
-    /** @return whether every leftover old name inside {@code neu} was renamed */
-    private static boolean renameInside(Path neu, Mover mover) {
+    /** @return whether every leftover old name inside {@code newDir} was renamed */
+    private static boolean renameInside(Path newDir, Mover mover) {
         boolean allOk = true;
         for (Map.Entry<String, String> e : INSIDE.entrySet()) {
-            Path from = neu.resolve(e.getKey());
-            Path to = neu.resolve(e.getValue());
+            Path from = newDir.resolve(e.getKey());
+            Path to = newDir.resolve(e.getValue());
             if (Files.exists(from) && !Files.exists(to)) {
                 try {
                     mover.move(from, to);
@@ -76,10 +76,10 @@ public final class ConsoleFolder {
         return allOk;
     }
 
-    private static void deleteLiveLogs(Path neu) {
+    private static void deleteLiveLogs(Path newDir) {
         for (String live : new String[] {"vivo.log", "vivo.1.log"}) {
             try {
-                Files.deleteIfExists(neu.resolve(live));
+                Files.deleteIfExists(newDir.resolve(live));
             } catch (IOException ignored) {
                 // A live stream nobody reads any more; harmless if it stays.
             }

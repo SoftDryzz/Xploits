@@ -51,7 +51,8 @@ class CoordinateSentinelTest {
                 "12:30:45",
                 "#goal 64",
                 "subgoal 1 2",
-                "Patrón ESPIRAL · destino 5000 bloques por X+",
+                "Patrón SPIRAL · destino 5000 bloques por X+",
+                "Pattern SPIRAL · destination 5000 blocks along X+",
                 "overworld a 850 bloques",
                 "en 12, 40")) {
             assertFalse(CoordinateSentinel.isSuspect(text), text);

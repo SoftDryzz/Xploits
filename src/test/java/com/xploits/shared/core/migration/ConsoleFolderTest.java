@@ -33,16 +33,16 @@ class ConsoleFolderTest {
     void movesTheFolderAndRenamesWhatIsInside() throws IOException {
         oldFolder();
         assertEquals(ConsoleFolder.Outcome.MOVED, ConsoleFolder.run(dir));
-        Path neu = dir.resolve("console");
+        Path newDir = dir.resolve("console");
         assertFalse(Files.exists(dir.resolve("consola")));
-        assertTrue(Files.exists(neu.resolve("history").resolve("2026-09-20.log")));
-        assertTrue(Files.exists(neu.resolve("console.lock")));
-        assertTrue(Files.exists(neu.resolve("console.pid")));
-        assertTrue(Files.exists(neu.resolve("console.exit")));
-        assertTrue(Files.exists(neu.resolve("console-errors.log")));
-        assertTrue(Files.exists(neu.resolve("size.txt")));
-        assertFalse(Files.exists(neu.resolve("vivo.log")));
-        assertFalse(Files.exists(neu.resolve("vivo.1.log")));
+        assertTrue(Files.exists(newDir.resolve("history").resolve("2026-09-20.log")));
+        assertTrue(Files.exists(newDir.resolve("console.lock")));
+        assertTrue(Files.exists(newDir.resolve("console.pid")));
+        assertTrue(Files.exists(newDir.resolve("console.exit")));
+        assertTrue(Files.exists(newDir.resolve("console-errors.log")));
+        assertTrue(Files.exists(newDir.resolve("size.txt")));
+        assertFalse(Files.exists(newDir.resolve("vivo.log")));
+        assertFalse(Files.exists(newDir.resolve("vivo.1.log")));
     }
 
     @Test
@@ -96,20 +96,20 @@ class ConsoleFolderTest {
             Files.move(from, to);
         });
         assertEquals(ConsoleFolder.Outcome.PARTIAL, o);
-        Path neu = dir.resolve("console");
-        assertTrue(Files.exists(neu.resolve("historial").resolve("2026-09-20.log")));
-        assertFalse(Files.exists(neu.resolve("history")));
-        assertTrue(Files.exists(neu.resolve("console.lock")));
+        Path newDir = dir.resolve("console");
+        assertTrue(Files.exists(newDir.resolve("historial").resolve("2026-09-20.log")));
+        assertFalse(Files.exists(newDir.resolve("history")));
+        assertTrue(Files.exists(newDir.resolve("console.lock")));
     }
 
     @Test
     void aLeftoverOldNameInsideConsoleIsRenamedOnTheNextRun() throws IOException {
-        Path neu = Files.createDirectories(dir.resolve("console"));
-        Files.createDirectories(neu.resolve("historial"));
-        Files.writeString(neu.resolve("historial").resolve("2026-09-20.log"), "x");
+        Path newDir = Files.createDirectories(dir.resolve("console"));
+        Files.createDirectories(newDir.resolve("historial"));
+        Files.writeString(newDir.resolve("historial").resolve("2026-09-20.log"), "x");
         ConsoleFolder.Outcome o = ConsoleFolder.run(dir);
         assertEquals(ConsoleFolder.Outcome.MOVED, o);
-        assertTrue(Files.exists(neu.resolve("history").resolve("2026-09-20.log")));
-        assertFalse(Files.exists(neu.resolve("historial")));
+        assertTrue(Files.exists(newDir.resolve("history").resolve("2026-09-20.log")));
+        assertFalse(Files.exists(newDir.resolve("historial")));
     }
 }

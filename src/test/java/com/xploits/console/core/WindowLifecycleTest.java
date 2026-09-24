@@ -79,7 +79,7 @@ class WindowLifecycleTest {
     }
 
     @Test
-    void anotherLaunchsCloseDoesNotCloseThisOneNorDoesAForeignPidCount() {
+    void anotherLaunchCloseDoesNotCloseThisOneNorDoesAForeignPidCount() {
         WindowLifecycle c = lifecycle();
         c.turnOn();
         c.tick(obs(0, null, ALIVE, null));

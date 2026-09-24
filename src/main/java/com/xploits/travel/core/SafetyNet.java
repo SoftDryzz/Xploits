@@ -44,6 +44,9 @@ public final class SafetyNet {
      * The command of a Baritone text without its arguments: {@code "#goal 1200 -800"} gives {@code
      * "#goal"}. It is what may go to the console when reporting that the net cut something: the
      * arguments may be coordinates (console spec §7).
+     *
+     * <p>The {@code "(empty)"} answer is only for completeness: callers gated by {@link #directs}
+     * never reach it, since a text it accepts starts with a prefix that is never blank.
      */
     public static String verb(String text) {
         if (text == null) throw new IllegalArgumentException("an outgoing text cannot be null");
