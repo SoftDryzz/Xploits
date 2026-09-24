@@ -431,15 +431,15 @@ pvp.idle-none=none (what is on is spending)
 pvp.idle-line={parts} — on, with an enemy in front and material to spare
 pvp.idle-part={modules} ({seconds} s{joint})
 pvp.idle-joint=, joint verdict: the {count} share a stack and I do not know which one is failing
-pvp.state-sin-combate=NO COMBAT
-pvp.state-acercamiento=APPROACH
-pvp.state-superficie=SURFACE
-pvp.state-rodeado=SURROUNDED
-pvp.state-enterrado=BURIED
-pvp.state-persecucion=CHASE
-pvp.state-sin-recursos=OUT OF RESOURCES
-pvp.posture-tranquilo=CALM
-pvp.posture-amenazado=THREATENED
+pvp.state-no-combat=NO COMBAT
+pvp.state-approach=APPROACH
+pvp.state-surface=SURFACE
+pvp.state-surrounded=SURROUNDED
+pvp.state-burrowed=BURIED
+pvp.state-chase=CHASE
+pvp.state-out-of-resources=OUT OF RESOURCES
+pvp.posture-calm=CALM
+pvp.posture-threatened=THREATENED
 
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.

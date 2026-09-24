@@ -46,9 +46,9 @@ class CombatSnapshotTest {
 
     @Test
     void theTransitionalConstructorFillsTheNewFieldsWithNeutralValues() {
-        // El andamio para que el adaptador siga compilando mientras se le añade la lectura de los
-        // campos nuevos: los rellena con lo neutro, no con lo real, para que los dos ejes nuevos se
-        // comporten como si no existieran hasta que alguien los rellene de verdad.
+        // The scaffolding so the adapter keeps compiling while the reading of the new fields is
+        // added to it: it fills them with the neutral values, not the real ones, so the two new axes
+        // behave as if they did not exist until someone really fills them in.
         CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, Map.of());
 
         assertNull(snapshot.targetId());
@@ -57,7 +57,7 @@ class CombatSnapshotTest {
         assertEquals(0.0, snapshot.incomingDamage(), 0.0);
         assertFalse(snapshot.selfInHole());
         assertFalse(snapshot.selfOnGround());
-        assertEquals(CombatPosture.TRANQUILO, DefensivePolicy.postureFor(snapshot));
+        assertEquals(CombatPosture.CALM, DefensivePolicy.postureFor(snapshot));
     }
 
     @Test
@@ -84,7 +84,7 @@ class CombatSnapshotTest {
 
     @Test
     void everyManagedModuleDeclaresWhatItNeeds() {
-        // La tabla de la spec §6, ampliada con el eje defensivo del rediseño §5.
+        // The table of spec §6, extended with the defensive axis of redesign §5.
         assertEquals(Resource.CRYSTALS, ManagedModules.CRYSTAL_AURA.needs());
         assertEquals(Resource.OBSIDIAN, ManagedModules.AUTO_TRAP.needs());
         assertEquals(Resource.OBSIDIAN, ManagedModules.SURROUND.needs());
@@ -96,15 +96,15 @@ class CombatSnapshotTest {
         assertEquals(Resource.NONE, ManagedModules.ANTI_BED.needs());
         assertEquals(Resource.NONE, ManagedModules.ANTI_ANCHOR.needs());
 
-        // La marca turnsItselfOff() (spec §7): crystal-aura, auto-web y los cinco defensivos
-        // -surround incluido desde C2- solo se apagan porque el jugador los apaga; los otros tres
-        // se apagan solos con los ajustes de fábrica de Meteor. Sin esto, cambiar la marca de
-        // cualquiera no lo detecta ningún test.
+        // The turnsItselfOff() flag (spec §7): crystal-aura, auto-web and the five defensive ones
+        // -surround included since C2- only turn off because the player turns them off; the other three
+        // turn themselves off with Meteor's default settings. Without this, changing the flag of
+        // any of them is caught by no test.
         assertFalse(ManagedModules.CRYSTAL_AURA.turnsItselfOff());
         assertTrue(ManagedModules.AUTO_TRAP.turnsItselfOff());
         assertFalse(ManagedModules.AUTO_WEB.turnsItselfOff());
         assertFalse(ManagedModules.SURROUND.turnsItselfOff(),
-            "C2: con la marca puesta el antirrebote no se le aplicaba y no podías apagarlo a mano");
+            "C2: with the flag set the debounce did not apply to it and you could not turn it off by hand");
         assertTrue(ManagedModules.AUTO_ANVIL.turnsItselfOff());
         assertTrue(ManagedModules.AUTO_CITY.turnsItselfOff());
         assertFalse(ManagedModules.HOLE_FILLER.turnsItselfOff());
@@ -113,10 +113,10 @@ class CombatSnapshotTest {
         assertFalse(ManagedModules.ANTI_ANCHOR.turnsItselfOff());
 
         for (ManagedModule module : ManagedModules.ALL) {
-            assertFalse(module.name().isBlank(), "el módulo debe tener nombre");
+            assertFalse(module.name().isBlank(), "the module must have a name");
             boolean free = module.needs() == Resource.NONE;
             assertEquals(free, module.minimum() == 0,
-                module.name() + ": solo los que no gastan nada pueden pedir cero");
+                module.name() + ": only those that spend nothing can ask for zero");
         }
         assertEquals(10, ManagedModules.ALL.size());
     }

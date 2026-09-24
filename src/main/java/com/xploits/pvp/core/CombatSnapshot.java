@@ -3,82 +3,82 @@ package com.xploits.pvp.core;
 import java.util.Map;
 
 /**
- * La situación traducida a valores simples (spec §5). Es la frontera: de aquí en adelante todo el
- * criterio es lógica pura y se puede probar sin arrancar el juego.
+ * The situation translated into simple values (spec §5). It is the boundary: from here on all the
+ * judgement is pure logic and can be tested without starting the game.
  *
- * <p>La vida del objetivo no está aquí a propósito y sigue sin estarlo (rediseño §10): ninguna
- * transición la necesita y no todos los servidores la mandan. <b>La tuya sí</b>: el cliente la sabe
- * siempre, y las dos decisiones defensivas del rediseño (§5) se toman con ella y con el daño que ya
- * te apunta, no con un proxy.
+ * <p>The target's health is not here on purpose and still is not (redesign §10): no transition needs
+ * it and not every server sends it. <b>Yours is</b>: the client always knows it, and the two defensive
+ * decisions of the redesign (§5) are taken with it and with the damage already aimed at you, not with
+ * a proxy.
  *
- * <p>{@code cityBlockDistance} es la distancia real del jugador al bloque de rodeado -no al
- * objetivo- (spec §4.2.1, corregido): {@code targetDistance} no sirve de proxy porque el bloque es
- * un vecino horizontal del objetivo y puede caer al lado contrario de donde estás tú, así que estar
- * cerca del objetivo no garantiza estar cerca del bloque. Solo tiene sentido cuando
- * {@code targetSurroundSides} llega al mínimo; en caso contrario su valor no se usa.
+ * <p>{@code cityBlockDistance} is the real distance from the player to the surround block -not to the
+ * target- (spec §4.2.1, corrected): {@code targetDistance} does not work as a proxy because the block
+ * is a horizontal neighbour of the target and can be on the side opposite to where you are, so being
+ * close to the target does not guarantee being close to the block. It only makes sense when
+ * {@code targetSurroundSides} reaches the minimum; otherwise its value is not used.
  *
- * @param hasTarget               si el director tiene un objetivo elegido este tick
- * @param targetDistance          distancia real al objetivo
- * @param targetSurroundSides     cuántos de los <b>cuatro</b> vecinos horizontales del objetivo, a
- *                                la altura de sus pies, son de los que {@code
- *                                EntityUtils.getCityBlock()} considera minables (obsidiana, bloque
- *                                de netherita, obsidiana llorosa, ancla y escombros antiguos).
- *                                Rediseño §4.2.1, corregido por M1: {@code getCityBlock() != null}
- *                                no mide "tiene surround", mide "hay <b>un</b> bloque minable
- *                                pegado a él", así que un enemigo de pie junto al muro de obsidiana
- *                                de cualquier base -o junto a la obsidiana que tu propio {@code
- *                                auto-trap} acaba de colocar- clasificaba {@code RODEADO} y el
- *                                director se ponía a minar la pared. Contar los cuatro lados sí
- *                                distingue un surround de un muro, y la decisión de cuántos hacen
- *                                falta es del núcleo ({@link CombatDirector#SURROUND_MIN_SIDES})
- * @param cityBlockDistance       distancia real al bloque de rodeado, no al objetivo
- * @param targetBurrowed          si el objetivo está <b>protegido</b> dentro de un bloque.
- *                                Rediseño §4.1: la pregunta no es "¿hay algo sólido en sus pies?"
- *                                sino "¿le protege de un cristal?", así que el adaptador debe
- *                                medirlo por resistencia a explosiones (&ge; 600, el umbral que ya
- *                                usa {@code PlayerUtils.isInHole}) y con el cubo completo, no con
- *                                {@code blocksMovement()}: una losa inferior da 0,833 de lado medio
- *                                y {@code blocksMovement()} la daba por buena, así que estar de pie
- *                                sobre una losa, una escalera, un cofre o una trampilla se
- *                                clasificaba ENTERRADO
- * @param targetGliding           si el <b>objetivo</b> va con elytra desplegada
- * @param selfGliding             si vas tú con elytra desplegada. <b>Ya no clasifica nada</b>
- *                                (rediseño §4.1): en este servidor se vuela casi siempre y que
- *                                vueles tú no dice nada del enemigo. Se conserva solo para informar
- * @param selfTotems              tótems que llevas encima
- * @param resources               cuánto llevas de cada recurso
- * @param targetId                identidad estable del objetivo (el nombre sirve) o {@code null} si
- *                                no hay. Solo se usa para saber cuándo la serie de distancias de
- *                                {@link RetreatWatch} deja de referirse al mismo jugador
- * @param hostilesInCrystalRange  cuántos hostiles hay a rango de cristal, <b>protegidos o no</b>.
- *                                Rediseño §4.4, corregido por el crítico C1: la pregunta que decide
- *                                si quieres el aura no es "¿puedo yo cristalear a alguien?" sino
- *                                "¿hay alguien que pueda cristalearme a mí?". Que el otro esté
- *                                enterrado o rodeado le salva a él de tus cristales; no te salva a
- *                                ti de los suyos, y romper no te cuesta ningún cristal (§2). Cuenta
- *                                hostiles, no aliados: {@link AllyPolicy} decide quién es cuál
- * @param selfTotalHealth         tu vida más absorción ({@code PlayerUtils.getTotalHealth()})
- * @param incomingDamage          el daño que <b>ya te apunta</b>
- *                                ({@code PlayerUtils.possibleHealthReductions()}): cristales
- *                                colocados, jugadores con espada a &le;5, camas en el Nether y caída
- * @param selfInHole              si estás en un agujero ({@code PlayerUtils.isInHole(false)})
- * @param selfOnGround            si estás tocando el suelo
- * @param selfYChanged            si tu altura ha cambiado en este tick o en el anterior. Es
- *                                literalmente la condición con la que {@code Surround} se apaga
- *                                solo ({@code toggle-on-y-change}, {@code defaultValue(true)}:
- *                                {@code prevY != getY()} comprobado en {@code TickEvent.Pre}), y
- *                                por eso la postura no pide {@code surround} mientras sea cierta
- *                                (§5, crítico C2): pedirlo en un tick en el que el módulo se va a
- *                                apagar solo es lo que impedía distinguir su autoapagado de que lo
- *                                apagaras tú
- * @param crystalAuraAntiSuicide  si el ajuste {@code anti-suicide} de {@code CrystalAura} está
- *                                encendido. Es {@code defaultValue(true)}, y con él Meteor se niega
- *                                a colocar o a romper un cristal cuyo daño a ti mismo te mataría:
- *                                la misma decisión que tomaba el suelo de tótems, pero con el daño
- *                                exacto en vez de con un contador de ítems. <b>Pero es solo un
- *                                valor por defecto</b>: si el jugador lo apaga, esa protección no
- *                                existe, y entonces -y solo entonces- el suelo de tótems vuelve a
- *                                hacer falta
+ * @param hasTarget               whether the director has a target picked this tick
+ * @param targetDistance          real distance to the target
+ * @param targetSurroundSides     how many of the <b>four</b> horizontal neighbours of the target, at
+ *                                the height of its feet, are of the kind {@code
+ *                                EntityUtils.getCityBlock()} considers mineable (obsidian, netherite
+ *                                block, crying obsidian, anchor and ancient debris).
+ *                                Redesign §4.2.1, corrected by M1: {@code getCityBlock() != null}
+ *                                does not measure "has a surround", it measures "there is <b>one</b>
+ *                                mineable block next to it", so an enemy standing by the obsidian wall
+ *                                of any base -or by the obsidian your own {@code
+ *                                auto-trap} has just placed- classified as {@code SURROUNDED} and the
+ *                                director started mining the wall. Counting the four sides does
+ *                                tell a surround from a wall, and deciding how many are
+ *                                needed is the core's job ({@link CombatDirector#SURROUND_MIN_SIDES})
+ * @param cityBlockDistance       real distance to the surround block, not to the target
+ * @param targetBurrowed          whether the target is <b>protected</b> inside a block.
+ *                                Redesign §4.1: the question is not "is there something solid at its
+ *                                feet?" but "does it protect it from a crystal?", so the adapter must
+ *                                measure it by blast resistance (&ge; 600, the threshold
+ *                                {@code PlayerUtils.isInHole} already uses) and with the full cube, not
+ *                                with {@code blocksMovement()}: a bottom slab gives 0.833 of half-side
+ *                                and {@code blocksMovement()} accepted it, so standing
+ *                                on a slab, a stair, a chest or a trapdoor was
+ *                                classified as BURROWED
+ * @param targetGliding           whether the <b>target</b> has its elytra deployed
+ * @param selfGliding             whether you have your elytra deployed. <b>It no longer classifies
+ *                                anything</b> (redesign §4.1): on this server people fly almost all the
+ *                                time and your flying says nothing about the enemy. Kept only for reporting
+ * @param selfTotems              totems you carry
+ * @param resources               how much of each resource you carry
+ * @param targetId                stable identity of the target (the name will do) or {@code null} if
+ *                                there is none. Only used to know when the distance series of
+ *                                {@link RetreatWatch} stops referring to the same player
+ * @param hostilesInCrystalRange  how many hostiles are in crystal range, <b>protected or not</b>.
+ *                                Redesign §4.4, corrected by critical C1: the question that decides
+ *                                whether you want the aura is not "can I crystal someone?" but
+ *                                "is there someone who can crystal me?". The other one being
+ *                                burrowed or surrounded saves them from your crystals; it does not
+ *                                save you from theirs, and breaking costs you no crystal (§2). It counts
+ *                                hostiles, not allies: {@link AllyPolicy} decides who is which
+ * @param selfTotalHealth         your health plus absorption ({@code PlayerUtils.getTotalHealth()})
+ * @param incomingDamage          the damage <b>already aimed at you</b>
+ *                                ({@code PlayerUtils.possibleHealthReductions()}): placed crystals,
+ *                                players with a sword at &le;5, beds in the Nether and falling
+ * @param selfInHole              whether you are in a hole ({@code PlayerUtils.isInHole(false)})
+ * @param selfOnGround            whether you are touching the ground
+ * @param selfYChanged            whether your height has changed this tick or the previous one. It is
+ *                                literally the condition under which {@code Surround} turns itself
+ *                                off ({@code toggle-on-y-change}, {@code defaultValue(true)}:
+ *                                {@code prevY != getY()} checked in {@code TickEvent.Pre}), and
+ *                                that is why the posture does not ask for {@code surround} while it is
+ *                                true (§5, critical C2): asking for it on a tick in which the module is
+ *                                about to turn itself off is what made it impossible to tell its
+ *                                self-shutdown from you turning it off
+ * @param crystalAuraAntiSuicide  whether the {@code anti-suicide} setting of {@code CrystalAura} is
+ *                                on. It is {@code defaultValue(true)}, and with it Meteor refuses
+ *                                to place or break a crystal whose damage to yourself would kill you:
+ *                                the same decision the totem floor used to take, but with the exact
+ *                                damage instead of an item counter. <b>But it is only a
+ *                                default value</b>: if the player turns it off, that protection does
+ *                                not exist, and then -and only then- the totem floor is needed
+ *                                again
  */
 public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              int targetSurroundSides, double cityBlockDistance,
@@ -89,7 +89,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              double selfTotalHealth, double incomingDamage,
                              boolean selfInHole, boolean selfOnGround, boolean selfYChanged,
                              boolean crystalAuraAntiSuicide) {
-    /** Vida llena sin absorción: el valor neutro cuando nadie ha medido la de verdad. */
+    /** Full health without absorption: the neutral value when nobody has measured the real one. */
     public static final double FULL_HEALTH = 20.0;
 
     public CombatSnapshot {
@@ -97,8 +97,8 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
     }
 
     /**
-     * Sin objetivo y sin nada encima. El {@code anti-suicide} se da por <b>apagado</b>, que es el
-     * valor prudente: sin nadie que haya leído el ajuste de verdad, el suelo de tótems sigue en pie.
+     * No target and nothing carried. {@code anti-suicide} is taken as <b>off</b>, which is the
+     * prudent value: with nobody having really read the setting, the totem floor stays in place.
      */
     public static CombatSnapshot none() {
         return new CombatSnapshot(false, 0, 0, 0, false, false, false, 0, Map.of(),
@@ -109,7 +109,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return resources.getOrDefault(resource, 0);
     }
 
-    /** El mismo snapshot con otra identidad de objetivo. */
+    /** The same snapshot with another target identity. */
     public CombatSnapshot withTargetId(String id) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
@@ -117,7 +117,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
             selfInHole, selfOnGround, selfYChanged, crystalAuraAntiSuicide);
     }
 
-    /** El mismo snapshot con otra cuenta de hostiles a rango de cristal (§4.4, corregido por C1). */
+    /** The same snapshot with another count of hostiles in crystal range (§4.4, corrected by C1). */
     public CombatSnapshot withHostiles(int hostiles) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
@@ -125,7 +125,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
             selfYChanged, crystalAuraAntiSuicide);
     }
 
-    /** El mismo snapshot con otra lectura defensiva (§5). */
+    /** The same snapshot with another defensive reading (§5). */
     public CombatSnapshot withDefense(double totalHealth, double incoming, boolean inHole, boolean onGround) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
@@ -133,7 +133,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
             selfYChanged, crystalAuraAntiSuicide);
     }
 
-    /** El mismo snapshot con tu altura moviéndose o quieta (§5, crítico C2). */
+    /** The same snapshot with your height moving or still (§5, critical C2). */
     public CombatSnapshot withSelfYChanged(boolean changed) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
@@ -141,7 +141,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
             selfInHole, selfOnGround, changed, crystalAuraAntiSuicide);
     }
 
-    /** El mismo snapshot a otra distancia del objetivo. */
+    /** The same snapshot at another distance from the target. */
     public CombatSnapshot withTargetDistance(double distance) {
         return new CombatSnapshot(hasTarget, distance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,

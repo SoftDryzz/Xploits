@@ -1,22 +1,22 @@
 package com.xploits.pvp.core;
 
-/** Las fases de una pelea (spec §4.1). */
+/** The phases of a fight (spec §4.1). */
 public enum CombatState {
-    /** Ningún objetivo a tiro: se suelta todo lo tomado. */
-    SIN_COMBATE,
-    /** Objetivo a la vista pero lejos. */
-    ACERCAMIENTO,
-    /** Objetivo cerca, a pie, sin surround y no enterrado. */
-    SUPERFICIE,
-    /** El objetivo tiene surround puesto. */
-    RODEADO,
-    /** El objetivo está dentro de un bloque. */
-    ENTERRADO,
+    /** No target in reach: everything taken is released. */
+    NO_COMBAT,
+    /** Target in sight but far away. */
+    APPROACH,
+    /** Target close, on foot, without a surround and not burrowed. */
+    SURFACE,
+    /** The target has a surround up. */
+    SURROUNDED,
+    /** The target is inside a block. */
+    BURROWED,
     /**
-     * El <b>objetivo</b> planea con elytra y está fuera de rango de cristal (rediseño §4.1). Que
-     * vueles tú ya no clasifica nada: en este servidor se vuela casi siempre.
+     * The <b>target</b> is gliding with an elytra and is out of crystal range (redesign §4.1). Whether
+     * you fly no longer classifies anything: on this server people fly almost all the time.
      */
-    PERSECUCION,
-    /** No se puede sostener ningún módulo de la fase que tocaba. */
-    SIN_RECURSOS
+    CHASE,
+    /** None of the modules the phase called for can be sustained. */
+    OUT_OF_RESOURCES
 }

@@ -162,13 +162,6 @@ class BoundaryTest {
         "com/xploits/kitrequester/core/OrderMachineTest.java",
         "com/xploits/kitrequester/core/Progress.java",
         "com/xploits/kitrequester/core/ProgressStoreTest.java",
-        "com/xploits/pvp/core/FriendLedger.java",
-        "com/xploits/pvp/core/ManagedModule.java",
-        "com/xploits/pvp/core/Plan.java",
-        "com/xploits/pvp/core/Resource.java",
-        "com/xploits/pvp/core/RetreatWatchTest.java",
-        "com/xploits/pvp/core/Skipped.java",
-        "com/xploits/pvp/core/Snapshots.java",
         "com/xploits/stash/core/ContainerSnapshot.java",
         "com/xploits/stash/core/ContainerSnapshotTest.java",
         "com/xploits/stash/core/ContainerType.java",
@@ -182,7 +175,8 @@ class BoundaryTest {
         "com/xploits/console/",
         "com/xploits/shared/",
         "com/xploits/travel/",
-        "com/xploits/sweep/"
+        "com/xploits/sweep/",
+        "com/xploits/pvp/"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */

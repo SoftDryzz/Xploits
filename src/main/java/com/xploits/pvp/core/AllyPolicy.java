@@ -5,36 +5,36 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * ¿Este jugador es de los nuestros? (spec §13). Decisión pura: el adaptador solo recoge los nombres
- * de los otros módulos y pregunta.
+ * Is this player one of ours? (spec §13). A pure decision: the adapter only collects the names
+ * from the other modules and asks.
  *
- * <p>"Los nuestros" son los amigos de Meteor, los couriers de {@code kit-requester} y la lista
- * {@code users} de {@code auto-tpy}. El trato es el mismo que da Meteor a su lista de amigos:
- * <b>incondicional</b>. No es "no iniciar pero responder si te pega": a los nuestros no se les
- * ataca nunca, aunque te peguen ellos.
+ * <p>"Ours" are the Meteor friends, the {@code kit-requester} couriers and the {@code users} list of
+ * {@code auto-tpy}. The treatment is the same Meteor gives its friends list:
+ * <b>unconditional</b>. It is not "do not start it but answer if they hit you": ours are never
+ * attacked, even if they hit you.
  *
- * <p><b>Esto decide a quién elige auto-pvp, y nada más.</b> auto-pvp no ataca: enciende módulos, y
- * los cinco que dirige eligen su propio objetivo con el único filtro social que conocen, la lista de
- * amigos de Meteor. Que los couriers y la lista users también se respeten ahí es cosa de
- * {@link FriendLedger} (spec §14); sin esa sincronización, esta decisión se queda en el objetivo del
- * director y el courier acaba entelado por el módulo que el director acaba de encender.
+ * <p><b>This decides whom auto-pvp picks, and nothing else.</b> auto-pvp does not attack: it enables
+ * modules, and the five it manages pick their own target with the only social filter they know, the
+ * Meteor friends list. That the couriers and the users list are also respected there is the job of
+ * {@link FriendLedger} (spec §14); without that sync, this decision stays in the director's target and
+ * the courier ends up webbed by the module the director just enabled.
  *
- * <p>El caso {@code AMIGO} es exactamente la negación de {@code Friends.get().shouldAttack()}, el
- * único filtro social que aplicaba {@code TargetUtils.getPlayerTarget}: al absorberlo aquí, el
- * predicado de selección sigue descartando a los amigos igual que antes, y el motivo que se le
- * enseña al jugador sale de un único sitio para los tres conjuntos.
+ * <p>The {@code FRIEND} case is exactly the negation of {@code Friends.get().shouldAttack()}, the
+ * only social filter {@code TargetUtils.getPlayerTarget} applied: by absorbing it here, the selection
+ * predicate keeps discarding friends as before, and the reason shown to the player comes from a
+ * single place for the three sets.
  */
 public final class AllyPolicy {
-    /** De quién es el jugador que se ha mirado, y por qué no se le ataca. */
+    /** Whose side the player looked at is on, and why they are not attacked. */
     public enum Allegiance {
-        /** No está en ninguna de las tres listas: objetivo válido. */
-        AJENO(null),
-        /** Amigo de Meteor (.friends add). */
-        AMIGO(PvpText.ALLY_FRIEND),
-        /** Courier de la lista known-couriers de kit-requester. */
+        /** Not in any of the three lists: a valid target. */
+        STRANGER(null),
+        /** Meteor friend (.friends add). */
+        FRIEND(PvpText.ALLY_FRIEND),
+        /** Courier from kit-requester's known-couriers list. */
         COURIER(PvpText.ALLY_COURIER),
-        /** Nombre de la lista users de auto-tpy. */
-        USUARIO_TPY(PvpText.ALLY_TPY_USER);
+        /** Name from auto-tpy's users list. */
+        TPY_USER(PvpText.ALLY_TPY_USER);
 
         private final PvpText reason;
 
@@ -42,12 +42,12 @@ public final class AllyPolicy {
             this.reason = reason;
         }
 
-        /** true si es de los nuestros y auto-pvp no debe atacarle jamás. */
+        /** true if they are one of ours and auto-pvp must never attack them. */
         public boolean isOurs() {
-            return this != AJENO;
+            return this != STRANGER;
         }
 
-        /** Por qué no se le ataca, para el aviso y para el estado. Vacío en {@link #AJENO}. */
+        /** Why they are not attacked, for the warning and for the status. Empty for {@link #STRANGER}. */
         public PvpText reason() {
             return reason == null ? PvpText.NOTHING : reason;
         }
@@ -56,19 +56,19 @@ public final class AllyPolicy {
     private AllyPolicy() {}
 
     /**
-     * Una lista de origen lista para preguntarle: recortada, sin entradas en blanco y sin nulos.
+     * A source list ready to be asked: trimmed, without blank entries and without nulls.
      *
-     * <p>El recorte se hace <b>una sola vez por lista y por tick</b>, aquí, y no una vez por jugador
-     * mirado dentro de {@link #of}. El predicado de selección se evalúa sobre todas las entidades
-     * del mundo, así que recortar dentro salía a un barrido lineal de la lista —y un {@code trim()}
-     * por entrada— por cada jugador a la vista: con las listas de fábrica da igual, con doscientos
-     * nombres no. Normalizado de una vez, {@link #of} pregunta por hash.
+     * <p>The trimming is done <b>once per list and per tick</b>, here, and not once per player
+     * looked at inside {@link #of}. The selection predicate is evaluated over every entity in the
+     * world, so trimming inside came to a linear scan of the list —and a {@code trim()} per
+     * entry— for every player in sight: with the default lists it makes no difference, with two
+     * hundred names it does. Normalized once, {@link #of} asks by hash.
      *
-     * <p>Lo que se perdona son los espacios de alrededor: un nombre de Minecraft no puede llevar
-     * espacios —Meteor rechaza añadir un amigo cuyo nombre los tenga—, así que " StormAegis44 " en
-     * la lista no puede significar otra cosa que ese jugador. Perdonarlos solo puede dejar de atacar
-     * a alguien, nunca atacar a uno más; en {@code AutoTpyPolicy} el error caería del lado contrario
-     * —aceptar una TPA de más—, y por eso allí no se perdona nada.
+     * <p>What is forgiven is the surrounding spaces: a Minecraft name cannot contain spaces —Meteor
+     * refuses to add a friend whose name has them—, so " StormAegis44 " in the list cannot mean
+     * anything but that player. Forgiving them can only stop attacking someone, never attack one
+     * more; in {@code AutoTpyPolicy} the error would fall on the opposite side —accepting one TPA
+     * too many—, and that is why nothing is forgiven there.
      */
     public static Set<String> names(Collection<String> list) {
         if (list == null) return Set.of();
@@ -76,35 +76,35 @@ public final class AllyPolicy {
         for (String entry : list) {
             if (entry == null) continue;
             String name = entry.trim();
-            // Una entrada en blanco no puede emparejar con nadie: el nombre mirado se rechaza en
-            // of() si llega vacío, así que guardarla solo serviría para ocupar sitio.
+            // A blank entry cannot match anyone: the looked-at name is rejected in of() if it
+            // arrives empty, so keeping it would only take up room.
             if (!name.isEmpty()) result.add(name);
         }
         return result;
     }
 
     /**
-     * @param name                 nombre del jugador mirado (el del perfil, como lo muestra auto-pvp)
-     * @param meteorFriend         el adaptador ya consultó los amigos de Meteor
-     * @param kitRequesterCouriers ajuste known-couriers de kit-requester, pasado por {@link #names}
-     * @param autoTpyUsers         ajuste users de auto-tpy, pasado por {@link #names}
+     * @param name                 name of the player looked at (the profile one, as auto-pvp shows it)
+     * @param meteorFriend         the adapter already checked the Meteor friends
+     * @param kitRequesterCouriers kit-requester's known-couriers setting, passed through {@link #names}
+     * @param autoTpyUsers         auto-tpy's users setting, passed through {@link #names}
      */
     public static Allegiance of(String name, boolean meteorFriend,
                                 Set<String> kitRequesterCouriers, Set<String> autoTpyUsers) {
-        if (name == null) return Allegiance.AJENO;
+        if (name == null) return Allegiance.STRANGER;
         String candidate = name.trim();
-        // Un nombre ilegible no protege a nadie: ningún jugador real tiene el nombre en blanco, y
-        // dar por nuestro a quien no sabemos identificar sería dejar de defenderse contra cualquiera
-        // que consiga que el nombre llegue vacío.
-        if (candidate.isEmpty()) return Allegiance.AJENO;
+        // An unreadable name protects nobody: no real player has a blank name, and taking as ours
+        // someone we cannot identify would mean no longer defending against anyone who manages to
+        // make the name arrive empty.
+        if (candidate.isEmpty()) return Allegiance.STRANGER;
 
-        if (meteorFriend) return Allegiance.AMIGO;
-        // Comparación exacta y que distingue mayúsculas, que es lo que prometen las descripciones de
-        // las dos listas y lo que ya hacen AutoTpyPolicy y CourierPolicy con esas mismas listas. Un
-        // "StormAegis44" no es un "stormaegis44".
+        if (meteorFriend) return Allegiance.FRIEND;
+        // Exact, case-sensitive comparison, which is what the descriptions of both lists promise and
+        // what AutoTpyPolicy and CourierPolicy already do with those same lists. A
+        // "StormAegis44" is not a "stormaegis44".
         if (contains(kitRequesterCouriers, candidate)) return Allegiance.COURIER;
-        if (contains(autoTpyUsers, candidate)) return Allegiance.USUARIO_TPY;
-        return Allegiance.AJENO;
+        if (contains(autoTpyUsers, candidate)) return Allegiance.TPY_USER;
+        return Allegiance.STRANGER;
     }
 
     private static boolean contains(Set<String> list, String candidate) {

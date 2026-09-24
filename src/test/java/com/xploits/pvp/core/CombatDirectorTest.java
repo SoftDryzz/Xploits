@@ -17,27 +17,27 @@ class CombatDirectorTest {
         Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64,
         Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
 
-    /** Un surround entero: los cuatro vecinos horizontales del objetivo son minables (M1). */
+    /** A whole surround: the four horizontal neighbours of the target are mineable (M1). */
     private static final int SURROUNDED_SIDES = 4;
 
-    /** Distancia a la que se ENTRA en RODEADO: el límite real menos la banda hacia dentro (I1). */
+    /** Distance at which SURROUNDED is ENTERED: the real limit minus the inward band (I1). */
     private static final double CITY_ENTER =
         CombatDirector.AUTO_CITY_BREAK_RANGE - CombatDirector.NEAR_LIMIT_BAND;
 
-    /** Lo mismo para la cota del objetivo, la otra de las dos de auto-city. */
+    /** The same for the target bound, the other of auto-city's two. */
     private static final double CITY_TARGET_ENTER =
         CombatDirector.AUTO_CITY_TARGET_RANGE - CombatDirector.NEAR_LIMIT_BAND;
 
-    /** Enemigo cerca (3,0), a pie, limpio, con todo el equipo encima y sin nada apuntándote. */
+    /** Enemy close (3.0), on foot, clean, with all the gear on you and nothing aimed at you. */
     private static CombatSnapshot surface() {
         return Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, FULL)
-            .withTargetId("enemigo");
+            .withTargetId("enemy");
     }
 
     /**
-     * Este tick no hay objetivo, pero tú sigues siendo tú. Es lo que produce un parpadeo real: el
-     * adaptador lee tu inventario y tu vida aunque no haya a quién mirar, así que perder el objetivo
-     * no es lo mismo que {@link CombatSnapshot#none()}, que además se queda sin tótems.
+     * There is no target this tick, but you are still you. It is what a real flicker produces: the
+     * adapter reads your inventory and your health even with nobody to look at, so losing the target
+     * is not the same as {@link CombatSnapshot#none()}, which also has no totems.
      */
     private static CombatSnapshot noTarget() {
         return Snapshots.of(false, 0, 0, 0, false, false, false, 2, FULL);
@@ -45,9 +45,9 @@ class CombatDirectorTest {
 
     private static CombatSnapshot with(CombatSnapshot base, boolean surrounded, boolean burrowed,
                                        boolean targetGliding, boolean selfGliding) {
-        // cityBlockDistance no es relevante para estos tests (ninguno toca la frontera de
-        // AUTO_CITY_BREAK_RANGE): usar la propia targetDistance del snapshot base basta
-        // para que "surrounded" clasifique RODEADO cuando corresponde.
+        // cityBlockDistance is not relevant for these tests (none touches the boundary of
+        // AUTO_CITY_BREAK_RANGE): using the base snapshot's own targetDistance is enough
+        // for "surrounded" to classify SURROUNDED when it should.
         return new CombatSnapshot(base.hasTarget(), base.targetDistance(),
             surrounded ? SURROUNDED_SIDES : 0, base.targetDistance(),
             burrowed, targetGliding, selfGliding, base.selfTotems(), base.resources(),
@@ -57,8 +57,8 @@ class CombatDirectorTest {
     }
 
     /**
-     * Deja que el director se asiente en la fase que pide el snapshot. Con margen para la holgura
-     * más larga de todas (la de salir de PERSECUCION tras aterrizar).
+     * Lets the director settle in the phase the snapshot asks for. With room for the longest
+     * slack of all (the one for leaving CHASE after landing).
      */
     private static Plan settle(CombatDirector director, CombatSnapshot snapshot) {
         Plan plan = null;
@@ -69,9 +69,9 @@ class CombatDirectorTest {
     }
 
     /**
-     * Le ensena al director un objetivo que se aleja de verdad -1,5 bloques ganados en la ventana
-     * de {@link RetreatWatch}, por encima de su START_GAIN- y lo deja a {@code endDistance}.
-     * Devuelve el plan del ultimo tick.
+     * Shows the director a target that is really moving away -1.5 blocks gained over the window
+     * of {@link RetreatWatch}, above its START_GAIN- and leaves it at {@code endDistance}.
+     * Returns the plan of the last tick.
      */
     private static Plan pullingAwayTo(CombatDirector director, CombatSnapshot base, double endDistance) {
         Plan plan = null;
@@ -91,60 +91,60 @@ class CombatDirectorTest {
         return plan.skipped().stream().anyMatch(s -> s.module().equals(module));
     }
 
-    // --- §4.1: la precedencia ---
+    // --- §4.1: the precedence ---
 
     @Test
     void withoutATargetItIsOutOfCombatAndAsksForNothing() {
         Plan plan = new CombatDirector().tick(CombatSnapshot.none(), APPROACH);
-        assertEquals(CombatState.SIN_COMBATE, plan.state());
+        assertEquals(CombatState.NO_COMBAT, plan.state());
         assertTrue(plan.enable().isEmpty());
     }
 
     @Test
     void aTargetNearAndOnFootIsSurface() {
         Plan plan = settle(new CombatDirector(), surface());
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
     @Test
     void aTargetBeyondTheClassifyRangeIsNotACombatAtAll() {
-        // §9: de 16 a 10. Ningún módulo dirigido pasa de 10, así que la franja 10-16 solo producía
-        // fases con nombre y sin módulos.
+        // §9: from 16 to 10. No managed module goes beyond 10, so the 10-16 band only produced
+        // phases with a name and without modules.
         CombatSnapshot far = surface().withTargetDistance(CombatDirector.CLASSIFY_TARGET_RANGE + 0.5);
-        assertEquals(CombatState.SIN_COMBATE, settle(new CombatDirector(), far).state());
+        assertEquals(CombatState.NO_COMBAT, settle(new CombatDirector(), far).state());
     }
 
     @Test
     void theClassifyRangeConstantIsFixedAtTen() {
         assertEquals(10.0, CombatDirector.CLASSIFY_TARGET_RANGE, 0.0,
-            "§9: ningún módulo dirigido pasa de 10");
+            "§9: no managed module goes beyond 10");
     }
 
     @Test
     void atExactlyTheClassifyRangeThereIsStillACombat() {
         CombatSnapshot atBoundary = surface().withTargetDistance(10.0);
-        assertEquals(CombatState.ACERCAMIENTO, settle(new CombatDirector(), atBoundary).state());
+        assertEquals(CombatState.APPROACH, settle(new CombatDirector(), atBoundary).state());
     }
 
-    // --- §4.1: PERSECUCION solo la dispara el objetivo, y solo fuera de rango de cristal ---
+    // --- §4.1: CHASE is only triggered by the target, and only out of crystal range ---
 
     @Test
     void aGlidingTargetOutOfCrystalRangeIsAChase() {
         CombatSnapshot flying = with(surface(), false, false, true, false).withTargetDistance(8.0);
         Plan plan = settle(new CombatDirector(), flying);
-        assertEquals(CombatState.PERSECUCION, plan.state());
+        assertEquals(CombatState.CHASE, plan.state());
         assertTrue(plan.enable().isEmpty(),
-            "§4.2: auto-web nunca coloca a velocidad de elytra; encenderlo era fingir que se hacía algo");
+            "§4.2: auto-web never places at elytra speed; enabling it was pretending to do something");
     }
 
     @Test
     void aGlidingTargetWithinCrystalRangeIsAnOrdinaryFight() {
-        // §11: el objetivo planeando a 2 bloques es SUPERFICIE, no PERSECUCION. Volando y pegado a
-        // ti es una pelea normal, y los cristales le entran igual.
+        // §11: the target gliding at 2 blocks is SURFACE, not CHASE. Flying and right next to
+        // you is a normal fight, and the crystals get to them just the same.
         CombatSnapshot diving = with(surface(), false, false, true, false).withTargetDistance(2.0);
         Plan plan = settle(new CombatDirector(), diving);
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
@@ -152,21 +152,21 @@ class CombatDirectorTest {
     void atExactlyTheCrystalRangeAGlidingTargetIsStillAnOrdinaryFight() {
         CombatSnapshot atBoundary = with(surface(), false, false, true, false)
             .withTargetDistance(CombatDirector.CRYSTAL_RANGE);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), atBoundary).state(),
-            "la comparación es estrictamente mayor que: igual al umbral los cristales aún entran");
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), atBoundary).state(),
+            "the comparison is strictly greater than: at the threshold the crystals still get in");
     }
 
     @Test
     void youGlidingChangesNoPhaseAtAll() {
-        // §4.1: en este servidor se vuela casi siempre, así que selfGliding() dejaba al director
-        // en PERSECUCION -la fase que menos hace- la mayor parte del tiempo. Que vueles tú no dice
-        // nada del enemigo.
-        for (CombatState expected : new CombatState[]{CombatState.SUPERFICIE, CombatState.RODEADO,
-            CombatState.ENTERRADO, CombatState.ACERCAMIENTO}) {
+        // §4.1: on this server people fly almost all the time, so selfGliding() left the director
+        // in CHASE -the phase that does the least- most of the time. Your flying says
+        // nothing about the enemy.
+        for (CombatState expected : new CombatState[]{CombatState.SURFACE, CombatState.SURROUNDED,
+            CombatState.BURROWED, CombatState.APPROACH}) {
             CombatSnapshot onFoot = switch (expected) {
-                case RODEADO -> with(surface(), true, false, false, false);
-                case ENTERRADO -> with(surface(), false, true, false, false);
-                case ACERCAMIENTO -> surface().withTargetDistance(8.0);
+                case SURROUNDED -> with(surface(), true, false, false, false);
+                case BURROWED -> with(surface(), false, true, false, false);
+                case APPROACH -> surface().withTargetDistance(8.0);
                 default -> surface();
             };
             CombatSnapshot flying = with(onFoot, onFoot.targetSurroundSides() >= CombatDirector.SURROUND_MIN_SIDES,
@@ -174,27 +174,27 @@ class CombatDirectorTest {
 
             assertEquals(expected, settle(new CombatDirector(), onFoot).state());
             assertEquals(expected, settle(new CombatDirector(), flying).state(),
-                "volar tú no debe cambiar " + expected);
+                "your flying must not change " + expected);
         }
     }
 
-    // --- §4.1: ENTERRADO exige rango de yunque y se mide por protección, no por solidez ---
+    // --- §4.1: BURROWED requires anvil range and is measured by protection, not by solidity ---
 
     @Test
     void aBurrowedTargetWithinAnvilRangeIsBurrowed() {
         Plan plan = settle(new CombatDirector(), with(surface(), false, true, false, false));
-        assertEquals(CombatState.ENTERRADO, plan.state());
+        assertEquals(CombatState.BURROWED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_ANVIL));
     }
 
     @Test
     void aBurrowedTargetTwelveBlocksAwayIsNotBurrowed() {
-        // §11: un enterrado a 12 no es una fase, es un obstáculo. AutoAnvil trabaja a 4: lo que
-        // toca es acercarse, no apagar el aura y plantarse. A 12 ni siquiera hay combate (§9).
+        // §11: someone burrowed at 12 is not a phase, it is an obstacle. AutoAnvil works at 4: the thing
+        // to do is close in, not turn off the aura and stand still. At 12 there is not even a combat (§9).
         CombatSnapshot farBurrowed = with(surface(), false, true, false, false).withTargetDistance(12.0);
         Plan plan = settle(new CombatDirector(), farBurrowed);
 
-        assertEquals(CombatState.SIN_COMBATE, plan.state());
+        assertEquals(CombatState.NO_COMBAT, plan.state());
         assertFalse(enables(plan, ManagedModules.AUTO_ANVIL));
     }
 
@@ -204,81 +204,81 @@ class CombatDirectorTest {
             .withTargetDistance(Math.nextUp(CombatDirector.AUTO_ANVIL_TARGET_RANGE));
         Plan plan = settle(new CombatDirector(), justBeyond);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
-        assertFalse(enables(plan, ManagedModules.AUTO_ANVIL), "auto-anvil no llega: no se enciende");
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertFalse(enables(plan, ManagedModules.AUTO_ANVIL), "auto-anvil does not reach: it is not enabled");
     }
 
     @Test
     void justInsideTheAnvilBandItIsBurrowed() {
-        // I1: para ENTRAR hay que estar medio bloque por dentro del alcance real de auto-anvil.
+        // I1: to ENTER you have to be half a block inside auto-anvil's real reach.
         CombatSnapshot inside = with(surface(), false, true, false, false)
             .withTargetDistance(CombatDirector.AUTO_ANVIL_TARGET_RANGE - CombatDirector.NEAR_LIMIT_BAND);
-        assertEquals(CombatState.ENTERRADO, settle(new CombatDirector(), inside).state());
+        assertEquals(CombatState.BURROWED, settle(new CombatDirector(), inside).state());
     }
 
     @Test
     void jumpingNextToABurrowedEnemyDoesNotMakeThePhaseOscillate() {
-        // I1, la pelea: te plantas a 3,4 de un enterrado y saltas. Subir 1,25 de Y alarga la
-        // distancia a 3,62 durante unos seis ticks -mas que los dos de BLOCK_HOLD_TICKS-, y con el
-        // umbral desnudo de antes la fase se caia de ENTERRADO y volvia, abortando la secuencia de
-        // auto-anvil a media caida. Contra alguien enterrado, saltar es lo normal.
+        // I1, the fight: you stand at 3.4 from someone burrowed and jump. Going up 1.25 in Y lengthens the
+        // distance to 3.62 for about six ticks -more than the two of BLOCK_HOLD_TICKS-, and with the
+        // earlier bare threshold the phase dropped out of BURROWED and came back, aborting the auto-anvil
+        // sequence mid-fall. Against someone burrowed, jumping is normal.
         CombatDirector director = new CombatDirector();
         CombatSnapshot burrowed = with(surface(), false, true, false, false).withTargetDistance(3.4);
-        assertEquals(CombatState.ENTERRADO, settle(director, burrowed).state());
+        assertEquals(CombatState.BURROWED, settle(director, burrowed).state());
 
         for (int i = 0; i < 6; i++) {
             Plan plan = director.tick(burrowed.withTargetDistance(3.62), APPROACH);
-            assertEquals(CombatState.ENTERRADO, plan.state(), "tick " + i + " del salto");
-            assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "tick " + i + ": el yunque sigue");
+            assertEquals(CombatState.BURROWED, plan.state(), "tick " + i + " of the jump");
+            assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "tick " + i + ": the anvil stays");
         }
     }
 
     @Test
     void aBurrowedEnemyBeyondTheAnvilRangeLeavesThePhase() {
-        // La banda es hacia dentro y no hacia fuera: pasado el alcance real de auto-anvil se sale,
-        // porque encender algo que no llega es el fallo silencioso que el principio 10 prohibe.
+        // The band goes inwards and not outwards: past auto-anvil's real reach it leaves,
+        // because enabling something that does not reach is the silent failure principle 10 forbids.
         CombatDirector director = new CombatDirector();
         CombatSnapshot burrowed = with(surface(), false, true, false, false).withTargetDistance(3.4);
-        assertEquals(CombatState.ENTERRADO, settle(director, burrowed).state());
+        assertEquals(CombatState.BURROWED, settle(director, burrowed).state());
 
         CombatSnapshot away = burrowed.withTargetDistance(Math.nextUp(CombatDirector.AUTO_ANVIL_TARGET_RANGE));
-        assertEquals(CombatState.SUPERFICIE, settle(director, away).state());
+        assertEquals(CombatState.SURFACE, settle(director, away).state());
     }
 
     @Test
     void theAnvilRangeConstantIsFixedAtFour() {
         assertEquals(4.0, CombatDirector.AUTO_ANVIL_TARGET_RANGE, 0.0,
-            "4 es el target-range de fábrica de auto-anvil");
+            "4 is auto-anvil's default target-range");
     }
 
     @Test
     void standingOnASlabIsNotBurrowedButStandingOnObsidianIs() {
-        // §11 y §2: blocksMovement() daba por buena una losa inferior (0,833 de lado medio), así que
-        // estar de pie sobre una losa, una escalera, un cofre o una trampilla se clasificaba
-        // ENTERRADO. El núcleo recibe ya la respuesta a la pregunta correcta -"¿le protege de un
-        // cristal?", blast >= 600 y cubo completo-, así que aquí se fija que la fase sale de esa
-        // marca y de nada más.
+        // §11 and §2: blocksMovement() accepted a bottom slab (0.833 of half-side), so
+        // standing on a slab, a stair, a chest or a trapdoor was classified as
+        // BURROWED. The core already receives the answer to the right question -"does it protect it from a
+        // crystal?", blast >= 600 and full cube-, so here it is pinned that the phase comes from that
+        // flag and from nothing else.
         CombatSnapshot onASlab = with(surface(), false, false, false, false);
         CombatSnapshot onObsidian = with(surface(), false, true, false, false);
 
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), onASlab).state());
-        assertEquals(CombatState.ENTERRADO, settle(new CombatDirector(), onObsidian).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), onASlab).state());
+        assertEquals(CombatState.BURROWED, settle(new CombatDirector(), onObsidian).state());
     }
 
-    // --- §4.2.1: RODEADO, con las dos cotas de auto-city intactas ---
+    // --- §4.2.1: SURROUNDED, with auto-city's two bounds intact ---
 
     @Test
     void aSurroundedTargetCallsForAutoCityAndCrystalAura() {
         Plan plan = settle(new CombatDirector(), with(surface(), true, false, false, false));
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_CITY));
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
     /**
-     * Rodeado según Meteor (`getCityBlock() != null`), objetivo siempre cerca (3.0, muy por debajo
-     * de {@code approachDistance}), variando solo la distancia REAL al bloque de rodeado -no al
-     * objetivo- (spec §4.2.1, corregido: antes de la corrección esta cota se aplicaba, mal, sobre
+     * Surrounded according to Meteor (`getCityBlock() != null`), target always close (3.0, well below
+     * {@code approachDistance}), varying only the REAL distance to the surround block -not to the
+     * target- (spec §4.2.1, corrected: before the correction this bound was applied, wrongly, to
      * targetDistance).
      */
     private static CombatSnapshot surroundedAt(double cityBlockDistance) {
@@ -286,204 +286,204 @@ class CombatDirectorTest {
     }
 
     @Test
-    void surroundedButBeyondAutoCityRangeIsNotRodeado() {
-        // CRÍTICO: getCityBlock() ve hasta 6 bloques, pero auto-city se apaga solo -con error en
-        // el chat- más allá de su break-range (4.5 de fábrica). En esa franja intermedia el
-        // director no debe pedir RODEADO: encendería y apagaría auto-city sin parar (spec §4.2.1).
+    void surroundedButBeyondAutoCityRangeIsNotSurrounded() {
+        // CRITICAL: getCityBlock() sees up to 6 blocks, but auto-city turns itself off -with an error in
+        // chat- beyond its break-range (4.5 by default). In that middle band the
+        // director must not ask for SURROUNDED: it would turn auto-city on and off endlessly (spec §4.2.1).
         CombatSnapshot beyond = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE + 1.0);
         Plan plan = settle(new CombatDirector(), beyond);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state(), "dentro de approach-distance, cae a SUPERFICIE");
+        assertEquals(CombatState.SURFACE, plan.state(), "within approach-distance, it falls to SURFACE");
         assertFalse(enables(plan, ManagedModules.AUTO_CITY));
     }
 
     @Test
-    void surroundedAndWithinAutoCityRangeIsRodeado() {
+    void surroundedAndWithinAutoCityRangeIsSurrounded() {
         CombatSnapshot within = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE - 1.0);
         Plan plan = settle(new CombatDirector(), within);
 
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_CITY));
     }
 
     @Test
-    void atExactlyTheAutoCityRangeYouDoNotEnterRodeadoButYouDoStayInIt() {
-        // I1: la banda de estas cotas es hacia dentro. Justo en el break-range real no se ENTRA
-        // -hace falta medio bloque mas cerca-, pero si ya estabas dentro no se SALE: ahi esta la
-        // holgura, y auto-city nunca se queda fuera de su alcance, que es donde se apaga solo.
+    void atExactlyTheAutoCityRangeYouDoNotEnterSurroundedButYouDoStayInIt() {
+        // I1: the band of these bounds goes inwards. Right at the real break-range it is not ENTERED
+        // -it takes half a block closer-, but if you were already inside it is not LEFT: that is where the
+        // slack is, and auto-city never ends up out of its reach, which is where it turns itself off.
         CombatSnapshot atBoundary = surroundedAt(CombatDirector.AUTO_CITY_BREAK_RANGE);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), atBoundary).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), atBoundary).state());
 
         CombatDirector director = new CombatDirector();
-        assertEquals(CombatState.RODEADO, settle(director, surroundedAt(CITY_ENTER)).state());
-        assertEquals(CombatState.RODEADO, settle(director, atBoundary).state(),
-            "ya dentro, el limite real todavia aguanta");
+        assertEquals(CombatState.SURROUNDED, settle(director, surroundedAt(CITY_ENTER)).state());
+        assertEquals(CombatState.SURROUNDED, settle(director, atBoundary).state(),
+            "once inside, the real limit still holds");
     }
 
     @Test
-    void justBeyondTheAutoCityRangeItIsNoLongerRodeado() {
+    void justBeyondTheAutoCityRangeItIsNoLongerSurrounded() {
         CombatSnapshot justBeyond = surroundedAt(Math.nextUp(CombatDirector.AUTO_CITY_BREAK_RANGE));
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
-            "un paso por encima del umbral ya no es RODEADO");
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), justBeyond).state(),
+            "one step above the threshold is no longer SURROUNDED");
     }
 
     @Test
-    void aTargetCloseWithACityBlockOnTheFarSideIsNotRodeado() {
-        // Contraejemplo real del CRÍTICO: jugador en (0.5, 0, 0.5), objetivo en (4.5, 0, 0.5)
-        // -distancia al objetivo 4.0, "cerca" bajo el criterio antiguo-, bloque de rodeado en
-        // (5, 0, 0) -al lado contrario del jugador respecto al objetivo-, distancia al cuadrado
-        // 20.5 > 4.5² = 20.25. Con el criterio antiguo (proxy: distancia al objetivo) esto se
-        // declaraba RODEADO y auto-city se apagaba solo, con error, cada tick.
+    void aTargetCloseWithACityBlockOnTheFarSideIsNotSurrounded() {
+        // Real counterexample of the CRITICAL: player at (0.5, 0, 0.5), target at (4.5, 0, 0.5)
+        // -distance to the target 4.0, "close" under the old judgement-, surround block at
+        // (5, 0, 0) -on the side opposite the player relative to the target-, squared distance
+        // 20.5 > 4.5² = 20.25. With the old judgement (proxy: distance to the target) this was
+        // declared SURROUNDED and auto-city turned itself off, with an error, every tick.
         double realBlockDistance = Math.sqrt(20.5);
         CombatSnapshot snapshot = Snapshots.of(true, 4.0, SURROUNDED_SIDES, realBlockDistance, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state(),
-            "objetivo cerca pero el bloque real de rodeado está fuera del alcance de auto-city");
+        assertEquals(CombatState.SURFACE, plan.state(),
+            "target close but the real surround block is out of auto-city's reach");
         assertFalse(enables(plan, ManagedModules.AUTO_CITY));
     }
 
     @Test
     void theAutoCityRangeConstantIsFixedAtFourPointFive() {
-        // Fija el valor, no solo su existencia: sin esto, cambiar la constante a 2, 3 o 4 deja
-        // el resto de tests en verde porque todos se expresan en función de ella misma.
+        // Pins the value, not only its existence: without this, changing the constant to 2, 3 or 4 leaves
+        // the rest of the tests green because they are all expressed in terms of it.
         assertEquals(4.5, CombatDirector.AUTO_CITY_BREAK_RANGE, 0.0,
-            "4.5 es el break-range de fábrica de auto-city en Meteor");
+            "4.5 is auto-city's default break-range in Meteor");
     }
 
     @Test
-    void aCityBlockAtTheLiteralFourIsRodeado() {
-        // Con literales, no con las constantes: si alguien mueve AUTO_CITY_BREAK_RANGE o la banda,
-        // este test lo detecta -al contrario que surroundedAt(), que se moveria con ellas-. 4,0 es
-        // el 4,5 de fabrica menos el medio bloque de banda.
+    void aCityBlockAtTheLiteralFourIsSurrounded() {
+        // With literals, not with the constants: if someone moves AUTO_CITY_BREAK_RANGE or the band,
+        // this test catches it -unlike surroundedAt(), which would move with them-. 4.0 is
+        // the default 4.5 minus the half block of band.
         CombatSnapshot atLiteralBoundary = Snapshots.of(true, 3.0, SURROUNDED_SIDES, 4.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
+        assertEquals(CombatState.SURROUNDED, settle(new CombatDirector(), atLiteralBoundary).state());
     }
 
     @Test
-    void aCityBlockJustBeyondTheLiteralFourIsNotRodeado() {
+    void aCityBlockJustBeyondTheLiteralFourIsNotSurrounded() {
         CombatSnapshot justBeyond = Snapshots.of(true, 3.0, SURROUNDED_SIDES, 4.01, false, false, false, 2, FULL);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), justBeyond).state());
     }
 
     /**
-     * CRÍTICO (tercera corrección): AUTO_CITY_BREAK_RANGE por sí sola no basta. AutoCity.onTick()
-     * comprueba primero TargetUtils.isBadTarget(target, targetRange) -distancia al OBJETIVO, no al
-     * bloque- y se apaga solo si falla, antes de mirar el bloque en absoluto.
+     * CRITICAL (third correction): AUTO_CITY_BREAK_RANGE alone is not enough. AutoCity.onTick()
+     * first checks TargetUtils.isBadTarget(target, targetRange) -distance to the TARGET, not to the
+     * block- and turns itself off if it fails, before looking at the block at all.
      */
     @Test
-    void targetBeyondAutoCityTargetRangeIsNotRodeadoEvenWithTheBlockClose() {
+    void targetBeyondAutoCityTargetRangeIsNotSurroundedEvenWithTheBlockClose() {
         CombatSnapshot snapshot = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE + 0.5,
             SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state(),
-            "bloque al alcance pero el objetivo real está fuera del target-range de auto-city");
+        assertEquals(CombatState.SURFACE, plan.state(),
+            "block in reach but the real target is out of auto-city's target-range");
         assertFalse(enables(plan, ManagedModules.AUTO_CITY));
     }
 
     @Test
-    void targetWithinAutoCityTargetRangeAndBlockCloseIsRodeado() {
+    void targetWithinAutoCityTargetRangeAndBlockCloseIsSurrounded() {
         CombatSnapshot snapshot = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE - 0.5,
             SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_CITY));
     }
 
     @Test
-    void atExactlyTheAutoCityTargetRangeYouDoNotEnterRodeadoButYouDoStayInIt() {
-        // La segunda cota de RODEADO tiene la misma banda hacia dentro que la primera (I1).
+    void atExactlyTheAutoCityTargetRangeYouDoNotEnterSurroundedButYouDoStayInIt() {
+        // The second SURROUNDED bound has the same inward band as the first (I1).
         CombatSnapshot atBoundary = Snapshots.of(true, CombatDirector.AUTO_CITY_TARGET_RANGE,
             SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), atBoundary).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), atBoundary).state());
 
         CombatDirector director = new CombatDirector();
         CombatSnapshot inside = Snapshots.of(true, CITY_TARGET_ENTER,
             SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.RODEADO, settle(director, inside).state());
-        assertEquals(CombatState.RODEADO, settle(director, atBoundary).state(),
-            "ya dentro, el limite real todavia aguanta");
+        assertEquals(CombatState.SURROUNDED, settle(director, inside).state());
+        assertEquals(CombatState.SURROUNDED, settle(director, atBoundary).state(),
+            "once inside, the real limit still holds");
     }
 
     @Test
-    void justBeyondTheAutoCityTargetRangeItIsNoLongerRodeado() {
+    void justBeyondTheAutoCityTargetRangeItIsNoLongerSurrounded() {
         CombatSnapshot justBeyond = Snapshots.of(true, Math.nextUp(CombatDirector.AUTO_CITY_TARGET_RANGE),
             SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state(),
-            "un paso por encima del umbral ya no es RODEADO");
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), justBeyond).state(),
+            "one step above the threshold is no longer SURROUNDED");
     }
 
     @Test
     void theAutoCityTargetRangeConstantIsFixedAtFivePointFive() {
         assertEquals(5.5, CombatDirector.AUTO_CITY_TARGET_RANGE, 0.0,
-            "5.5 es el target-range de fábrica de auto-city en Meteor");
+            "5.5 is auto-city's default target-range in Meteor");
     }
 
     @Test
-    void aTargetAtTheLiteralFiveIsRodeado() {
-        // 5,0 es el target-range de fabrica (5,5) menos el medio bloque de banda.
+    void aTargetAtTheLiteralFiveIsSurrounded() {
+        // 5.0 is the default target-range (5.5) minus the half block of band.
         CombatSnapshot atLiteralBoundary = Snapshots.of(true, 5.0, SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.RODEADO, settle(new CombatDirector(), atLiteralBoundary).state());
+        assertEquals(CombatState.SURROUNDED, settle(new CombatDirector(), atLiteralBoundary).state());
     }
 
     @Test
-    void aTargetJustBeyondTheLiteralFiveIsNotRodeado() {
+    void aTargetJustBeyondTheLiteralFiveIsNotSurrounded() {
         CombatSnapshot justBeyond = Snapshots.of(true, 5.01, SURROUNDED_SIDES, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), justBeyond).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), justBeyond).state());
     }
 
     @Test
     void burrowedBeatsSurroundedWhenBothAreTrue() {
         Plan plan = settle(new CombatDirector(), with(surface(), true, true, false, false));
-        assertEquals(CombatState.ENTERRADO, plan.state());
+        assertEquals(CombatState.BURROWED, plan.state());
     }
 
     @Test
     void chaseBeatsBurrowedWhenBothAreTrueAndHeIsFar() {
         CombatSnapshot snapshot = with(surface(), false, true, true, false).withTargetDistance(8.0);
-        assertEquals(CombatState.PERSECUCION, settle(new CombatDirector(), snapshot).state());
+        assertEquals(CombatState.CHASE, settle(new CombatDirector(), snapshot).state());
     }
 
-    // --- §4.2: el reparto por fase ---
+    // --- §4.2: the share-out by phase ---
 
     @Test
     void surfaceAsksForTheAuraAndTheTrapWhenHeIsWithinTrapRange() {
         Plan plan = settle(new CombatDirector(), surface());
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "a 3,0 auto-trap llega");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "at 3.0 auto-trap reaches");
         assertFalse(enables(plan, ManagedModules.AUTO_WEB),
-            "§4.3: pegado y sin irse, la telaraña le roba al aura su mejor posición de cristal");
+            "§4.3: right next to you and not leaving, the web steals the aura's best crystal position");
     }
 
     @Test
     void surfaceDoesNotAskForTheTrapBeyondItsRange() {
-        // §10: ningún módulo se enciende fuera de su alcance real. AutoTrap trabaja a 3.
+        // §10: no module is enabled beyond its real reach. AutoTrap works at 3.
         CombatSnapshot snapshot = surface().withTargetDistance(Math.nextUp(CombatDirector.AUTO_TRAP_TARGET_RANGE));
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
         assertFalse(skips(plan, ManagedModules.AUTO_TRAP),
-            "no llega: no es una omisión por recursos, es que no se pide");
+            "it does not reach: it is not a resource omission, it is simply not asked for");
     }
 
     @Test
     void theTrapRangeConstantIsFixedAtThree() {
         assertEquals(3.0, CombatDirector.AUTO_TRAP_TARGET_RANGE, 0.0,
-            "3 es el target-range de fábrica de auto-trap");
+            "3 is auto-trap's default target-range");
     }
 
     @Test
     void approachAsksForNothingAtAll() {
-        // §4.2: ACERCAMIENTO queda como etiqueta de informe. Entre 6 y 16 bloques no hay nada útil
-        // que encender, y surround -lo único que pedía antes- te encerraba en obsidiana mientras
-        // corrías y se gastaba la que auto-trap iba a necesitar.
+        // §4.2: APPROACH stays as a reporting label. Between 6 and 16 blocks there is nothing useful
+        // to enable, and surround -the only thing it asked for before- locked you in obsidian while
+        // you ran and spent the obsidian auto-trap was going to need.
         Plan plan = settle(new CombatDirector(), surface().withTargetDistance(8.0));
 
-        assertEquals(CombatState.ACERCAMIENTO, plan.state());
+        assertEquals(CombatState.APPROACH, plan.state());
         assertTrue(plan.enable().isEmpty());
         assertFalse(enables(plan, ManagedModules.SURROUND));
     }
@@ -491,62 +491,62 @@ class CombatDirectorTest {
     @Test
     void burrowedAsksForTheAnvilAndTheTrapWhenTheTrapReaches() {
         Plan plan = settle(new CombatDirector(), with(surface(), false, true, false, false));
-        assertEquals(CombatState.ENTERRADO, plan.state());
+        assertEquals(CombatState.BURROWED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_ANVIL));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "el trap es para cuando salga del burrow");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "the trap is for when they come out of the burrow");
         assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA),
-            "sin otros hostiles a rango de cristal, contra un enterrado el aura no sirve");
+            "with no other hostiles in crystal range, against someone burrowed the aura is of no use");
     }
 
     @Test
     void burrowedDoesNotAskForTheTrapBeyondItsRange() {
-        // ENTERRADO llega a 4 y auto-trap a 3: entre medias no llega.
+        // BURROWED goes up to 4 and auto-trap to 3: in between it does not reach.
         CombatSnapshot snapshot = with(surface(), false, true, false, false).withTargetDistance(3.5);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.ENTERRADO, plan.state());
+        assertEquals(CombatState.BURROWED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_ANVIL));
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
     }
 
-    // --- §4.3: auto-web no le roba el sitio al aura ---
+    // --- §4.3: auto-web does not steal the aura's spot ---
 
     @Test
     void theWebDoesNotGoUpJustBecauseHeIsFourBlocksAway() {
-        // I2: la mitad "o esta a mas de 3 bloques" de la puerta se fue entera, y no por una banda.
-        // Su razon era que a mas de 3 la casilla que telarana ya no seria la del proximo cristal, y
-        // eso es falso: el place-range del aura es 4,5, asi que en toda la franja que queda bajo la
-        // cota nueva el aura sigue queriendo esa casilla. Quieto a 4 bloques no hay telarana.
+        // I2: the "or is more than 3 blocks away" half of the gate went entirely, and not for a band.
+        // Its reason was that beyond 3 the cell it webs would no longer be the next crystal's, and
+        // that is false: the aura's place-range is 4.5, so in the whole band left under the
+        // new bound the aura still wants that cell. Standing still at 4 blocks there is no web.
         Plan plan = settle(new CombatDirector(), surface().withTargetDistance(4.0));
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertFalse(enables(plan, ManagedModules.AUTO_WEB));
     }
 
     @Test
     void aTargetDancingAroundThreeBlocksNoLongerFlipsTheWeb() {
-        // I2, la medida: con el objetivo bailando en 3,0 se contaron 39 cambios de estado en 40
-        // ticks, porque el umbral desnudo cortocircuitaba con un || la banda muerta que RetreatWatch
-        // si cuida. Sin ese umbral no hay nada que cruzar.
+        // I2, the measurement: with the target hovering at 3.0, 39 state changes were counted in 40
+        // ticks, because the bare threshold short-circuited with an || the dead band RetreatWatch
+        // does look after. Without that threshold there is nothing to cross.
         CombatDirector director = new CombatDirector();
         settle(director, surface().withTargetDistance(3.0));
         for (int i = 0; i < 40; i++) {
             Plan plan = director.tick(surface().withTargetDistance(i % 2 == 0 ? 2.9 : 3.1), APPROACH);
-            assertFalse(enables(plan, ManagedModules.AUTO_WEB), "tick " + i + ": bailar no es irse");
+            assertFalse(enables(plan, ManagedModules.AUTO_WEB), "tick " + i + ": dancing is not leaving");
         }
     }
 
     @Test
     void theWebDoesNotGoUpBeyondItsPlaceRangeEvenIfHeIsPullingAway() {
-        // I5: SUPERFICIE llega a 7 y el place-range de AutoWeb es 4. Entre 4 y 7 el director lo
-        // encendia y el modulo no colocaba nada: el fallo silencioso que el principio 10 prohibe, y
-        // el unico de los dirigidos que se habia quedado sin cota superior.
+        // I5: SURFACE goes up to 7 and AutoWeb's place-range is 4. Between 4 and 7 the director
+        // enabled it and the module placed nothing: the silent failure principle 10 forbids, and
+        // the only managed one that had been left without an upper bound.
         CombatDirector director = new CombatDirector();
         Plan plan = pullingAwayTo(director, surface(), 5.0);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
-        assertTrue(director.targetRetreating(), "precondicion: el director lo ve alejarse");
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertTrue(director.targetRetreating(), "precondition: the director sees them moving away");
         assertFalse(enables(plan, ManagedModules.AUTO_WEB),
-            "se esta yendo, pero a 5 bloques la telarana no llega");
+            "they are leaving, but at 5 blocks the web does not reach");
     }
 
     @Test
@@ -554,20 +554,20 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         Plan plan = pullingAwayTo(director, surface(), CombatDirector.AUTO_WEB_PLACE_RANGE);
 
-        assertTrue(director.targetRetreating(), "precondicion: el director lo ve alejarse");
+        assertTrue(director.targetRetreating(), "precondition: the director sees them moving away");
         assertTrue(enables(plan, ManagedModules.AUTO_WEB),
-            "justo en el place-range todavia coloca: la comparacion es menor-o-igual-que");
+            "right at the place-range it still places: the comparison is less-than-or-equal");
     }
 
     @Test
     void theWebGoesUpPointBlankOnlyIfHeIsSustainedlyPullingAway() {
         CombatDirector director = new CombatDirector();
-        // Se asienta pegado y quieto: la telaraña no debe encenderse.
+        // It settles right next to you and still: the web must not be enabled.
         Plan still = settle(director, surface().withTargetDistance(2.0));
         assertFalse(enables(still, ManagedModules.AUTO_WEB));
 
-        // Ahora gana terreno poco a poco sin llegar a salir del rango del trap: 0,1 bloques por
-        // tick es 1 bloque en la ventana de RetreatWatch, justo lo que declara "se aleja".
+        // Now it gains ground little by little without leaving the trap range: 0.1 blocks per
+        // tick is 1 block over the RetreatWatch window, exactly what declares "moving away".
         Plan plan = null;
         double distance = 2.0;
         for (int i = 0; i < RetreatWatch.WINDOW_TICKS + 1; i++) {
@@ -575,9 +575,9 @@ class CombatDirectorTest {
             plan = director.tick(surface().withTargetDistance(Math.min(distance, 3.0)), APPROACH);
         }
 
-        assertTrue(director.targetRetreating(), "precondición: el director lo ve alejarse");
+        assertTrue(director.targetRetreating(), "precondition: the director sees them moving away");
         assertTrue(enables(plan, ManagedModules.AUTO_WEB),
-            "la telaraña sirve para impedir que se vaya, y se está yendo");
+            "the web is for stopping them from leaving, and they are leaving");
     }
 
     @Test
@@ -585,27 +585,27 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         settle(director, surface().withTargetDistance(2.0));
 
-        // Orbitar alrededor del enemigo cambia la distancia en cada tick, pero no gana terreno.
+        // Orbiting around the enemy changes the distance on every tick, but gains no ground.
         Plan plan = null;
         for (int i = 0; i < 40; i++) {
             plan = director.tick(surface().withTargetDistance(i % 2 == 0 ? 1.6 : 2.4), APPROACH);
-            assertFalse(enables(plan, ManagedModules.AUTO_WEB), "tick " + i + ": moverse no es irse");
+            assertFalse(enables(plan, ManagedModules.AUTO_WEB), "tick " + i + ": moving is not leaving");
         }
         assertFalse(director.targetRetreating());
     }
 
-    // --- §4.4: el aura no se apaga por la fase si hay a quién cristalear ---
+    // --- §4.4: the aura is not turned off by the phase if there is someone to crystal ---
 
     @Test
     void withAnotherHostileInCrystalRangeTheAuraIsWantedAgainstTheBurrowedOne() {
-        // §11: el cebo obvio -uno se entierra, el otro te cristalea, y el director te apaga el aura
-        // contra el segundo-. crystal-aura pelea contra todos a la vez.
+        // §11: the obvious bait -one burrows, the other crystals you, and the director turns off your aura
+        // against the second-. crystal-aura fights against everyone at once.
         CombatSnapshot snapshot = with(surface(), false, true, false, false).withHostiles(1);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.ENTERRADO, plan.state(), "la fase sigue siendo la del objetivo");
+        assertEquals(CombatState.BURROWED, plan.state(), "the phase is still the target's");
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "y lo de la fase sigue estando");
+        assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "and what the phase asks for is still there");
     }
 
     @Test
@@ -614,7 +614,7 @@ class CombatDirectorTest {
             .withTargetDistance(8.0).withHostiles(2);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.PERSECUCION, plan.state());
+        assertEquals(CombatState.CHASE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
@@ -626,113 +626,113 @@ class CombatDirectorTest {
 
     @Test
     void theOneWhoBurrowsHimselfInFrontOfYouStillKeepsTheAuraOn() {
-        // C1, la pelea entera: estás a 3,5 de un tipo que va perdiendo y se entierra -el movimiento
-        // estándar del servidor-. La fase pasa a ENTERRADO, él te sigue poniendo cristales desde
-        // dentro del burrow, y con la regla anterior -que solo contaba a los hostiles SIN PROTEGER-
-        // la cuenta era cero y el ledger te apagaba el autobreak contra el único que podía matarte.
-        // Ahora se cuenta él mismo: enterrado o no, sus cristales te entran igual y romper no te
-        // cuesta ninguno.
+        // C1, the whole fight: you are at 3.5 from a guy who is losing and burrows -the server's
+        // standard move-. The phase goes to BURROWED, he keeps placing crystals on you from
+        // inside the burrow, and with the earlier rule -which only counted UNPROTECTED hostiles-
+        // the count was zero and the ledger turned off your autobreak against the only one who could kill you.
+        // Now he himself is counted: burrowed or not, his crystals get to you just the same and breaking costs
+        // you none.
         CombatSnapshot snapshot = with(surface(), false, true, false, false)
             .withTargetDistance(3.5)
             .withHostiles(1);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.ENTERRADO, plan.state(), "la fase sigue siendo la del objetivo");
+        assertEquals(CombatState.BURROWED, plan.state(), "the phase is still the target's");
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA),
-            "C1: apagarla cuesta la pelea; dejarla encendida de más cuesta unos cristales");
+            "C1: turning it off costs the fight; leaving it on too long costs a few crystals");
     }
 
     @Test
     void aSurroundedTargetAlsoCountsForTheAura() {
-        // La otra mitad de C1: "protegido" incluía al rodeado, y el rodeado te cristalea igual.
+        // The other half of C1: "protected" included the surrounded one, and the surrounded one crystals you just the same.
         CombatSnapshot snapshot = with(surface(), true, false, false, false).withHostiles(1);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
     @Test
     void theCrystalRangeConstantIsFixedAtFourPointFive() {
-        // M2: 4,5 es el place-range y el break-range de fábrica de CrystalAura, verificados en sus
-        // fuentes. El 10 es su target-range, que solo dice a quién mira.
+        // M2: 4.5 is CrystalAura's default place-range and break-range, checked in its
+        // sources. The 10 is its target-range, which only says whom it looks at.
         assertEquals(4.5, CombatDirector.CRYSTAL_RANGE, 0.0,
-            "M2: place-range y break-range de CrystalAura, no el 5,5 que se suponía");
+            "M2: CrystalAura's place-range and break-range, not the assumed 5.5");
     }
 
     @Test
     void withTheShortestApproachTheAuraStillCoversUpToCrystalRange() {
-        // M3: con approach-distance en 2, la fase deja de pedir el aura entre 3 y el rango de
-        // cristal -ahí la fase es ACERCAMIENTO, que no enciende nada-. El hueco lo cierra C1: a esa
-        // distancia el objetivo es un hostil a rango de cristal y la cuenta lo ve.
+        // M3: with approach-distance at 2, the phase stops asking for the aura between 3 and the crystal
+        // range -there the phase is APPROACH, which enables nothing-. C1 closes the gap: at that
+        // distance the target is a hostile in crystal range and the count sees it.
         CombatSnapshot snapshot = surface().withTargetDistance(4.0).withHostiles(1);
         CombatDirector director = new CombatDirector();
         Plan plan = null;
         for (int i = 0; i < 20; i++) plan = director.tick(snapshot, 2);
 
-        assertEquals(CombatState.ACERCAMIENTO, plan.state(), "con approach 2, a 4 bloques es lejos");
+        assertEquals(CombatState.APPROACH, plan.state(), "with approach 2, at 4 blocks is far");
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA),
-            "M3: el suelo del ajuste no deja un hueco sin aura dentro del rango de cristal");
+            "M3: the setting's floor leaves no gap without the aura inside crystal range");
     }
 
-    // --- M1: un muro de obsidiana no es un surround ---
+    // --- M1: an obsidian wall is not a surround ---
 
     @Test
     void anEnemyStandingNextToAWallIsNotSurrounded() {
-        // getCityBlock() solo dice "hay UN bloque minable pegado a él", así que un enemigo de pie
-        // junto al muro de obsidiana de cualquier base -o junto a la obsidiana que tu propio
-        // auto-trap acaba de colocar- clasificaba RODEADO y el director se ponía a minar la pared.
+        // getCityBlock() only says "there is ONE mineable block next to them", so an enemy standing
+        // by the obsidian wall of any base -or by the obsidian your own
+        // auto-trap has just placed- classified as SURROUNDED and the director started mining the wall.
         CombatSnapshot nextToAWall = Snapshots.of(true, 3.0, 1, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), nextToAWall);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
-        assertFalse(enables(plan, ManagedModules.AUTO_CITY), "no hay pared que minar");
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertFalse(enables(plan, ManagedModules.AUTO_CITY), "there is no wall to mine");
     }
 
     @Test
     void anEnemyInACornerWithTwoSidesIsNotSurroundedEither() {
         CombatSnapshot inACorner = Snapshots.of(true, 3.0, 2, 1.0, false, false, false, 2, FULL);
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), inACorner).state());
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), inACorner).state());
     }
 
     @Test
     void aSurroundWithOneSideAlreadyBrokenIsStillASurround() {
-        // Tres de cuatro: es el caso más común de todos, seguir minando el que ya habías empezado.
+        // Three out of four: it is the most common case of all, to keep mining the one you had already started.
         CombatSnapshot threeSides = Snapshots.of(true, 3.0, 3, 1.0, false, false, false, 2, FULL);
         Plan plan = settle(new CombatDirector(), threeSides);
 
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_CITY));
     }
 
-    // --- I3: tres colocadores, una sola pila de obsidiana ---
+    // --- I3: three placers, a single obsidian stack ---
 
-    /** En el agujero, amenazado, con el enemigo encima y la obsidiana que se diga. */
+    /** In the hole, threatened, with the enemy on top of you and whatever obsidian it is given. */
     private static CombatSnapshot inAHoleWithObsidian(int obsidian) {
         Map<Resource, Integer> resources = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, obsidian,
             Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
         return Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, resources)
-            .withTargetId("enemigo")
+            .withTargetId("enemy")
             .withDefense(10.0, 0.0, true, true);
     }
 
     @Test
     void withEightObsidianTheThreePlacersDoNotAllGetApproved() {
-        // I3, la situación: en un agujero, amenazado y con el enemigo encima suben a la vez
-        // auto-trap (mínimo 8), surround (4) y hole-filler (1). Con ocho obsidianas piden trece
-        // entre los tres, los tres hacen swap a la misma pila el mismo tick y ninguno completa su
-        // trabajo. El reparto es defensivo antes que ofensivo y barato antes que caro.
+        // I3, the situation: in a hole, threatened and with the enemy on top of you, these come up at once:
+        // auto-trap (minimum 8), surround (4) and hole-filler (1). With eight obsidian they ask for thirteen
+        // between them, all three swap to the same stack on the same tick and none completes its
+        // job. The share-out is defensive before offensive and cheap before expensive.
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(8));
 
-        assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "el más barato y el más defensivo");
-        assertTrue(enables(plan, ManagedModules.SURROUND), "1 + 4 caben en 8");
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "quedan 3 y necesita 8");
+        assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "the cheapest and the most defensive");
+        assertTrue(enables(plan, ManagedModules.SURROUND), "1 + 4 fit in 8");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "3 are left and it needs 8");
     }
 
     @Test
     void theModuleLeftOutOfTheObsidianIsSaidOutLoud() {
-        // Lo que no vale es aprobar más de lo que hay y callárselo: antes skipped salía vacío.
+        // What is not acceptable is approving more than there is and keeping quiet about it: before, skipped came out empty.
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(8));
 
         assertTrue(skips(plan, ManagedModules.AUTO_TRAP));
@@ -742,7 +742,7 @@ class CombatDirectorTest {
         assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 8,
                 "others", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
                 "left", 3, "minimum", 8), reason,
-            "el motivo tiene que nombrar a quien se llevó la obsidiana");
+            "the reason has to name who took the obsidian");
     }
 
     @Test
@@ -751,28 +751,28 @@ class CombatDirectorTest {
 
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
         assertTrue(enables(plan, ManagedModules.SURROUND));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "13 son exactamente 1 + 4 + 8");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "13 is exactly 1 + 4 + 8");
     }
 
     @Test
     void withFourObsidianOnlyTheCheapestDefensiveOnesGetTheirShare() {
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(4));
 
-        assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "tapar el hueco cuesta una");
-        assertFalse(enables(plan, ManagedModules.SURROUND), "quedan 3 y necesita 4");
+        assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "filling the hole costs one");
+        assertFalse(enables(plan, ManagedModules.SURROUND), "3 are left and it needs 4");
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
     }
 
-    // --- I4: la memoria de recursos del eje defensivo no se congela en SIN_COMBATE ---
+    // --- I4: the defensive axis's resource memory does not freeze in NO_COMBAT ---
 
     @Test
     void holeFillerDoesNotFlickerOutOfCombatWhileTheObsidianComesAndGoes() {
-        // I4: previouslyEnabled se congelaba entera mientras la fase fuera SIN_COMBATE, para no
-        // borrar la memoria de recursos en un parpadeo del objetivo. Pero el eje defensivo SÍ
-        // decide en SIN_COMBATE, y con su memoria congelada su ventana de gracia no llegaba a
-        // arrancar nunca: amenazado y con la obsidiana yendo y viniendo -colocas una, recoges
-        // otra-, hole-filler entraba y salía una vez por cada cruce del mínimo, con su línea de
-        // chat cada vez.
+        // I4: previouslyEnabled was frozen entirely while the phase was NO_COMBAT, so as not to
+        // wipe the resource memory on a target flicker. But the defensive axis DOES
+        // decide in NO_COMBAT, and with its memory frozen its grace window never got to
+        // start: threatened and with the obsidian coming and going -you place one, you pick up
+        // another-, hole-filler went in and out once for every crossing of the minimum, with its
+        // chat line every time.
         CombatDirector director = new CombatDirector();
 
         int changes = 0;
@@ -784,28 +784,28 @@ class CombatDirectorTest {
                 .withDefense(10.0, 0.0, true, true);
             boolean up = enables(director.tick(alone, APPROACH), ManagedModules.HOLE_FILLER);
 
-            assertEquals(CombatState.SIN_COMBATE, director.state(), "precondición: no hay objetivo");
+            assertEquals(CombatState.NO_COMBAT, director.state(), "precondition: there is no target");
             if (previous != null && up != previous) changes++;
             previous = up;
         }
 
         assertEquals(0, changes,
-            "la ventana de gracia de recursos tiene que valer también para el eje defensivo: "
-                + "ninguno de los huecos de obsidiana llega a los "
+            "the resource grace window has to hold for the defensive axis too: "
+                + "none of the obsidian gaps reaches the "
                 + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks");
-        assertTrue(previous, "y al final sigue encendido");
+        assertTrue(previous, "and at the end it is still on");
     }
 
-    // --- §5: la postura defensiva ---
+    // --- §5: the defensive posture ---
 
     @Test
     void aThreatenedPostureAddsItsModulesOnTopOfThePhase() {
         CombatSnapshot snapshot = surface().withDefense(14.0, 6.0, false, true);
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state(), "la fase ofensiva no cambia");
-        assertEquals(CombatPosture.AMENAZADO, plan.posture());
-        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA), "los dos ejes se suman, no se eligen");
+        assertEquals(CombatState.SURFACE, plan.state(), "the offensive phase does not change");
+        assertEquals(CombatPosture.THREATENED, plan.posture());
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA), "the two axes add up, you do not pick one");
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
         assertTrue(enables(plan, ManagedModules.ANTI_ANVIL));
         assertTrue(enables(plan, ManagedModules.ANTI_BED));
@@ -815,7 +815,7 @@ class CombatDirectorTest {
     @Test
     void aCalmPostureAddsNothing() {
         Plan plan = settle(new CombatDirector(), surface());
-        assertEquals(CombatPosture.TRANQUILO, plan.posture());
+        assertEquals(CombatPosture.CALM, plan.posture());
         assertFalse(enables(plan, ManagedModules.HOLE_FILLER));
         assertFalse(enables(plan, ManagedModules.SURROUND));
     }
@@ -827,14 +827,14 @@ class CombatDirectorTest {
 
         CombatSnapshot inTheAir = surface().withDefense(10.0, 0.0, true, false);
         assertFalse(enables(settle(new CombatDirector(), inTheAir), ManagedModules.SURROUND),
-            "toggle-on-y-change y centerPlayer(): encenderlo sin pisar suelo se apaga solo en bucle");
+            "toggle-on-y-change and centerPlayer(): enabling it without standing on the ground turns itself off in a loop");
 
         CombatSnapshot outOfTheHole = surface().withDefense(10.0, 0.0, false, true);
         assertFalse(enables(settle(new CombatDirector(), outOfTheHole), ManagedModules.SURROUND),
-            "es un módulo defensivo de agujero y ese es su único sitio");
+            "it is a defensive hole module and that is its only place");
     }
 
-    // --- §6: la histéresis que de verdad protege ---
+    // --- §6: the hysteresis that really protects ---
 
     @Test
     void losingTheTargetForOneTickDoesNotEndTheFight() {
@@ -843,10 +843,10 @@ class CombatDirectorTest {
 
         Plan plan = director.tick(noTarget(), APPROACH);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state(),
-            "no hay nadie este tick y se acabó la pelea no son lo mismo");
+        assertEquals(CombatState.SURFACE, plan.state(),
+            "nobody this tick and the fight is over are not the same");
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA),
-            "durante la gracia se sigue decidiendo con lo último que se vio de él");
+            "during the grace decisions are still made with the last thing seen of them");
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP));
     }
 
@@ -859,10 +859,10 @@ class CombatDirectorTest {
         for (int i = 0; i < CombatDirector.TARGET_GRACE_TICKS - 1; i++) {
             plan = director.tick(noTarget(), APPROACH);
         }
-        assertEquals(CombatState.SUPERFICIE, plan.state(), "todavía dentro de la gracia");
+        assertEquals(CombatState.SURFACE, plan.state(), "still inside the grace");
 
         plan = director.tick(noTarget(), APPROACH);
-        assertEquals(CombatState.SIN_COMBATE, plan.state());
+        assertEquals(CombatState.NO_COMBAT, plan.state());
         assertTrue(plan.enable().isEmpty());
     }
 
@@ -871,10 +871,10 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         settle(director, surface());
 
-        // Parpadea una y otra vez sin llegar a faltar la gracia entera: nunca cae a SIN_COMBATE.
+        // It flickers again and again without the whole grace running out: it never falls to NO_COMBAT.
         for (int i = 0; i < 100; i++) {
             director.tick(i % 5 == 0 ? surface() : noTarget(), APPROACH);
-            assertEquals(CombatState.SUPERFICIE, director.state(), "tick " + i);
+            assertEquals(CombatState.SURFACE, director.state(), "tick " + i);
         }
     }
 
@@ -884,23 +884,23 @@ class CombatDirectorTest {
         settle(director, surface());
 
         Plan plan = director.tick(surface().withTargetDistance(30.0), APPROACH);
-        assertEquals(CombatState.SUPERFICIE, plan.state(), "salir de rango es perder el objetivo, con su gracia");
+        assertEquals(CombatState.SURFACE, plan.state(), "leaving range is losing the target, with its grace");
 
         for (int i = 0; i < CombatDirector.TARGET_GRACE_TICKS; i++) {
             plan = director.tick(surface().withTargetDistance(30.0), APPROACH);
         }
-        assertEquals(CombatState.SIN_COMBATE, plan.state());
+        assertEquals(CombatState.NO_COMBAT, plan.state());
     }
 
     @Test
     void theApproachBandDoesNotOscillateWithTheTargetSittingAtTheThreshold() {
-        // §11: la banda de distancia no oscila con el objetivo justo en approach.
+        // §11: the distance band does not oscillate with the target right at approach.
         CombatDirector director = new CombatDirector();
         settle(director, surface());
 
         for (int i = 0; i < 40; i++) {
             director.tick(surface().withTargetDistance(APPROACH), APPROACH);
-            assertEquals(CombatState.SUPERFICIE, director.state(), "tick " + i + ": justo en el umbral no se sale");
+            assertEquals(CombatState.SURFACE, director.state(), "tick " + i + ": right at the threshold it does not leave");
         }
     }
 
@@ -910,35 +910,35 @@ class CombatDirectorTest {
         settle(director, surface());
 
         settle(director, surface().withTargetDistance(APPROACH + CombatDirector.APPROACH_BAND));
-        assertEquals(CombatState.SUPERFICIE, director.state(), "en el borde superior todavía no");
+        assertEquals(CombatState.SURFACE, director.state(), "at the upper edge not yet");
 
         settle(director, surface().withTargetDistance(APPROACH + CombatDirector.APPROACH_BAND + 0.1));
-        assertEquals(CombatState.ACERCAMIENTO, director.state());
+        assertEquals(CombatState.APPROACH, director.state());
     }
 
     @Test
     void leavingApproachNeedsToCrossTheLowerEdgeOfTheBand() {
         CombatDirector director = new CombatDirector();
         settle(director, surface().withTargetDistance(9.0));
-        assertEquals(CombatState.ACERCAMIENTO, director.state());
+        assertEquals(CombatState.APPROACH, director.state());
 
         settle(director, surface().withTargetDistance(APPROACH));
-        assertEquals(CombatState.ACERCAMIENTO, director.state(),
-            "dentro de la banda manda la fase en la que ya estabas");
+        assertEquals(CombatState.APPROACH, director.state(),
+            "inside the band, the phase you were already in rules");
 
         settle(director, surface().withTargetDistance(APPROACH - CombatDirector.APPROACH_BAND));
-        assertEquals(CombatState.SUPERFICIE, director.state());
+        assertEquals(CombatState.SURFACE, director.state());
     }
 
     @Test
     void theApproachBandIsCrossedWithoutWaitingAnyTicks() {
-        // La histéresis de estas dos fases es de distancia, no de tiempo: no debe costar el primer
-        // combo esperar a que se cumpla ninguna permanencia.
+        // The hysteresis of these two phases is of distance, not of time: waiting for any dwell to be
+        // fulfilled must not cost the first combo.
         CombatDirector director = new CombatDirector();
         settle(director, surface().withTargetDistance(9.0));
 
         director.tick(surface().withTargetDistance(2.0), APPROACH);
-        assertEquals(CombatState.SUPERFICIE, director.state(), "un solo tick basta");
+        assertEquals(CombatState.SURFACE, director.state(), "a single tick is enough");
     }
 
     @Test
@@ -948,10 +948,10 @@ class CombatDirectorTest {
 
         CombatSnapshot burrowed = with(surface(), false, true, false, false);
         director.tick(burrowed, APPROACH);
-        assertEquals(CombatState.SUPERFICIE, director.state(), "un tick de lectura no basta");
+        assertEquals(CombatState.SURFACE, director.state(), "one tick of reading is not enough");
 
         director.tick(burrowed, APPROACH);
-        assertEquals(CombatState.ENTERRADO, director.state(), "dos ticks seguidos sí");
+        assertEquals(CombatState.BURROWED, director.state(), "two ticks in a row are");
     }
 
     @Test
@@ -962,7 +962,7 @@ class CombatDirectorTest {
         CombatSnapshot burrowed = with(surface(), false, true, false, false);
         for (int i = 0; i < 100; i++) director.tick(i % 2 == 0 ? burrowed : surface(), APPROACH);
 
-        assertEquals(CombatState.SUPERFICIE, director.state());
+        assertEquals(CombatState.SURFACE, director.state());
     }
 
     @Test
@@ -972,10 +972,10 @@ class CombatDirectorTest {
 
         CombatSnapshot flying = with(surface(), false, false, true, false).withTargetDistance(8.0);
         for (int i = 0; i < CombatDirector.GLIDE_ENTER_HOLD_TICKS - 1; i++) director.tick(flying, APPROACH);
-        assertEquals(CombatState.SUPERFICIE, director.state(), "un despegue tarda un par de ticks en ser de verdad");
+        assertEquals(CombatState.SURFACE, director.state(), "a take-off takes a couple of ticks to be real");
 
         director.tick(flying, APPROACH);
-        assertEquals(CombatState.PERSECUCION, director.state());
+        assertEquals(CombatState.CHASE, director.state());
     }
 
     @Test
@@ -983,17 +983,17 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         CombatSnapshot flying = with(surface(), false, false, true, false).withTargetDistance(8.0);
         settle(director, flying);
-        assertEquals(CombatState.PERSECUCION, director.state());
+        assertEquals(CombatState.CHASE, director.state());
 
-        // Aterrizar va rozando el suelo: la marca de planeo se apaga y se enciende varias veces.
+        // Landing skims the ground: the gliding flag turns off and on several times.
         CombatSnapshot landed = with(surface(), false, false, false, false).withTargetDistance(8.0);
         for (int i = 0; i < 60; i++) {
             director.tick(i % 5 == 4 ? flying : landed, APPROACH);
-            assertEquals(CombatState.PERSECUCION, director.state(), "tick " + i + ": sigue rebotando");
+            assertEquals(CombatState.CHASE, director.state(), "tick " + i + ": still bouncing");
         }
 
         for (int i = 0; i < CombatDirector.GLIDE_EXIT_HOLD_TICKS; i++) director.tick(landed, APPROACH);
-        assertEquals(CombatState.ACERCAMIENTO, director.state(), "diez ticks seguidos a pie sí salen");
+        assertEquals(CombatState.APPROACH, director.state(), "ten ticks in a row on foot do leave");
     }
 
     @Test
@@ -1001,13 +1001,13 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         CombatSnapshot flying = with(surface(), false, false, true, false).withTargetDistance(8.0);
         settle(director, flying);
-        assertEquals(CombatState.PERSECUCION, director.state());
+        assertEquals(CombatState.CHASE, director.state());
 
-        // Sigue planeando, pero se te ha echado encima: eso es una señal de posición, no un rebote.
+        // Still gliding, but they have come at you: that is a position signal, not a bounce.
         CombatSnapshot diving = with(surface(), false, false, true, false).withTargetDistance(2.0);
         for (int i = 0; i < CombatDirector.BLOCK_HOLD_TICKS; i++) director.tick(diving, APPROACH);
 
-        assertEquals(CombatState.SUPERFICIE, director.state());
+        assertEquals(CombatState.SURFACE, director.state());
     }
 
     @Test
@@ -1015,32 +1015,32 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         director.tick(surface(), APPROACH);
 
-        assertEquals(CombatState.SUPERFICIE, director.state(),
-            "al empezar una pelea no se puede tardar en reaccionar");
+        assertEquals(CombatState.SURFACE, director.state(),
+            "at the start of a fight reacting cannot take long");
     }
 
     @Test
     void aFreshPhaseIsAbandonedAsSoonAsTheNewOneHolds() {
-        // MIN_DWELL_TICKS desaparece (§6): hacía que el director tardara más en corregir su error
-        // que en cometerlo, y nunca debe retrasar una transición que vuelve a encender el aura.
+        // MIN_DWELL_TICKS goes away (§6): it made the director take longer to correct its mistake
+        // than to make it, and it must never delay a transition that turns the aura back on.
         CombatDirector director = new CombatDirector();
         settle(director, surface());
 
         CombatSnapshot burrowed = with(surface(), false, true, false, false);
         for (int i = 0; i < CombatDirector.BLOCK_HOLD_TICKS; i++) director.tick(burrowed, APPROACH);
-        assertEquals(CombatState.ENTERRADO, director.state());
+        assertEquals(CombatState.BURROWED, director.state());
 
         CombatSnapshot surrounded = with(surface(), true, false, false, false);
         for (int i = 0; i < CombatDirector.BLOCK_HOLD_TICKS; i++) director.tick(surrounded, APPROACH);
-        assertEquals(CombatState.RODEADO, director.state(), "recién entrado o no, la corrección no espera");
+        assertEquals(CombatState.SURROUNDED, director.state(), "just entered or not, the correction does not wait");
     }
 
-    // --- §7: el aura queda fuera del filtro de recursos ---
+    // --- §7: the aura stays out of the resource filter ---
 
     @Test
     void withoutCrystalsTheAuraStillGoesUpAndIsReportedAsAWarning() {
-        // §11: con 0 cristales, crystal-aura sigue en la lista de encendido. Apagarla te quita el
-        // autobreak, que es justo lo que te mantiene vivo cuando no tienes con qué responder.
+        // §11: with 0 crystals, crystal-aura stays in the enable list. Turning it off takes away your
+        // autobreak, which is exactly what keeps you alive when you have nothing to answer with.
         Map<Resource, Integer> noCrystals = Map.of(
             Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
         CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, noCrystals);
@@ -1048,9 +1048,9 @@ class CombatDirectorTest {
         Plan plan = settle(new CombatDirector(), snapshot);
 
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
-        assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA), "no es una omisión");
-        assertTrue(plan.warnings().contains(Msg.of(PvpText.AURA_NO_CRYSTALS)), "se avisa");
-        assertEquals(CombatState.SUPERFICIE, plan.state(), "y no se informa SIN_RECURSOS por eso");
+        assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA), "it is not an omission");
+        assertTrue(plan.warnings().contains(Msg.of(PvpText.AURA_NO_CRYSTALS)), "it is warned about");
+        assertEquals(CombatState.SURFACE, plan.state(), "and OUT_OF_RESOURCES is not reported because of it");
     }
 
     @Test
@@ -1060,21 +1060,21 @@ class CombatDirectorTest {
 
     @Test
     void withoutTotemsButWithAntiSuicideTheAuraStillGoesUp() {
-        // El suelo de tótems era una decisión de vida tomada con un contador de ítems, y Meteor ya
-        // la toma con el daño exacto: anti-suicide se niega a colocar o romper un cristal que te
-        // mate. Sin tótems es justo cuando más falta hace el autobreak.
+        // The totem floor was a life decision taken with an item counter, and Meteor already
+        // takes it with the exact damage: anti-suicide refuses to place or break a crystal that would
+        // kill you. Without totems is exactly when the autobreak is needed most.
         CombatSnapshot noTotems = Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, FULL);
         Plan plan = settle(new CombatDirector(), noTotems);
 
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "y el resto sigue subiendo");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "and the rest still comes up");
     }
 
     @Test
     void withoutTotemsAndWithAntiSuicideOffTheAuraIsRefused() {
-        // anti-suicide es solo un valor por defecto: apagado, esa protección no existe y el suelo
-        // de tótems vuelve a ser lo único que queda.
+        // anti-suicide is only a default value: off, that protection does not exist and the totem
+        // floor is once again the only thing left.
         CombatSnapshot noTotems =
             Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, FULL));
         Plan plan = settle(new CombatDirector(), noTotems);
@@ -1082,8 +1082,8 @@ class CombatDirectorTest {
         assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(plan.skipped().stream().anyMatch(sk -> sk.reason().equals(Msg.of(PvpText.TOTEM_FLOOR))),
-            "y el motivo dice por qué, no solo que faltan tótems");
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "y el resto sigue subiendo");
+            "and the reason says why, not only that totems are missing");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "and the rest still comes up");
     }
 
     @Test
@@ -1097,9 +1097,9 @@ class CombatDirectorTest {
     void withoutTotemsAndOnlyCrystalsItIsOutOfResourcesOnlyWithAntiSuicideOff() {
         CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 0,
             Map.of(Resource.CRYSTALS, 12));
-        assertEquals(CombatState.SUPERFICIE, settle(new CombatDirector(), snapshot).state(),
-            "con anti-suicide puesto el aura sube y hay con qué pelear");
-        assertEquals(CombatState.SIN_RECURSOS,
+        assertEquals(CombatState.SURFACE, settle(new CombatDirector(), snapshot).state(),
+            "with anti-suicide on the aura comes up and there is something to fight with");
+        assertEquals(CombatState.OUT_OF_RESOURCES,
             settle(new CombatDirector(), Snapshots.antiSuicideOff(snapshot)).state());
     }
 
@@ -1111,7 +1111,7 @@ class CombatDirectorTest {
 
         Plan plan = settle(new CombatDirector(), snapshot);
 
-        assertEquals(CombatState.RODEADO, plan.state());
+        assertEquals(CombatState.SURROUNDED, plan.state());
         assertFalse(enables(plan, ManagedModules.AUTO_CITY));
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(skips(plan, ManagedModules.AUTO_CITY));
@@ -1119,14 +1119,14 @@ class CombatDirectorTest {
 
     @Test
     void withNothingAtAllAndNoTotemsItReportsOutOfResources() {
-        // Sin nada encima y sin la red de anti-suicide no queda ni el autobreak.
+        // With nothing on you and without the anti-suicide net, not even the autobreak is left.
         CombatSnapshot broke =
             Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of()));
         Plan plan = settle(new CombatDirector(), broke);
 
-        assertEquals(CombatState.SIN_RECURSOS, plan.state());
+        assertEquals(CombatState.OUT_OF_RESOURCES, plan.state());
         assertTrue(plan.enable().isEmpty());
-        assertFalse(plan.skipped().isEmpty(), "tiene que decir qué le faltó");
+        assertFalse(plan.skipped().isEmpty(), "it has to say what it was missing");
     }
 
     @Test
@@ -1134,7 +1134,7 @@ class CombatDirectorTest {
         CombatSnapshot broke = Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of());
         Plan plan = settle(new CombatDirector(), broke);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
+        assertEquals(CombatState.SURFACE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(plan.warnings().contains(Msg.of(PvpText.AURA_NO_CRYSTALS)));
     }
@@ -1146,14 +1146,14 @@ class CombatDirectorTest {
         CombatDirector director = new CombatDirector();
         settle(director, broke);
 
-        assertEquals(CombatState.SUPERFICIE, director.state(), "la fase física sigue siendo SUPERFICIE");
+        assertEquals(CombatState.SURFACE, director.state(), "the physical phase is still SURFACE");
     }
 
     @Test
     void aPhaseThatAsksForNothingIsNotOutOfResources() {
         CombatSnapshot broke = Snapshots.of(true, 8.0, 0, 0, false, false, false, 0, Map.of());
-        assertEquals(CombatState.ACERCAMIENTO, settle(new CombatDirector(), broke).state(),
-            "que no haya nada que encender no es quedarse sin recursos");
+        assertEquals(CombatState.APPROACH, settle(new CombatDirector(), broke).state(),
+            "there being nothing to enable is not running out of resources");
     }
 
     @Test
@@ -1173,21 +1173,21 @@ class CombatDirectorTest {
         Map<Resource, Integer> noWebs = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.ANVILS, 3, Resource.PICKAXE, 1);
         CombatSnapshot snapshot = Snapshots.of(true, 4.0, 0, 0, false, false, false, 2, noWebs)
-            .withTargetId("enemigo");
+            .withTargetId("enemy");
 
         CombatDirector director = new CombatDirector();
         Plan plan = pullingAwayTo(director, snapshot, 3.5);
 
-        assertEquals(CombatState.SUPERFICIE, plan.state());
-        assertTrue(director.targetRetreating(), "precondicion: la puerta de auto-web esta abierta");
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertTrue(director.targetRetreating(), "precondition: the auto-web gate is open");
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertFalse(enables(plan, ManagedModules.AUTO_WEB));
         assertTrue(skips(plan, ManagedModules.AUTO_WEB));
     }
 
-    // --- spec §6.2: la histéresis de recursos, que no se toca ---
+    // --- spec §6.2: the resource hysteresis, which is not to be touched ---
 
-    /** SUPERFICIE con la obsidiana de auto-trap a un valor concreto, el resto del equipo completo. */
+    /** SURFACE with auto-trap's obsidian at a specific value, the rest of the gear complete. */
     private static CombatSnapshot withObsidian(int amount) {
         Map<Resource, Integer> resources = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, amount,
@@ -1199,16 +1199,16 @@ class CombatDirectorTest {
     void obsidianBelowMinimumBrieflyKeepsAutoTrapEnabledIfItWasOnBefore() {
         CombatDirector director = new CombatDirector();
         Plan settled = settle(director, withObsidian(64));
-        assertTrue(enables(settled, ManagedModules.AUTO_TRAP), "precondición: ya estaba encendido");
+        assertTrue(enables(settled, ManagedModules.AUTO_TRAP), "precondition: it was already on");
 
         Plan plan = director.tick(withObsidian(2), APPROACH);
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "un tick por debajo del mínimo no lo suelta");
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "one tick below the minimum does not release it");
     }
 
     @Test
     void obsidianBelowMinimumDoesNotEnableAutoTrapIfItWasNeverOn() {
         Plan plan = settle(new CombatDirector(), withObsidian(7));
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "sin historial exige el mínimo completo");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "without history it requires the full minimum");
     }
 
     @Test
@@ -1222,7 +1222,7 @@ class CombatDirectorTest {
             plan = director.tick(withObsidian(0), APPROACH);
         }
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP),
-            "todavía no lleva " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks seguidos por debajo del mínimo");
+            "it has not yet been " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks in a row below the minimum");
     }
 
     @Test
@@ -1236,38 +1236,38 @@ class CombatDirectorTest {
             plan = director.tick(withObsidian(0), APPROACH);
         }
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP),
-            "cumplidos los " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks por debajo del mínimo, se suelta");
+            "once the " + CombatDirector.RESOURCE_RELEASE_DWELL_TICKS + " ticks below the minimum are up, it is released");
     }
 
     @Test
     void theResourceReleaseDwellIsStillTwentyTicks() {
         assertEquals(20, CombatDirector.RESOURCE_RELEASE_DWELL_TICKS,
-            "§9: verificado como correcto, no se toca");
+            "§9: checked as correct, not to be touched");
     }
 
     @Test
     void aModuleWithAMinimumOfOneAlsoGetsTheReleaseDwellWindow() {
-        // Con minimum() == 1, "la mitad" redondeaba al mismo mínimo y no daba ninguna gracia.
-        // auto-anvil (mínimo 1) es uno de los módulos a los que esto afectaba: contra un enterrado
-        // a 3 bloques se pide, y la fase no depende de nada que se mueva.
+        // With minimum() == 1, "half" rounded to the same minimum and gave no grace at all.
+        // auto-anvil (minimum 1) is one of the modules this affected: against someone burrowed
+        // at 3 blocks it is asked for, and the phase depends on nothing that moves.
         CombatDirector director = new CombatDirector();
         CombatSnapshot burrowed = with(surface(), false, true, false, false).withTargetDistance(3.0);
         Plan settled = settle(director, burrowed);
-        assertTrue(enables(settled, ManagedModules.AUTO_ANVIL), "precondición: ya estaba encendido");
+        assertTrue(enables(settled, ManagedModules.AUTO_ANVIL), "precondition: it was already on");
 
         Map<Resource, Integer> noAnvils = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.PICKAXE, 1);
         CombatSnapshot noWebsSnapshot = new CombatSnapshot(true, 3.0, 0, 0, true, false, false, 2,
-            noAnvils, "enemigo", 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, true);
+            noAnvils, "enemy", 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, true);
 
         Plan plan = null;
         for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS - 1; i++) {
             plan = director.tick(noWebsSnapshot, APPROACH);
         }
-        assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "todavía dentro de la ventana de gracia");
+        assertTrue(enables(plan, ManagedModules.AUTO_ANVIL), "still inside the grace window");
 
         plan = director.tick(noWebsSnapshot, APPROACH);
-        assertFalse(enables(plan, ManagedModules.AUTO_ANVIL), "cumplida la ventana, se suelta aunque el mínimo sea 1");
+        assertFalse(enables(plan, ManagedModules.AUTO_ANVIL), "once the window is up, it is released even though the minimum is 1");
     }
 
     @Test
@@ -1278,7 +1278,7 @@ class CombatDirectorTest {
 
         for (int i = 0; i < 20; i++) {
             Plan plan = director.tick(withObsidian(i % 2 == 0 ? 6 : 10), APPROACH);
-            assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "tick " + i + ": no debe parpadear");
+            assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "tick " + i + ": it must not flicker");
         }
     }
 
@@ -1289,14 +1289,14 @@ class CombatDirectorTest {
         assertTrue(enables(settled, ManagedModules.AUTO_TRAP));
 
         for (int i = 0; i < 5; i++) director.tick(withObsidian(2), APPROACH);
-        assertEquals(CombatState.SUPERFICIE, director.state());
+        assertEquals(CombatState.SURFACE, director.state());
 
         director.tick(CombatSnapshot.none(), APPROACH);
 
         Plan plan = director.tick(withObsidian(2), APPROACH);
-        assertEquals(CombatState.SUPERFICIE, director.state());
+        assertEquals(CombatState.SURFACE, director.state());
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP),
-            "la memoria de recursos debía seguir viva tras el blip, no exigir el mínimo completo de golpe");
+            "the resource memory should have survived the blip, not required the full minimum all at once");
     }
 
     // --- reset ---
@@ -1307,7 +1307,7 @@ class CombatDirectorTest {
         settle(director, surface());
         director.reset();
 
-        assertEquals(CombatState.SIN_COMBATE, director.state());
+        assertEquals(CombatState.NO_COMBAT, director.state());
         assertEquals(0, director.ticksInState());
         assertFalse(director.targetRetreating());
     }
@@ -1321,7 +1321,7 @@ class CombatDirectorTest {
         director.reset();
 
         Plan plan = settle(director, withObsidian(7));
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "reset() olvida qué estaba encendido");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "reset() forgets what was on");
     }
 
     @Test
@@ -1331,7 +1331,7 @@ class CombatDirectorTest {
         director.reset();
 
         Plan plan = director.tick(CombatSnapshot.none(), APPROACH);
-        assertEquals(CombatState.SIN_COMBATE, plan.state(), "sin memoria del objetivo no hay gracia que dar");
+        assertEquals(CombatState.NO_COMBAT, plan.state(), "without a memory of the target there is no grace to give");
         assertTrue(plan.enable().isEmpty());
     }
 }

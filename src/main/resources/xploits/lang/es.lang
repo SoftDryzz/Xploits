@@ -431,15 +431,15 @@ pvp.idle-none=ninguno (lo que está encendido está gastando)
 pvp.idle-line={parts} — encendidos, con enemigo delante y material de sobra
 pvp.idle-part={modules} ({seconds} s{joint})
 pvp.idle-joint=, veredicto conjunto: los {count} comparten pila y no sé cuál falla
-pvp.state-sin-combate=SIN_COMBATE
-pvp.state-acercamiento=ACERCAMIENTO
-pvp.state-superficie=SUPERFICIE
-pvp.state-rodeado=RODEADO
-pvp.state-enterrado=ENTERRADO
-pvp.state-persecucion=PERSECUCION
-pvp.state-sin-recursos=SIN_RECURSOS
-pvp.posture-tranquilo=TRANQUILO
-pvp.posture-amenazado=AMENAZADO
+pvp.state-no-combat=SIN_COMBATE
+pvp.state-approach=ACERCAMIENTO
+pvp.state-surface=SUPERFICIE
+pvp.state-surrounded=RODEADO
+pvp.state-burrowed=ENTERRADO
+pvp.state-chase=PERSECUCION
+pvp.state-out-of-resources=SIN_RECURSOS
+pvp.posture-calm=TRANQUILO
+pvp.posture-threatened=AMENAZADO
 
 # elytra
 elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.

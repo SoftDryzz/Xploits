@@ -61,42 +61,42 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Dirige los módulos de combate de Meteor (spec §1, rediseñado en
- * {@code 2026-09-22-autopvp-decide-bien}). No ejecuta ninguna acción de combate: solo enciende y
- * apaga, y solo apaga lo que encendió él (spec §7).
+ * Manages Meteor's combat modules (spec §1, redesigned in
+ * {@code 2026-09-22-autopvp-decide-bien}). It performs no combat action: it only enables and
+ * disables, and it only disables what it enabled itself (spec §7).
  *
- * <p>Es el <b>adaptador</b>: mide el mundo y ejecuta lo que decide el núcleo, que es puro y va con
- * tests. Aquí no se decide nada. Lo que mide son la fase del enemigo, la mitad tuya del snapshot -la
- * que sostiene el eje defensivo del rediseño §5- y los ajustes ajenos de Meteor de los que depende
- * una decisión del núcleo, hoy solo el {@code anti-suicide} de {@code crystal-aura}.
+ * <p>It is the <b>adapter</b>: it measures the world and carries out what the core decides, which is
+ * pure and tested. Nothing is decided here. What it measures is the enemy's phase, your half of the
+ * snapshot -the one behind the defensive axis of redesign §5- and the other Meteor settings a core
+ * decision depends on, today only the {@code anti-suicide} of {@code crystal-aura}.
  */
 public class AutoPvp extends XploitsModule {
     private static final int FIRST_SLOT = 0;
-    /** Ticks por segundo del juego: la única conversión que hace falta para informar de tiempos. */
+    /** Game ticks per second: the only conversion needed to report times. */
     private static final int TICKS_PER_SECOND = 20;
     /**
-     * Último slot de la hotbar (spec §6): lo que ven {@code InvUtils.findInHotbar}/{@code
-     * testInHotbar}, y también el único rango que cuenta para {@code PICKAXE} — {@code AutoCity}
-     * busca el pico con {@code InvUtils.find} sobre todo el inventario, pero rechaza el resultado
-     * si {@code !isHotbar()} y se apaga solo con un error (spec §6). Contar la mochila para el pico
-     * era sobreestimar exactamente el mismo fallo silencioso que este rango corrige para los otros
-     * cinco.
+     * Last hotbar slot (spec §6): what {@code InvUtils.findInHotbar}/{@code
+     * testInHotbar} see, and also the only range that counts for {@code PICKAXE} — {@code AutoCity}
+     * looks for the pickaxe with {@code InvUtils.find} over the whole inventory, but rejects the result
+     * if {@code !isHotbar()} and turns itself off with an error (spec §6). Counting the backpack for the
+     * pickaxe overestimated exactly the same silent failure this range fixes for the other
+     * five.
      */
     private static final int HOTBAR_LAST_SLOT = 8;
-    /** Último slot del inventario completo: hasta dónde llega el barrido único de {@link #inventory()}. */
+    /** Last slot of the whole inventory: how far the single scan of {@link #inventory()} goes. */
     private static final int INVENTORY_LAST_SLOT = 35;
 
-    /** Tope de nombres recordados para no repetir el aviso de "no ataco a"; al llenarse se vacía. */
+    /** Cap on the names remembered so as not to repeat the "not attacking" warning; when full it is emptied. */
     private static final int MAX_ANNOUNCED_ALLIES = 64;
 
     /**
-     * Resistencia a explosiones a partir de la cual un bloque protege de un cristal (rediseño §4.1).
-     * Es el mismo umbral que usa {@code PlayerUtils.isInHole(boolean)} de Meteor para decidir si un
-     * vecino te protege, así que "enterrado" y "en un agujero" se miden con la misma vara.
+     * Blast resistance from which a block protects from a crystal (redesign §4.1).
+     * It is the same threshold Meteor's {@code PlayerUtils.isInHole(boolean)} uses to decide whether a
+     * neighbour protects you, so "burrowed" and "in a hole" are measured by the same yardstick.
      */
     private static final float PROTECTIVE_BLAST_RESISTANCE = 600f;
 
-    /** Módulos de combate que auto-pvp nunca toca, los lleves encendidos o no (spec §7). */
+    /** Combat modules auto-pvp never touches, whether you have them on or not (spec §7). */
     private static final List<String> ALWAYS_YOURS = List.of("auto-totem", "auto-armor", "offhand", "auto-weapon");
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -120,9 +120,9 @@ public class AutoPvp extends XploitsModule {
     );
 
     /**
-     * El umbral del eje defensivo (rediseño §5). El núcleo lo deja abierto y como ajuste; su
-     * constante {@link com.xploits.pvp.core.DefensivePolicy#THREAT_MARGIN} es solo el valor de
-     * fábrica, y es el que se pone aquí.
+     * The threshold of the defensive axis (redesign §5). The core leaves it open and as a setting; its
+     * constant {@link com.xploits.pvp.core.DefensivePolicy#THREAT_MARGIN} is only the default
+     * value, and it is the one set here.
      */
     private final Setting<Double> threatMargin = sgGeneral.add(new DoubleSetting.Builder()
         .name("threat-margin")
@@ -134,9 +134,9 @@ public class AutoPvp extends XploitsModule {
     );
 
     /**
-     * CUIDADO: este ajuste escribe en configuración de Meteor que no es del addon. Su descripción lo
-     * dice con todas las letras porque el jugador tiene que enterarse desde la ClickGUI, sin leer
-     * ningún README (spec §14.3).
+     * CAREFUL: this setting writes to Meteor configuration that does not belong to the addon. Its
+     * description says so in so many words because the player has to learn it from the ClickGUI,
+     * without reading any README (spec §14.3).
      */
     private final Setting<Boolean> syncFriends = sgGeneral.add(new BoolSetting.Builder()
         .name("sync-friends")
@@ -163,18 +163,18 @@ public class AutoPvp extends XploitsModule {
     private final ModuleLedger ledger = new ModuleLedger();
 
     /**
-     * El vigilante de "lo tengo encendido y no hace nada" ({@link ActionWatch}). Vive aquí y no en
-     * el director porque necesita un dato que el director no ve: qué módulos están encendidos <b>de
-     * verdad</b> ahora mismo. El adaptador mide -lo que pide el plan, lo que está encendido y lo
-     * que queda en la hotbar- y el núcleo decide cuándo eso ha dejado de ser un hueco de combate.
+     * The "I have it on and it does nothing" watch ({@link ActionWatch}). It lives here and not in
+     * the director because it needs a piece of data the director does not see: which modules are
+     * <b>really</b> on right now. The adapter measures -what the plan asks for, what is on and what
+     * is left in the hotbar- and the core decides when that has stopped being a combat gap.
      */
     private final ActionWatch actionWatch = new ActionWatch();
     private final FriendLedger friendLedger = new FriendLedger();
 
     /**
-     * Lo último que se sincronizó con la lista de amigos, o {@code null} si todavía no se ha
-     * reconciliado en esta activación. Mientras no cambie no se lee la lista de amigos ni se escribe
-     * un solo byte en disco (spec §14.1).
+     * What was last synced with the friends list, or {@code null} if it has not been
+     * reconciled yet in this activation. While it does not change, the friends list is not read and
+     * not a single byte is written to disk (spec §14.1).
      */
     private Set<String> lastSynced;
 
@@ -182,26 +182,26 @@ public class AutoPvp extends XploitsModule {
     private CombatSnapshot lastSnapshot;
     private String lastTargetName;
     private Double lastTargetDistance;
-    private CombatState lastReported = CombatState.SIN_COMBATE;
-    private CombatPosture lastPosture = CombatPosture.TRANQUILO;
+    private CombatState lastReported = CombatState.NO_COMBAT;
+    private CombatPosture lastPosture = CombatPosture.CALM;
     /**
-     * Si tu Y cambió en el tick <b>anterior</b> (rediseño §5, crítico C2). Se guarda porque
-     * {@code Surround} comprueba {@code prevY != getY()} en {@code TickEvent.Pre} y este módulo mide
-     * en {@code TickEvent.Post}: lo que el módulo castigará al principio del tick siguiente es el
-     * movimiento que aquí se ve al final de este. Juntando los dos ticks, la postura deja de pedir
-     * {@code surround} en cualquiera de los dos y el autoapagado no llega a dispararse nunca
-     * mientras el director lo quiera encendido.
+     * Whether your Y changed on the <b>previous</b> tick (redesign §5, critical C2). It is kept because
+     * {@code Surround} checks {@code prevY != getY()} in {@code TickEvent.Pre} and this module measures
+     * in {@code TickEvent.Post}: what the module will punish at the start of the next tick is the
+     * movement seen here at the end of this one. Putting the two ticks together, the posture stops asking
+     * for {@code surround} in either of them and the self-shutdown never gets to fire
+     * while the director wants it on.
      */
     private boolean yChangedLastTick;
     private SkippedAlly skippedAlly;
-    /** Nombres de los nuestros ya anunciados en esta activación: cada uno se dice una sola vez. */
+    /** Names of ours already announced in this activation: each one is said only once. */
     private final Set<String> announcedAllies = new LinkedHashSet<>();
     /**
-     * Los avisos y las omisiones que ya estaban dichos el tick anterior. Es lo que convierte "esto
-     * pasa veinte veces por segundo" en una línea de chat: solo se dice lo que aparece, y solo
-     * cuando aparece. Las dos fuentes están protegidas río arriba -la histéresis de recursos del
-     * núcleo para las omisiones, la cuenta de cristales para el aviso del aura-, así que una entrada
-     * que entra y sale no rebota.
+     * The warnings and omissions already said on the previous tick. It is what turns "this
+     * happens twenty times per second" into one chat line: only what appears is said, and only
+     * when it appears. Both sources are protected upstream -the core's resource hysteresis
+     * for the omissions, the crystal count for the aura warning-, so an entry
+     * that comes and goes does not bounce.
      */
     private Set<Object> announcedNotes = Set.of();
 
@@ -218,15 +218,15 @@ public class AutoPvp extends XploitsModule {
         lastSnapshot = null;
         lastTargetName = null;
         lastTargetDistance = null;
-        lastReported = CombatState.SIN_COMBATE;
-        lastPosture = CombatPosture.TRANQUILO;
+        lastReported = CombatState.NO_COMBAT;
+        lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
-        // La lista de amigos no se toca aquí: la primera reconciliación es la del primer tick, que
-        // ya exige estar en el mundo. Encender el módulo desde la ClickGUI en el menú principal no
-        // escribe nada en el disco del jugador.
+        // The friends list is not touched here: the first reconciliation is the first tick's, which
+        // already requires being in the world. Turning the module on from the ClickGUI in the main menu
+        // writes nothing to the player's disk.
         friendLedger.reset();
         lastSynced = null;
         warnAlreadyActiveManagedModules();
@@ -235,7 +235,7 @@ public class AutoPvp extends XploitsModule {
     @Override
     public void onDeactivate() {
         releaseAll();
-        // Lo que pusimos en la lista de amigos sale con nosotros, y solo lo que pusimos nosotros.
+        // What we put in the friends list leaves with us, and only what we put there.
         applyFriendChanges(friendLedger.release(meteorFriendNames()));
         friendLedger.reset();
         lastSynced = null;
@@ -248,8 +248,8 @@ public class AutoPvp extends XploitsModule {
             return;
         }
 
-        // Las dos listas de origen, recortadas una sola vez por tick: las usan el filtro de objetivo
-        // -una vez por jugador a la vista- y la sincronización con los amigos de Meteor.
+        // The two source lists, trimmed once per tick: they are used by the target filter
+        // -once per player in sight- and by the sync with the Meteor friends.
         Set<String> couriers = AllyPolicy.names(kitRequesterCouriers());
         Set<String> tpyUsers = AllyPolicy.names(autoTpyUsers());
         syncMeteorFriends(couriers, tpyUsers);
@@ -272,26 +272,26 @@ public class AutoPvp extends XploitsModule {
         lastPosture = plan.posture();
     }
 
-    /** Uno de los nuestros que estaba a tiro y no se atacó: quién, por qué y a qué distancia. */
+    /** One of ours who was in reach and was not attacked: who, why and at what distance. */
     private record SkippedAlly(String name, AllyPolicy.Allegiance allegiance, double distance) {}
 
     /**
-     * El objetivo, con los nuestros descartados <b>dentro</b> del predicado de selección (spec §13).
+     * The target, with ours discarded <b>inside</b> the selection predicate (spec §13).
      *
-     * <p>Es el mismo predicado que {@code TargetUtils.getPlayerTarget(range, priority)} —verificado
-     * contra las fuentes de meteor-client 1.21.11—, con dos cambios: {@code Friends.shouldAttack}
-     * pasa a estar dentro de {@link AllyPolicy} (AMIGO es exactamente su negación, así que el filtro
-     * de Meteor se sigue aplicando igual) y se añaden los couriers de kit-requester y la lista
-     * users de auto-tpy.
+     * <p>It is the same predicate as {@code TargetUtils.getPlayerTarget(range, priority)} —checked
+     * against the meteor-client 1.21.11 sources—, with two changes: {@code Friends.shouldAttack}
+     * moves inside {@link AllyPolicy} (FRIEND is exactly its negation, so Meteor's filter
+     * still applies the same way) and the kit-requester couriers and the auto-tpy users list are
+     * added.
      *
-     * <p>CRÍTICO: la exclusión tiene que ir en el predicado, no después. Seleccionar el más cercano
-     * y descartarlo si resulta ser nuestro devolvería {@code null} con un courier pegado a ti,
-     * aunque hubiera un enemigo de verdad diez bloques detrás; dentro del predicado el courier ni
-     * siquiera entra en la lista que se ordena, y el enemigo sigue siendo el objetivo.
+     * <p>CRITICAL: the exclusion has to go in the predicate, not afterwards. Selecting the closest one
+     * and discarding it if it turns out to be ours would return {@code null} with a courier next to you,
+     * even with a real enemy ten blocks behind; inside the predicate the courier does not even
+     * get into the list that is sorted, and the enemy is still the target.
      *
-     * <p>Esto decide a quién elige <b>este</b> módulo, y solo eso. Los cinco que enciende eligen su
-     * propio objetivo y no saben de estas listas: de que a ellos tampoco se les cruce un courier se
-     * encarga {@link #syncMeteorFriends} (spec §14).
+     * <p>This decides whom <b>this</b> module picks, and only that. The five it enables pick their
+     * own target and do not know about these lists: making sure they do not cross a courier either is
+     * the job of {@link #syncMeteorFriends} (spec §14).
      */
     private PlayerEntity findTarget(Set<String> couriers, Set<String> tpyUsers) {
         double range = targetRange.get();
@@ -316,7 +316,7 @@ public class AutoPvp extends XploitsModule {
         return found instanceof PlayerEntity player ? player : null;
     }
 
-    /** Se queda con el más cercano de los nuestros descartados en este tick. */
+    /** Keeps the closest of ours discarded in this tick. */
     private void noteSkippedAlly(PlayerEntity player, AllyPolicy.Allegiance allegiance) {
         double distance = mc.player.distanceTo(player);
         if (skippedAlly == null || distance < skippedAlly.distance()) {
@@ -324,13 +324,13 @@ public class AutoPvp extends XploitsModule {
         }
     }
 
-    /** Que se vea, pero sin llenar el chat: cada nombre se dice una sola vez por activación. */
+    /** Make it visible, but without flooding the chat: each name is said only once per activation. */
     private void reportSkippedAlly() {
         if (skippedAlly == null || !notify.get()) return;
-        // Cota: con la lista llena se empieza de cero y se vuelve a avisar, preferible a crecer sin
-        // fin en una sesión larga. El vaciado va ANTES del add: vaciar después de apuntar el nombre
-        // lo borraba en el mismo momento de anunciarlo, y el aliado que tocase el tope se anunciaba
-        // dos veces, la segunda en cuanto volviera a estar a tiro.
+        // Cap: with the list full it starts from zero and warns again, better than growing without
+        // end in a long session. The clearing goes BEFORE the add: clearing after recording the name
+        // wiped it at the very moment of announcing it, and the ally who hit the cap was announced
+        // twice, the second time as soon as they were in reach again.
         if (announcedAllies.size() >= MAX_ANNOUNCED_ALLIES) announcedAllies.clear();
         if (!announcedAllies.add(skippedAlly.name())) return;
         info(PvpText.NOT_ATTACKING, "name", skippedAlly.name(), "reason", skippedAlly.allegiance().reason());
@@ -341,13 +341,13 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Los couriers de kit-requester y la lista users de auto-tpy, <b>estén esos módulos encendidos
-     * o apagados</b>. Es a propósito distinto de {@code AutoTpy.kitRequesterCouriers()}, que sí
-     * exige {@code isActive()}: allí la pregunta es de reparto —quién responde a esta TPA—, y si
-     * kit-requester está apagado nadie más va a responderla; aquí la pregunta es de identidad —de
-     * quién eres—, y el courier que llegó con un pedido anterior sigue pegado a ti después de que
-     * kit-requester se apague. Condicionarlo al módulo devolvería el ataque en silencio, que es
-     * exactamente el fallo que esto arregla.
+     * The kit-requester couriers and the auto-tpy users list, <b>whether those modules are on
+     * or off</b>. It is on purpose different from {@code AutoTpy.kitRequesterCouriers()}, which does
+     * require {@code isActive()}: there the question is one of dispatch —who answers this TPA—, and if
+     * kit-requester is off nobody else is going to answer it; here the question is one of identity —whose
+     * side you are on—, and the courier who came with an earlier order is still next to you after
+     * kit-requester turns off. Making it depend on the module would silently bring back the attack, which is
+     * exactly the failure this fixes.
      */
     private static Set<String> kitRequesterCouriers() {
         KitRequester module = Modules.get().get(KitRequester.class);
@@ -359,25 +359,25 @@ public class AutoPvp extends XploitsModule {
         return module == null ? Set.of() : module.users();
     }
 
-    /** Si kit-requester acepta couriers desconocidos, que es lo que hace su lista poco fiable (spec §14.2). */
+    /** Whether kit-requester accepts unknown couriers, which is what makes its list unreliable (spec §14.2). */
     private static boolean kitRequesterTrustsUnknownCouriers() {
         KitRequester module = Modules.get().get(KitRequester.class);
         return module != null && module.trustsUnknownCouriers();
     }
 
     /**
-     * Mantiene a los nuestros en la lista de amigos de Meteor (spec §14). Es lo que hace que los
-     * cinco módulos dirigidos —que eligen su propio objetivo y solo respetan esa lista— tampoco
-     * ataquen a un courier o a alguien de la lista users.
+     * Keeps ours in the Meteor friends list (spec §14). It is what keeps the
+     * five managed modules —which pick their own target and only respect that list— from
+     * attacking a courier or someone in the users list too.
      *
-     * <p><b>Se reconcilia por cambio, no por tick.</b> {@code Friends.add} y {@code Friends.remove}
-     * guardan {@code friends.nbt} en cada llamada (verificado en las fuentes: las dos llaman a
-     * {@code save()}), así que reconciliar a ciegas veinte veces por segundo sería escribir en el
-     * disco del jugador veinte veces por segundo. Mientras el conjunto que hay que sincronizar sea
-     * el mismo que la última vez no se hace nada: ni se recorre la lista de amigos, ni se escribe.
-     * Cambia cuando el jugador edita {@code known-couriers} o {@code users}, cuando kit-requester
-     * aprende un courier, cuando se toca {@code trust-unknown-couriers} o {@code sync-friends}, y en
-     * el primer tick de cada activación.
+     * <p><b>It reconciles on change, not per tick.</b> {@code Friends.add} and {@code Friends.remove}
+     * save {@code friends.nbt} on every call (checked in the sources: both call
+     * {@code save()}), so reconciling blindly twenty times per second would mean writing to the
+     * player's disk twenty times per second. While the set to sync is
+     * the same as last time nothing is done: the friends list is neither walked nor written.
+     * It changes when the player edits {@code known-couriers} or {@code users}, when kit-requester
+     * learns a courier, when {@code trust-unknown-couriers} or {@code sync-friends} is touched, and on
+     * the first tick of every activation.
      */
     private void syncMeteorFriends(Set<String> couriers, Set<String> tpyUsers) {
         Set<String> wanted = syncFriends.get()
@@ -388,7 +388,7 @@ public class AutoPvp extends XploitsModule {
         applyFriendChanges(friendLedger.reconcile(wanted, meteorFriendNames()));
     }
 
-    /** Los nombres que hay ahora mismo en la lista de amigos, tal y como los guarda Meteor. */
+    /** The names in the friends list right now, as Meteor stores them. */
     private static Set<String> meteorFriendNames() {
         Set<String> names = new LinkedHashSet<>();
         for (Friend friend : Friends.get()) names.add(friend.getName());
@@ -396,11 +396,11 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Ejecuta lo que decidió {@link FriendLedger}. Un añadido que Meteor rechaza deja de contar como
-     * nuestro en el acto; y antes de quitar nada se comprueba que el amigo que devuelve
-     * {@code Friends.get(String)} —que compara con {@code equalsIgnoreCase}— es exactamente el
-     * nombre que pusimos nosotros. De lo contrario bastaría que el jugador tuviera un
-     * "stormaegis44" suyo para que le borrásemos su entrada al soltar la nuestra.
+     * Carries out what {@link FriendLedger} decided. An addition Meteor rejects stops counting as
+     * ours on the spot; and before removing anything it checks that the friend
+     * {@code Friends.get(String)} returns —which compares with {@code equalsIgnoreCase}— is exactly the
+     * name we put there. Otherwise it would be enough for the player to have a
+     * "stormaegis44" of their own for us to remove their entry when releasing ours.
      */
     private void applyFriendChanges(FriendLedger.Result result) {
         if (result.isEmpty()) return;
@@ -427,11 +427,11 @@ public class AutoPvp extends XploitsModule {
         }
     }
 
-    /** Avisa del cambio de fase: SIN_RECURSOS siempre y fuerte (spec §4.1, §6); el resto, si notify lo permite. */
+    /** Reports the phase change: OUT_OF_RESOURCES always and loud (spec §4.1, §6); the rest, if notify allows it. */
     private void reportPhaseChange(Plan plan) {
         if (plan.state() == lastReported) return;
 
-        if (plan.state() == CombatState.SIN_RECURSOS) {
+        if (plan.state() == CombatState.OUT_OF_RESOURCES) {
             warnOutOfResources(plan);
         } else if (notify.get()) {
             info(phase(plan));
@@ -439,15 +439,15 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Avisa del otro eje (rediseño §3). Va en su propia línea, y no pegado a la fase, porque son
-     * ortogonales: la postura cambia sin que la fase se mueva -te cristalean mientras sigues en
-     * SUPERFICIE- y al revés. Solo se dice cuando cambia, que con el umbral de §5 son un par de
-     * líneas por pelea, no veinte por segundo.
+     * Reports the other axis (redesign §3). It goes on its own line, and not attached to the phase,
+     * because they are orthogonal: the posture changes without the phase moving -you get crystalled
+     * while still in SURFACE- and the other way round. It is only said when it changes, which with the
+     * §5 threshold is a couple of lines per fight, not twenty per second.
      */
     private void reportPostureChange(Plan plan) {
         if (plan.posture() == lastPosture || !notify.get()) return;
 
-        if (plan.posture() == CombatPosture.AMENAZADO) {
+        if (plan.posture() == CombatPosture.THREATENED) {
             info(PvpText.THREATENED, "damage", lastSnapshot.incomingDamage(),
                 "health", lastSnapshot.selfTotalHealth());
         } else {
@@ -456,19 +456,19 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Dice una sola vez lo que el plan no va a encender y por qué, y los avisos que no son
-     * omisiones (rediseño §7: el aura sin cristales se enciende igual, pero el jugador tiene que
-     * enterarse). Sin esta memoria serían veinte líneas por segundo; con ella, una por cosa nueva.
+     * Says once what the plan is not going to enable and why, and the warnings that are not
+     * omissions (redesign §7: the aura without crystals is enabled anyway, but the player has to
+     * know). Without this memory it would be twenty lines per second; with it, one per new thing.
      *
-     * <p>Queda fuera el aviso fuerte de {@code SIN_RECURSOS}, que tiene su propio camino y suena
-     * aunque {@code notify} esté apagado.
+     * <p>The loud {@code OUT_OF_RESOURCES} warning is left out: it has its own path and sounds
+     * even with {@code notify} off.
      */
     private void reportNotes(Plan plan) {
-        // La clave de una omisión es el nombre del módulo, NO su motivo: el motivo lleva dentro
-        // cuánto te queda ("tienes 2, necesita 8"), y eso baja con cada bloque que gastas, así que
-        // comparar motivos enteros volvería a ser una línea por tick. Lo que el jugador necesita
-        // saber es que auto-trap no va a subir, no el número exacto de este tick -que sí sale, y
-        // actualizado, en .xploits pvp-.
+        // The key of an omission is the module name, NOT its reason: the reason carries
+        // how much you have left ("you have 2, it needs 8"), and that drops with every block you spend, so
+        // comparing whole reasons would be one line per tick again. What the player needs
+        // to know is that auto-trap is not going to come up, not the exact number of this tick -which does
+        // show, and up to date, in .xploits pvp-.
         Map<Object, Msg> notes = new LinkedHashMap<>();
         for (Msg warning : plan.warnings()) notes.put(warning, warning);
         for (Skipped skipped : plan.skipped()) {
@@ -476,7 +476,7 @@ public class AutoPvp extends XploitsModule {
                 Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
         }
 
-        if (notify.get() && plan.state() != CombatState.SIN_RECURSOS) {
+        if (notify.get() && plan.state() != CombatState.OUT_OF_RESOURCES) {
             for (Map.Entry<Object, Msg> note : notes.entrySet()) {
                 if (!announcedNotes.contains(note.getKey())) warning(note.getValue());
             }
@@ -484,7 +484,7 @@ public class AutoPvp extends XploitsModule {
         announcedNotes = Set.copyOf(notes.keySet());
     }
 
-    /** La fase y, si lo hay, el objetivo: lo que se anuncia al cambiar y lo que enseña la consola. */
+    /** The phase and, if there is one, the target: what is announced on a change and what the console shows. */
     private Msg phase(Plan plan) {
         return Msg.of(PvpText.PHASE, "state", PvpText.of(plan.state()), "target", targetSuffix());
     }
@@ -495,23 +495,23 @@ public class AutoPvp extends XploitsModule {
 
     private CombatSnapshot snapshot(PlayerEntity target, Set<String> couriers, Set<String> tpyUsers) {
         Inventory inventory = inventory();
-        // La mitad tuya del snapshot se lee siempre, haya objetivo o no: el eje defensivo (§5) se
-        // deriva de ti y no depende de que el director haya elegido a alguien. Son los mismos dos
-        // datos que usan AutoTotem, Offhand y AutoLog para decidir lo mismo, y el cliente los sabe
-        // en todos los servidores: getTotalHealth() es vida + absorción y possibleHealthReductions()
-        // es el daño que YA te apunta (cristales colocados, jugadores con espada a <=5, camas en el
-        // Nether y caída). isInHole(false) es el agujero sin dobles, el único sitio del surround.
+        // Your half of the snapshot is always read, target or not: the defensive axis (§5) is
+        // derived from you and does not depend on the director having picked someone. They are the same two
+        // pieces of data AutoTotem, Offhand and AutoLog use to decide the same thing, and the client knows them
+        // on every server: getTotalHealth() is health + absorption and possibleHealthReductions()
+        // is the damage ALREADY aimed at you (placed crystals, players with a sword at <=5, beds in the
+        // Nether and falling). isInHole(false) is the hole without doubles, the only place for the surround.
         double totalHealth = PlayerUtils.getTotalHealth();
         double incomingDamage = PlayerUtils.possibleHealthReductions();
         boolean inHole = PlayerUtils.isInHole(false);
         boolean onGround = mc.player.isOnGround();
         boolean antiSuicide = crystalAuraAntiSuicide();
         int hostiles = hostilesInCrystalRange(couriers, tpyUsers);
-        // La misma comparación que hace Surround en su toggle-on-y-change -field_6036 es lastY en
-        // yarn 1.21.11+build.3, comprobado en las mappings, no supuesto-, más la del tick anterior:
-        // el módulo la evalúa en TickEvent.Pre y aquí se mide en Post, así que el movimiento que le
-        // hará apagarse al principio del tick que viene es el que se ve al final de este, y con los
-        // dos ticks juntos la postura no lo pide en ninguno de los dos.
+        // The same comparison Surround makes in its toggle-on-y-change -field_6036 is lastY in
+        // yarn 1.21.11+build.3, checked in the mappings, not assumed-, plus the previous tick's:
+        // the module evaluates it in TickEvent.Pre and here it is measured in Post, so the movement that
+        // will make it turn off at the start of the coming tick is the one seen at the end of this one, and with the
+        // two ticks together the posture asks for it in neither.
         boolean movedNow = mc.player.lastY != mc.player.getY();
         boolean yChanged = movedNow || yChangedLastTick;
         yChangedLastTick = movedNow;
@@ -522,11 +522,11 @@ public class AutoPvp extends XploitsModule {
                 null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
         }
 
-        // RODEADO exige el alcance real de auto-city al bloque, no al objetivo (spec §4.2.1,
-        // corregido): el bloque es un vecino horizontal del objetivo y puede caer al lado contrario
-        // de donde estás tú. Se mide exactamente como lo hace AutoCity.java de Meteor
-        // (PlayerUtils.squaredDistanceTo contra la BlockPos, a la esquina mínima del bloque, no al
-        // centro) para que la comparación en el núcleo sea la misma que auto-city aplicará después.
+        // SURROUNDED requires auto-city's real reach to the block, not to the target (spec §4.2.1,
+        // corrected): the block is a horizontal neighbour of the target and can be on the side opposite
+        // to where you are. It is measured exactly as Meteor's AutoCity.java does
+        // (PlayerUtils.squaredDistanceTo against the BlockPos, to the block's minimum corner, not to the
+        // center) so that the comparison in the core is the same one auto-city will apply afterwards.
         BlockPos cityBlock = EntityUtils.getCityBlock(target);
         double cityBlockDistance = cityBlock != null ? Math.sqrt(PlayerUtils.squaredDistanceTo(cityBlock)) : 0;
         return new CombatSnapshot(true, mc.player.distanceTo(target),
@@ -536,20 +536,20 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Cuántos de los cuatro vecinos horizontales del objetivo, a la altura de sus pies, son de los
-     * que {@code EntityUtils.getCityBlock()} considera minables (menor M1).
+     * How many of the target's four horizontal neighbours, at the height of its feet, are of the kind
+     * {@code EntityUtils.getCityBlock()} considers mineable (minor M1).
      *
-     * <p>El director usaba {@code getCityBlock(target) != null} como "tiene surround", y no lo es:
-     * verificado en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}, ese método recorre las
-     * cuatro direcciones horizontales y devuelve <b>la más cercana</b> que sea de esta lista, o
-     * {@code null}; nunca cuenta cuántas hay. Un enemigo de pie junto al muro de obsidiana de
-     * cualquier base -o junto a la obsidiana que tu propio {@code auto-trap} acaba de colocar- daba
-     * bloque, clasificaba {@code RODEADO} y el director se ponía a minar la pared.
+     * <p>The director used {@code getCityBlock(target) != null} as "has a surround", and it is not:
+     * checked in the {@code meteor-client:1.21.11-SNAPSHOT} sources, that method walks the
+     * four horizontal directions and returns <b>the closest</b> one from this list, or
+     * {@code null}; it never counts how many there are. An enemy standing by the obsidian wall of
+     * any base -or by the obsidian your own {@code auto-trap} has just placed- gave a
+     * block, classified as {@code SURROUNDED} and the director started mining the wall.
      *
-     * <p>La lista es la misma que la de Meteor, y no incluye bedrock (spec §2): obsidiana, bloque
-     * de netherita, obsidiana llorosa, ancla de reaparición y escombros antiguos. Cuántos lados
-     * hacen falta lo decide el núcleo ({@code CombatDirector.SURROUND_MIN_SIDES}), que es donde se
-     * puede probar; aquí solo se cuenta.
+     * <p>The list is the same as Meteor's, and it does not include bedrock (spec §2): obsidian, netherite
+     * block, crying obsidian, respawn anchor and ancient debris. How many sides
+     * are needed is decided by the core ({@code CombatDirector.SURROUND_MIN_SIDES}), which is where it
+     * can be tested; here they are only counted.
      */
     private int surroundSides(PlayerEntity target) {
         BlockPos feet = target.getBlockPos();
@@ -561,7 +561,7 @@ public class AutoPvp extends XploitsModule {
         return sides;
     }
 
-    /** Los cinco bloques que {@code EntityUtils.getCityBlock()} acepta, verificados en sus fuentes. */
+    /** The five blocks {@code EntityUtils.getCityBlock()} accepts, checked in its sources. */
     private static boolean isCityBlock(Block block) {
         return block == Blocks.OBSIDIAN || block == Blocks.CRYING_OBSIDIAN
             || block == Blocks.NETHERITE_BLOCK || block == Blocks.RESPAWN_ANCHOR
@@ -569,32 +569,32 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * ¿Le protege un cristal de lo que hay en sus pies? (rediseño §4.1). Es la pregunta que decide
-     * {@code ENTERRADO}, y no es la que se hacía antes.
+     * Does what is at its feet protect it from a crystal? (redesign §4.1). It is the question that decides
+     * {@code BURROWED}, and it is not the one asked before.
      *
-     * <p>Antes se preguntaba {@code blocksMovement()}, que es "¿hay algo sólido ahí?". En el
-     * bytecode de 1.21.11 eso es {@code !COBWEB && !BAMBOO_SAPLING && isSolid()}, y {@code isSolid()}
-     * solo exige un lado medio de 0,7291666666666666: una losa inferior da 0,833 y pasaba. Es decir
-     * que estar de pie sobre una losa, una escalera, un cofre o una trampilla se clasificaba
-     * ENTERRADO, el director apagaba el aura y se plantaba a poner yunques contra alguien que no
-     * estaba protegido de nada.
+     * <p>Before, {@code blocksMovement()} was asked, which is "is there something solid there?". In the
+     * 1.21.11 bytecode that is {@code !COBWEB && !BAMBOO_SAPLING && isSolid()}, and {@code isSolid()}
+     * only requires a half-side of 0.7291666666666666: a bottom slab gives 0.833 and passed. That is,
+     * standing on a slab, a stair, a chest or a trapdoor was classified as
+     * BURROWED, the director turned off the aura and stood there placing anvils against someone who was
+     * protected from nothing.
      *
-     * <p>La pregunta correcta tiene dos mitades y las dos hacen falta:
+     * <p>The right question has two halves and both are needed:
      * <ul>
-     *   <li><b>Resistencia a explosiones &ge; 600</b> ({@code Block#getBlastResistance()}). Es el
-     *       umbral que ya usa {@code PlayerUtils.isInHole(boolean)} de Meteor para decidir si un
-     *       bloque te protege, así que la clasificación y lo que Meteor considera un agujero dicen
-     *       lo mismo. La obsidiana, la obsidiana llorosa, el bloque de netherita, los escombros
-     *       antiguos y el bedrock lo cumplen; la piedra, la tierra y la telaraña no.</li>
-     *   <li><b>Cubo completo</b> ({@code AbstractBlockState#isFullCube}, que es
-     *       {@code Block.isShapeFullCube(getCollisionShape(...))}). Sin esto, bloques con 1200 de
-     *       resistencia y forma parcial -una mesa de encantamientos, un ancla a medio uso- darían
-     *       por enterrado a quien esté de pie encima, que es el mismo fallo de la losa por la otra
-     *       puerta.</li>
+     *   <li><b>Blast resistance &ge; 600</b> ({@code Block#getBlastResistance()}). It is the
+     *       threshold Meteor's {@code PlayerUtils.isInHole(boolean)} already uses to decide whether a
+     *       block protects you, so the classification and what Meteor considers a hole say
+     *       the same thing. Obsidian, crying obsidian, the netherite block, ancient
+     *       debris and bedrock meet it; stone, dirt and cobweb do not.</li>
+     *   <li><b>Full cube</b> ({@code AbstractBlockState#isFullCube}, which is
+     *       {@code Block.isShapeFullCube(getCollisionShape(...))}). Without this, blocks with 1200 of
+     *       resistance and a partial shape -an enchanting table, a half-used anchor- would take
+     *       whoever stands on them as burrowed, which is the same slab failure through the other
+     *       door.</li>
      * </ul>
      *
-     * <p>Los dos nombres están comprobados con {@code javap} sobre el jar de Minecraft remapeado de
-     * este proyecto (yarn 1.21.11+build.3), no supuestos.
+     * <p>Both names are checked with {@code javap} on this project's remapped Minecraft jar
+     * (yarn 1.21.11+build.3), not assumed.
      */
     private boolean protectedFromCrystals(PlayerEntity player) {
         BlockPos pos = player.getBlockPos();
@@ -604,26 +604,26 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Cuántos hostiles hay a rango de cristal, <b>protegidos o no</b> (rediseño §4.4, corregido por
-     * el crítico C1). Es lo que impide el cebo obvio: uno se entierra, el otro te cristalea, y el
-     * director te apaga el aura contra el segundo porque la fase es de un solo jugador.
+     * How many hostiles are in crystal range, <b>protected or not</b> (redesign §4.4, corrected by
+     * critical C1). It is what prevents the obvious bait: one burrows, the other crystals you, and the
+     * director turns off your aura against the second because the phase is about a single player.
      *
-     * <p>El filtro es el mismo que el de {@link #findTarget} —los nuestros fuera, supervivencia,
-     * vivos—, con una sola diferencia: el rango es el de cristal, no el {@code target-range} del
-     * módulo.
+     * <p>The filter is the same as {@link #findTarget}'s —ours out, survival,
+     * alive—, with a single difference: the range is the crystal one, not the module's
+     * {@code target-range}.
      *
-     * <p><b>Ya no se descarta al protegido</b>, y ese descarte era el crítico. Preguntaba "¿puedo yo
-     * cristalear a alguien?" para decidir "¿necesito el aura?", que son dos preguntas distintas: el
-     * aura coloca y rompe, y romper no gasta ningún cristal tuyo (§2). Que el otro esté enterrado o
-     * rodeado le salva a él de tus cristales; no te salva a ti de los suyos. Con el descarte puesto,
-     * un enemigo que se entierra a 3,5 y te sigue cristaleando desde dentro del burrow hacía que la
-     * cuenta fuera cero y el ledger te apagaba el autobreak contra el único que podía matarte.
+     * <p><b>The protected one is no longer discarded</b>, and that discard was the critical. It asked "can I
+     * crystal someone?" to decide "do I need the aura?", which are two different questions: the
+     * aura places and breaks, and breaking spends none of your crystals (§2). The other one being burrowed or
+     * surrounded saves them from your crystals; it does not save you from theirs. With the discard in place,
+     * an enemy who burrows at 3.5 and keeps crystalling you from inside the burrow made the
+     * count zero and the ledger turned off your autobreak against the only one who could kill you.
      *
-     * <p>Con él se va también el uso de {@code EntityUtils.getCityBlock()} para esto, que además
-     * agravaba el fallo: ese método no comprueba si alguien tiene surround, sino si hay un bloque
-     * minable pegado a él, así que un enemigo junto a un muro de obsidiana -o junto a la que tu
-     * propio {@code auto-trap} acababa de colocar- contaba como "protegido" y desaparecía de la
-     * cuenta.
+     * <p>With it goes the use of {@code EntityUtils.getCityBlock()} for this, which also
+     * made the failure worse: that method does not check whether someone has a surround, but whether there is
+     * a mineable block next to them, so an enemy by an obsidian wall -or by the obsidian your
+     * own {@code auto-trap} had just placed- counted as "protected" and disappeared from the
+     * count.
      */
     private int hostilesInCrystalRange(Set<String> couriers, Set<String> tpyUsers) {
         int hostiles = 0;
@@ -642,16 +642,16 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Si el {@code anti-suicide} de {@code crystal-aura} está encendido (rediseño §7, por la puerta
-     * de §10). Es lo único que decide si el suelo de tótems sigue en pie.
+     * Whether the {@code anti-suicide} of {@code crystal-aura} is on (redesign §7, through the door
+     * of §10). It is the only thing that decides whether the totem floor stays in place.
      *
-     * <p>Se lee por el API público de ajustes de Meteor —{@code Module.settings} es
-     * {@code public final} y {@code Settings#get(String, Class)} devuelve el {@code Setting<Boolean>}
-     * ya tipado, comparando el nombre sin distinguir mayúsculas—, no por reflexión ni por un mixin:
-     * el campo {@code antiSuicide} de {@code CrystalAura} es privado, pero el ajuste no.
+     * <p>It is read through Meteor's public settings API —{@code Module.settings} is
+     * {@code public final} and {@code Settings#get(String, Class)} returns the already typed
+     * {@code Setting<Boolean>}, comparing the name case-insensitively—, not by reflection nor by a mixin:
+     * the {@code antiSuicide} field of {@code CrystalAura} is private, but the setting is not.
      *
-     * <p>Si el módulo no está cargado o el ajuste no aparece, se responde <b>apagado</b>, que es el
-     * valor prudente: sin poder demostrar que la protección existe, el suelo de tótems se queda.
+     * <p>If the module is not loaded or the setting does not show up, the answer is <b>off</b>, which is the
+     * prudent value: without being able to prove the protection exists, the totem floor stays.
      */
     private static boolean crystalAuraAntiSuicide() {
         Module crystalAura = byName(ManagedModules.CRYSTAL_AURA.name());
@@ -660,7 +660,7 @@ public class AutoPvp extends XploitsModule {
         return antiSuicide != null && antiSuicide.get();
     }
 
-    /** Jugadores cargados y cuántos son de los tuyos, con la misma definición que el objetivo. Funciona con auto-pvp apagado. */
+    /** Loaded players and how many of them are on your side, with the same definition as the target. Works with auto-pvp off. */
     public record Neighbourhood(int loaded, int friendly) {
     }
 
@@ -678,7 +678,7 @@ public class AutoPvp extends XploitsModule {
         return Optional.of(new Neighbourhood(loaded, friendly));
     }
 
-    /** La munición de la hotbar, que es la que usan los módulos que dirige. El pico no es munición. */
+    /** The hotbar ammunition, which is what the modules it manages use. The pickaxe is not ammunition. */
     public Optional<Map<Resource, Integer>> hotbarResources() {
         if (mc.player == null) return Optional.empty();
         Map<Resource, Integer> resources = new EnumMap<>(Resource.class);
@@ -693,7 +693,7 @@ public class AutoPvp extends XploitsModule {
         return Texts.render(phase(lastPlan));
     }
 
-    /** Lo que se lee del inventario para el snapshot: un solo barrido de los 36 slots para todo. */
+    /** What is read from the inventory for the snapshot: a single scan of the 36 slots for everything. */
     private record Inventory(Map<Resource, Integer> resources, int totems) {}
 
     private Inventory inventory() {
@@ -705,12 +705,12 @@ public class AutoPvp extends XploitsModule {
             if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
             if (resource == null) continue;
-            // CRÍTICO (spec §6): ningún recurso cuenta fuera de la hotbar. Los cinco módulos que
-            // buscan con InvUtils.findInHotbar/testInHotbar ya lo exigen porque no miran más lejos;
-            // auto-city busca el pico con InvUtils.find sobre todo el inventario, pero rechaza el
-            // resultado si no está en la hotbar (FindItemResult.isHotbar()) y se apaga solo con un
-            // error. Contar la mochila para el pico diría "tomados" a un módulo que se apaga solo
-            // en su propio onActivate/onTick.
+            // CRITICAL (spec §6): no resource counts outside the hotbar. The five modules that
+            // search with InvUtils.findInHotbar/testInHotbar already require it because they look no further;
+            // auto-city looks for the pickaxe with InvUtils.find over the whole inventory, but rejects the
+            // result if it is not in the hotbar (FindItemResult.isHotbar()) and turns itself off with an
+            // error. Counting the backpack for the pickaxe would say "taken" of a module that turns itself off
+            // in its own onActivate/onTick.
             if (slot > HOTBAR_LAST_SLOT) continue;
             counts.merge(resource, stack.getCount(), Integer::sum);
         }
@@ -727,9 +727,9 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Enciende lo que pide el plan y apaga lo que tomó y ya no pide; nunca lo que no es suyo (spec
-     * §7). La decisión de propiedad es de {@link ModuleLedger}, lógica pura y con tests propios
-     * (spec §12): aquí solo se reúnen los nombres reales y se ejecuta lo que decide.
+     * Enables what the plan asks for and disables what it took and no longer asks for; never what is not its own (spec
+     * §7). The ownership decision belongs to {@link ModuleLedger}, pure logic with its own tests
+     * (spec §12): here the real names are only gathered and what it decides is carried out.
      */
     private void apply(Plan plan) {
         Set<String> wanted = new LinkedHashSet<>();
@@ -741,10 +741,10 @@ public class AutoPvp extends XploitsModule {
             if (m != null && m.isActive()) active.add(module.name());
         }
 
-        // El vigilante mide ANTES de ejecutar nada: `active` es lo que está encendido de verdad al
-        // principio de este tick, que es lo que hay que cruzar con lo que el plan quiere. Un módulo
-        // recién encendido no cuenta hasta el tick siguiente, y eso es lo correcto: todavía no ha
-        // tenido ocasión de gastar.
+        // The watch measures BEFORE carrying out anything: `active` is what is really on at the
+        // start of this tick, which is what has to be matched against what the plan wants. A module
+        // just enabled does not count until the next tick, and that is right: it has not yet
+        // had a chance to spend.
         reportIdle(actionWatch.update(lastSnapshot, wanted, active));
 
         ModuleLedger.Result result = ledger.apply(director.state(), plan.posture(), wanted, active);
@@ -765,22 +765,22 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Dice lo que el vigilante acaba de concluir ({@link ActionWatch}). <b>Se dice aunque
-     * {@code notify} esté apagado</b>, por la misma razón que {@code SIN_RECURSOS}: los dos son
-     * fallos que no se pueden ver de ninguna otra manera -el módulo anuncia la fase, enciende el
-     * aura y no pasa nada-, y callarlos es exactamente lo que el principio del módulo prohíbe. Los
-     * avisos normales -cambios de fase, de postura, omisiones- sí respetan el ajuste: esos se ven
-     * de sobra por sus efectos.
+     * Says what the watch has just concluded ({@link ActionWatch}). <b>It is said even with
+     * {@code notify} off</b>, for the same reason as {@code OUT_OF_RESOURCES}: both are
+     * failures that cannot be seen any other way -the module announces the phase, enables the
+     * aura and nothing happens-, and keeping quiet about them is exactly what the module's principle forbids. The
+     * normal warnings -phase changes, posture changes, omissions- do respect the setting: those are
+     * plainly visible through their effects.
      *
-     * <p>No apaga nada. El aviso es el final del camino: quien decide si {@code min-damage} está
-     * mal puesto es el jugador, y mientras tanto el módulo sigue listo para el tick en el que sí
-     * haya posición válida.
+     * <p>It turns nothing off. The warning is the end of the road: whoever decides whether {@code min-damage} is
+     * badly set is the player, and meanwhile the module stays ready for the tick in which there is
+     * a valid position.
      */
     private void reportIdle(List<ActionWatch.Idle> newlyIdle) {
         for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle));
     }
 
-    /** I1: si algo que dirige ya estaba encendido al activar auto-pvp, es del jugador y hay que decirlo. */
+    /** I1: if something it manages was already on when auto-pvp was turned on, it is the player's and that has to be said. */
     private void warnAlreadyActiveManagedModules() {
         for (ManagedModule managed : ManagedModules.ALL) {
             Module module = byName(managed.name());
@@ -804,8 +804,8 @@ public class AutoPvp extends XploitsModule {
         actionWatch.reset();
         lastPlan = null;
         lastSnapshot = null;
-        lastReported = CombatState.SIN_COMBATE;
-        lastPosture = CombatPosture.TRANQUILO;
+        lastReported = CombatState.NO_COMBAT;
+        lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
         skippedAlly = null;
         announcedAllies.clear();
@@ -816,14 +816,14 @@ public class AutoPvp extends XploitsModule {
         return Modules.get().get(name);
     }
 
-    /** I5: SIN_RECURSOS es el único aviso fuerte (spec §4.1, §6): chat en warning() y toast con sonido. */
+    /** I5: OUT_OF_RESOURCES is the only loud warning (spec §4.1, §6): chat in warning() and a toast with sound. */
     private void warnOutOfResources(Plan plan) {
         Msg message = outOfResourcesMessage(plan);
         warning(message);
 
         MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(Items.BARRIER);
-        // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
-        // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que ElytraReplace.
+        // MeteorToast.update() calls play(customSound) without checking for null and vanilla dereferences it:
+        // NPE on the render thread. Never pass null; it is silenced with zero volume, just like ElytraReplace.
         if (!notifySound.get()) {
             toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
         }
@@ -840,7 +840,7 @@ public class AutoPvp extends XploitsModule {
         return Msg.of(PvpText.OUT_OF_RESOURCES, "reasons", reasons);
     }
 
-    /** Pega {@code line} detrás de {@code head}; con {@code head} nulo, la línea sola. */
+    /** Appends {@code line} after {@code head}; with a null {@code head}, the line alone. */
     private static Msg append(Msg head, Msg line) {
         return head == null ? line : Msg.of(PvpText.CONCAT, "first", head, "second", line);
     }
@@ -851,9 +851,9 @@ public class AutoPvp extends XploitsModule {
 
         Set<String> owned = ledger.owned();
 
-        // Los dos ejes, en la primera línea y en este orden (rediseño §3): la fase la impone el
-        // enemigo y la postura eres tú, y las dos son verdad a la vez. Debajo, el detalle de cada
-        // una, para que se vea de un vistazo por qué está encendido lo que está encendido.
+        // The two axes, on the first line and in this order (redesign §3): the enemy sets the phase
+        // and the posture is you, and both are true at once. Below, the detail of each
+        // one, so that it can be seen at a glance why what is on is on.
         Msg target = Msg.of(PvpText.NOTHING);
         if (lastTargetName != null) {
             target = Msg.of(PvpText.STATUS_TARGET, "name", lastTargetName, "distance", lastTargetDistance == null
@@ -898,15 +898,15 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Qué módulos llevan rato encendidos sin gastar nada ({@link ActionWatch}), y cuánto rato. Es la
-     * otra mitad del aviso: el aviso se dice una vez, pero la situación dura -un {@code min-damage}
-     * mal puesto no se cura solo- y tiene que poder consultarse mientras dura.
+     * Which modules have been on for a while without spending anything ({@link ActionWatch}), and for how long. It is the
+     * other half of the warning: the warning is said once, but the situation lasts -a badly set
+     * {@code min-damage} does not heal by itself- and it has to be possible to check it while it lasts.
      *
-     * <p>La línea sale siempre, aunque no haya ninguno, porque decir "ninguno" también es
-     * información: significa que lo que está encendido está gastando.
+     * <p>The line always shows, even when there are none, because saying "none" is also
+     * information: it means what is on is spending.
      *
-     * <p>Los que comparten pila salen juntos y marcados como veredicto conjunto, que es lo único
-     * que la medida sostiene: el inventario dice cuánta obsidiana queda, no quién la colocó.
+     * <p>Those that share a stack show together and marked as a joint verdict, which is the only thing
+     * the measurement supports: the inventory says how much obsidian is left, not who placed it.
      */
     private Msg idleLine() {
         List<ActionWatch.Idle> idle = actionWatch.idle();
@@ -916,8 +916,8 @@ public class AutoPvp extends XploitsModule {
         for (ActionWatch.Idle verdict : idle) {
             List<String> names = new ArrayList<>();
             for (ManagedModule module : verdict.modules()) names.add(module.name());
-            // El "+" no es decorativo: dice que esos nombres van juntos porque comparten pila y el
-            // veredicto no se puede repartir entre ellos.
+            // The "+" is not decorative: it says those names go together because they share a stack and the
+            // verdict cannot be split between them.
             Msg joint = verdict.joint()
                 ? Msg.of(PvpText.IDLE_JOINT, "count", names.size())
                 : Msg.of(PvpText.NOTHING);
@@ -933,9 +933,9 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Qué está tocando ahora mismo de la lista de amigos de Meteor, y si no toca nada, por qué: el
-     * jugador tiene que poder ver en una línea que su configuración global está intervenida —o que
-     * no lo está, y entonces los otros cinco módulos sí pueden atacar a los nuestros (spec §14.3).
+     * What it is touching right now in the Meteor friends list, and if it touches nothing, why: the
+     * player has to be able to see in one line that their global configuration is being intervened —or that
+     * it is not, and then the other five modules can attack ours (spec §14.3).
      */
     private Msg syncedFriendsLine() {
         if (!syncFriends.get()) return Msg.of(PvpText.FRIENDS_SYNC_OFF);
@@ -946,7 +946,7 @@ public class AutoPvp extends XploitsModule {
         return Msg.of(PvpText.FRIENDS_SYNCED, "names", String.join(", ", synced));
     }
 
-    /** I6: qué módulos de combate llevas activos que el director no controla, no una lista fija. */
+    /** I6: which combat modules you have active that the director does not control, not a fixed list. */
     private List<String> yourActiveModules(Set<String> owned) {
         List<String> result = new ArrayList<>();
         for (ManagedModule managed : ManagedModules.ALL) {

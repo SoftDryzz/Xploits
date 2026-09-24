@@ -49,11 +49,11 @@ class PvpTextTest {
 
     @Test
     void aPhaseIsNamedInEnglishAndStaysAsBeforeInSpanish() {
-        Msg phase = Msg.of(PvpText.PHASE, "state", PvpText.of(CombatState.SIN_RECURSOS),
+        Msg phase = Msg.of(PvpText.PHASE, "state", PvpText.of(CombatState.OUT_OF_RESOURCES),
             "target", Msg.of(PvpText.TARGET_SUFFIX, "name", "Steve"));
         assertEquals("OUT OF RESOURCES · Steve", EN.render(phase));
         assertEquals("SIN_RECURSOS · Steve", ES.render(phase));
-        assertEquals("CALM", EN.render(Msg.of(PvpText.of(CombatPosture.TRANQUILO))));
+        assertEquals("CALM", EN.render(Msg.of(PvpText.of(CombatPosture.CALM))));
     }
 
     @Test

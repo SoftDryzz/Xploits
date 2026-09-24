@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RetreatWatchTest {
     private static CombatSnapshot at(double distance) {
-        return at(distance, "enemigo");
+        return at(distance, "enemy");
     }
 
     private static CombatSnapshot at(double distance, String id) {
@@ -18,7 +18,7 @@ class RetreatWatchTest {
             .withTargetId(id);
     }
 
-    /** Alimenta la ventana entera con la misma distancia y devuelve el último veredicto. */
+    /** Feeds the whole window with the same distance and returns the last verdict. */
     private static boolean fill(RetreatWatch watch, double distance) {
         boolean retreating = false;
         for (int i = 0; i <= RetreatWatch.WINDOW_TICKS; i++) retreating = watch.update(at(distance));
@@ -27,10 +27,10 @@ class RetreatWatchTest {
 
     @Test
     void aTargetJustSeenIsNeverPullingAway() {
-        // Hasta que la ventana no está llena no hay terreno que comparar: no se afirma nada.
+        // Until the window is full there is no ground to compare: nothing is claimed.
         RetreatWatch watch = new RetreatWatch();
         for (int i = 0; i < RetreatWatch.WINDOW_TICKS; i++) {
-            assertFalse(watch.update(at(2.0 + i)), "tick " + i + ": la ventana todavía no está llena");
+            assertFalse(watch.update(at(2.0 + i)), "tick " + i + ": the window is not full yet");
         }
     }
 
@@ -58,19 +58,19 @@ class RetreatWatchTest {
 
         boolean retreating = false;
         for (int i = 1; i <= RetreatWatch.WINDOW_TICKS; i++) {
-            retreating = watch.update(at(2.0 + i * 0.05)); // 0,5 bloques en la ventana entera
+            retreating = watch.update(at(2.0 + i * 0.05)); // 0.5 blocks over the whole window
         }
-        assertFalse(retreating, "medio bloque en medio segundo es moverse, no irse");
+        assertFalse(retreating, "half a block in half a second is moving, not leaving");
     }
 
     @Test
     void knockbackDoesNotCountAsPullingAway() {
-        // Un golpe te separa unos 0,4 bloques de golpe y ahí se queda.
+        // A hit pushes you about 0.4 blocks apart at once and it stays there.
         RetreatWatch watch = new RetreatWatch();
         fill(watch, 2.0);
 
         assertFalse(watch.update(at(2.4)));
-        assertFalse(fill(watch, 2.4), "y quieto a la nueva distancia tampoco");
+        assertFalse(fill(watch, 2.4), "and standing still at the new distance is not either");
     }
 
     @Test
@@ -85,22 +85,22 @@ class RetreatWatchTest {
 
     @Test
     void theAnswerDoesNotOscillateAtTheThreshold() {
-        // La banda muerta: una vez dentro, hace falta bajar de STOP_GAIN para salir, así que una
-        // diferencia que ronde justo START_GAIN no puede encender y apagar auto-web en ticks
-        // alternos.
+        // The dead band: once inside, it has to drop below STOP_GAIN to leave, so a
+        // difference hovering right at START_GAIN cannot turn auto-web on and off on alternate
+        // ticks.
         RetreatWatch watch = new RetreatWatch();
         fill(watch, 2.0);
 
-        // Se aleja lo justo para entrar.
+        // It moves away just enough to get in.
         double step = RetreatWatch.START_GAIN / RetreatWatch.WINDOW_TICKS;
         for (int i = 1; i <= RetreatWatch.WINDOW_TICKS; i++) watch.update(at(2.0 + i * step));
-        assertTrue(watch.retreating(), "precondición");
+        assertTrue(watch.retreating(), "precondition");
 
-        // Y ahora sigue ganando terreno un poco más despacio, rondando el umbral de entrada.
+        // And now it keeps gaining ground a little slower, hovering around the entry threshold.
         double distance = 2.0 + RetreatWatch.START_GAIN;
         for (int i = 0; i < 50; i++) {
             distance += step * 0.9;
-            assertTrue(watch.update(at(distance)), "tick " + i + ": sigue yéndose, no debe parpadear");
+            assertTrue(watch.update(at(distance)), "tick " + i + ": still leaving, it must not flicker");
         }
     }
 
@@ -112,7 +112,7 @@ class RetreatWatchTest {
         for (int i = 1; i <= RetreatWatch.WINDOW_TICKS; i++) watch.update(at(2.0 + i * step));
         assertTrue(watch.retreating());
 
-        assertFalse(fill(watch, 2.0 + RetreatWatch.START_GAIN), "se paró: deja de irse");
+        assertFalse(fill(watch, 2.0 + RetreatWatch.START_GAIN), "it stopped: it is no longer leaving");
     }
 
     @Test
@@ -122,7 +122,7 @@ class RetreatWatchTest {
         watch.update(CombatSnapshot.none());
 
         assertFalse(watch.retreating());
-        // Un salto enorme justo después no debe declarar nada: la serie empieza de cero.
+        // A huge jump right after must not declare anything: the series starts from zero.
         assertFalse(watch.update(at(9.0)));
     }
 
@@ -131,11 +131,11 @@ class RetreatWatchTest {
         RetreatWatch watch = new RetreatWatch();
         fill(watch, 2.0);
 
-        // Otro jugador, mucho más lejos: comparar su distancia con la del anterior daría un salto
-        // enorme y una telaraña a nadie.
-        assertFalse(watch.update(at(9.0, "otro")));
+        // Another player, much further away: comparing their distance with the previous one's would give
+        // a huge jump and a web for nobody.
+        assertFalse(watch.update(at(9.0, "other")));
         for (int i = 0; i < RetreatWatch.WINDOW_TICKS; i++) {
-            assertFalse(watch.update(at(9.0, "otro")), "tick " + i);
+            assertFalse(watch.update(at(9.0, "other")), "tick " + i);
         }
     }
 
@@ -154,9 +154,9 @@ class RetreatWatchTest {
 
     @Test
     void theWindowIsHalfASecond() {
-        assertEquals(10, RetreatWatch.WINDOW_TICKS, "medio segundo, la unidad de tiempo de combate de §9");
+        assertEquals(10, RetreatWatch.WINDOW_TICKS, "half a second, the combat time unit of §9");
         assertEquals(1.0, RetreatWatch.START_GAIN, 0.0);
         assertEquals(0.25, RetreatWatch.STOP_GAIN, 0.0);
-        assertTrue(RetreatWatch.STOP_GAIN < RetreatWatch.START_GAIN, "sin banda muerta, oscila");
+        assertTrue(RetreatWatch.STOP_GAIN < RetreatWatch.START_GAIN, "without a dead band, it oscillates");
     }
 }
