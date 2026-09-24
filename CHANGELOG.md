@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-25
+
 ### Added
 
 - **`fight-recorder`** — records every fight, with `auto-pvp` on or off, and works out why you died.
