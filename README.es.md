@@ -36,7 +36,7 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | Mod | Obligatorio para | Si falta |
 |---|---|---|
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros cinco módulos funcionan igual |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros siete módulos funcionan igual |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
 | **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |

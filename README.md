@@ -37,7 +37,7 @@ it uses that instead of reimplementing it worse. The price is that you need to h
 | Mod | Required for | If missing |
 |---|---|---|
 | **Meteor Client 1.21.11** | Everything | The addon does not load |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Both **refuse to launch** and say so. The other five modules work the same |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Both **refuse to launch** and say so. The other seven modules work the same |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
 | **`stash-finder`** (comes with Meteor) | `nether-sweep` | The sweep flies and records no containers. It warns you before take-off |
