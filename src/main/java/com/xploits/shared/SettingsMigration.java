@@ -34,8 +34,13 @@ import java.util.stream.Stream;
  * {@link ModulesTree#migrate}; but some modules also save other modules' names as plain strings in a
  * setting list (CrystalAura's {@code pause-modules}, Surround's {@code modules}), so {@code modules.nbt}
  * gets a second, string-only sweep with {@link ModulesTree#renameStrings} on top. {@code hud.nbt} (hidden
- * elements) and the root-only {@code config.nbt} (Meteor's own {@code hiddenModules}) only ever hold module
- * names as plain strings, so they get the string-only sweep alone.
+ * elements) only ever holds module names as plain strings, so it gets the string-only sweep alone.
+ * {@code config.nbt} is deliberately left out: Meteor's own {@code Systems.init()} loads it before any
+ * addon's {@code onInitialize} runs and rewrites it whole on shutdown, so anything this class wrote to it
+ * would just be discarded — migrating it here would be a no-op at best.
+ *
+ * <p>Each settings file is migrated independently: one corrupt or locked file is reported and skipped, the
+ * rest still get migrated. Likewise, a settings-file failure never stops the separate console-folder move.
  */
 public final class SettingsMigration {
     private static final Notice NOTICE = new Notice();
@@ -45,23 +50,56 @@ public final class SettingsMigration {
 
     public static void run() {
         Path root = MeteorClient.FOLDER.toPath();
-        int rewritten = 0;
+        migrateSettings(root);
+        migrateConsoleFolder(root);
+        if (!NOTICE.pending.isEmpty()) MeteorClient.EVENT_BUS.subscribe(NOTICE);
+    }
+
+    private static void migrateSettings(Path root) {
+        List<Path> files;
         try {
-            for (Path file : settingsFiles(root)) {
+            files = settingsFiles(root);
+        } catch (IOException | RuntimeException e) {
+            XploitsAddon.LOG.error("Xploits: settings migration could not list settings files ({})", e.getClass().getSimpleName(), e);
+            files = List.of();
+        }
+        int rewritten = 0;
+        for (Path file : files) {
+            try {
                 ModulesTree.Result r = migrate(file);
                 if (ModulesFile.writeIfChanged(file, r, (tree, target) -> NbtIo.write((NbtCompound) toNbt(tree), target))) {
                     rewritten++;
                 }
+            } catch (IOException | RuntimeException e) {
+                String relative = root.relativize(file).toString().replace('\\', '/');
+                XploitsAddon.LOG.error("Xploits: settings migration failed for {} ({})", relative, e.getClass().getSimpleName(), e);
+                NOTICE.pending.add(Msg.of(MigrationText.FAILED, "file", relative, "detail", e.getClass().getSimpleName()));
             }
-            if (rewritten > 0) NOTICE.pending.add(Msg.of(MigrationText.DONE, "files", rewritten));
-        } catch (IOException | RuntimeException e) {
-            XploitsAddon.LOG.error("Xploits: settings migration failed", e);
-            NOTICE.pending.add(Msg.of(MigrationText.FAILED, "detail", e.getClass().getSimpleName()));
         }
-        if (ConsoleFolder.run(root.resolve("xploits")) == ConsoleFolder.Outcome.BUSY) {
-            NOTICE.pending.add(Msg.of(MigrationText.CONSOLE_FOLDER_BUSY));
+        if (rewritten > 0) {
+            XploitsAddon.LOG.info("Xploits: settings migration done ({} files rewritten)", rewritten);
+            NOTICE.pending.add(Msg.of(MigrationText.DONE, "files", rewritten));
         }
-        if (!NOTICE.pending.isEmpty()) MeteorClient.EVENT_BUS.subscribe(NOTICE);
+    }
+
+    private static void migrateConsoleFolder(Path root) {
+        try {
+            ConsoleFolder.Outcome outcome = ConsoleFolder.run(root.resolve("xploits"));
+            switch (outcome) {
+                case BUSY, PARTIAL -> {
+                    XploitsAddon.LOG.warn("Xploits: console folder move {} ({}): will retry next start",
+                        outcome == ConsoleFolder.Outcome.BUSY ? "could not start" : "partially failed", outcome);
+                    NOTICE.pending.add(Msg.of(MigrationText.CONSOLE_FOLDER_BUSY));
+                }
+                case NEW_ALREADY_EXISTS ->
+                    XploitsAddon.LOG.warn("Xploits: xploits/console already exists next to xploits/consola: left both untouched");
+                case MOVED, NOTHING -> {
+                    // Nothing to tell the player.
+                }
+            }
+        } catch (RuntimeException e) {
+            XploitsAddon.LOG.error("Xploits: console folder migration failed", e);
+        }
     }
 
     /** {@code modules.nbt} gets the structured migration plus a string sweep; every other file, only the sweep. */
@@ -77,7 +115,7 @@ public final class SettingsMigration {
 
     private static List<Path> settingsFiles(Path root) throws IOException {
         List<Path> files = new ArrayList<>();
-        for (String name : List.of("modules.nbt", "hud.nbt", "config.nbt")) {
+        for (String name : List.of("modules.nbt", "hud.nbt")) {
             if (Files.isRegularFile(root.resolve(name))) files.add(root.resolve(name));
         }
         Path profiles = root.resolve("profiles");
@@ -133,7 +171,6 @@ public final class SettingsMigration {
                 // consola: registrado aparte
                 ChatUtils.infoPrefix("Xploits", "%s", Texts.render(m));
             }
-            pending.forEach(m -> XploitsAddon.LOG.info("Xploits: {}", Texts.render(m)));
             pending.clear();
             MeteorClient.EVENT_BUS.unsubscribe(this);
         }

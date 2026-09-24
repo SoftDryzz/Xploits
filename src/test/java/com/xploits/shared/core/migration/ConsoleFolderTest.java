@@ -68,4 +68,29 @@ class ConsoleFolderTest {
         assertTrue(Files.exists(dir.resolve("consola").resolve("vivo.log")));
         assertFalse(Files.exists(dir.resolve("console")));
     }
+
+    @Test
+    void aFailingInnerRenameYieldsPartialAndLeavesTheFileInPlace() throws IOException {
+        oldFolder();
+        ConsoleFolder.Outcome o = ConsoleFolder.run(dir, (from, to) -> {
+            if (from.getFileName().toString().equals("historial")) throw new IOException("locked");
+            Files.move(from, to);
+        });
+        assertEquals(ConsoleFolder.Outcome.PARTIAL, o);
+        Path neu = dir.resolve("console");
+        assertTrue(Files.exists(neu.resolve("historial").resolve("2026-09-20.log")));
+        assertFalse(Files.exists(neu.resolve("history")));
+        assertTrue(Files.exists(neu.resolve("console.lock")));
+    }
+
+    @Test
+    void aLeftoverOldNameInsideConsoleIsRenamedOnTheNextRun() throws IOException {
+        Path neu = Files.createDirectories(dir.resolve("console"));
+        Files.createDirectories(neu.resolve("historial"));
+        Files.writeString(neu.resolve("historial").resolve("2026-09-20.log"), "x");
+        ConsoleFolder.Outcome o = ConsoleFolder.run(dir);
+        assertEquals(ConsoleFolder.Outcome.MOVED, o);
+        assertTrue(Files.exists(neu.resolve("history").resolve("2026-09-20.log")));
+        assertFalse(Files.exists(neu.resolve("historial")));
+    }
 }

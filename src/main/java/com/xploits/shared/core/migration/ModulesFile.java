@@ -1,6 +1,7 @@
 package com.xploits.shared.core.migration;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -22,14 +23,34 @@ public final class ModulesFile {
     public static boolean writeIfChanged(Path file, ModulesTree.Result result, TreeWriter writer) throws IOException {
         if (!result.changed()) return false;
         Path backup = backupOf(file);
-        if (!Files.exists(backup)) Files.copy(file, backup);
-        Path temp = file.resolveSibling(file.getFileName() + ".xploits-tmp");
-        writer.write(result.tree(), temp);
-        try {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+        if (!Files.exists(backup)) {
+            // Copied to a temp name first and moved into place, so a copy cut short by a crash or a full
+            // disk never leaves a half-written file sitting at the real backup path, masking the original.
+            Path backupTemp = backup.resolveSibling(backup.getFileName() + ".tmp");
+            try {
+                Files.copy(file, backupTemp, StandardCopyOption.REPLACE_EXISTING);
+                move(backupTemp, backup);
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(backupTemp);
+                throw e;
+            }
         }
+        Path temp = file.resolveSibling(file.getFileName() + ".xploits-tmp");
+        try {
+            writer.write(result.tree(), temp);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(temp);
+            throw e;
+        }
+        move(temp, file);
         return true;
+    }
+
+    private static void move(Path from, Path to) throws IOException {
+        try {
+            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 }

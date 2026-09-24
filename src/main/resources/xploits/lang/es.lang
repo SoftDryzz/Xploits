@@ -547,5 +547,5 @@ command.ago-days=hace {n} días
 
 # migration
 migration.done=Xploits 0.4.0 ha renombrado tus ajustes guardados al inglés ({files} ficheros). Copia de lo anterior: *.pre-0.4.0.backup.nbt.
-migration.failed=No se pudieron renombrar tus ajustes guardados ({detail}): los de consola, auto-travel y nether-sweep pueden haber vuelto a fábrica. Tus ficheros siguen intactos.
+migration.failed=No se pudo renombrar {file} ({detail}): esos ajustes pueden haber vuelto a fábrica. El fichero no se ha tocado.
 migration.console-folder-busy=La carpeta de la consola está en uso (¿una ventana de consola antigua abierta?): se moverá en el próximo arranque.

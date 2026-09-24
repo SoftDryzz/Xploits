@@ -547,5 +547,5 @@ command.ago-days={n} days ago
 
 # migration
 migration.done=Xploits 0.4.0 renamed your saved settings to English ({files} files). A copy of the old ones: *.pre-0.4.0.backup.nbt.
-migration.failed=Could not rename your saved settings ({detail}): console, auto-travel and nether-sweep settings may be back to defaults. Your files are untouched.
+migration.failed=Could not rename {file} ({detail}): those settings may be back to defaults. That file was not touched.
 migration.console-folder-busy=The console folder is in use (an old console window still open?): it will be moved on the next start.

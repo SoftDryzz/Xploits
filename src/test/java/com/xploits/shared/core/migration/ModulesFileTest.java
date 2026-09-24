@@ -44,7 +44,7 @@ class ModulesFileTest {
     }
 
     @Test
-    void secondRunDoesNotWriteOrBackUpAgain() throws IOException {
+    void theFirstBackupIsNeverOverwritten() throws IOException {
         Path f = Files.writeString(dir.resolve("modules.nbt"), "old");
         apply(f, new ModulesTree.Result(Map.of("x", "y"), true));
         Files.writeString(dir.resolve("modules.nbt.pre-0.4.0.backup.nbt"), "first backup");
