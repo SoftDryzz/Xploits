@@ -178,6 +178,7 @@ class FronteraTest {
         "com/xploits/shared/ChatLogFilter.java",
         "com/xploits/shared/LanguageStore.java",
         "com/xploits/shared/Languages.java",
+        "com/xploits/shared/SettingsMigration.java",
         "com/xploits/shared/Texts.java",
         "com/xploits/shared/XploitsSettings.java",
         "com/xploits/shared/chat/ChatEvent.java",

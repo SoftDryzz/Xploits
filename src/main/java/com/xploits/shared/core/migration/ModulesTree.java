@@ -12,8 +12,10 @@ import java.util.Set;
  * {@code Map<String,Object>}, lists {@code List<Object>}, strings {@code String}; anything else is opaque
  * and kept as is. Inputs are never mutated; an unchanged tree is returned as the same object.
  *
- * <p>When an old and a new name end up side by side in one list (a file saved by 0.4.0 and then by an
- * older version), the entry that already had the new name wins and the renamed one is dropped.
+ * <p>When an old and a new name end up side by side in one list, the entry that already had the new name
+ * wins and the renamed one is dropped. This never happens from ordinary play: Meteor only ever writes the
+ * modules and groups that exist in the running code, so it takes a hand-edited or manually merged file for
+ * both names to show up together.
  */
 public final class ModulesTree {
     private ModulesTree() {

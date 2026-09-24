@@ -26,15 +26,18 @@ class ModulesTreeTest {
         return map("name", name, "value", value);
     }
 
+    @SafeVarargs
     private static Map<String, Object> group(String name, Map<String, Object>... settings) {
         return map("name", name, "sectionExpanded", OPAQUE, "settings", new ArrayList<>(List.of(settings)));
     }
 
+    @SafeVarargs
     private static Map<String, Object> module(String name, Map<String, Object>... groups) {
         return map("name", name, "keybind", OPAQUE, "active", OPAQUE,
             "settings", map("groups", new ArrayList<>(List.of(groups))));
     }
 
+    @SafeVarargs
     private static Map<String, Object> root(Map<String, Object>... modules) {
         return map("modules", new ArrayList<>(List.of(modules)));
     }
@@ -150,5 +153,31 @@ class ModulesTreeTest {
         assertTrue(r.changed());
         assertEquals(map("elements", List.of(map("hidden", List.of("console", "consola-extra", "kill-aura")))), r.tree());
         assertFalse(ModulesTree.renameStrings(r.tree(), T.modules()).changed());
+    }
+
+    /**
+     * Module names are also saved as plain strings elsewhere, inside another module's own setting list
+     * (CrystalAura's {@code pause-modules}, Surround's {@code modules}). {@link ModulesTree#migrate} alone
+     * does not reach into an arbitrary setting's value list, so {@code SettingsMigration} runs
+     * {@link ModulesTree#renameStrings} on the result too; these two tests pin that combination down.
+     */
+    @Test
+    void aModuleNameInsideAnotherModulesSettingListIsRenamedWhenBothStepsRun() {
+        Object tree = root(module("kill-aura", group("General", setting("pause-modules", List.of("consola", "kill-aura")))));
+        ModulesTree.Result structured = ModulesTree.migrate(tree, T);
+        ModulesTree.Result strings = ModulesTree.renameStrings(structured.tree(), T.modules());
+        assertTrue(strings.changed());
+        Map<String, Object> g = groups(modules(strings.tree()).get(0)).get(0);
+        assertEquals(List.of("console", "kill-aura"), settings(g).get(0).get("value"));
+    }
+
+    @Test
+    void anUnrelatedStringInASettingListStaysUntouched() {
+        Object tree = root(module("kill-aura", group("General", setting("pause-modules", List.of("surround", "kill-aura")))));
+        ModulesTree.Result structured = ModulesTree.migrate(tree, T);
+        ModulesTree.Result strings = ModulesTree.renameStrings(structured.tree(), T.modules());
+        assertFalse(strings.changed());
+        Map<String, Object> g = groups(modules(strings.tree()).get(0)).get(0);
+        assertEquals(List.of("surround", "kill-aura"), settings(g).get(0).get("value"));
     }
 }

@@ -9,6 +9,7 @@ import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
 import com.xploits.shared.Languages;
+import com.xploits.shared.SettingsMigration;
 import com.xploits.shared.XploitsSettings;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
@@ -25,6 +26,7 @@ public class XploitsAddon extends MeteorAddon {
     @Override
     public void onInitialize() {
         LOG.info("Initializing Xploits");
+        SettingsMigration.run();
         Languages.start();
         Modules.get().add(new XploitsSettings());
         Modules.get().add(new KitRequester());
