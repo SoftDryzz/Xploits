@@ -441,6 +441,42 @@ pvp.state-out-of-resources=OUT OF RESOURCES
 pvp.posture-calm=CALM
 pvp.posture-threatened=THREATENED
 
+# recorder
+recorder.module-desc=Records every fight, with auto-pvp on or off, and works out why you died. No positions are stored: distances, counts and names only. Review them with .xploits pvp review.
+recorder.setting-death-notice=When you die in a recorded fight, one chat line with the main probable cause.
+recorder.setting-live-console=Writes the fight to the Xploits console as it happens (pops, big hits, deaths) and its summary when it ends.
+recorder.outcome-won=won
+recorder.outcome-lost=lost
+recorder.outcome-ended=ended
+recorder.outcome-aborted=cut short
+recorder.mode-manual=manual
+recorder.mode-auto-pvp=auto-pvp
+recorder.mode-mixed=mixed
+recorder.kind-crystal=crystal
+recorder.kind-explosion=explosion
+recorder.kind-respawn-point=bed or anchor
+recorder.kind-anvil=anvil
+recorder.kind-melee=melee
+recorder.kind-projectile=projectile
+recorder.kind-fall=fall
+recorder.kind-fire=fire
+recorder.kind-magic=magic
+recorder.kind-mob=mob
+recorder.kind-other=other
+recorder.kind-unseen=unseen
+recorder.by-self=yourself
+recorder.by-none=no attacker
+recorder.material-crystals=crystals
+recorder.material-obsidian=obsidian
+recorder.material-totems=totems
+recorder.nobody=nobody
+recorder.nothing=
+recorder.join-comma={first}, {rest}
+recorder.concat={first}{second}
+recorder.on=on
+recorder.off=off
+recorder.activity=fighting · {seconds} s
+
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.
 elytra.setting-swap-below=Swaps the worn elytra when its durability is at or below this percentage.

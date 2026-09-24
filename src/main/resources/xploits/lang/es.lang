@@ -441,6 +441,42 @@ pvp.state-out-of-resources=SIN_RECURSOS
 pvp.posture-calm=TRANQUILO
 pvp.posture-threatened=AMENAZADO
 
+# recorder
+recorder.module-desc=Graba cada pelea, con auto-pvp encendido o apagado, y averigua por qué moriste. No guarda posiciones: solo distancias, cantidades y nombres. Repásalas con .xploits pvp review.
+recorder.setting-death-notice=Al morir en una pelea grabada, una línea en el chat con la causa probable principal.
+recorder.setting-live-console=Escribe la pelea en la consola de Xploits mientras ocurre (pops, golpes fuertes, muertes) y su resumen al terminar.
+recorder.outcome-won=ganada
+recorder.outcome-lost=perdida
+recorder.outcome-ended=terminada
+recorder.outcome-aborted=interrumpida
+recorder.mode-manual=manual
+recorder.mode-auto-pvp=auto-pvp
+recorder.mode-mixed=mixto
+recorder.kind-crystal=cristal
+recorder.kind-explosion=explosión
+recorder.kind-respawn-point=cama o ancla
+recorder.kind-anvil=yunque
+recorder.kind-melee=cuerpo a cuerpo
+recorder.kind-projectile=proyectil
+recorder.kind-fall=caída
+recorder.kind-fire=fuego
+recorder.kind-magic=magia
+recorder.kind-mob=mob
+recorder.kind-other=otro
+recorder.kind-unseen=no visto
+recorder.by-self=ti mismo
+recorder.by-none=sin atacante
+recorder.material-crystals=cristales
+recorder.material-obsidian=obsidiana
+recorder.material-totems=tótems
+recorder.nobody=nadie
+recorder.nothing=
+recorder.join-comma={first}, {rest}
+recorder.concat={first}{second}
+recorder.on=encendido
+recorder.off=apagado
+recorder.activity=peleando · {seconds} s
+
 # elytra
 elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.
 elytra.setting-swap-below=Cambia la elytra puesta cuando su durabilidad sea igual o menor que este porcentaje.
