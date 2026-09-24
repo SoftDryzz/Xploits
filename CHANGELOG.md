@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-24
+
 ### Fixed
 
 - `stash-keeper`'s "indexed a container" chat line showed only "Xploits" instead of the container it
