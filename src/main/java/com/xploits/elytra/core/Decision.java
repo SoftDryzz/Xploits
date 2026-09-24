@@ -1,13 +1,13 @@
 package com.xploits.elytra.core;
 
-/** Qué hacer con la elytra puesta (spec §4). */
+/** What to do with the worn elytra (spec §4). */
 public enum Decision {
-    /** Cambiarla por la del slot indicado. */
+    /** Swap it for the one in the given slot. */
     SWAP,
-    /** Hay que cambiarla pero no hay ningún repuesto válido: avisar y no tocar nada. */
+    /** It has to be swapped but there is no valid spare: warn and touch nothing. */
     NO_SPARE,
-    /** Nada que hacer. */
+    /** Nothing to do. */
     OK,
-    /** No lleva elytra puesta. */
+    /** No elytra is worn. */
     NOT_WEARING
 }

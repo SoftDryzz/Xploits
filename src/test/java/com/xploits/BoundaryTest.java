@@ -143,8 +143,6 @@ class BoundaryTest {
      * design §8). Each migration task appends its prefixes; the last replaces this with "com/xploits/".
      */
     private static final List<String> ENGLISH = List.of(
-        "com/xploits/autotpy/core/",
-        "com/xploits/elytra/",
         "com/xploits/kitrequester/inventory/",
         "com/xploits/mixin/",
         "com/xploits/commands/CommandText.java",
@@ -162,21 +160,16 @@ class BoundaryTest {
         "com/xploits/kitrequester/core/OrderMachineTest.java",
         "com/xploits/kitrequester/core/Progress.java",
         "com/xploits/kitrequester/core/ProgressStoreTest.java",
-        "com/xploits/stash/core/ContainerSnapshot.java",
-        "com/xploits/stash/core/ContainerSnapshotTest.java",
-        "com/xploits/stash/core/ContainerType.java",
-        "com/xploits/stash/core/NestedShulker.java",
-        "com/xploits/stash/core/StashIndex.java",
-        "com/xploits/stash/core/StashIndexTest.java",
-        "com/xploits/stash/core/StashStoreTest.java",
-        "com/xploits/stash/core/StashText.java",
         "com/xploits/BoundaryTest.java",
         "com/xploits/XploitsAddon.java",
         "com/xploits/console/",
         "com/xploits/shared/",
         "com/xploits/travel/",
         "com/xploits/sweep/",
-        "com/xploits/pvp/"
+        "com/xploits/pvp/",
+        "com/xploits/elytra/",
+        "com/xploits/autotpy/",
+        "com/xploits/stash/"
     );
 
     /** Glossary §8: distinctive Spanish words, matched as whole camel/snake-case words. */

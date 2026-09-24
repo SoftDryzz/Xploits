@@ -61,17 +61,17 @@ class ContainerKeyTest {
     }
 
     @Test
-    void sinPosicionDiceDimensionYDistanciaYNadaMas() {
-        ContainerKey cofre = ContainerKey.block("minecraft:overworld", 300, 64, 400);
+    void withoutPositionSaysDimensionAndDistanceAndNothingElse() {
+        ContainerKey chest = ContainerKey.block("minecraft:overworld", 300, 64, 400);
         assertEquals(Msg.of(StashText.WHERE_DISTANCE, "dimension", "overworld", "blocks", 500L),
-            cofre.sinPosicion("minecraft:overworld", 0.0, 0.0));
+            chest.withoutPosition("minecraft:overworld", 0.0, 0.0));
         assertEquals(Msg.of(StashText.WHERE_DIMENSION, "dimension", "overworld"),
-            cofre.sinPosicion("minecraft:the_nether", 0.0, 0.0));
-        assertEquals(Msg.of(StashText.WHERE_DIMENSION, "dimension", "overworld"), cofre.sinPosicion(null, null, null));
-        assertEquals(Msg.of(StashText.WHERE_ENDER), ContainerKey.ENDER.sinPosicion("minecraft:overworld", 0.0, 0.0));
+            chest.withoutPosition("minecraft:the_nether", 0.0, 0.0));
+        assertEquals(Msg.of(StashText.WHERE_DIMENSION, "dimension", "overworld"), chest.withoutPosition(null, null, null));
+        assertEquals(Msg.of(StashText.WHERE_ENDER), ContainerKey.ENDER.withoutPosition("minecraft:overworld", 0.0, 0.0));
         Catalog es = Catalog.load(Language.ES, problem -> {
             throw new AssertionError(problem);
         });
-        assertFalse(CoordinateSentinel.isSuspect(es.render(cofre.sinPosicion("minecraft:overworld", 0.0, 0.0))));
+        assertFalse(CoordinateSentinel.isSuspect(es.render(chest.withoutPosition("minecraft:overworld", 0.0, 0.0))));
     }
 }

@@ -24,10 +24,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Acepta al instante las TPA de la lista users y, si se quiere, de los amigos de Meteor. Nunca acepta /tpahere.
- * Si KitRequester también está activo: sus couriers conocidos los gestiona solo KitRequester; y una TPA de tu
- * lista que llegue mientras KitRequester espera courier la acepta AutoTPY aunque KitRequester avise de que la
- * ignora (el pedido no se ve afectado).
+ * Instantly accepts TPAs from the users list and, if wanted, from Meteor friends. It never accepts /tpahere.
+ * If KitRequester is also active: its known couriers are handled by KitRequester alone; and a TPA from your
+ * list that arrives while KitRequester is waiting for a courier is accepted by AutoTPY even though KitRequester
+ * warns that it ignores it (the order is not affected).
  */
 public class AutoTpy extends XploitsModule {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -58,7 +58,7 @@ public class AutoTpy extends XploitsModule {
         super(XploitsAddon.CATEGORY, "auto-tpy", Texts.startupText(TpyText.MODULE_DESC));
     }
 
-    /** Prioridad máxima para ver el mensaje antes de que otros módulos lo modifiquen. */
+    /** Highest priority, to see the message before other modules change it. */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onMessage(ReceiveMessageEvent event) {
         if (mc.player == null) return;
@@ -78,16 +78,16 @@ public class AutoTpy extends XploitsModule {
                     if (notify.get() && policy.shouldReportIgnored(name, now)) info(TpyText.IGNORED, "name", name);
                 }
                 case DUPLICATE, HANDLED_BY_KIT_REQUESTER, INVALID -> {
-                    // Sin aviso: repetición, courier gestionado por KitRequester o nombre vacío.
+                    // No notice: a repeat, a courier handled by KitRequester or an empty name.
                 }
             }
         });
     }
 
     /**
-     * La lista users, para quien necesite saber quiénes son de los nuestros. La lee auto-pvp para
-     * no atacarles, y por eso se devuelve esté este módulo encendido o apagado: la lista dice de
-     * quién te fías, no qué módulo está funcionando.
+     * The users list, for whoever needs to know who is on our side. auto-pvp reads it so as not to
+     * attack them, and that is why it is returned whether this module is on or off: the list says
+     * whom you trust, not which module is running.
      */
     public Set<String> users() {
         return Set.copyOf(users.get());

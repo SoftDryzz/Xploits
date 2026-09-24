@@ -4,10 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Una foto del contenido de un contenedor (spec §4.1). Los ítems se agregan por tipo, no slot a slot:
- * ninguna función del módulo necesita saber en qué hueco estaba cada pila.
+ * A snapshot of a container's contents (spec §4.1). Items are added up by type, not slot by slot:
+ * nothing in the module needs to know which slot each stack was in.
  *
- * @param seenAt epoch millis de cuando se tomó
+ * @param seenAt epoch millis of when it was taken
  */
 public record ContainerSnapshot(ContainerKey key, ContainerType type, long seenAt,
                                 Map<String, Integer> items, List<NestedShulker> nested) {
@@ -16,7 +16,7 @@ public record ContainerSnapshot(ContainerKey key, ContainerType type, long seenA
         nested = List.copyOf(nested);
     }
 
-    /** Cuántas unidades de ese ítem hay, contando también las que están dentro de shulkers. */
+    /** How many of that item there are, counting those inside shulkers too. */
     public int totalOf(String itemId) {
         int total = items.getOrDefault(itemId, 0);
         for (NestedShulker shulker : nested) total += shulker.totalOf(itemId);

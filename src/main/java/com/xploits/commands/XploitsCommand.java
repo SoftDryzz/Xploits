@@ -186,7 +186,7 @@ public class XploitsCommand extends XploitsCommandBase {
             Msg chat = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
                 "place", hit.key().id(), "shulker", where, "ago", ago(hit.seenAt()));
             Msg log = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
-                "place", hit.key().sinPosicion(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
+                "place", hit.key().withoutPosition(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
             reply(Level.INFO, stashKeeper.name, new PositionedMsg(chat, log));
         }
         if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));

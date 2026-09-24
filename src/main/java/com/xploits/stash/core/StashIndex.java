@@ -12,20 +12,20 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Todo lo que el addon ha visto dentro de contenedores (spec §4). Nunca borra: una foto nueva
- * reemplaza a la anterior del mismo contenedor, y nada caduca (spec §4.4).
+ * Everything the addon has seen inside containers (spec §4). It never deletes: a new snapshot
+ * replaces the previous one of the same container, and nothing expires (spec §4.4).
  */
 public final class StashIndex {
     private final Map<ContainerKey, ContainerSnapshot> byKey = new LinkedHashMap<>();
 
     /**
-     * Un ítem encontrado en un contenedor.
+     * An item found in a container.
      *
-     * @param insideShulker identidad del shulker que lo contenía, o null si estaba suelto en el contenedor
+     * @param insideShulker identity of the shulker that held it, or null if it was loose in the container
      */
     public record Hit(ContainerKey key, ContainerType type, String itemId, int count, long seenAt, String insideShulker) {}
 
-    /** Da de alta la foto, o reemplaza la que hubiera de ese mismo contenedor. */
+    /** Adds the snapshot, or replaces the one already there for that same container. */
     public void put(ContainerSnapshot snapshot) {
         byKey.put(snapshot.key(), snapshot);
     }
@@ -42,7 +42,7 @@ public final class StashIndex {
         return byKey.size();
     }
 
-    /** Total de shulkers vistos, sumando los de todos los contenedores indexados. */
+    /** Total shulkers seen, adding up those of every indexed container. */
     public int totalShulkers() {
         int total = 0;
         for (ContainerSnapshot snapshot : byKey.values()) total += snapshot.nested().size();
@@ -50,10 +50,10 @@ public final class StashIndex {
     }
 
     /**
-     * Dónde hay alguno de esos ítems, de más cantidad a menos. Los shulkers se miran por dentro.
-     * Recorre los ítems de cada contenedor una vez (coste snapshots × ítems) en vez de recorrer
-     * itemIds por cada snapshot (coste snapshots × ids × shulkers, mucho peor cuando la consulta
-     * resuelve a muchos ids).
+     * Where any of those items are, from the largest count to the smallest. Shulkers are looked
+     * inside. Walks each container's items once (cost snapshots × items) instead of walking itemIds
+     * for each snapshot (cost snapshots × ids × shulkers, much worse when the query resolves to
+     * many ids).
      */
     public List<Hit> find(Collection<String> itemIds) {
         Set<String> wanted = itemIds instanceof Set<String> set ? set : new HashSet<>(itemIds);
