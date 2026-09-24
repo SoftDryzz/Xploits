@@ -81,7 +81,8 @@ share the error, the test passes anyway.
 When something cannot be done as asked, **it is rejected, saying which setting to change and to what
 value**. Something similar is never done silently.
 
-The literal doctrine, written in the code: *"what still works when capped is capped; what does not is rejected"*.
+The literal doctrine, written in the code: *"what still works when capped is capped; what does not
+is rejected"*.
 
 The case that justifies it: a decoy pattern that did not fit the travel distance returned the straight
 route. The player thought it was weaving, adjusted their behavior to a protection that did not exist,

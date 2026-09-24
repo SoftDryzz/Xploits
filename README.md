@@ -157,7 +157,7 @@ the ones it added, never one you already had. See [Security](docs/security.md).
 
 Two independent percentages: at how much to swap the one you are wearing, and the minimum the spare
 must have. It picks **the worst one that passes the minimum**, so as not to waste the good one. Works
-with or without `ElytraFly`.
+with or without `elytra-fly`.
 
 ### `kit-requester` — request kits
 
@@ -207,6 +207,7 @@ It needs Windows Terminal, which is the default console in Windows 11.
 | `.xploits pvp` | Phase, posture, your health and the damage aimed at you |
 | `.xploits travel` · `go` · `stop` | Trip status, launch it, stop it |
 | `.xploits sweep` · `go` · `stop` | Sweep status, launch it, stop it |
+| `.xploits language [auto\|es\|en]` | Active language, or sets it |
 | `.xploits reload` | Reloads the saved data |
 
 ---

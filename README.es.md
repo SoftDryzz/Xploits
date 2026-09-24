@@ -97,8 +97,8 @@ X y otros tantos en Z, y cuestan los mismos cohetes que 20 000 en recto.
 | `DECOY` | Apunta a un sitio falso y corrige a mitad | **Protege la salida**: contra quien te ve despegar |
 
 **El desvío se paga en cohetes.** La espiral es cara en absoluto: su largo depende del radio y las
-vueltas, no de la distancia. **Baja `spiral-turns` a 0,5** salvo que quieras pagarlo — cuadruplica
-el coste frente a 1,5 para solo un 31 % más de desvío.
+vueltas, no de la distancia. **Baja `spiral-turns` a 0,5** salvo que quieras pagarlo — 1,5 cuesta
+cuatro veces más que 0,5 para solo un 31 % más de desvío.
 
 **Para fundar una base**, dos viajes: primero por autopista con `STRAIGHT` lo más lejos que aguante el
 inventario; luego sales de la autopista y vas a las coordenadas con `SPIRAL`. El punto donde
@@ -154,7 +154,7 @@ los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/security.md).
 
 Dos porcentajes independientes: a cuánto cambiar la puesta, y el mínimo que debe tener la de
 repuesto. Elige **la peor que pase el mínimo**, para no gastar la buena. Funciona con o sin
-`ElytraFly`.
+`elytra-fly`.
 
 ### `kit-requester` — pedir kits
 
@@ -204,6 +204,7 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 | `.xploits pvp` | Fase, postura, tu vida y el daño que te apunta |
 | `.xploits travel` · `go` · `stop` | Estado del viaje, lanzarlo, cortarlo |
 | `.xploits sweep` · `go` · `stop` | Estado del barrido, lanzarlo, cortarlo |
+| `.xploits language [auto\|es\|en]` | Idioma activo, o lo cambia |
 | `.xploits reload` | Recarga los datos guardados |
 
 ---
