@@ -93,14 +93,17 @@ public final class SettingsMigration {
             ConsoleFolder.Outcome outcome = ConsoleFolder.run(root.resolve("xploits"));
             switch (outcome) {
                 case BUSY, PARTIAL -> {
-                    XploitsAddon.LOG.warn("Xploits: console folder move {} ({}): will retry next start",
-                        outcome == ConsoleFolder.Outcome.BUSY ? "could not start" : "partially failed", outcome);
+                    XploitsAddon.LOG.warn("Xploits: console folder migration {} ({}): something is still in use, will retry next start",
+                        outcome == ConsoleFolder.Outcome.BUSY ? "made no progress" : "partly done", outcome);
                     NOTICE.pending.add(Msg.of(MigrationText.CONSOLE_FOLDER_BUSY));
                 }
-                case NEW_ALREADY_EXISTS ->
-                    XploitsAddon.LOG.warn("Xploits: xploits/console already exists next to xploits/consola: left both untouched");
-                case MOVED, NOTHING -> {
-                    // Nothing to tell the player.
+                case BLOCKED ->
+                    XploitsAddon.LOG.warn("Xploits: xploits/console is a file, not a folder: xploits/consola left untouched");
+                case MIGRATED ->
+                    // Nothing to tell the player: the history is where the console looks for it.
+                    XploitsAddon.LOG.info("Xploits: console folder migrated to xploits/console");
+                case NOTHING -> {
+                    // Nothing to do.
                 }
             }
         } catch (RuntimeException e) {
