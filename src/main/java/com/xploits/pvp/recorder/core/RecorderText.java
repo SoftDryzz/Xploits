@@ -102,6 +102,10 @@ public enum RecorderText implements MessageKey {
     SAVE_FAILED,
     /** {@link #SAVE_FAILED} for the console and the log: no detail, it may carry a file path. */
     SAVE_FAILED_LOG,
+    /** Cleanup ({@link com.xploits.pvp.recorder.core.FightStore#prune}) failed after a successful save. */
+    PRUNE_FAILED,
+    /** {@link #PRUNE_FAILED} for the console and the log: no detail, it may carry a file path. */
+    PRUNE_FAILED_LOG,
     TICK_FAILED;
 
     @Override

@@ -531,6 +531,8 @@ recorder.review-list-failed=No se pudo listar las peleas grabadas: {detail}
 recorder.review-list-failed-log=No se pudo listar las peleas grabadas. El detalle, solo en el chat.
 recorder.save-failed=No se pudo guardar la pelea: {detail}
 recorder.save-failed-log=No se pudo guardar la pelea. El detalle, solo en el chat.
+recorder.prune-failed=No se pudo limpiar peleas antiguas: {detail}
+recorder.prune-failed-log=No se pudo limpiar peleas antiguas. El detalle, solo en el chat.
 recorder.tick-failed=El grabador tuvo un error y descartó la pelea en curso. Sigue grabando, pero puede volver a pasar: los detalles están en el log del juego.
 
 # elytra

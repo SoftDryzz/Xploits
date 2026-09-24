@@ -144,6 +144,8 @@ public class FightRecorder extends XploitsModule {
     private FightStore store;
     /** Whether saving already failed in this activation: said once, not once per fight. */
     private boolean saveWarned;
+    /** Whether cleanup ({@link FightStore#prune}) already failed in this activation: said once, not once per fight. */
+    private boolean pruneWarned;
     /**
      * Whether a tick already failed in this activation. The first failure is logged with its stack trace
      * and said in chat; the next ones only drop the fight in progress, silently: a bug that fails every
@@ -173,6 +175,7 @@ public class FightRecorder extends XploitsModule {
         playerNames.clear();
         crystalIds.clear();
         saveWarned = false;
+        pruneWarned = false;
         tickFailed = false;
         forgetWorld();
         modulesChanged = true;
@@ -485,10 +488,19 @@ public class FightRecorder extends XploitsModule {
 
     /** Stores the fight, writes its review to the console and, if you lost, says why in one chat line. */
     private void finish(FightRecord record) {
+        FightStore fights = store();
         try {
-            FightStore fights = store();
             fights.save(record);
-            fights.prune();
+            try {
+                fights.prune();
+            } catch (IOException e) {
+                if (!pruneWarned) {
+                    pruneWarned = true;
+                    // The detail can carry a file path: chat only, as stash-keeper and kit-requester do.
+                    warningPrivate(new PositionedMsg(Msg.of(RecorderText.PRUNE_FAILED, "detail", String.valueOf(e.getMessage())),
+                        Msg.of(RecorderText.PRUNE_FAILED_LOG)));
+                }
+            }
         } catch (IOException e) {
             if (!saveWarned) {
                 saveWarned = true;

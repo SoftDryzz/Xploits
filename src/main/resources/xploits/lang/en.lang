@@ -531,6 +531,8 @@ recorder.review-list-failed=Could not list the recorded fights: {detail}
 recorder.review-list-failed-log=Could not list the recorded fights. The detail is in chat only.
 recorder.save-failed=Could not save the fight: {detail}
 recorder.save-failed-log=Could not save the fight. The detail is in chat only.
+recorder.prune-failed=Could not clean up old fights: {detail}
+recorder.prune-failed-log=Could not clean up old fights. The detail is in chat only.
 recorder.tick-failed=The recorder hit an error and dropped the fight in progress. It keeps recording, but this may happen again: the details are in the game log.
 
 # elytra
