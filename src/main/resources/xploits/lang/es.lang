@@ -3,7 +3,7 @@
 
 language.module-desc=Ajustes generales de Xploits. No hace falta activarlo.
 language.setting-language=Idioma de Xploits en el chat y la consola. Auto sigue el idioma de Minecraft.
-language.setting-hide-coordinates-in-log=Tapa las coordenadas del chat en el log de Minecraft (latest.log); en pantalla se siguen viendo. Baritone: solo sus líneas. All: todas. All but Baritone: todas menos las suyas.
+language.setting-hide-coordinates-in-log=Tapa las coordenadas del chat y de lo que Baritone escribe en el log de Minecraft (latest.log); en pantalla se siguen viendo. Baritone: solo sus líneas. All: todas. All but Baritone: todas menos las suyas.
 language.only-settings=Este módulo solo guarda ajustes; no hace falta activarlo.
 language.now=Idioma: {language}.
 language.now-restart=Idioma: {language}. Las descripciones de la ClickGUI cambian al reiniciar.
@@ -17,7 +17,7 @@ language.file-unwritable=No pude guardar el idioma en language.txt ({reason}): a
 language.command-desc=Estado del addon, búsqueda en el stash, idioma y recarga.
 
 # console
-console.module-desc=Abre una ventana de terminal con el logo, el estado del juego y el registro de lo que hace Xploits. Sin coordenadas: en la ventana y en su fichero salen sin posición.
+console.module-desc=Abre una ventana de terminal con el logo, el estado del juego y el registro de lo que hace Xploits. Sin coordenadas por defecto: en la ventana y en su fichero salen sin posición (ajuste hide-coordinates).
 console.setting-hide-coordinates=Oculta las coordenadas en la ventana y en su histórico. Si lo apagas, la consola muestra lo mismo que el chat y guarda las posiciones en disco (vivo.log y hasta 30 días de historial).
 console.level-info=INFO
 console.level-warning=AVISO

@@ -41,6 +41,38 @@ class ChatLogMaskTest {
     }
 
     @Test
+    void positionsNearAnAxisAreMaskedWhenAWordIntroducesThem() {
+        assertEquals("Flying at ***, ***", ChatLogMask.mask("Flying at 37, -120000"));
+        assertEquals("seen at ***, ***, ***", ChatLogMask.mask("seen at 99, 64, 250000"));
+        assertEquals("[Baritone] > goal *** ***", ChatLogMask.mask("[Baritone] > goal 12 -250000"));
+        assertEquals("Trip to ***, ***.", ChatLogMask.mask("Trip to 0, -250000."));
+        assertEquals("destino en ***, ***", ChatLogMask.mask("destino en 5, 8000"));
+        assertEquals("rumbo hacia ***, ***", ChatLogMask.mask("rumbo hacia -5, 8000"));
+    }
+
+    @Test
+    void baritoneRegionFilesAreMasked() {
+        assertEquals("Saving region ***,*** to disk C:\\x", ChatLogMask.mask("Saving region -12,34 to disk C:\\x"));
+        assertEquals("Loading region ***,*** from disk", ChatLogMask.mask("Loading region 5,-7 from disk"));
+    }
+
+    @Test
+    void escapedNewlinesDoNotShieldTheNextLine() {
+        assertEquals("X: ***\\nZ: ***", ChatLogMask.mask("X: 1234\\nZ: 5678"));
+        assertEquals("line one\\n***, ***", ChatLogMask.mask("line one\\n1234, 5678"));
+    }
+
+    @Test
+    void stdoutLinesFromBaritoneCountAsBaritone() {
+        String region = "Saving region -12,34 to disk x";
+        assertEquals("Saving region ***,*** to disk x", ChatLogMask.applyStdout(Mode.BARITONE, region));
+        assertEquals(region, ChatLogMask.applyStdout(Mode.ALL_BUT_BARITONE, region));
+        assertEquals("other ***, ***", ChatLogMask.applyStdout(Mode.ALL_BUT_BARITONE, "other 1234, 5678"));
+        assertEquals("other 1234, 5678", ChatLogMask.applyStdout(Mode.BARITONE, "other 1234, 5678"));
+        assertEquals(region, ChatLogMask.applyStdout(Mode.OFF, region));
+    }
+
+    @Test
     void modesChooseWhichLines() {
         String baritone = "[Baritone] > goal -1234567 -7654321";
         String other = "[Meteor] [Xploits] to -1234567, 7654321.";

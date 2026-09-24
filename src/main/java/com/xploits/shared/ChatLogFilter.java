@@ -24,4 +24,13 @@ public final class ChatLogFilter {
             return line;
         }
     }
+
+    /** Same, for a line printed to standard output. */
+    public static String filterStdout(String line) {
+        try {
+            return ChatLogMask.applyStdout(mode, line);
+        } catch (RuntimeException e) {
+            return line;
+        }
+    }
 }

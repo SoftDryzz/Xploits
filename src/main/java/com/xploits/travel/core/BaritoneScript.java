@@ -56,6 +56,10 @@ public final class BaritoneScript {
      * élitro lo hace {@code elytra-replace}, no Baritone; {@code elytraTermsAccepted true} para
      * silenciar su aviso; y {@code elytraPredictTerrain false}-. La semilla solo se escribe si no
      * está vacía.
+     *
+     * <p>Before all of them, {@code censorCoordinates true} and {@code censorRanCommands true}: Baritone
+     * echoes goals and commands to chat, and Minecraft copies chat to latest.log. They are never
+     * turned back off (see {@link #restoration}).
      */
     public static List<String> preparation(String prefix, FlightSettings settings) {
         requirePrefix(prefix);
@@ -93,6 +97,9 @@ public final class BaritoneScript {
      *       trata como un ajuste del jugador: lo apaga por nuestra cuenta (spec §8.1) y no forma
      *       parte de {@link FlightSettings}, así que este método no tiene ningún valor que
      *       devolverle.</li>
+     *   <li>{@code censorCoordinates} and {@code censorRanCommands} stay on: Baritone saves {@code #set}
+     *       to disk, so turning them off would undo a censor the player already had, and leaving them
+     *       on only hides coordinates.</li>
      * </ul>
      */
     public static List<String> restoration(String prefix, FlightSettings resting) {
@@ -103,8 +110,6 @@ public final class BaritoneScript {
         commands.add(set(prefix, "elytraAllowEmergencyLand", bool(resting.allowEmergencyLand())));
         commands.add(set(prefix, "elytraConserveFireworks", bool(resting.conserveFireworks())));
         commands.add(set(prefix, "elytraFireworkSpeed", number(resting.fireworkSpeed())));
-        commands.add(set(prefix, "censorCoordinates", "false"));
-        commands.add(set(prefix, "censorRanCommands", "false"));
         return List.copyOf(commands);
     }
 

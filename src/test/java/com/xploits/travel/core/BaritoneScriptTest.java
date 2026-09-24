@@ -69,10 +69,11 @@ class BaritoneScriptTest {
     }
 
     @Test
-    void restorationTurnsTheCensorsBackOff() {
+    void restorationLeavesTheCensorsOn() {
+        // Baritone saves #set to disk: turning them off would undo a censor the player already had.
         List<String> restoration = BaritoneScript.restoration(PREFIX, flying());
-        assertTrue(restoration.contains("#set censorCoordinates false"));
-        assertTrue(restoration.contains("#set censorRanCommands false"));
+        assertFalse(any(restoration, "censorCoordinates"));
+        assertFalse(any(restoration, "censorRanCommands"));
     }
 
     @Test
