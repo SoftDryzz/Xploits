@@ -33,9 +33,15 @@ public final class FightStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Path folder;
+    private final Mover mover;
 
     public FightStore(Path folder) {
+        this(folder, FightStore::moveIntoPlace);
+    }
+
+    FightStore(Path folder, Mover mover) {
         this.folder = folder;
+        this.mover = mover;
     }
 
     public Path folder() {
@@ -55,13 +61,33 @@ public final class FightStore {
         }
 
         Path tmp = folder.resolve(target.getFileName() + ".tmp");
-        Files.writeString(tmp, GSON.toJson(FileDto.of(f)));
         try {
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(tmp, GSON.toJson(FileDto.of(f)));
+            mover.move(tmp, target);
+        } catch (IOException | RuntimeException e) {
+            // Never leave a half-saved fight behind: the .tmp goes, the failure still reaches the caller.
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
         }
         return target;
+    }
+
+    /** Moves the finished {@code .tmp} file onto its final name. A seam so a test can make the move fail. */
+    @FunctionalInterface
+    interface Mover {
+        void move(Path from, Path to) throws IOException;
+    }
+
+    private static void moveIntoPlace(Path from, Path to) throws IOException {
+        try {
+            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /** Every {@code fight-<digits>.json} file in the folder, newest name first; anything else (incl. {@code .tmp}) is ignored. */

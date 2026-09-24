@@ -21,10 +21,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +78,22 @@ class FightStoreTest {
         assertEquals("fight-1700000005002.json", third.getFileName().toString());
         // the content saved under the bumped name is untouched: it still says it started at the original time
         assertEquals(1_700_000_005_000L, store.load(second).startedAt());
+    }
+
+    @Test
+    void aFailedMoveLeavesNoTemporaryFileBehind(@TempDir Path dir) throws IOException {
+        IOException refused = new IOException("the move was refused");
+        FightStore store = new FightStore(dir, (from, to) -> {
+            assertTrue(Files.exists(from), "the .tmp was written before the move");
+            throw refused;
+        });
+
+        IOException thrown = assertThrows(IOException.class, () -> store.save(fightAt(1_700_000_007_000L)));
+
+        assertSame(refused, thrown);
+        try (Stream<Path> left = Files.list(dir)) {
+            assertEquals(List.of(), left.toList());
+        }
     }
 
     @Test
