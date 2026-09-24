@@ -10,7 +10,12 @@ import java.util.Objects;
 /**
  * One finished fight, exactly what is written to disk (schema {@value #SCHEMA}); the component names are
  * the JSON field names. There is no position anywhere, on purpose: distances, counts, booleans and names.
- * Times are epoch milliseconds; {@code second} fields count from the start of the fight.
+ * Times are epoch milliseconds; {@code second} fields count game seconds (20 ticks) from the start of the fight.
+ *
+ * <p>{@code durationSeconds} is the game seconds the fight covers, begun seconds included, and there is
+ * exactly one sample per such second: {@code samples.size() == durationSeconds}, so
+ * {@code autoPvpSeconds <= durationSeconds} always. It is not {@code endedAt - startedAt}: that is the wall
+ * clock, which a lagging client lets run ahead of the game ticks.
  */
 public record FightRecord(int schema, String addonVersion, long startedAt, long endedAt, int durationSeconds,
                           FightOutcome outcome, boolean truncated, FightMode mode, int autoPvpSeconds,

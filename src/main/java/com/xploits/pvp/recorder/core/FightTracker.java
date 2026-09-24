@@ -1,6 +1,5 @@
 package com.xploits.pvp.recorder.core;
 
-import com.xploits.pvp.recorder.core.TickInput.SelfState;
 import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
@@ -60,9 +59,11 @@ public final class FightTracker {
 
     private final String addonVersion;
     private FightBuilder fight;
-    /** Your state on the last tick you were alive, kept while idle: a fight counts its first hit from it. */
-    private SelfState lastAlive;
-    private long lastAliveTick;
+    /**
+     * Your last tick alive, kept while idle: a fight counts its first hit from its health. Forgotten on
+     * death, so a dead tick after a lost fight can never open another one.
+     */
+    private TickInput lastAlive;
 
     public FightTracker(String addonVersion) {
         this.addonVersion = Objects.requireNonNull(addonVersion, "addonVersion");
@@ -80,8 +81,15 @@ public final class FightTracker {
                 remember(in, died);
                 return NOTHING;
             }
-            SelfState before = lastAlive != null && lastAliveTick == in.tick() - 1 ? lastAlive : in.self();
-            fight = new FightBuilder(addonVersion, in, before);
+            if (died) {
+                // A dead tick measures nothing: the fight opens from your last tick alive, however old,
+                // and with none (the fight before already ended in this death) it does not open at all.
+                if (lastAlive == null) return NOTHING;
+                fight = new FightBuilder(addonVersion, in.tick(), in.epochMillis(), lastAlive, lastAlive.self());
+            } else {
+                boolean fresh = lastAlive != null && lastAlive.tick() == in.tick() - 1;
+                fight = new FightBuilder(addonVersion, in.tick(), in.epochMillis(), in, fresh ? lastAlive.self() : in.self());
+            }
         }
         List<Msg> live = new ArrayList<>();
         fight.tick(in, died, live);
@@ -94,6 +102,7 @@ public final class FightTracker {
         }
         long tick = in.tick();
         if (fight.anyDied() && tick - fight.settlingSince() >= SETTLE_TICKS) return end(live, FightOutcome.WON, true, in, false);
+        // Defensive: a death is an exchange, so with one the settling above always ends the fight first.
         if (tick - fight.lastExchangeTick() >= QUIET_TICKS) {
             return end(live, fight.anyDied() ? FightOutcome.WON : FightOutcome.ENDED, true, in, false);
         }
@@ -121,10 +130,7 @@ public final class FightTracker {
     }
 
     private void remember(TickInput in, boolean died) {
-        if (in.alive() && !died) {
-            lastAlive = in.self();
-            lastAliveTick = in.tick();
-        }
+        if (in.alive() && !died) lastAlive = in;
     }
 
     /** Whether a fight is being recorded (auto-pvp engaging counts, before any exchange). */

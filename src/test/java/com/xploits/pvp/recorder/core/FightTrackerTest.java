@@ -254,6 +254,32 @@ class FightTrackerTest {
     }
 
     @Test
+    void aDeadTickAfterALostFightNeverOpensAnother() {
+        attackFoo();
+        ticks.alive(false).health(0).totems(0);
+        assertEquals(FightOutcome.LOST, feed(selfDied()).finished().orElseThrow().outcome());
+        // The death message arrives a tick later, with Foo's pop still in range.
+        Step step = feed(selfDied(), popOf("Foo"));
+        assertEquals(Optional.empty(), step.finished());
+        assertEquals(List.of(), step.live());
+        assertFalse(tracker.fighting());
+    }
+
+    @Test
+    void aOneShotFromIdleCountsFromYourLastTickAliveHoweverOld() {
+        ticks.hostile("Foo", 4).health(20).totems(5).modules("auto-totem");
+        feed();
+        // Nobody near for a while: the adapter handed nothing over. Then one crystal kills you.
+        ticks.skip(100).alive(false).health(0).totems(0).modules();
+        FightRecord f = feed(crystalBy("Foo"), selfDied()).finished().orElseThrow();
+        assertEquals(List.of(new DamageEvent(ticks.tick() - 1, DamageKind.CRYSTAL, AttackerKind.PLAYER, "Foo", 20, 0, true)),
+            f.damage());
+        assertEquals(5, f.self().totemsStart());
+        assertEquals(5, f.self().totemsEnd());
+        assertEquals(List.of("auto-totem"), f.modulesAtStart());
+    }
+
+    @Test
     void dyingAfterAutoPvpEngagedIsLostEvenWithNoExchange() {
         ticks.autoPvp(CombatState.APPROACH, CombatPosture.CALM, "Foo");
         feed();
@@ -315,10 +341,71 @@ class FightTrackerTest {
         assertEquals(FightOutcome.ENDED, f.outcome());
         assertFalse(f.truncated());
         assertEquals(millis(last), f.endedAt());
-        assertEquals(3, f.durationSeconds());
+        // Seconds 0 to 3 of the game clock: four begun seconds, one sample each.
+        assertEquals(4, f.durationSeconds());
         // The quiet after the last exchange is not part of it: samples up to its second only.
         assertEquals(List.of(0, 1, 2, 3), f.samples().stream().map(Sample::second).toList());
         assertEquals(millis(start), f.startedAt());
+    }
+
+    @Test
+    void aQuietFightDescribesOnlyItsSpanUpToTheLastExchange() {
+        ticks.hostile("Foo", 5).totems(8);
+        feed();
+        long start = attackFoo();
+        feed(placed());
+        long last = ticks.tick();
+        feed(crystalBy("Foo"));
+        // The health for that hit lands two ticks later: still Foo's hit, still in the fight.
+        feed();
+        ticks.health(14);
+        feed();
+        // After the last exchange, from the next second on (samples and changes are kept by the second):
+        // totems used, crowd around, a mob hit, crystals appearing, a new target.
+        while (ticks.tick() < start + 20) feed();
+        ticks.totems(5).offhandTotem(false).hostile("Bar", 3).hostile("Baz", 4)
+            .autoPvp(CombatState.SURFACE, CombatPosture.CALM, "Qux");
+        idle(10);
+        ticks.health(10);
+        feed(unattributed(DamageKind.MOB));
+        feed(spawnedNear(), spawnedNear());
+        while (ticks.tick() < last + FightTracker.QUIET_TICKS) feed();
+        FightRecord f = feed().finished().orElseThrow();
+        assertEquals(FightOutcome.ENDED, f.outcome());
+        assertEquals(List.of(new DamageEvent(last, DamageKind.CRYSTAL, AttackerKind.PLAYER, "Foo", 20, 14, false)), f.damage());
+        assertEquals(6.0, f.self().damageTaken());
+        assertEquals(8, f.self().totemsEnd());
+        assertTrue(f.self().offhandTotemEnd());
+        assertEquals(1, f.maxHostilesNear());
+        assertEquals(1, f.self().crystalsPlaced());
+        assertEquals(0, f.self().enemyCrystalsNear());
+        assertEquals(List.of(new Opponent("Foo", 0, false, 1, 6.0, 0)), f.opponents());
+        assertEquals(List.of(), f.phases());
+    }
+
+    @Test
+    void damageAfterAnExchangeCountsOnceAnotherExchangeFollows() {
+        attackFoo();
+        ticks.health(15);
+        feed(unattributed(DamageKind.MOB));
+        feed(attack("Foo"));
+        idle(FightTracker.QUIET_TICKS - 1);
+        FightRecord f = feed().finished().orElseThrow();
+        assertEquals(5.0, f.self().damageTaken());
+        assertEquals(DamageKind.MOB, f.damage().getFirst().kind());
+    }
+
+    @Test
+    void autoPvpSecondsNeverExceedTheDuration() {
+        ticks.autoPvpWithoutPlan();
+        long start = attackFoo();
+        // Three seconds and five ticks: the fourth, begun second counts in both.
+        while (ticks.tick() < start + 65) feed(placed());
+        FightRecord f = abortNow();
+        assertEquals(4, f.samples().size());
+        assertEquals(4, f.durationSeconds());
+        assertEquals(4, f.autoPvpSeconds());
+        assertEquals(FightMode.AUTO_PVP, f.mode());
     }
 
     @Test
@@ -334,7 +421,7 @@ class FightTrackerTest {
         assertEquals(FightOutcome.ENDED, f.outcome());
         assertTrue(f.truncated());
         assertEquals(600, f.samples().size());
-        assertEquals(599, f.durationSeconds());
+        assertEquals(600, f.durationSeconds());
         assertFalse(tracker.fighting());
     }
 

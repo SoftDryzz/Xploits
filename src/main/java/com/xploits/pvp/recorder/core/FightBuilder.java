@@ -39,6 +39,8 @@ final class FightBuilder {
     private final Map<String, Tally> opponents = new LinkedHashMap<>();
     private final Set<String> dead = new TreeSet<>();
     private final List<DamageEvent> damage = new ArrayList<>();
+    /** Damage from hits after the last exchange: counted once another exchange comes, else left out. */
+    private final List<DamageEvent> afterLastExchange = new ArrayList<>();
     private final List<Sample> samples = new ArrayList<>();
     private final List<ModuleChange> moduleChanges = new ArrayList<>();
     private final List<PhaseChange> phases = new ArrayList<>();
@@ -69,6 +71,13 @@ final class FightBuilder {
     private Set<String> modules;
     private AutoPvpView phase;
 
+    /** The totals as they stood at the end of the last tick with an exchange. */
+    private Frozen frozen;
+
+    private record Frozen(int pops, int placed, int broken, int attacks, int spawnedNear, int maxHostilesNear,
+                          SelfState self, int opponents) {
+    }
+
     private static final class Tally {
         int pops;
         boolean died;
@@ -78,20 +87,21 @@ final class FightBuilder {
     }
 
     /**
-     * A fight opening on {@code in}. {@code before} is your state on the tick before (the ledger counts the
-     * first hit from its health), or this tick's when there was none.
+     * A fight opening on {@code startTick}. {@code context} gives the modules, hostiles and auto-pvp at the
+     * start: the opening tick, or your last tick alive when it opens on the tick you die. {@code before}
+     * is your state before the first hit: the ledger counts that hit from its health.
      */
-    FightBuilder(String addonVersion, TickInput in, SelfState before) {
+    FightBuilder(String addonVersion, long startTick, long startedAt, TickInput context, SelfState before) {
         this.addonVersion = addonVersion;
-        startTick = in.tick();
-        startedAt = in.epochMillis();
+        this.startTick = startTick;
+        this.startedAt = startedAt;
         self = before;
         totemsStart = Math.max(0, before.totems());
         ledger.start(before.health());
-        modules = in.activeModules();
-        modulesAtStart = List.copyOf(new TreeSet<>(in.activeModules()));
-        autoPvpOn = in.autoPvpOn();
-        hostiles = in.hostiles();
+        modules = context.activeModules();
+        modulesAtStart = List.copyOf(new TreeSet<>(context.activeModules()));
+        autoPvpOn = context.autoPvpOn();
+        hostiles = context.hostiles();
         lastTick = startTick;
         lastExchangeTick = startTick;
         lastExchangeMillis = startedAt;
@@ -195,6 +205,8 @@ final class FightBuilder {
             if (exchange) {
                 exchanges++;
                 lastExchangeTick = tick;
+                for (DamageEvent d : afterLastExchange) record(d);
+                afterLastExchange.clear();
                 lastExchangeMillis = in.epochMillis();
                 if (living(e, in)) lastLivingExchangeTick = tick;
             }
@@ -202,7 +214,12 @@ final class FightBuilder {
 
         List<DamageEvent> hits = died ? ledger.lethal(tick) : ledger.observe(tick, in.self().health(), ownPop);
         for (DamageEvent d : hits) {
-            record(d);
+            // A hit's event carries the hit's tick, so a drop that lands after the last exchange still counts.
+            if (d.tick() <= lastExchangeTick) {
+                record(d);
+            } else {
+                afterLastExchange.add(d);
+            }
             if (!d.lethal() && d.before() - d.after() >= FightTracker.BIG_HIT) {
                 lines.add(Msg.of(RecorderText.LIVE_BIG_HIT, "amount", d.before() - d.after(), "kind", d.kind().label(),
                     "by", by(d)));
@@ -210,6 +227,9 @@ final class FightBuilder {
         }
 
         if (measured) measure(in, lines);
+        if (lastExchangeTick == tick && exchanges > 0) {
+            frozen = new Frozen(pops, placed, broken, attacks, spawnedNear, maxHostilesNear, self, opponents.size());
+        }
 
         if (exchanges == 0) return;
         if (!announced) live.add(Msg.of(RecorderText.LIVE_STARTED, "names", names()));
@@ -363,37 +383,49 @@ final class FightBuilder {
     }
 
     /**
-     * The record. {@code atLastExchange} ends it at the last exchange (a fight that went quiet): what came
-     * after is dropped. Otherwise it ends at {@code endMillis} and the second in progress is sampled. A
-     * wall clock that stepped back never ends it before it started.
+     * The record. {@code atLastExchange} ends it at the last exchange (a fight that went quiet): every total,
+     * the damage, the samples and the changes stop there, and what came after is left out. Otherwise it ends
+     * at {@code endMillis} and the second in progress is sampled. A wall clock that stepped back never ends
+     * it before it started.
      */
     FightRecord build(FightOutcome outcome, boolean atLastExchange, long endMillis, boolean truncated) {
         long endedAt;
         List<Sample> keptSamples;
         List<ModuleChange> keptChanges;
         List<PhaseChange> keptPhases;
+        Frozen totals;
         if (atLastExchange) {
             endedAt = Math.max(startedAt, lastExchangeMillis);
             int last = (int) ((lastExchangeTick - startTick) / TICKS_PER_SECOND);
             keptSamples = samples.stream().filter(s -> s.second() <= last).toList();
             keptChanges = moduleChanges.stream().filter(c -> c.second() <= last).toList();
             keptPhases = phases.stream().filter(p -> p.second() <= last).toList();
+            totals = frozen;
         } else {
             endedAt = Math.max(startedAt, endMillis);
+            for (DamageEvent d : afterLastExchange) record(d);
+            afterLastExchange.clear();
             int current = (int) ((lastTick - startTick) / TICKS_PER_SECOND);
             if (samples.isEmpty() || samples.getLast().second() < current) sample(current);
             keptSamples = samples;
             keptChanges = moduleChanges;
             keptPhases = phases;
+            totals = new Frozen(pops, placed, broken, attacks, spawnedNear, maxHostilesNear, self, opponents.size());
         }
+        int seconds = keptSamples.size();
         int autoPvpSeconds = (int) keptSamples.stream().filter(Sample::autoPvp).count();
         List<Opponent> opponentList = new ArrayList<>();
-        opponents.forEach((name, t) -> opponentList.add(new Opponent(name, t.pops, t.died, t.hitsOnYou, t.damageToYou, t.hitsByYou)));
-        SelfTotals totals = new SelfTotals(pops, totemsStart, Math.max(0, self.totems()), self.offhandTotem(), damageTaken,
-            placed, broken, attacks, Math.max(0, spawnedNear - placed));
-        return new FightRecord(FightRecord.SCHEMA, addonVersion, startedAt, endedAt, (int) ((endedAt - startedAt) / 1000),
-            outcome, truncated, FightMode.of(autoPvpSeconds, keptSamples.size()), autoPvpSeconds, opponentList,
-            maxHostilesNear, totals, damage, damageEventsDropped, keptSamples, modulesAtStart, keptChanges, keptPhases);
+        for (Map.Entry<String, Tally> e : opponents.entrySet()) {
+            if (opponentList.size() == totals.opponents()) break;
+            Tally t = e.getValue();
+            opponentList.add(new Opponent(e.getKey(), t.pops, t.died, t.hitsOnYou, t.damageToYou, t.hitsByYou));
+        }
+        SelfTotals self = new SelfTotals(totals.pops(), totemsStart, Math.max(0, totals.self().totems()),
+            totals.self().offhandTotem(), damageTaken, totals.placed(), totals.broken(), totals.attacks(),
+            Math.max(0, totals.spawnedNear() - totals.placed()));
+        return new FightRecord(FightRecord.SCHEMA, addonVersion, startedAt, endedAt, seconds, outcome, truncated,
+            FightMode.of(autoPvpSeconds, seconds), autoPvpSeconds, opponentList, totals.maxHostilesNear(), self, damage,
+            damageEventsDropped, keptSamples, modulesAtStart, keptChanges, keptPhases);
     }
 
     /** Whether auto-pvp is engaged in a fight on this tick (its phase is not NO_COMBAT). */
