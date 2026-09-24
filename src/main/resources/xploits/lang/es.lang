@@ -18,6 +18,7 @@ language.command-desc=Estado del addon, búsqueda en el stash, idioma y recarga.
 
 # console
 console.module-desc=Abre una ventana de terminal con el logo, el estado del juego y el registro de lo que hace Xploits. Sin coordenadas: en la ventana y en su fichero salen sin posición.
+console.setting-hide-coordinates=Oculta las coordenadas en la ventana y en su histórico. Si lo apagas, la consola muestra lo mismo que el chat y guarda las posiciones en disco (vivo.log y hasta 30 días de historial).
 console.level-info=INFO
 console.level-warning=AVISO
 console.level-error=ERROR
