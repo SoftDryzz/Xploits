@@ -1,7 +1,7 @@
 package com.xploits.stash;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.Level;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
@@ -44,16 +44,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Apunta el contenido de los contenedores que abres y de los shulkers que ves (spec §5).
- * Es PASIVO: no toca el interactionManager y no puede mover un solo ítem.
+ * Records the contents of the containers you open and of the shulkers you see (spec §5).
+ * It is PASSIVE: it does not touch the interactionManager and cannot move a single item.
  */
 public class StashKeeper extends XploitsModule {
     private static final int SAVE_EVERY_TICKS = 100;
-    /** Ticks mínimos observando una pantalla antes de aceptar como buena una lectura vacía. */
+    /** Minimum ticks watching a screen before an empty read is accepted as good. */
     private static final int MIN_OBSERVE_TICKS = 20;
-    /** Ticks que un candidato puede esperar sin pantalla antes de caducar (spec: un segundo de margen). */
+    /** Ticks a candidate may wait without a screen before it expires (spec: one second of margin). */
     private static final int CANDIDATE_TIMEOUT_TICKS = 20;
-    /** Fallos de guardado seguidos antes de dejar de intentarlo y avisar una sola vez. */
+    /** Save failures in a row before giving up and warning only once. */
     private static final int MAX_SAVE_FAILURES = 3;
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -69,10 +69,10 @@ public class StashKeeper extends XploitsModule {
     private StashStore store;
 
     private BlockPos candidate;
-    /** Ticks que lleva `candidate` pendiente de una pantalla que lo consuma. */
+    /** Ticks `candidate` has been waiting for a screen to consume it. */
     private int candidateTicks;
 
-    /** syncId del ScreenHandler al que está atada la foto en curso, o null si no hay ninguna. */
+    /** syncId of the ScreenHandler the snapshot in progress is tied to, or null if there is none. */
     private Integer openSyncId;
     private ContainerKey openKey;
     private ContainerType openType;
@@ -81,7 +81,7 @@ public class StashKeeper extends XploitsModule {
     private int observedTicks;
     private boolean sawContent;
 
-    /** syncId de la última pantalla de contenedor que se abrió sin candidato y ya se avisó. */
+    /** syncId of the last container screen that opened without a candidate and was already warned about. */
     private Integer unindexedWarnedSyncId;
 
     private boolean dirty;
@@ -105,10 +105,10 @@ public class StashKeeper extends XploitsModule {
         try {
             index = store.load();
         } catch (IOException e) {
-            // No seguir con un índice vacío: eso es lo que borraría el archivo corrupto en el
-            // próximo guardado. Se avisa, se deja el módulo sin store (saveNow() no hace nada sin
-            // uno) y se apaga solo, igual que KitRequester.onActivate() ante el mismo problema.
-            errorPrivado(new PositionedMsg(Msg.of(StashText.READ_FAILED, "detail", String.valueOf(e.getMessage())),
+            // Do not carry on with an empty index: that is what would erase the corrupt file on the
+            // next save. Warn, leave the module without a store (saveNow() does nothing without
+            // one) and turn it off, just as KitRequester.onActivate() does with the same problem.
+            errorPrivate(new PositionedMsg(Msg.of(StashText.READ_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(StashText.READ_FAILED_LOG)));
             index = new StashIndex();
             store = null;
@@ -133,7 +133,7 @@ public class StashKeeper extends XploitsModule {
             candidate = pos.toImmutable();
             candidateTicks = 0;
         } else {
-            // No es un contenedor: el candidato que hubiera pendiente ya no tiene sentido.
+            // Not a container: whatever candidate was pending no longer makes sense.
             candidate = null;
         }
     }
@@ -150,11 +150,11 @@ public class StashKeeper extends XploitsModule {
     }
 
     /**
-     * Sin garantía de que el servidor abra la pantalla (denegada, paquete perdido, clic que no
-     * prospera...), un candidato sin consumir se quedaría pendiente para siempre y lo heredaría
-     * la próxima pantalla ajena que se abra (p. ej. un minecart o un bote con cofre, que son
-     * entidades y nunca disparan InteractBlockEvent). Caduca solo, con el mismo margen que ya usa
-     * MIN_OBSERVE_TICKS para las fotos prematuras.
+     * With no guarantee that the server opens the screen (denied, lost packet, a click that does
+     * not go through...), an unconsumed candidate would stay pending forever and the next unrelated
+     * screen to open would inherit it (e.g. a minecart or a boat with a chest, which are entities
+     * and never fire InteractBlockEvent). It expires on its own, with the same margin that
+     * MIN_OBSERVE_TICKS already uses for premature snapshots.
      */
     private void expireCandidate() {
         if (candidate == null) return;
@@ -162,13 +162,13 @@ public class StashKeeper extends XploitsModule {
     }
 
     /**
-     * Avisa de que esta pantalla de contenedor se abrió sin un candidato válido al que atarla y
-     * por tanto no se va a indexar. Puede deberse a lag (el candidato caduca antes de que llegue
-     * la pantalla, en cuyo caso reabrir sí funciona) o a que GenericContainerScreenHandler también
-     * respalda dispensadores, goteros y cofres de minecart/barca, que este módulo nunca indexa
-     * (no hay forma de distinguir un caso del otro desde aquí, así que el texto no promete nada
-     * que no se cumpla en ambos). Una sola vez por pantalla, usando el syncId para no repetir el
-     * aviso en cada tick mientras siga abierta.
+     * Warns that this container screen opened without a valid candidate to tie it to, and so will
+     * not be indexed. It may be down to lag (the candidate expires before the screen arrives, in
+     * which case reopening does work) or to GenericContainerScreenHandler also backing dispensers,
+     * droppers and minecart/boat chests, which this module never indexes (there is no way to tell
+     * one case from the other from here, so the text promises nothing that does not hold in both).
+     * Only once per screen, using the syncId so as not to repeat the warning on every tick while
+     * it stays open.
      */
     private void warnUnindexed(int syncId) {
         if (unindexedWarnedSyncId != null && unindexedWarnedSyncId == syncId) return;
@@ -178,19 +178,20 @@ public class StashKeeper extends XploitsModule {
 
     @EventHandler
     private void onOpenScreen(OpenScreenEvent event) {
-        // Al cambiar de pantalla, lo que hubiera en curso ya es definitivo.
+        // When the screen changes, whatever was in progress is final.
         flushOpen();
     }
 
-    /** Relee los slots del contenedor abierto. Se hace por tick porque al abrir aún están vacíos (spec §2). */
+    /** Rereads the slots of the open container. Done every tick because they are still empty on opening (spec §2). */
     private void readOpenScreen() {
         if (mc.player == null) return;
         if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler handler)) return;
 
         if (openSyncId == null || openSyncId != handler.syncId) {
-            // Pantalla distinta de la foto en curso: solo empieza una nueva si hay un candidato
-            // pendiente de un InteractBlockEvent reconocido. Si no, esta pantalla no se toca:
-            // evita heredar la clave de otro contenedor (dispensador, gotero, cofre de bote/minecart...).
+            // A screen other than the snapshot in progress: a new one only starts if there is a
+            // candidate pending from an InteractBlockEvent on a known container. Otherwise this
+            // screen is left alone, so it cannot inherit another container's key (dispenser,
+            // dropper, boat/minecart chest...).
             if (candidate == null || mc.world == null) {
                 warnUnindexed(handler.syncId);
                 return;
@@ -208,7 +209,7 @@ public class StashKeeper extends XploitsModule {
             openSyncId = handler.syncId;
             observedTicks = 0;
             sawContent = false;
-            candidate = null; // el candidato se consume una sola vez
+            candidate = null; // the candidate is consumed only once
         }
 
         openItems = new LinkedHashMap<>();
@@ -232,7 +233,7 @@ public class StashKeeper extends XploitsModule {
         if (!openItems.isEmpty() || !openNested.isEmpty()) sawContent = true;
     }
 
-    /** Lee el contenido de un shulker desde el propio ítem, sin abrirlo (spec §2). */
+    /** Reads a shulker's contents from the item itself, without opening it (spec §2). */
     private NestedShulker readShulker(int slot, ItemStack stack, String shulkerId) {
         ItemStack[] contents = new ItemStack[27];
         Utils.getItemsInContainerItem(stack, contents);
@@ -250,20 +251,20 @@ public class StashKeeper extends XploitsModule {
         return new NestedShulker(slot, name, colorOf(shulkerId), items);
     }
 
-    /** Deriva el color del id del ítem (p. ej. "minecraft:purple_shulker_box" -> "purple"). */
+    /** Derives the color from the item id (e.g. "minecraft:purple_shulker_box" -> "purple"). */
     private static String colorOf(String shulkerId) {
         String path = shulkerId.startsWith("minecraft:") ? shulkerId.substring("minecraft:".length()) : shulkerId;
-        if (path.equals("shulker_box")) return null; // sin teñir
+        if (path.equals("shulker_box")) return null; // undyed
         String suffix = "_shulker_box";
         String color = path.endsWith(suffix) ? path.substring(0, path.length() - suffix.length()) : path;
         return color.isEmpty() ? null : color;
     }
 
     /**
-     * Vuelca al índice la foto en curso, si hay alguna y es fiable: o bien se leyó contenido no
-     * vacío en algún momento, o bien se observó la pantalla el tiempo suficiente para confiar en
-     * que un vacío es real y no una lectura prematura (los paquetes con el contenido llegan
-     * después de abrirse la pantalla, spec §2).
+     * Flushes the snapshot in progress into the index, if there is one and it is reliable: either
+     * non-empty contents were read at some point, or the screen was watched long enough to trust
+     * that an empty one is real and not a premature read (the packets with the contents arrive
+     * after the screen opens, spec §2).
      */
     private void flushOpen() {
         if (openKey == null) return;
@@ -272,11 +273,11 @@ public class StashKeeper extends XploitsModule {
             index.put(new ContainerSnapshot(openKey, openType, System.currentTimeMillis(), openItems, openNested));
             dirty = true;
             if (notify.get()) {
-                // consola: registrado aparte
-                ChatUtils.info("Xploits", "%s", Texts.render(StashText.INDEXED, // i18n: allowed (chat prefix and format)
+                // console: logged separately
+                ChatUtils.infoPrefix("Xploits", "%s", Texts.render(StashText.INDEXED,
                     "container", openKey.id(), "types", openItems.size(), "shulkers", openNested.size()));
-                registrar(Nivel.INFO, Msg.of(StashText.INDEXED_LOG,
-                    "where", openKey.sinPosicion(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
+                logToConsole(Level.INFO, Msg.of(StashText.INDEXED_LOG,
+                    "where", openKey.withoutPosition(null, null, null), "types", openItems.size(), "shulkers", openNested.size()));
             }
         }
         clearOpen();
@@ -302,18 +303,18 @@ public class StashKeeper extends XploitsModule {
         } catch (IOException e) {
             saveFailures++;
             if (saveFailures >= MAX_SAVE_FAILURES) {
-                // Sin esto, un fallo persistente (disco lleno, permisos...) imprimiría una línea
-                // nueva cada SAVE_EVERY_TICKS para siempre. Un solo aviso y se deja de intentar
-                // hasta la próxima activación.
+                // Without this, a persistent failure (full disk, permissions...) would print a new
+                // line every SAVE_EVERY_TICKS forever. One warning, and it stops trying until the
+                // next activation.
                 saveDisabled = true;
-                errorPrivado(new PositionedMsg(
+                errorPrivate(new PositionedMsg(
                     Msg.of(StashText.SAVE_FAILED, "attempts", saveFailures, "detail", String.valueOf(e.getMessage())),
                     Msg.of(StashText.SAVE_FAILED_LOG, "attempts", saveFailures)));
             }
         }
     }
 
-    /** Cofre doble: la clave canónica es la menor de las dos mitades (spec §4.2). */
+    /** Double chest: the canonical key is the lesser of the two halves (spec §4.2). */
     private ContainerKey keyFor(BlockPos pos, ContainerType type) {
         if (type == ContainerType.ENDER_CHEST) return ContainerKey.ENDER;
 
@@ -356,7 +357,7 @@ public class StashKeeper extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return Texts.render(StashText.NOW_CONTAINERS, "count", index.size());
     }
 }

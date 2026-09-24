@@ -40,7 +40,7 @@ class SweepAreaTest {
 
     @Test
     void givingTheGreaterCornerFirstDoesNotProduceAnEmptyArea() {
-        // Es el error de dedo más probable: min y max intercambiados en cada eje.
+        // It is the most likely slip: min and max swapped on each axis.
         SweepArea straight = SweepArea.ofChunks(0, 0, 3, 3);
         SweepArea swapped = SweepArea.ofChunks(3, 3, 0, 0);
         assertEquals(straight, swapped);
@@ -48,7 +48,7 @@ class SweepAreaTest {
 
     @Test
     void cornersNormalizePerAxisIndependently() {
-        // Un eje al revés y el otro no también debe normalizarse.
+        // One axis reversed and the other not must also be normalised.
         SweepArea area = SweepArea.ofChunks(4, -1, -2, 5);
         assertEquals(-2, area.minChunkX());
         assertEquals(4, area.maxChunkX());
@@ -58,7 +58,7 @@ class SweepAreaTest {
 
     @Test
     void overworldEquivalentMultipliesChunksBySixteenAndThenByEight() {
-        // 4 chunks de ancho/alto en el Nether: 4 * 16 * 8 = 512 bloques en el Overworld.
+        // 4 chunks wide/tall in the Nether: 4 * 16 * 8 = 512 blocks in the Overworld.
         SweepArea area = SweepArea.ofChunks(0, 0, 3, 3);
         assertEquals(Msg.of(SweepText.OVERWORLD_EQUIVALENT, "width", 512L, "height", 512L), area.overworldEquivalent());
     }
@@ -71,50 +71,50 @@ class SweepAreaTest {
 
     @Test
     void chunkCountFitsAsAnIntForALargeButRealisticArea() {
-        // 40000x40000 chunks: grande de verdad, pero el producto (1.600.000.000) todavía cabe en
-        // un int, así que no debe lanzar ni desbordar.
+        // 40000x40000 chunks: really big, but the product (1,600,000,000) still fits in an int, so
+        // it must neither throw nor overflow.
         SweepArea area = SweepArea.ofChunks(0, 0, 39_999, 39_999);
         assertEquals(1_600_000_000, area.chunkCount());
     }
 
     @Test
     void chunkCountRejectsAnAreaTooBigToCountAsAnInt() {
-        // 50001x50001 chunks: tecleable, muy por debajo del límite real del mundo (~±3.750.000 en
-        // chunks), pero el producto (2.500.100.001) ya no cabe en un int. Antes del arreglo esto
-        // desbordaba en silencio a -1.794.867.295; ahora debe fallar alto, no devolver un número
-        // negativo con pinta de válido.
+        // 50001x50001 chunks: typeable, far below the real world limit (~±3,750,000 in chunks), but
+        // the product (2,500,100,001) no longer fits in an int. Before the fix this silently
+        // overflowed to -1,794,867,295; now it must fail loudly, not return a valid-looking
+        // negative number.
         SweepArea area = SweepArea.ofChunks(0, 0, 50_000, 50_000);
         assertThrows(ArithmeticException.class, area::chunkCount);
     }
 
     @Test
     void theCanonicalConstructorRejectsInvertedCorners() {
-        // A diferencia de ofChunks, el constructor canónico no reordena: los nombres min/max
-        // prometen un orden, y aceptarlo al revés en silencio es justo el bug que se arregla aquí
-        // -antes daba chunkCount()=16 (positivo) y overworldEquivalent()="-512x-512" a la vez-.
+        // Unlike ofChunks, the canonical constructor does not reorder: the min/max names promise an
+        // order, and silently accepting it reversed is exactly the bug fixed here -before, it gave
+        // chunkCount()=16 (positive) and overworldEquivalent()="-512x-512" at the same time-.
         assertThrows(IllegalArgumentException.class, () -> new SweepArea(5, 5, 0, 0));
     }
 
     @Test
     void theCanonicalConstructorRejectsWhenOnlyOneAxisIsInverted() {
-        // El eje Z está bien (min -1 <= max 3); solo el X viene invertido (min 5 > max 0). Debe
-        // rechazarse igual: no basta con que un eje esté bien para salvar el área entera.
+        // The Z axis is fine (min -1 <= max 3); only X comes inverted (min 5 > max 0). It must be
+        // rejected anyway: one axis being fine is not enough to save the whole area.
         assertThrows(IllegalArgumentException.class, () -> new SweepArea(5, -1, 0, 3));
     }
 
     @Test
     void theCanonicalConstructorRejectsWhenOnlyTheZAxisIsInverted() {
-        // El simétrico del anterior, y hacía falta: con solo el caso del eje X cubierto, borrar
-        // entera la comprobación de Z no rompía ningún test. Un área con Z invertido da
-        // heightInChunks() negativo, y de ahí salen un chunkCount() negativo y un recorrido del
-        // rectángulo que no visita ni un chunk: el barrido diría "no hay nada que barrer" sobre un
-        // área que nadie ha mirado, que es la mentira de spec §9 entrando por la puerta del tecleo.
+        // The mirror of the previous one, and it was needed: with only the X axis case covered,
+        // deleting the whole Z check broke no test. An area with Z inverted gives a negative
+        // heightInChunks(), and from that come a negative chunkCount() and a walk of the rectangle
+        // that visits not a single chunk: the sweep would say "nothing to sweep" over an area nobody
+        // has looked at, which is the lie of spec §9 coming in through the typing door.
         assertThrows(IllegalArgumentException.class, () -> new SweepArea(0, 5, 3, -1));
     }
 
     @Test
     void laneLengthIsTheEuclideanDistanceBetweenItsEnds() {
-        // 300-400-500: la terna pitagórica de toda la vida, fácil de verificar a ojo.
+        // 300-400-500: the good old Pythagorean triple, easy to check by eye.
         Lane lane = new Lane(0, 0, 300, 400);
         assertEquals(500, lane.lengthInBlocks(), 0.0001);
     }
@@ -127,21 +127,21 @@ class SweepAreaTest {
 
     @Test
     void aZeroLengthLaneHasZeroLength() {
-        // T3 suma estas longitudes para decidir si despegar: una pasada degenerada no puede
-        // colarse como si tuviera coste, ni tampoco romper la suma.
+        // T3 adds up these lengths to decide whether to take off: a degenerate lane cannot slip in
+        // as if it had a cost, nor break the sum.
         Lane lane = new Lane(1500, -700, 1500, -700);
         assertEquals(0, lane.lengthInBlocks(), 0.0001);
     }
 
     // ---------------------------------------------------------------------------------------
-    // El tope de tamaño: dos recorridos del módulo cuestan el rectángulo entero
+    // The size cap: two walks of the module cost the whole rectangle
     // ---------------------------------------------------------------------------------------
 
     @Test
-    void unAreaNormalNoSeRechazaPorTamano() {
-        // La caja entera que el jugador ha cruzado en meses en este servidor, 384x580 chunks
-        // (spec §1): 222.720 chunks, muy por debajo del tope. Si esto se rechazara, el tope estaría
-        // estorbando al uso que justifica el módulo.
+    void aNormalAreaIsNotRejectedForSize() {
+        // The whole box the player has crossed in months on this server, 384x580 chunks (spec §1):
+        // 222,720 chunks, far below the cap. If this were rejected, the cap would be getting in the
+        // way of the use that justifies the module.
         SweepArea area = SweepArea.ofChunks(0, 0, 383, 579);
 
         assertEquals(222_720, area.chunkCount());
@@ -149,40 +149,40 @@ class SweepAreaTest {
     }
 
     @Test
-    void unAreaJustoEnElTopeSeAcepta() {
-        // 2.000 x 2.000 = 4.000.000 clavados. El borde entra: el tope es "como mucho esto", no
-        // "menos que esto".
+    void anAreaExactlyAtTheCapIsAccepted() {
+        // 2,000 x 2,000 = exactly 4,000,000. The edge is in: the cap is "at most this", not "less
+        // than this".
         SweepArea area = SweepArea.ofChunks(0, 0, 1_999, 1_999);
 
-        assertEquals(SweepArea.MAXIMO_DE_CHUNKS, area.chunkCount());
+        assertEquals(SweepArea.MAX_CHUNKS, area.chunkCount());
         assertNull(area.oversizeRejection());
     }
 
     @Test
-    void unChunkPorEncimaDelTopeYaSeRechaza() {
-        // 2.000 x 2.001 = 4.002.000, apenas un 0,05 % por encima. El corte está donde dice estar.
+    void oneChunkOverTheCapIsRejected() {
+        // 2,000 x 2,001 = 4,002,000, barely 0.05% above. The cut is where it says it is.
         SweepArea area = SweepArea.ofChunks(0, 0, 1_999, 2_000);
 
         assertNotNull(area.oversizeRejection());
     }
 
     @Test
-    void elAreaDelLimiteDelDeslizadorSeRechazaSinIntentarRecorrerla() {
-        // 20.000 x 20.000 chunks es lo que dan las esquinas en los extremos del deslizador de los
-        // ajustes: 400 millones de chunks. Antes de este tope, Coverage.seenIn y SweepPlanner los
-        // visitaban uno a uno en el hilo principal desde un comando.
+    void theSliderLimitAreaIsRejectedWithoutTryingToWalkIt() {
+        // 20,000 x 20,000 chunks is what the corners give at the ends of the settings slider: 400
+        // million chunks. Before this cap, Coverage.seenIn and SweepPlanner visited them one by one
+        // on the main thread from a command.
         SweepArea area = SweepArea.ofChunks(-10_000, -10_000, 9_999, 9_999);
 
-        String motivo = es(area.oversizeRejection());
-        assertNotNull(motivo);
-        assertTrue(motivo.contains("400000000"), motivo);
+        String reason = es(area.oversizeRejection());
+        assertNotNull(reason);
+        assertTrue(reason.contains("400000000"), reason);
     }
 
     @Test
-    void unAreaQueNiSiquieraCabeEnUnIntSeRechazaEnVezDeLanzar() {
-        // 50.001 x 50.001 = 2.500.100.001 chunks: el área que hace lanzar a chunkCount(). El tope
-        // tiene que poder contestar precisamente sobre ella, así que la cuenta va en long y no
-        // llamando a chunkCount().
+    void anAreaThatDoesNotEvenFitInAnIntIsRejectedInsteadOfThrowing() {
+        // 50,001 x 50,001 = 2,500,100,001 chunks: the area that makes chunkCount() throw. The cap
+        // has to be able to answer precisely about it, so the count is done in long and not by
+        // calling chunkCount().
         SweepArea area = SweepArea.ofChunks(0, 0, 50_000, 50_000);
 
         assertThrows(ArithmeticException.class, area::chunkCount);
@@ -190,38 +190,38 @@ class SweepAreaTest {
     }
 
     @Test
-    void elMotivoDiceElTamanoElTopeYQueAjusteTocar() {
-        // Mismo estilo que los demás rechazos del módulo: qué pasa, cuánto vale ahora y qué tocar,
-        // con los ajustes nombrados como aparecen en la interfaz.
+    void theReasonGivesTheSizeTheCapAndWhichSettingToChange() {
+        // Same style as the module's other rejections: what happens, what it is now and what to
+        // change, with the settings named as they appear in the UI.
         SweepArea area = SweepArea.ofChunks(0, 0, 2_999, 2_999);
 
-        String motivo = es(area.oversizeRejection());
-        assertTrue(motivo.contains("3000x3000"), motivo);
-        assertTrue(motivo.contains("9000000"), motivo);
-        assertTrue(motivo.contains(String.valueOf(SweepArea.MAXIMO_DE_CHUNKS)), motivo);
-        assertTrue(motivo.contains("chunk-x-1"), motivo);
-        assertTrue(motivo.contains("chunk-z-2"), motivo);
+        String reason = es(area.oversizeRejection());
+        assertTrue(reason.contains("3000x3000"), reason);
+        assertTrue(reason.contains("9000000"), reason);
+        assertTrue(reason.contains(String.valueOf(SweepArea.MAX_CHUNKS)), reason);
+        assertTrue(reason.contains("chunk-x-1"), reason);
+        assertTrue(reason.contains("chunk-z-2"), reason);
     }
 
     @Test
-    void elMotivoDiceACuantoBajarElLadoLargoManteniendoElCorto() {
-        // 8.000 de ancho por 1.000 de alto: manteniendo el lado corto en 1.000, el largo no puede
-        // pasar de 4.000.000 / 1.000 = 4.000. Ese es el número accionable.
+    void theReasonSaysHowFarToShrinkTheLongSideKeepingTheShortOne() {
+        // 8,000 wide by 1,000 tall: keeping the short side at 1,000, the long one cannot go past
+        // 4,000,000 / 1,000 = 4,000. That is the actionable number.
         SweepArea area = SweepArea.ofChunks(0, 0, 7_999, 999);
 
-        String motivo = es(area.oversizeRejection());
-        assertTrue(motivo.contains("no puede pasar de 4000"), motivo);
+        String reason = es(area.oversizeRejection());
+        assertTrue(reason.contains("no puede pasar de 4000"), reason);
     }
 
     @Test
-    void siElLadoCortoYaSePasaSoloSeDiceQueAcerqueLasDosEsquinas() {
-        // 5.000 x 5.000: el lado corto son 5.000 chunks y 4.000.000 / 5.000 = 800, que es MENOS que
-        // el propio lado corto. Decirle "baja el largo a 800" sería mandarle a un rectángulo que
-        // sigue sin caber, así que aquí el consejo es otro.
+    void ifTheShortSideIsAlreadyOverItOnlySaysToBringTheCornersCloser() {
+        // 5,000 x 5,000: the short side is 5,000 chunks and 4,000,000 / 5,000 = 800, which is LESS
+        // than the short side itself. Telling them "shrink the long side to 800" would send them to
+        // a rectangle that still does not fit, so here the advice is different.
         SweepArea area = SweepArea.ofChunks(0, 0, 4_999, 4_999);
 
-        String motivo = es(area.oversizeRejection());
-        assertTrue(motivo.contains("acerca las dos"), motivo);
-        assertFalse(motivo.contains("no puede pasar de"), motivo);
+        String reason = es(area.oversizeRejection());
+        assertTrue(reason.contains("acerca las dos"), reason);
+        assertFalse(reason.contains("no puede pasar de"), reason);
     }
 }

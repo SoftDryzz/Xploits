@@ -12,112 +12,112 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AllyPolicyTest {
-    private static final Set<String> SIN_COURIERS = Set.of();
-    private static final Set<String> SIN_USUARIOS = Set.of();
+    private static final Set<String> NO_COURIERS = Set.of();
+    private static final Set<String> NO_USERS = Set.of();
 
     @Test
-    void unDesconocidoEsObjetivo() {
-        assertEquals(Allegiance.AJENO,
+    void aStrangerIsATarget() {
+        assertEquals(Allegiance.STRANGER,
             AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("xto2002")));
         assertFalse(AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("xto2002")).isOurs());
     }
 
     @Test
-    void elCourierDeKitRequesterNoSeAtaca() {
-        Allegiance allegiance = AllyPolicy.of("StormAegis44", false, Set.of("StormAegis44"), SIN_USUARIOS);
+    void theKitRequesterCourierIsNotAttacked() {
+        Allegiance allegiance = AllyPolicy.of("StormAegis44", false, Set.of("StormAegis44"), NO_USERS);
         assertEquals(Allegiance.COURIER, allegiance);
         assertTrue(allegiance.isOurs());
         assertEquals(PvpText.ALLY_COURIER, allegiance.reason());
     }
 
     @Test
-    void laListaUsersDeAutoTpyNoSeAtaca() {
-        Allegiance allegiance = AllyPolicy.of("Dryzzical", false, SIN_COURIERS, Set.of("Dryzzical"));
-        assertEquals(Allegiance.USUARIO_TPY, allegiance);
+    void autoTpysUsersListIsNotAttacked() {
+        Allegiance allegiance = AllyPolicy.of("Dryzzical", false, NO_COURIERS, Set.of("Dryzzical"));
+        assertEquals(Allegiance.TPY_USER, allegiance);
         assertTrue(allegiance.isOurs());
         assertEquals(PvpText.ALLY_TPY_USER, allegiance.reason());
     }
 
     @Test
-    void elAmigoDeMeteorNoSeAtaca() {
-        Allegiance allegiance = AllyPolicy.of("Dryzzical", true, SIN_COURIERS, SIN_USUARIOS);
-        assertEquals(Allegiance.AMIGO, allegiance);
+    void aMeteorFriendIsNotAttacked() {
+        Allegiance allegiance = AllyPolicy.of("Dryzzical", true, NO_COURIERS, NO_USERS);
+        assertEquals(Allegiance.FRIEND, allegiance);
         assertTrue(allegiance.isOurs());
         assertEquals(PvpText.ALLY_FRIEND, allegiance.reason());
     }
 
-    /** El trato es incondicional: da igual en qué fase o con qué provocación, sigue siendo nuestro. */
+    /** The treatment is unconditional: whatever the phase or the provocation, they are still ours. */
     @Test
-    void elMotivoDeAjenoEstaVacio() {
-        assertEquals(PvpText.NOTHING, Allegiance.AJENO.reason());
-        assertFalse(Allegiance.AJENO.isOurs());
+    void aStrangersReasonIsEmpty() {
+        assertEquals(PvpText.NOTHING, Allegiance.STRANGER.reason());
+        assertFalse(Allegiance.STRANGER.isOurs());
     }
 
     @Test
-    void elAmigoMandaSobreLasOtrasListas() {
-        assertEquals(Allegiance.AMIGO,
+    void friendTakesPrecedenceOverTheOtherLists() {
+        assertEquals(Allegiance.FRIEND,
             AllyPolicy.of("StormAegis44", true, Set.of("StormAegis44"), Set.of("StormAegis44")));
     }
 
     @Test
-    void losNombresDistinguenMayusculas() {
-        assertEquals(Allegiance.AJENO,
-            AllyPolicy.of("stormaegis44", false, Set.of("StormAegis44"), SIN_USUARIOS));
-        assertEquals(Allegiance.AJENO,
-            AllyPolicy.of("DRYZZICAL", false, SIN_COURIERS, Set.of("Dryzzical")));
+    void namesAreCaseSensitive() {
+        assertEquals(Allegiance.STRANGER,
+            AllyPolicy.of("stormaegis44", false, Set.of("StormAegis44"), NO_USERS));
+        assertEquals(Allegiance.STRANGER,
+            AllyPolicy.of("DRYZZICAL", false, NO_COURIERS, Set.of("Dryzzical")));
     }
 
     @Test
-    void losEspaciosSobrantesDeLaListaNoDesprotegen() {
+    void extraSpacesInTheListDoNotDropProtection() {
         assertEquals(Allegiance.COURIER,
-            AllyPolicy.of("StormAegis44", false, AllyPolicy.names(List.of("  StormAegis44 ")), SIN_USUARIOS));
-        assertEquals(Allegiance.USUARIO_TPY,
-            AllyPolicy.of("Dryzzical", false, SIN_COURIERS, AllyPolicy.names(List.of("Dryzzical\t"))));
+            AllyPolicy.of("StormAegis44", false, AllyPolicy.names(List.of("  StormAegis44 ")), NO_USERS));
+        assertEquals(Allegiance.TPY_USER,
+            AllyPolicy.of("Dryzzical", false, NO_COURIERS, AllyPolicy.names(List.of("Dryzzical\t"))));
     }
 
     @Test
-    void lasEntradasEnBlancoNoEmparejanConNadie() {
-        assertEquals(Allegiance.AJENO, AllyPolicy.of("Mallory", false,
+    void blankEntriesMatchNobody() {
+        assertEquals(Allegiance.STRANGER, AllyPolicy.of("Mallory", false,
             AllyPolicy.names(List.of("", "   ")), AllyPolicy.names(List.of("\t"))));
     }
 
     @Test
-    void unNombreVacioONuloEsObjetivoYNoRevienta() {
-        assertEquals(Allegiance.AJENO, AllyPolicy.of(null, false, Set.of(""), Set.of("")));
-        assertEquals(Allegiance.AJENO, AllyPolicy.of("", false, Set.of(""), Set.of("")));
-        assertEquals(Allegiance.AJENO, AllyPolicy.of("   ", false, Set.of("   "), Set.of("   ")));
+    void anEmptyOrNullNameIsATargetAndDoesNotCrash() {
+        assertEquals(Allegiance.STRANGER, AllyPolicy.of(null, false, Set.of(""), Set.of("")));
+        assertEquals(Allegiance.STRANGER, AllyPolicy.of("", false, Set.of(""), Set.of("")));
+        assertEquals(Allegiance.STRANGER, AllyPolicy.of("   ", false, Set.of("   "), Set.of("   ")));
     }
 
     @Test
-    void listasNulasSeTratanComoVacias() {
-        assertEquals(Allegiance.AJENO, AllyPolicy.of("StormAegis44", false, null, null));
-        assertEquals(Allegiance.AMIGO, AllyPolicy.of("Dryzzical", true, null, null));
+    void nullListsAreTreatedAsEmpty() {
+        assertEquals(Allegiance.STRANGER, AllyPolicy.of("StormAegis44", false, null, null));
+        assertEquals(Allegiance.FRIEND, AllyPolicy.of("Dryzzical", true, null, null));
     }
 
-    // --- names(): el recorte se hace una vez por lista y por tick, no una vez por jugador mirado ---
+    // --- names(): trimming is done once per list and per tick, not once per player looked at ---
 
     @Test
-    void namesRecortaLosEspaciosYTiraLasEntradasEnBlanco() {
+    void namesTrimsSpacesAndDropsBlankEntries() {
         assertEquals(Set.of("StormAegis44", "Dryzzical"),
             AllyPolicy.names(List.of("  StormAegis44 ", "Dryzzical\t", "", "   ")));
     }
 
     @Test
-    void namesTrataLasEntradasNulasYLaListaNulaSinFallar() {
+    void namesHandlesNullEntriesAndANullListWithoutFailing() {
         assertEquals(Set.of("StormAegis44"), AllyPolicy.names(Arrays.asList(null, "StormAegis44")));
         assertTrue(AllyPolicy.names(null).isEmpty());
     }
 
     @Test
-    void namesNoJuntaNombresQueSoloSeParecenEnMinusculas() {
+    void namesDoesNotMergeNamesThatOnlyMatchInLowercase() {
         assertEquals(Set.of("StormAegis44", "stormaegis44"),
             AllyPolicy.names(List.of("StormAegis44", " stormaegis44")));
     }
 
-    /** El nombre del jugador también se recorta: lo que decide es quién es, no cómo llegó escrito. */
+    /** The player's name is trimmed too: what decides is who they are, not how it arrived written. */
     @Test
-    void elNombreDelJugadorTambienSeRecorta() {
+    void thePlayersNameIsTrimmedToo() {
         assertEquals(Allegiance.COURIER,
-            AllyPolicy.of(" StormAegis44 ", false, Set.of("StormAegis44"), SIN_USUARIOS));
+            AllyPolicy.of(" StormAegis44 ", false, Set.of("StormAegis44"), NO_USERS));
     }
 }

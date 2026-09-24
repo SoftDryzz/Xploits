@@ -27,8 +27,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Cambia la elytra puesta por una de repuesto antes de que se rompa (spec §4), y avisa cuando no
- * hay ninguna válida (spec §5). Funciona vueles como vueles: no depende de ElytraFly.
+ * Swaps the worn elytra for a spare before it breaks (spec §4), and warns when there is no valid
+ * one (spec §5). It works however you fly: it does not depend on ElytraFly.
  */
 public class ElytraReplace extends XploitsModule {
     private static final int FIRST_SLOT = 0;
@@ -72,14 +72,14 @@ public class ElytraReplace extends XploitsModule {
     private final ElytraPolicy policy = new ElytraPolicy();
 
     /**
-     * Porcentaje que tenía la elytra puesta cuando se mandó un cambio todavía sin confirmar, o
-     * {@code null} si no hay ninguno pendiente. InvUtils.move() no confirma que el servidor haya
-     * aceptado el clic, así que el éxito no se anuncia al mandar el movimiento: se anuncia cuando
-     * se observa que el porcentaje de la puesta ha subido por encima de este valor.
+     * The percentage the worn elytra had when a swap not yet confirmed was sent, or {@code null}
+     * if none is pending. InvUtils.move() does not confirm that the server accepted the click, so
+     * success is not announced when the move is sent: it is announced when the worn one's
+     * percentage is seen to have risen above this value.
      */
     private Integer pendingSwapWornPercent;
 
-    /** Si ya se avisó de que el cambio pendiente no está prendiendo, para no repetir el aviso cada 2 s. */
+    /** Whether the pending swap was already reported as not taking, so as not to repeat the warning every 2 s. */
     private boolean pendingSwapStuckWarned;
 
     public ElytraReplace() {
@@ -102,18 +102,18 @@ public class ElytraReplace extends XploitsModule {
             ? ElytraPolicy.percentOf(worn.getDamage(), worn.getMaxDamage())
             : null;
 
-        // La confirmación del cambio pendiente se comprueba siempre, aunque este tick no vaya a
-        // actuar: es la única señal fiable de que el clic prendió y no debe esperar a que se
-        // cierre un cofre o el chat.
+        // The pending swap's confirmation is always checked, even if this tick is not going to
+        // act: it is the only reliable sign that the click took, and it must not wait for a chest
+        // or the chat to close.
         confirmPendingSwap(wornPercent);
 
-        // Solo actuar con la pantalla del jugador (inventario propio, o ninguna abierta): el
-        // motivo real es que el clic no se pierda, y eso depende del handler, no de la pantalla.
-        // Un cofre, la ClickGUI o el menú de pausa usan otro handler y quedan fuera; el chat no
-        // abre ningún handler propio, así que no bloquea (spec §6).
+        // Only act with the player's own screen (own inventory, or none open): the real reason is
+        // that the click must not be lost, and that depends on the handler, not the screen. A
+        // chest, the ClickGUI or the pause menu use another handler and are left out; the chat
+        // opens no handler of its own, so it does not block (spec §6).
         if (!(mc.player.currentScreenHandler instanceof PlayerScreenHandler)) return;
-        // Con un ítem cogido en el cursor, InvUtils.move() no puede devolver la elytra vieja a su
-        // slot: se queda en el cursor y vanilla la tira al suelo al cerrar el inventario.
+        // With an item held on the cursor, InvUtils.move() cannot put the old elytra back in its
+        // slot: it stays on the cursor and vanilla drops it on the ground when the inventory closes.
         if (!mc.player.currentScreenHandler.getCursorStack().isEmpty()) return;
 
         long now = System.currentTimeMillis();
@@ -128,9 +128,9 @@ public class ElytraReplace extends XploitsModule {
     }
 
     /**
-     * Si hay un cambio pendiente de confirmar y el porcentaje de la puesta ha subido por encima
-     * del que tenía cuando se mandó el movimiento, es la única señal fiable de que el cambio
-     * prendió: se anuncia el éxito, que hasta ahora quedaba pendiente, y se olvida.
+     * If a swap is waiting for confirmation and the worn one's percentage has risen above what it
+     * had when the move was sent, that is the only reliable sign that the swap took: the success,
+     * held back until now, is announced and the swap forgotten.
      */
     private void confirmPendingSwap(Integer wornPercent) {
         if (pendingSwapWornPercent == null) return;
@@ -143,7 +143,7 @@ public class ElytraReplace extends XploitsModule {
         pendingSwapStuckWarned = false;
     }
 
-    /** Elytras sueltas del inventario, sin contar la puesta ni las que van dentro de shulkers (spec §6). */
+    /** Loose elytras in the inventory, not counting the worn one or those inside shulkers (spec §6). */
     private List<ElytraCandidate> spares() {
         List<ElytraCandidate> candidates = new ArrayList<>();
         for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
@@ -155,8 +155,8 @@ public class ElytraReplace extends XploitsModule {
     }
 
     private void swap(ElytraPolicy.Result result) {
-        // Si ya había un cambio pendiente sin confirmar, este es un segundo intento: avisa una
-        // sola vez de que no está prendiendo, antes de mandarlo otra vez.
+        // If a swap was already pending without confirmation, this is a second attempt: warn only
+        // once that it is not taking, before sending it again.
         if (pendingSwapWornPercent != null && !pendingSwapStuckWarned) {
             pendingSwapStuckWarned = true;
             warning(ElytraText.SWAP_NOT_TAKING, "percent", result.wornPercent());
@@ -164,10 +164,10 @@ public class ElytraReplace extends XploitsModule {
 
         InvUtils.move().from(result.slot()).toArmor(CHEST_ARMOR_INDEX);
         pendingSwapWornPercent = result.wornPercent();
-        // Aquí NO se llama a policy.reset(): borraría el lastSwapAt que decide() acaba de poner y
-        // el módulo repetiría el movimiento en cada tick. El aviso de "sin repuesto" se rearma
-        // solo, dentro de decide(). El aviso de éxito se anuncia en confirmPendingSwap(), no aquí:
-        // este método solo sabe que el movimiento se mandó, no que el servidor lo haya aceptado.
+        // policy.reset() is NOT called here: it would erase the lastSwapAt that decide() has just
+        // set and the module would repeat the move on every tick. The "no spare" warning rearms on
+        // its own, inside decide(). The success notice is announced in confirmPendingSwap(), not
+        // here: this method only knows that the move was sent, not that the server accepted it.
     }
 
     private void warnNoSpare(int wornPercent, List<ElytraCandidate> candidates, long now) {
@@ -177,8 +177,8 @@ public class ElytraReplace extends XploitsModule {
         warning(message);
 
         MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(Items.ELYTRA);
-        // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
-        // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que KitRequester.
+        // MeteorToast.update() calls play(customSound) without a null check and vanilla dereferences it:
+        // an NPE on the render thread. Never pass null; it is silenced with zero volume, as KitRequester does.
         if (!notifySound.get()) {
             toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
         }
@@ -186,9 +186,9 @@ public class ElytraReplace extends XploitsModule {
     }
 
     /**
-     * NO_SPARE tiene dos causas distintas y el mensaje debe decir la que corresponde: que ningún
-     * candidato llegue al mínimo, o que alguno lo alcance pero ninguno esté estrictamente mejor
-     * que la puesta (spec §4.3).
+     * NO_SPARE has two different causes and the message must name the right one: that no
+     * candidate reaches the minimum, or that some do but none is strictly better than the worn
+     * one (spec §4.3).
      */
     private Msg noSpareMessage(int wornPercent, List<ElytraCandidate> candidates) {
         boolean anyReachesMinimum = candidates.stream().anyMatch(candidate -> candidate.percent() >= minSpare.get());

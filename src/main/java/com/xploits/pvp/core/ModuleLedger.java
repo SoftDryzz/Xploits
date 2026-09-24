@@ -8,82 +8,82 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * La propiedad de los módulos dirigidos, en lógica pura (spec §7): a partir de qué pide la fase,
- * qué está encendido de verdad ahora mismo y qué llevaba tomado, decide qué encender, qué apagar y
- * de qué se acaba de soltar el jugador. No sabe nada de Meteor ni de Minecraft: el adaptador solo
- * le pasa nombres y booleanos, y ejecuta lo que este devuelve llamando a {@code enable()} y
- * {@code disable()} de verdad.
+ * Ownership of the managed modules, in pure logic (spec §7): from what the phase asks for, what is
+ * really on right now and what it had taken, it decides what to enable, what to disable and which
+ * modules the player has just released. It knows nothing about Meteor or Minecraft: the adapter only
+ * passes it names and booleans, and carries out what this returns by calling the real
+ * {@code enable()} and {@code disable()}.
  *
- * <p>Esta decisión vivía en el adaptador, sin tests, y por eso un fallo de un solo tick -la
- * primera pasada soltaba lo que el jugador acababa de apagar a mano, y la segunda lo volvía a
- * encender porque seguía en lo que pedía la fase- llegó hasta el review final (spec §12). Aquí es
- * lógica pura y se puede probar sin arrancar el juego.
+ * <p>This decision used to live in the adapter, without tests, and that is why a single-tick bug -the
+ * first pass released what the player had just turned off by hand, and the second turned it back on
+ * because it was still in what the phase asked for- made it all the way to the final review (spec
+ * §12). Here it is pure logic and can be tested without starting the game.
  *
- * <p><b>Un apagado observado no siempre es un soltado a mano (spec §7).</b> Tres de los módulos
- * dirigidos pueden apagarse solos sin que el jugador los toque -no los tres por el mismo motivo, ni
- * todos de fábrica: {@code auto-trap} tras colocar el trap, de fábrica; {@code auto-city} de fábrica
- * si no encuentra objetivo, bloque o pico, o tras minar con éxito; y {@code auto-anvil} solo si el
- * jugador activa {@code toggle-on-break}, que es {@code false} de fábrica-, así que tratar ese
- * apagado como un soltado a mano bloqueaba la fase entera y avisaba de un "lo apagaste tú" falso. La
- * distinción es por módulo ({@link ManagedModule#turnsItselfOff()}), no por tiempo: no hay ventana
- * de ticks que sirva para los tres a la vez, porque {@code auto-trap} se apaga muchos ticks después
- * de tomarlo y {@code auto-city} puede apagarse dentro del mismo {@code onActivate()} que dispara
- * su encendido.
+ * <p><b>An observed shutdown is not always a manual release (spec §7).</b> Three of the managed
+ * modules can turn themselves off without the player touching them -not all three for the same reason,
+ * nor all by default: {@code auto-trap} after placing the trap, by default; {@code auto-city} by default
+ * if it finds no target, block or pickaxe, or after mining successfully; and {@code auto-anvil} only if
+ * the player enables {@code toggle-on-break}, which is {@code false} by default-, so treating that
+ * shutdown as a manual release blocked the whole phase and warned with a false "you turned it off". The
+ * distinction is per module ({@link ManagedModule#turnsItselfOff()}), not by time: there is no tick
+ * window that works for all three at once, because {@code auto-trap} turns off many ticks after
+ * being taken and {@code auto-city} can turn off inside the same {@code onActivate()} that its
+ * enabling fires.
  *
- * <p><b>{@code surround} salió de esa lista</b> (crítico C2). Con la marca puesta, el antirrebote no
- * se le aplicaba: el ledger soltaba la propiedad y lo retomaba en la segunda pasada del mismo tick,
- * así que apagarlo a mano era imposible y la única salida era apagar {@code auto-pvp} entero. Su
- * autoapagado de fábrica es {@code toggle-on-y-change}, y ese caso se excluye ahora aguas arriba:
- * la postura no pide {@code surround} mientras tu Y esté cambiando ({@link DefensivePolicy}), que es
- * exactamente la condición con la que el módulo se apaga solo.
+ * <p><b>{@code surround} left that list</b> (critical C2). With the flag set, the debounce did not
+ * apply to it: the ledger released ownership and took it back on the second pass of the same tick,
+ * so turning it off by hand was impossible and the only way out was to turn off the whole {@code auto-pvp}.
+ * Its default self-shutdown is {@code toggle-on-y-change}, and that case is now excluded upstream:
+ * the posture does not ask for {@code surround} while your Y is changing ({@link DefensivePolicy}), which
+ * is exactly the condition under which the module turns itself off.
  *
- * <p><b>Y un parpadeo tampoco es soltar (rediseño §8).</b> Renunciar al módulo para toda la fase con
- * un único tick observado en "off" convertía una doble pulsación de un bind en quedarte sin él en
- * mitad del combate. Para los módulos que no pueden apagarse solos hace falta además que siga
- * apagado {@link #RELEASE_DEBOUNCE_TICKS} ticks seguidos.
+ * <p><b>And a flicker is not a release either (redesign §8).</b> Giving up the module for the whole
+ * phase on a single tick observed "off" turned a double press of a bind into losing it in the middle of
+ * combat. For the modules that cannot turn themselves off it must also stay off for
+ * {@link #RELEASE_DEBOUNCE_TICKS} consecutive ticks.
  */
 public final class ModuleLedger {
     /**
-     * Ticks seguidos que un módulo tomado tiene que estar apagado, mientras la fase lo sigue
-     * pidiendo, para concluir que el jugador lo quiere para él (rediseño §8). Cuatro ticks, 0,2 s.
+     * Consecutive ticks a taken module must be off, while the phase still asks for it, to conclude
+     * that the player wants it for themselves (redesign §8). Four ticks, 0.2 s.
      *
-     * <p>El número sale de las dos formas de equivocarse. Por abajo: una doble pulsación de un bind
-     * -o un bind que se repite, o abrir y cerrar la ClickGUI encima del mismo módulo- deja el módulo
-     * apagado solo los ticks que tardas en volver a pulsar, del orden de dos o tres a velocidad
-     * humana (100-150 ms); cuatro ticks los cubren, y como el jugador lo vuelve a encender él mismo,
-     * el ledger no tiene ni que retomarlo. Por arriba: un soltado de verdad tarda esos mismos 0,2 s
-     * en reconocerse, menos que el ciclo de cristal más corto de §9, así que nunca llega a verse
-     * como que el director pelea con el jugador por un bind.
+     * <p>The number comes from the two ways of getting it wrong. From below: a double press of a bind
+     * -or a repeating bind, or opening and closing the ClickGUI on the same module- leaves the module
+     * off only for the ticks you take to press again, around two or three at human speed
+     * (100-150 ms); four ticks cover them, and since the player turns it back on themselves, the
+     * ledger does not even have to take it back. From above: a real release takes those same 0.2 s
+     * to be recognised, less than the shortest crystal cycle of §9, so it never comes across as the
+     * director fighting the player over a bind.
      *
-     * <p>Durante la espera el módulo <b>ni se retoma ni se da por soltado</b>: retomarlo sería
-     * exactamente la pelea que hay que evitar -el jugador apaga, el director enciende, y la cuenta
-     * de ticks apagados nunca llegaría a subir-.
+     * <p>During the wait the module is <b>neither taken back nor considered released</b>: taking it back
+     * would be exactly the fight to avoid -the player turns it off, the director turns it on, and the
+     * count of ticks off would never go up-.
      */
     public static final int RELEASE_DEBOUNCE_TICKS = 4;
 
-    /** Los módulos que este ledger tiene tomados ahora mismo. */
+    /** The modules this ledger has taken right now. */
     private final Set<String> owned = new LinkedHashSet<>();
 
     /**
-     * Ticks seguidos que cada módulo tomado lleva observado en "off" mientras la fase lo sigue
-     * pidiendo (rediseño §8). Solo tiene entrada durante la espera del antirrebote.
+     * Consecutive ticks each taken module has been observed "off" while the phase still asks for it
+     * (redesign §8). It only has an entry during the debounce wait.
      */
     private final Map<String, Integer> offTicks = new HashMap<>();
 
     /**
-     * Módulos que el jugador soltó a mano mientras la situación los seguía pidiendo. No se vuelven a
-     * tomar hasta que la situación cambie o se llame a {@link #reset()} (spec §7): es la memoria que
-     * falta para que apagar algo a mano funcione de verdad.
+     * Modules the player released by hand while the situation still asked for them. They are not
+     * taken again until the situation changes or {@link #reset()} is called (spec §7): it is the memory
+     * that was missing for turning something off by hand to really work.
      *
-     * <p><b>"La situación" no es la misma para los dos ejes</b> (importante I6). Esta memoria estaba
-     * indexada entera por la <b>fase ofensiva</b>, incluso para los módulos defensivos, que no
-     * dependen de ella: apagabas {@code hole-filler} a mano porque te gastaba la obsidiana, el
-     * enemigo se alejaba un bloque, cambiaba la fase ofensiva -sin que nada tuyo hubiera cambiado- y
-     * el ledger olvidaba que lo habías soltado y te lo volvía a encender. Es el mismo error que I4
-     * por la otra puerta: una estructura escrita para un eje aplicada a los dos.
+     * <p><b>"The situation" is not the same for both axes</b> (important I6). This memory was
+     * indexed entirely by the <b>offensive phase</b>, even for the defensive modules, which do not
+     * depend on it: you turned {@code hole-filler} off by hand because it was spending your obsidian, the
+     * enemy moved one block away, the offensive phase changed -without anything of yours having changed- and
+     * the ledger forgot you had released it and turned it back on. It is the same mistake as I4
+     * through the other door: a structure written for one axis applied to both.
      *
-     * <p>Ahora cada mitad olvida con lo suyo: lo ofensivo al cambiar la fase, lo defensivo al
-     * cambiar la postura, que es la "fase" del eje defensivo (§3).
+     * <p>Now each half forgets with its own: the offensive one when the phase changes, the defensive one
+     * when the posture changes, which is the "phase" of the defensive axis (§3).
      */
     private final Set<String> released = new LinkedHashSet<>();
 
@@ -91,11 +91,11 @@ public final class ModuleLedger {
     private CombatPosture lastPosture;
 
     /**
-     * Si un apagado observado en {@code name} cuenta como "soltado a mano" (spec §7). Busca en
-     * {@link ManagedModules#ALL}, el catálogo de los módulos dirigidos, que vive en este mismo
-     * paquete: no hace falta ningún adaptador para consultarlo, sigue siendo lógica pura. Un nombre
-     * que no está en el catálogo (por ejemplo uno de los "de siempre") nunca llega aquí como
-     * "owned", así que el valor por defecto (false) no importa en la práctica.
+     * Whether an observed shutdown of {@code name} counts as a "manual release" (spec §7). It looks in
+     * {@link ManagedModules#ALL}, the catalog of managed modules, which lives in this same
+     * package: no adapter is needed to consult it, it is still pure logic. A name
+     * that is not in the catalog (for example one of the "usual" ones) never gets here as
+     * "owned", so the default value (false) does not matter in practice.
      */
     private static boolean turnsItselfOff(String name) {
         for (ManagedModule module : ManagedModules.ALL) {
@@ -105,9 +105,9 @@ public final class ModuleLedger {
     }
 
     /**
-     * Lo que hay que hacer este tick: qué encender de verdad, qué apagar de verdad, y de qué
-     * módulos se acaba de enterar que el jugador los soltó a mano (para avisar una vez, no en cada
-     * tick que siguen sin tomarse).
+     * What has to be done this tick: what to really enable, what to really disable, and which
+     * modules it has just learnt the player released by hand (to warn once, not on every
+     * tick they stay untaken).
      */
     public record Result(List<String> toEnable, List<String> toDisable, List<String> newlyReleased) {
         public Result {
@@ -118,16 +118,16 @@ public final class ModuleLedger {
     }
 
     /**
-     * Decide la propiedad de este tick. No enciende ni apaga nada por sí solo: el adaptador ejecuta
-     * el {@link Result} que devuelve.
+     * Decides this tick's ownership. It enables or disables nothing on its own: the adapter carries out
+     * the {@link Result} it returns.
      *
-     * @param phase   la fase física actual (no la que informa el plan); un cambio de fase olvida lo
-     *                que el jugador soltó a mano <b>del eje ofensivo</b> (spec §7, importante I6)
-     * @param posture la postura defensiva actual; un cambio de postura olvida lo que el jugador
-     *                soltó a mano <b>del eje defensivo</b>, que es lo que no dependía de la fase
-     * @param wanted  los nombres de módulo que el plan de este tick quiere encendidos
-     * @param active  los nombres de módulo que están encendidos de verdad ahora mismo, los tome
-     *                quien los tome
+     * @param phase   the current physical phase (not the one the plan reports); a phase change forgets
+     *                what the player released by hand <b>on the offensive axis</b> (spec §7, important I6)
+     * @param posture the current defensive posture; a posture change forgets what the player
+     *                released by hand <b>on the defensive axis</b>, which is what did not depend on the phase
+     * @param wanted  the module names the plan of this tick wants on
+     * @param active  the module names that are really on right now, whoever
+     *                took them
      */
     public Result apply(CombatState phase, CombatPosture posture, Set<String> wanted, Set<String> active) {
         if (phase != lastPhase) {
@@ -142,26 +142,26 @@ public final class ModuleLedger {
         List<String> toDisable = new ArrayList<>();
         List<String> newlyReleased = new ArrayList<>();
 
-        // Primera pasada: reconciliar lo que creíamos tomado con lo que está encendido de verdad.
+        // First pass: reconcile what we believed taken with what is really on.
         for (String name : new ArrayList<>(owned)) {
             if (!active.contains(name)) {
-                // Ya no está encendido. Tres de los módulos ofensivos pueden apagarse solos sin que
-                // el jugador los toque (spec §7) -auto-trap al colocar el trap, de fábrica;
-                // auto-city de fábrica si no encuentra objetivo/bloque/pico o tras minar con éxito;
-                // auto-anvil solo si el jugador activa toggle-on-break; surround ya no está en la
-                // lista (C2)-, y ese apagado no es que el jugador lo soltara a mano: deja de
-                // ser nuestro y el director puede volver a tomarlo en la segunda pasada de este
-                // mismo tick. Lo mismo si la fase ya no lo pide: no hay nada que soltar.
+                // It is no longer on. Three of the offensive modules can turn themselves off without
+                // the player touching them (spec §7) -auto-trap on placing the trap, by default;
+                // auto-city by default if it finds no target/block/pickaxe or after mining successfully;
+                // auto-anvil only if the player enables toggle-on-break; surround is no longer on the
+                // list (C2)-, and that shutdown is not the player releasing it by hand: it stops
+                // being ours and the director can take it again on the second pass of this
+                // same tick. The same if the phase no longer asks for it: there is nothing to release.
                 if (turnsItselfOff(name) || !wanted.contains(name)) {
                     owned.remove(name);
                     offTicks.remove(name);
                     continue;
                 }
 
-                // Para los que NO pueden apagarse solos, un apagado observado apunta al jugador,
-                // pero un solo tick no basta (rediseño §8): una doble pulsación de un bind te
-                // dejaba sin el módulo en mitad del combate. Mientras dura el antirrebote sigue
-                // siendo nuestro y no se retoma -retomarlo sería pelearse con el bind-.
+                // For those that CANNOT turn themselves off, an observed shutdown points at the player,
+                // but a single tick is not enough (redesign §8): a double press of a bind left
+                // you without the module in the middle of combat. While the debounce lasts it is still
+                // ours and is not taken back -taking it back would be fighting the bind-.
                 int ticksOff = offTicks.merge(name, 1, Integer::sum);
                 if (ticksOff < RELEASE_DEBOUNCE_TICKS) continue;
 
@@ -171,7 +171,7 @@ public final class ModuleLedger {
                 newlyReleased.add(name);
                 continue;
             }
-            // Ha vuelto a estar encendido antes de cumplirse el antirrebote: era un parpadeo.
+            // It is on again before the debounce ran out: it was a flicker.
             offTicks.remove(name);
             if (!wanted.contains(name)) {
                 toDisable.add(name);
@@ -179,14 +179,14 @@ public final class ModuleLedger {
             }
         }
 
-        // Segunda pasada: tomar lo que falta. Nunca lo que ya está encendido -sea nuestro o del
-        // jugador-, y nunca lo que el jugador acaba de soltar en esta misma fase.
+        // Second pass: take what is missing. Never what is already on -whether ours or the
+        // player's-, and never what the player has just released in this same phase.
         List<String> toEnable = new ArrayList<>();
         for (String name : wanted) {
             if (active.contains(name)) continue;
             if (released.contains(name)) continue;
-            // En pleno antirrebote no se toca: si el jugador lo apagó, reencenderlo sería pelearse
-            // con él y además impediría que la cuenta llegara nunca a RELEASE_DEBOUNCE_TICKS.
+            // In the middle of the debounce it is not touched: if the player turned it off, turning it
+            // back on would be fighting them and would also keep the count from ever reaching RELEASE_DEBOUNCE_TICKS.
             if (offTicks.containsKey(name)) continue;
             toEnable.add(name);
             owned.add(name);
@@ -195,22 +195,22 @@ public final class ModuleLedger {
         return new Result(toEnable, toDisable, newlyReleased);
     }
 
-    /** Lo que el ledger tiene tomado ahora mismo. */
+    /** What the ledger has taken right now. */
     public Set<String> owned() {
         return Set.copyOf(owned);
     }
 
     /**
-     * Olvida lo soltado a mano de <b>un solo eje</b> y su antirrebote a medias (importante I6).
-     * Cada eje cambia de situación por su cuenta: el ofensivo con la fase, el defensivo con la
-     * postura, y lo del otro no se toca.
+     * Forgets what was released by hand on <b>a single axis</b> and its half-done debounce (important I6).
+     * Each axis changes situation on its own: the offensive one with the phase, the defensive one with
+     * the posture, and the other one's is left alone.
      */
     private void forget(boolean defensive) {
         released.removeIf(name -> ManagedModules.isDefensive(name) == defensive);
         offTicks.keySet().removeIf(name -> ManagedModules.isDefensive(name) == defensive);
     }
 
-    /** Olvida lo tomado y lo soltado a mano. Se llama al encender o apagar el módulo entero. */
+    /** Forgets what was taken and what was released by hand. Called when the whole module is turned on or off. */
     public void reset() {
         owned.clear();
         released.clear();

@@ -4,82 +4,82 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * El eje defensivo del rediseño (§5): se deriva de <b>ti</b>, no del objetivo, y no compite con la
- * fase. Los módulos que acaban encendidos son la unión de lo que pide cada eje (§3).
+ * The defensive axis of the redesign (§5): it is derived from <b>you</b>, not from the target, and it
+ * does not compete with the phase. The modules that end up on are the union of what each axis asks for (§3).
  *
- * <p>Es la decisión que antes no existía, y la que §10 pedía: <i>ninguna decisión se toma con un
- * proxy si el dato real está a mano</i>. Aquí el dato real es doble y el cliente lo sabe siempre,
- * en todos los servidores: {@code PlayerUtils.getTotalHealth()} (vida + absorción) y
- * {@code PlayerUtils.possibleHealthReductions()} (el daño que <b>ya</b> te apunta: cristales
- * colocados, jugadores con espada a &le;5, camas en el Nether y caída). Es el mismo par que usan
- * {@code AutoTotem}, {@code Offhand} y {@code AutoLog} para decidir lo mismo.
+ * <p>It is the decision that did not exist before, and the one §10 asked for: <i>no decision is taken
+ * with a proxy if the real data is at hand</i>. Here the real data is twofold and the client always
+ * knows it, on every server: {@code PlayerUtils.getTotalHealth()} (health + absorption) and
+ * {@code PlayerUtils.possibleHealthReductions()} (the damage <b>already</b> aimed at you: placed
+ * crystals, players with a sword at &le;5, beds in the Nether and falling). It is the same pair
+ * {@code AutoTotem}, {@code Offhand} and {@code AutoLog} use to decide the same thing.
  */
 public final class DefensivePolicy {
     /**
-     * Vida que te tiene que quedar, descontando lo que ya te apunta, para seguir {@code TRANQUILO}
-     * (§5). La spec deja el número abierto; sale de cuánto quita un cristal y de cuánto tardas en
-     * responder.
+     * Health you must have left, after subtracting what is already aimed at you, to stay {@code CALM}
+     * (§5). The spec leaves the number open; it comes from how much a crystal takes and how long you
+     * take to respond.
      *
-     * <p>Un cristal a bocajarro contra netherita encantada quita del orden de 8 puntos.
-     * {@code possibleHealthReductions()} ya cuenta los cristales <b>colocados</b>, así que el margen
-     * solo tiene que cubrir el que todavía no está puesto cuando miras, es decir un ciclo de
-     * cristal de reacción; §9 mide medio segundo en 2-5 ciclos, o sea 4-10 ticks por ciclo, y los
-     * módulos defensivos necesitan unos cuantos ticks más para colocar algo. Un ciclo y medio de
-     * margen son 12 puntos: con la vida llena y nada apuntándote quedan 8 de holgura, así que la
-     * postura no salta por el mero hecho de estar peleando, y salta en cuanto hay dos cristales ya
-     * colocados sobre ti o estás por debajo de 12 con uno puesto -que es justo el momento en el que
-     * un {@code hole-filler} o un {@code anti-anvil} deciden si mueres-.
+     * <p>A point-blank crystal against enchanted netherite takes around 8 points.
+     * {@code possibleHealthReductions()} already counts the <b>placed</b> crystals, so the margin
+     * only has to cover the one not yet placed when you look, that is one reaction crystal
+     * cycle; §9 measures half a second in 2-5 cycles, that is 4-10 ticks per cycle, and the
+     * defensive modules need a few more ticks to place something. A cycle and a half of
+     * margin is 12 points: with full health and nothing aimed at you there are 8 of slack left, so the
+     * posture does not trip merely because you are fighting, and it trips as soon as there are two
+     * crystals already placed on you or you are below 12 with one placed -which is exactly the moment in
+     * which a {@code hole-filler} or an {@code anti-anvil} decides whether you die-.
      *
-     * <p>Que el umbral sea generoso es deliberado y barato: los cuatro módulos de {@code AMENAZADO}
-     * no te inmovilizan ni gastan nada salvo la obsidiana suelta de {@code hole-filler}, así que
-     * pasarse cuesta mucho menos que quedarse corto.
+     * <p>A generous threshold is deliberate and cheap: the four {@code THREATENED} modules
+     * neither immobilize you nor spend anything except the loose obsidian of {@code hole-filler}, so
+     * overshooting costs much less than falling short.
      */
     public static final double THREAT_MARGIN = 12.0;
 
     private DefensivePolicy() {}
 
-    /** Lo mismo con el margen de fábrica, {@link #THREAT_MARGIN}. */
+    /** The same with the default margin, {@link #THREAT_MARGIN}. */
     public static CombatPosture postureFor(CombatSnapshot snapshot) {
         return postureFor(snapshot, THREAT_MARGIN);
     }
 
     /**
-     * {@code AMENAZADO} cuando el daño que ya te apunta te dejaría por debajo del margen (§5). La
-     * comparación es menor-o-igual: justo en el umbral ya cuenta como amenaza.
+     * {@code THREATENED} when the damage already aimed at you would leave you below the margin (§5). The
+     * comparison is less-or-equal: right at the threshold it already counts as a threat.
      *
-     * <p>El margen entra por parámetro porque la spec lo deja abierto y como ajuste del módulo
-     * ({@code threat-margin}); {@link #THREAT_MARGIN} es solo su valor de fábrica. Es el mismo trato
-     * que recibe {@code approach-distance} en {@link CombatDirector#tick}: el número lo pone el
-     * jugador, la comparación sigue siendo del núcleo.
+     * <p>The margin comes in as a parameter because the spec leaves it open and as a module setting
+     * ({@code threat-margin}); {@link #THREAT_MARGIN} is only its default value. It is the same treatment
+     * {@code approach-distance} gets in {@link CombatDirector#tick}: the player sets the number, the
+     * comparison still belongs to the core.
      */
     public static CombatPosture postureFor(CombatSnapshot snapshot, double threatMargin) {
         double remaining = snapshot.selfTotalHealth() - snapshot.incomingDamage();
-        return remaining <= threatMargin ? CombatPosture.AMENAZADO : CombatPosture.TRANQUILO;
+        return remaining <= threatMargin ? CombatPosture.THREATENED : CombatPosture.CALM;
     }
 
     /**
-     * Qué pide la postura (§5). {@code TRANQUILO} no pide nada; {@code AMENAZADO} pide los tres
-     * {@code anti-} y el {@code hole-filler}, que tapan formas concretas de matarte sin
-     * inmovilizarte, y además {@code surround} <b>solo</b> si estás en un agujero, en el suelo y
-     * con la altura quieta.
+     * What the posture asks for (§5). {@code CALM} asks for nothing; {@code THREATENED} asks for the
+     * three {@code anti-} modules and the {@code hole-filler}, which cover specific ways of killing you
+     * without immobilizing you, and also {@code surround} <b>only</b> if you are in a hole, on the ground
+     * and with your height still.
      *
-     * <p>Las tres condiciones de {@code surround} son suyas, no un adorno: con
-     * {@code toggle-on-y-change} en {@code true} de fábrica y una llamada a
-     * {@code PlayerUtils.centerPlayer()} mientras el surround esté incompleto, encenderlo mientras
-     * te mueves te recoloca y se apaga solo en bucle. Es un módulo defensivo de agujero y ese es su
-     * único sitio.
+     * <p>The three conditions of {@code surround} are its own, not decoration: with
+     * {@code toggle-on-y-change} at {@code true} by default and a call to
+     * {@code PlayerUtils.centerPlayer()} while the surround is incomplete, enabling it while
+     * you move re-centers you and it turns itself off in a loop. It is a defensive hole module and that
+     * is its only place.
      *
-     * <p>La tercera -{@code selfYChanged}- entra con el crítico C2 y es la que hace honesto el
-     * {@code turnsItselfOff == false} de {@link ManagedModules#SURROUND}. {@code Surround} comprueba
-     * {@code prevY != getY()} en {@code TickEvent.Pre}, es decir <b>un tick después</b> de que te
-     * movieras en vertical, y estar en el suelo y dentro del agujero no excluye ese tick: aterrizar
-     * en el agujero te deja precisamente ahí -en el suelo, dentro y con la Y recién cambiada-, la
-     * postura lo pedía, el ledger lo encendía y el módulo se apagaba solo al tick siguiente. Ese
-     * apagado es indistinguible de que lo apagaras tú, y por eso había que dejar de provocarlo. No
-     * se pierde nada: en esos ticks el módulo se habría apagado igual por su cuenta.
+     * <p>The third -{@code selfYChanged}- came with critical C2 and is what makes the
+     * {@code turnsItselfOff == false} of {@link ManagedModules#SURROUND} honest. {@code Surround} checks
+     * {@code prevY != getY()} in {@code TickEvent.Pre}, that is <b>one tick after</b> you
+     * moved vertically, and being on the ground and inside the hole does not exclude that tick: landing
+     * in the hole leaves you exactly there -on the ground, inside and with Y just changed-, the
+     * posture asked for it, the ledger turned it on and the module turned itself off on the next tick.
+     * That shutdown is indistinguishable from you turning it off, and that is why it had to stop being
+     * provoked. Nothing is lost: on those ticks the module would have turned itself off anyway.
      */
     public static List<ManagedModule> modulesFor(CombatPosture posture, CombatSnapshot snapshot) {
-        if (posture == CombatPosture.TRANQUILO) return List.of();
+        if (posture == CombatPosture.CALM) return List.of();
 
         List<ManagedModule> modules = new ArrayList<>(List.of(
             ManagedModules.HOLE_FILLER, ManagedModules.ANTI_ANVIL,

@@ -5,161 +5,159 @@ import com.xploits.shared.core.i18n.Msg;
 import java.util.BitSet;
 
 /**
- * Lleva la cuenta de cuántos chunks del área han llegado de verdad, para que el barrido pueda decir
- * al terminar <b>cuánto miró</b> en vez de solo que terminó (spec Nether Sweep §9).
+ * Keeps count of how many chunks of the area have really arrived, so that the sweep can say at the
+ * end <b>how much it looked at</b> instead of only that it finished (Nether Sweep spec §9).
  *
- * <p><b>El fallo que esta clase cierra.</b> El módulo leía la cobertura una sola vez, al lanzar, y
- * no la volvía a mirar: recorría los vértices y, al llegar al último, anunciaba «el barrido ha
- * terminado». Entre esas dos cosas no había ninguna comprobación de que los chunks del rectángulo
- * hubieran llegado. Una hora de vuelo con el servidor entregando con retraso, o el jugador
- * adelantándose a la entrega, y una fracción de cada banda no llega nunca: el jugador lee «Barrido
- * terminado», tacha la zona y no vuelve. Es exactamente la única mentira que el módulo no puede
- * contar -una cobertura incompleta marcada como completa- y encima no se descubre nunca.
+ * <p><b>The failure this class closes.</b> The module read the coverage only once, at launch, and
+ * never looked at it again: it walked the vertices and, on reaching the last one, announced "the
+ * sweep has finished". Between those two things there was no check at all that the rectangle's
+ * chunks had arrived. An hour of flight with the server delivering late, or the player getting ahead
+ * of the delivery, and a fraction of every band never arrives: the player reads "Sweep finished",
+ * crosses the area off and does not come back. It is exactly the one lie the module cannot tell -an
+ * incomplete coverage marked as complete- and on top of that it is never discovered.
  *
- * <p><b>Y el dato no hay que suponerlo.</b> Llega un {@code ChunkDataEvent} por cada chunk que el
- * servidor manda, al mismo bus al que el módulo ya está suscrito para medir la anchura de pasada.
- * Bastaba con mirar cuáles de esos chunks caen dentro del rectángulo. Esta clase es esa cuenta, en
- * el núcleo y con tests; el adaptador solo le pasa las coordenadas que van llegando.
+ * <p><b>And the figure does not have to be assumed.</b> A {@code ChunkDataEvent} arrives for every
+ * chunk the server sends, on the same bus the module is already subscribed to in order to measure the
+ * lane width. It was enough to look at which of those chunks fall inside the rectangle. This class is
+ * that count, in the core and with tests; the adapter only passes it the coordinates as they arrive.
  *
- * <p><b>Por qué también se cuentan los que ya estaban vistos antes de despegar.</b>
- * {@link SweepPlanner} se salta las bandas ya cubiertas enteras, así que esos chunks no van a llegar
- * durante el vuelo y no son terreno sin mirar: contarlos como huecos haría que todo barrido sobre un
- * área medio conocida pareciera fallido. Se marcan al construir, y así cada chunk del rectángulo
- * cuenta una sola vez, venga de la cobertura previa o del vuelo de hoy.
+ * <p><b>Why the ones already seen before takeoff are counted too.</b> {@link SweepPlanner} skips the
+ * bands that are already fully covered, so those chunks are not going to arrive during the flight
+ * and they are not unlooked-at terrain: counting them as gaps would make every sweep over a
+ * half-known area look like a failure. They are marked at construction, and so every chunk of the
+ * rectangle counts only once, whether it comes from the previous coverage or from today's flight.
  *
- * <p><b>Por qué un {@link BitSet} y no un conjunto de {@link ChunkPos}.</b> El área puede llegar a
- * {@link SweepArea#MAXIMO_DE_CHUNKS}, cuatro millones de chunks: un {@code HashSet} de objetos ahí
- * son cientos de megas y un montón de basura que recoger en mitad del vuelo, mientras que cuatro
- * millones de bits son medio mega y una operación de coste fijo por chunk recibido. La cuenta del
- * índice es la misma que hace el recorrido del rectángulo, así que no hay nada que se pueda
- * desalinear.
+ * <p><b>Why a {@link BitSet} and not a set of {@link ChunkPos}.</b> The area can reach
+ * {@link SweepArea#MAX_CHUNKS}, four million chunks: a {@code HashSet} of objects there is hundreds of
+ * megabytes and a pile of garbage to collect mid-flight, whereas four million bits are half a
+ * megabyte and a fixed-cost operation per chunk received. The index arithmetic is the same the walk
+ * of the rectangle does, so there is nothing that can get misaligned.
  *
- * <p>Esta clase no toca Minecraft ni Meteor: recibe coordenadas de chunk ya leídas.
+ * <p>This class does not touch Minecraft or Meteor: it receives chunk coordinates already read.
  */
 public final class SweepTally {
     private final SweepArea area;
-    private final BitSet cubiertos;
-    private final int chunksDelArea;
-    private final int yaVistos;
+    private final BitSet covered;
+    private final int areaChunks;
+    private final int alreadySeen;
 
-    private SweepTally(SweepArea area, BitSet cubiertos, int chunksDelArea, int yaVistos) {
+    private SweepTally(SweepArea area, BitSet covered, int areaChunks, int alreadySeen) {
         this.area = area;
-        this.cubiertos = cubiertos;
-        this.chunksDelArea = chunksDelArea;
-        this.yaVistos = yaVistos;
+        this.covered = covered;
+        this.areaChunks = areaChunks;
+        this.alreadySeen = alreadySeen;
     }
 
     /**
-     * Arranca la cuenta sobre un área, marcando de entrada los chunks que la cobertura previa ya
-     * daba por vistos.
+     * Starts the count over an area, marking from the outset the chunks the previous coverage already
+     * took as seen.
      *
-     * <p>Recorre el rectángulo entero una vez, igual que {@link Coverage#seenIn(SweepArea)} -de
-     * hecho {@link #alreadySeen()} da ese mismo número, así que quien construya esto no necesita
-     * llamar además a aquél y pagar el recorrido dos veces-.
+     * <p>It walks the whole rectangle once, just like {@link Coverage#seenIn(SweepArea)} -in fact
+     * {@link #alreadySeen()} gives that same number, so whoever builds this does not need to call
+     * that one as well and pay for the walk twice-.
      *
-     * @throws NullPointerException si {@code area} o {@code seen} son nulos
-     * @throws ArithmeticException  si el área tiene más chunks de los que caben en un {@code int};
-     *                              el adaptador la rechaza mucho antes con
+     * @throws NullPointerException if {@code area} or {@code seen} are null
+     * @throws ArithmeticException  if the area has more chunks than fit in an {@code int}; the
+     *                              adapter rejects it much earlier with
      *                              {@link SweepArea#oversizeRejection()}
      */
     public static SweepTally of(SweepArea area, Coverage seen) {
-        if (area == null) throw new NullPointerException("hace falta un área para contar dentro de ella");
+        if (area == null) throw new NullPointerException("an area is needed to count inside it");
         if (seen == null) {
-            throw new NullPointerException("hace falta la cobertura previa: sin ella no se sabe qué"
-                + " chunks del área no hacía falta volver a ver"); // i18n: allowed (exception message, continuation line)
+            throw new NullPointerException("the previous coverage is needed: without it there is no"
+                + " knowing which chunks of the area did not need to be seen again");
         }
 
-        int chunksDelArea = area.chunkCount();
-        BitSet cubiertos = new BitSet(chunksDelArea);
-        int yaVistos = 0;
+        int areaChunks = area.chunkCount();
+        BitSet covered = new BitSet(areaChunks);
+        int alreadySeen = 0;
         for (int x = area.minChunkX(); x <= area.maxChunkX(); x++) {
             for (int z = area.minChunkZ(); z <= area.maxChunkZ(); z++) {
                 if (seen.seen(new ChunkPos(x, z))) {
-                    cubiertos.set(indice(area, x, z));
-                    yaVistos++;
+                    covered.set(index(area, x, z));
+                    alreadySeen++;
                 }
             }
         }
-        return new SweepTally(area, cubiertos, chunksDelArea, yaVistos);
+        return new SweepTally(area, covered, areaChunks, alreadySeen);
     }
 
     /**
-     * Anota un chunk que acaba de llegar del servidor. Los de fuera del rectángulo se ignoran -son
-     * la mayoría durante la aproximación- y los repetidos no cuentan dos veces.
+     * Records a chunk that has just arrived from the server. Those outside the rectangle are ignored
+     * -they are most of them during the approach- and repeated ones do not count twice.
      *
-     * @return si este chunk era del área y no estaba cubierto todavía
+     * @return whether this chunk belonged to the area and was not covered yet
      */
     public boolean record(int chunkX, int chunkZ) {
         if (chunkX < area.minChunkX() || chunkX > area.maxChunkX()) return false;
         if (chunkZ < area.minChunkZ() || chunkZ > area.maxChunkZ()) return false;
 
-        int indice = indice(area, chunkX, chunkZ);
-        if (cubiertos.get(indice)) return false;
-        cubiertos.set(indice);
+        int index = index(area, chunkX, chunkZ);
+        if (covered.get(index)) return false;
+        covered.set(index);
         return true;
     }
 
-    /** Cuántos chunks tiene el rectángulo. */
+    /** How many chunks the rectangle has. */
     public int areaChunks() {
-        return chunksDelArea;
+        return areaChunks;
     }
 
-    /** Cuántos chunks del área ya estaban vistos al planificar, según la cobertura previa. */
+    /** How many chunks of the area were already seen at planning time, according to the previous coverage. */
     public int alreadySeen() {
-        return yaVistos;
+        return alreadySeen;
     }
 
-    /** Cuántos chunks del área han llegado durante el barrido y no estaban vistos antes. */
+    /** How many chunks of the area have arrived during the sweep and had not been seen before. */
     public int arrived() {
-        return covered() - yaVistos;
+        return covered() - alreadySeen;
     }
 
-    /** Cuántos chunks del área están cubiertos: los de antes más los que han llegado. */
+    /** How many chunks of the area are covered: the earlier ones plus those that have arrived. */
     public int covered() {
-        return cubiertos.cardinality();
+        return covered.cardinality();
     }
 
-    /** Cuántos chunks del área no ha visto nadie: ni la cobertura previa ni este barrido. */
+    /** How many chunks of the area nobody has seen: neither the previous coverage nor this sweep. */
     public int missing() {
-        return chunksDelArea - covered();
+        return areaChunks - covered();
     }
 
-    /** Qué fracción del área está cubierta, en {@code [0, 1]}. */
+    /** Which fraction of the area is covered, in {@code [0, 1]}. */
     public double coveredFraction() {
-        return covered() / (double) chunksDelArea;
+        return covered() / (double) areaChunks;
     }
 
     /**
-     * Si la cobertura se queda por debajo del suelo que el jugador considera aceptable. Quien
-     * pregunte esto debe avisar <b>fuerte</b>: un barrido que cubrió la mitad no puede parecerse a
-     * uno que cubrió todo, porque los dos terminan y solo uno hay que repetirlo.
+     * Whether the coverage falls below the floor the player considers acceptable. Whoever asks this
+     * must warn <b>loudly</b>: a sweep that covered half cannot look like one that covered everything,
+     * because both finish and only one has to be repeated.
      *
-     * @param floor fracción mínima aceptable, en {@code [0, 1]}
+     * @param floor minimum acceptable fraction, in {@code [0, 1]}
      */
     public boolean shortOfCoverage(double floor) {
         return coveredFraction() < floor;
     }
 
     /**
-     * Lo que hay que decirle al jugador al terminar: cuántos de los N chunks del área llegaron, de
-     * dónde salen y cuántos faltan.
+     * What to tell the player at the end: how many of the area's N chunks arrived, where they come
+     * from and how many are missing.
      *
-     * <p><b>El porcentaje se redondea hacia abajo</b>, nunca al más cercano: con 3.590 de 3.600 la
-     * cuenta da 99,7 %, y un «100 %» sobre diez chunks sin ver sería la misma mentira que esta clase
-     * existe para no contar, solo que redactada por el redondeo. Así, un 100 % solo aparece cuando
-     * de verdad no falta ninguno.
+     * <p><b>The percentage is rounded down</b>, never to the nearest: with 3,590 of 3,600 the sum
+     * gives 99.7%, and a "100%" over ten unseen chunks would be the same lie this class exists not to
+     * tell, only worded by the rounding. So a 100% only shows up when really none is missing.
      */
     public Msg summary() {
-        int porcentaje = (int) Math.floor(coveredFraction() * 100);
+        int percent = (int) Math.floor(coveredFraction() * 100);
         if (missing() == 0) {
-            return Msg.of(SweepText.COVERAGE_COMPLETE, "covered", covered(), "total", chunksDelArea,
-                "percent", porcentaje, "seen", yaVistos, "arrived", arrived());
+            return Msg.of(SweepText.COVERAGE_COMPLETE, "covered", covered(), "total", areaChunks,
+                "percent", percent, "seen", alreadySeen, "arrived", arrived());
         }
-        return Msg.of(SweepText.COVERAGE_MISSING, "covered", covered(), "total", chunksDelArea,
-            "percent", porcentaje, "seen", yaVistos, "arrived", arrived(), "missing", missing());
+        return Msg.of(SweepText.COVERAGE_MISSING, "covered", covered(), "total", areaChunks,
+            "percent", percent, "seen", alreadySeen, "arrived", arrived(), "missing", missing());
     }
 
-    private static int indice(SweepArea area, int chunkX, int chunkZ) {
+    private static int index(SweepArea area, int chunkX, int chunkZ) {
         return (chunkX - area.minChunkX()) * area.heightInChunks() + (chunkZ - area.minChunkZ());
     }
 }

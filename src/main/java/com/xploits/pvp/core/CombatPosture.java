@@ -1,16 +1,16 @@
 package com.xploits.pvp.core;
 
 /**
- * El eje defensivo del rediseño (§3): qué te está pasando a <b>ti</b>, con independencia de en qué
- * fase esté el objetivo.
+ * The defensive axis of the redesign (§3): what is happening to <b>you</b>, regardless of which
+ * phase the target is in.
  *
- * <p>El error que corrige es haberlo metido todo en un único {@code enum}: "me están cristaleando" y
- * "él está rodeado" son verdaderas a la vez, y un enum obliga a elegir entre atacar y defenderte.
- * Los módulos que se encienden son la <b>unión</b> de los que pide cada eje.
+ * <p>The mistake it fixes is having put everything into a single {@code enum}: "I am being crystalled"
+ * and "he is surrounded" are true at the same time, and one enum forces a choice between attacking and
+ * defending yourself. The modules that get enabled are the <b>union</b> of what each axis asks for.
  */
 public enum CombatPosture {
-    /** El daño que ya te apunta no te deja por debajo del margen: no hay nada que tapar. */
-    TRANQUILO,
-    /** Lo que ya está colocado contra ti te dejaría bajo el margen (§5). */
-    AMENAZADO
+    /** The damage already aimed at you does not leave you below the margin: there is nothing to cover. */
+    CALM,
+    /** What is already placed against you would leave you below the margin (§5). */
+    THREATENED
 }

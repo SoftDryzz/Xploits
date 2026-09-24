@@ -13,8 +13,8 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * Máquina de estados del spec §4. Pura: recibe la hora, el contexto del juego y los eventos de chat,
- * modifica {@link Progress} y devuelve las {@link Action}s que KitRequester debe ejecutar.
+ * State machine from spec §4. Pure: it receives the time, the game context and the chat events,
+ * mutates {@link Progress} and returns the {@link Action}s that KitRequester must execute.
  */
 public final class OrderMachine {
     public enum State { IDLE, AWAIT_CONFIRM, AWAIT_COURIER, AWAIT_DELIVERY, DEPOSIT, PAUSED, FINISHED, ERROR }
@@ -37,16 +37,15 @@ public final class OrderMachine {
     public static final long CONFIRM_RETRY_MS = 60_000;
     public static final int MAX_FAILURES = 3;
     /**
-     * Abortos seguidos de {@link com.xploits.kitrequester.inventory.EnderDepositor} antes de pasar a
-     * {@code PAUSED} con aviso fuerte, en vez de reintentar en silencio para siempre (spec §6.1,
-     * corregido: el reintento sin tope convirtió un fallo ruidoso en uno mudo). Un ender chest
-     * tapado por un bloque sólido encima nunca abre pantalla -verificado en el bytecode de
-     * {@code EnderChestBlock.onUse}-, así que con {@code findInReach} sin filtrar eso el ciclo era
-     * pedir depósito, esperar 5 s, abortar, reintentar, para siempre, con el estado diciendo
-     * {@code IDLE} y sin ningún toast, sonido ni línea en el chat. Un clic ajeno suelto -la razón
-     * original para que un aborto reintente en vez de pausar- sigue reintentando sin este aviso: el
-     * contador se olvida con cualquier depósito correcto, así que solo una causa persistente lo
-     * agota.
+     * Consecutive aborts of {@link com.xploits.kitrequester.inventory.EnderDepositor} before moving
+     * to {@code PAUSED} with a loud warning, instead of retrying silently forever (spec §6.1, fixed:
+     * the uncapped retry turned a loud failure into a silent one). An ender chest covered by a solid
+     * block above it never opens a screen -verified in the bytecode of {@code EnderChestBlock.onUse}-,
+     * so with {@code findInReach} not filtering that out the cycle was: request a deposit, wait 5 s,
+     * abort, retry, forever, with the state still saying {@code IDLE} and no toast, sound or chat
+     * line. A stray unrelated click -the original reason for an abort to retry instead of pausing-
+     * keeps retrying without this warning: the counter is forgotten on any successful deposit, so
+     * only a persistent cause exhausts it.
      */
     public static final int MAX_DEPOSIT_ABORTS = 3;
 
@@ -65,13 +64,13 @@ public final class OrderMachine {
     private String pendingTpa;
     private long pendingTpaUntil;
     /**
-     * Si ya se avisó de que hay una pantalla abierta bloqueando el depósito (spec §6.1). Sin esto,
-     * {@link #idle} calla cada tick mientras dure la pantalla abierta: {@code status()} sigue
-     * diciendo {@code IDLE} y no hay ninguna línea que explique por qué no se piden kits. Se avisa
-     * una sola vez y se olvida en cuanto la situación deja de bloquear.
+     * Whether the open-screen-blocking-the-deposit warning has already been given (spec §6.1).
+     * Without this, {@link #idle} stays silent every tick for as long as the screen stays open:
+     * {@code status()} keeps saying {@code IDLE} and there is no line explaining why kits are not
+     * being requested. It warns once and forgets as soon as the situation stops blocking.
      */
     private boolean screenOpenBlockNotified;
-    /** Abortos seguidos de EnderDepositor. Se olvida con cualquier depósito correcto (spec §6.1). */
+    /** Consecutive EnderDepositor aborts. Forgotten on any successful deposit (spec §6.1). */
     private int consecutiveDepositAborts;
 
     public OrderMachine(KitQueue queue, Progress progress, Supplier<Config> config, LongSupplier jitterMs) {
@@ -85,7 +84,7 @@ public final class OrderMachine {
         return state;
     }
 
-    /** Al activar el módulo o al entrar al servidor (spec §9). */
+    /** On module activation or on joining the server (spec §9). */
     public List<Action> onJoin(long now) {
         resumeAt = now + JOIN_GRACE_MS;
         clearWindow();
@@ -137,7 +136,7 @@ public final class OrderMachine {
                 }
             }
             default -> {
-                // DEPOSIT espera a onDepositResult; FINISHED y ERROR son finales.
+                // DEPOSIT waits for onDepositResult; FINISHED and ERROR are final.
             }
         }
         return out;
@@ -212,24 +211,24 @@ public final class OrderMachine {
             consecutiveDepositAborts = 0;
             out.add(new Action.Notify(Msg.of(KitText.DEPOSIT_SAVED), false));
         } else if (ok) {
-            // Se usó el ender chest de verdad y aun así no hay huecos: reintentarlo no cambiaría
-            // nada, así que aquí sí es un PAUSED de verdad (spec §6.1).
+            // The ender chest really was used and there is still no room: retrying would not change
+            // anything, so this is a genuine PAUSED (spec §6.1).
             state = State.PAUSED;
             consecutiveDepositAborts = 0;
             out.add(new Action.Notify(Msg.of(KitText.DEPOSIT_NO_ROOM), true));
         } else {
-            // Un aborto (interacción ajena descartada por EnderDepositor, timeout, syncId que ya no
-            // coincide...) no significa que sea imposible depositar, solo que este intento concreto
-            // no pudo. Se vuelve a IDLE para reintentar, en vez de pausar sin más: con todo aborto
-            // pausando, un clic derecho ajeno cualquiera dejaba el módulo parado hasta vaciar el
-            // inventario a mano, justo lo que el depósito iba a conseguir (spec §6.1).
+            // An abort (an unrelated interaction discarded by EnderDepositor, a timeout, a syncId
+            // that no longer matches...) does not mean depositing is impossible, only that this
+            // particular attempt could not. It goes back to IDLE to retry, instead of just pausing:
+            // with every abort pausing, any unrelated right-click left the module stuck until the
+            // inventory was emptied by hand, exactly what the deposit was meant to achieve (spec §6.1).
             //
-            // Pero un reintento sin tope es mudo ante una causa persistente -un ender chest tapado
-            // por un bloque sólido encima nunca abre pantalla, así que sería pedir, esperar 5 s,
-            // abortar, y repetir para siempre sin ningún aviso (spec §6.1, corregido)-. Tras
-            // MAX_DEPOSIT_ABORTS seguidos sí se pausa, con el mismo aviso fuerte que había antes de
-            // que el aborto reintentara; el contador se olvida con cualquier depósito correcto, así
-            // que un clic ajeno suelto -la razón original para reintentar- nunca lo agota.
+            // But an uncapped retry is silent in the face of a persistent cause -an ender chest
+            // covered by a solid block above it never opens a screen, so it would request, wait 5 s,
+            // abort, and repeat forever with no warning at all (spec §6.1, fixed)-. After
+            // MAX_DEPOSIT_ABORTS in a row it does pause, with the same loud warning that used to fire
+            // before the abort started retrying; the counter is forgotten on any successful deposit,
+            // so a stray unrelated click -the original reason to retry- never exhausts it.
             consecutiveDepositAborts++;
             if (consecutiveDepositAborts >= MAX_DEPOSIT_ABORTS) {
                 consecutiveDepositAborts = 0;
@@ -269,10 +268,10 @@ public final class OrderMachine {
         if (ctx.freeSlots() < next.size()) {
             boolean canAutoDeposit = config.get().autoEnder() && ctx.enderInReach();
             if (canAutoDeposit && ctx.screenOpen()) {
-                // Hay una pantalla abierta a mano: pedir el depósito ahora es lo que vacía shulkers
-                // en el contenedor equivocado (spec §6.1). No se pausa, solo se reintenta en un tick
-                // posterior, cuando el jugador haya cerrado lo que tuviera abierto. Se avisa una sola
-                // vez de que se está esperando, para que status() no calle en silencio (spec §6.1).
+                // A screen is open by hand: requesting the deposit now is exactly what empties
+                // shulkers into the wrong container (spec §6.1). It does not pause, it just retries
+                // on a later tick, once the player has closed whatever they had open. It warns once
+                // that it is waiting, so status() does not stay silent about it (spec §6.1).
                 if (!screenOpenBlockNotified) {
                     screenOpenBlockNotified = true;
                     out.add(new Action.Notify(Msg.of(KitText.SCREEN_OPEN_BLOCKING), false));
@@ -312,7 +311,7 @@ public final class OrderMachine {
             if (pendingTpa != null && !pendingTpa.equals(requester)) {
                 out.add(new Action.Notify(Msg.of(KitText.TPA_IGNORED, "requester", pendingTpa), false));
             }
-            // Su READY puede llegar justo después de la TPA: se decide al llegar o a los 5 s.
+            // Its READY may arrive right after the TPA: it is decided when it arrives, or at 5 s.
             pendingTpa = requester;
             pendingTpaUntil = now + PENDING_TPA_MS;
         } else {
@@ -354,7 +353,7 @@ public final class OrderMachine {
         out.add(new Action.Save());
     }
 
-    /** Regla de origen (spec §4): el courier fijado, o uno conocido mientras no hay ninguno fijado. */
+    /** Origin rule (spec §4): the pinned courier, or a known one while none is pinned. */
     private boolean isFromCourier(String name) {
         return switch (state) {
             case AWAIT_DELIVERY -> name.equals(courier);
@@ -373,7 +372,7 @@ public final class OrderMachine {
         }
     }
 
-    /** TIMED_OUT o timeout del courier: suma un fallo por ID; con MAX_FAILURES pasa a skipped. */
+    /** TIMED_OUT or courier timeout: adds a failure per ID; at MAX_FAILURES it moves to skipped. */
     private void fail(long now, KitText reasonKey, List<Action> out) {
         for (int id : batch) {
             int failures = progress.failures.merge(id, 1, Integer::sum);

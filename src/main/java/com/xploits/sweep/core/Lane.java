@@ -1,13 +1,13 @@
 package com.xploits.sweep.core;
 
 /**
- * Una pasada del barrido: un tramo recto en coordenadas de bloque del Nether, de un extremo al
- * otro. El coste en cohetes se calcula sumando {@link #lengthInBlocks()} de todas las pasadas antes
- * de despegar, así que esta longitud es la que decide si el jugador vuela armado de sobra o se
- * queda corto a mitad de barrido.
+ * One lane of the sweep: a straight stretch in Nether block coordinates, from one end to the other.
+ * The firework cost is computed by adding up {@link #lengthInBlocks()} of every lane before takeoff,
+ * so this length is what decides whether the player flies amply supplied or runs short halfway
+ * through the sweep.
  */
 public record Lane(double fromX, double fromZ, double toX, double toZ) {
-    /** Distancia euclídea entre los dos extremos de la pasada. */
+    /** Euclidean distance between the two ends of the lane. */
     public double lengthInBlocks() {
         return Math.hypot(toX - fromX, toZ - fromZ);
     }

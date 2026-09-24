@@ -1,15 +1,15 @@
 package com.xploits.kitrequester.core;
 
 /**
- * La lógica pura del candidato de {@code EnderDepositor} (spec §6.1): qué interacción del jugador
- * -o del propio depositor- se vio más recientemente, y si todavía es de fiar. Puro: no importa nada
- * de {@code net.minecraft} ni de {@code meteordevelopment}. Las posiciones se representan como
- * {@code long} -en el adaptador, {@code BlockPos.asLong()}- porque a este nivel no importa qué tipo
- * de coordenada sea, solo si dos interacciones caen en el mismo sitio.
+ * The pure candidate logic behind {@code EnderDepositor} (spec §6.1): which player interaction
+ * -or the depositor's own- was seen most recently, and whether it is still trustworthy. Pure: it
+ * knows nothing about {@code net.minecraft} or {@code meteordevelopment}. Positions are represented
+ * as {@code long} -in the adapter, {@code BlockPos.asLong()}- because at this level the coordinate
+ * type does not matter, only whether two interactions land on the same spot.
  *
- * <p>Sin esto, una pantalla que se abre no dice por sí sola qué la respalda: es la única señal
- * disponible para atar la operación a un bloque concreto y para saber que un clic ajeno -de bloque o
- * de entidad- puede tener una pantalla en camino todavía sin llegar.
+ * <p>Without this, a screen that opens says nothing on its own about what is behind it: it is the
+ * only signal available to tie the operation to a specific block and to know that an unrelated
+ * click -block or entity- may have a screen still on its way.
  */
 public final class CandidateTracker {
     private final long timeoutMs;
@@ -18,14 +18,14 @@ public final class CandidateTracker {
     private long candidate;
     private long candidateAt;
     /**
-     * Si ha habido alguna interacción con una entidad -vagoneta o barca con cofre, que abren una
-     * pantalla de contenedor sin que haya ningún {@code BlockPos} que anotar, porque no son bloques-.
-     * Campo aparte, no un valor centinela en {@link #entityInteractionAt}: antes de la primera
-     * interacción no hay ninguna hora que restar de forma segura contra {@code now} sin arriesgar un
-     * desbordamiento de {@code long}.
+     * Whether there has been any entity interaction -minecart or boat with chest, which open a
+     * container screen with no {@code BlockPos} to note, because they are not blocks-. A separate
+     * field, not a sentinel value in {@link #entityInteractionAt}: before the first interaction
+     * there is no timestamp that can be safely subtracted from {@code now} without risking a
+     * {@code long} overflow.
      */
     private boolean hasEntityInteraction;
-    /** Última vez (ms) que se vio una interacción con una entidad. Solo válido si {@link #hasEntityInteraction}. */
+    /** Last time (ms) an entity interaction was seen. Only valid if {@link #hasEntityInteraction}. */
     private long entityInteractionAt;
 
     public CandidateTracker(long timeoutMs) {
@@ -33,11 +33,11 @@ public final class CandidateTracker {
     }
 
     /**
-     * Anota una interacción de bloque como candidato, si de verdad puede respaldar la pantalla que
-     * se espera. {@code opensContainer} lo decide quien llama -el filtro por tipo de bloque es cosa
-     * de Minecraft, no de este core-: colocar un bloque, abrir una puerta o los
-     * {@code BlockUtils.place} de {@code surround}/{@code auto-trap} no deben poder abortar un
-     * depósito en curso ni bloquear el siguiente (spec §6.1, punto 2).
+     * Notes a block interaction as a candidate, if it can really back the screen being expected.
+     * {@code opensContainer} is decided by the caller -filtering by block type is Minecraft's job,
+     * not this core's-: placing a block, opening a door or the {@code BlockUtils.place} calls of
+     * {@code surround}/{@code auto-trap} must not be able to abort a deposit in progress or block
+     * the next one (spec §6.1, point 2).
      */
     public void noteBlockInteraction(long pos, boolean opensContainer, long now) {
         if (!opensContainer) return;
@@ -47,9 +47,9 @@ public final class CandidateTracker {
     }
 
     /**
-     * Anota una interacción con una entidad. No hay {@code BlockPos} que comparar -a diferencia de
-     * {@link #noteBlockInteraction}-, así que solo sirve para {@link #blocksStart}: "algo ajeno
-     * puede estar en vuelo", sin más detalle.
+     * Notes an entity interaction. There is no {@code BlockPos} to compare -unlike
+     * {@link #noteBlockInteraction}-, so it only feeds {@link #blocksStart}: "something unrelated
+     * may be in flight", with no further detail.
      */
     public void noteEntityInteraction(long now) {
         hasEntityInteraction = true;
@@ -57,29 +57,29 @@ public final class CandidateTracker {
     }
 
     /**
-     * Caduca el candidato de bloque si lleva más de {@code timeoutMs} sin refrescarse. Perezoso:
-     * solo se comprueba cuando se llama, nunca solo. Llamar antes de {@link #blocksStart}.
+     * Expires the block candidate if it has gone more than {@code timeoutMs} without refreshing.
+     * Lazy: only checked when called, never on its own. Call before {@link #blocksStart}.
      */
     public void expire(long now) {
         if (hasCandidate && now - candidateAt > timeoutMs) hasCandidate = false;
     }
 
     /**
-     * true si hay un candidato de bloque vigente o una interacción de entidad reciente sin resolver
-     * -en ambos casos, una pantalla ajena que puede no haber llegado todavía-. Para el guardián de
-     * {@code start()}: negarse a empezar mientras esto sea cierto es lo que evita pisar una
-     * interacción cuya pantalla, cuando llegue, se confundiría con la propia.
+     * true if there is a current block candidate or a recent, unresolved entity interaction
+     * -in both cases, an unrelated screen that may not have arrived yet-. For {@code start()}'s
+     * guard: refusing to start while this is true is what avoids stepping on an interaction whose
+     * screen, once it arrives, would be mistaken for the depositor's own.
      */
     public boolean blocksStart(long now) {
         return hasCandidate || (hasEntityInteraction && now - entityInteractionAt <= timeoutMs);
     }
 
-    /** true si el candidato de bloque vigente es exactamente esta posición. */
+    /** true if the current block candidate is exactly this position. */
     public boolean matches(long pos) {
         return hasCandidate && candidate == pos;
     }
 
-    /** Olvida el candidato de bloque. La interacción de entidad no se olvida: caduca sola con el tiempo. */
+    /** Forgets the block candidate. The entity interaction is not forgotten: it expires on its own over time. */
     public void clear() {
         hasCandidate = false;
     }

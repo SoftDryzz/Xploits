@@ -1,29 +1,30 @@
 package com.xploits.travel.core;
 
 /**
- * Los ocho ejes de autopista del plano XZ: los cuatro cardinales y las cuatro diagonales.
+ * The eight highway axes of the XZ plane: the four cardinal ones and the four diagonals.
  *
- * <p>Las diagonales no son un añadido cosmético: en un servidor anarchy son la mitad de las
- * autopistas que existen, y sin ellas el modo autopista solo sirve para la mitad de los viajes.
+ * <p>The diagonals are not a cosmetic extra: on an anarchy server they are half of the highways that
+ * exist, and without them highway mode only serves half of the trips.
  *
- * <p><b>Cada eje lleva su vector unitario</b>, y de ahí sale la decisión que gobierna todo lo demás:
- * {@code highway-distance} son <b>bloques recorridos</b>, no bloques por coordenada. Una distancia
- * de N por {@link #X_PLUS_Z_PLUS} avanza {@code N/√2} en X y otro tanto en Z, y el vuelo mide N,
- * exactamente igual que una distancia de N por {@link #X_PLUS}. El ajuste significa lo mismo en los
- * ocho ejes, que es lo único que permite compararlos sin hacer cuentas: "20 000 bloques" es siempre
- * el mismo trozo de fuegos artificiales, apunte a donde apunte.
+ * <p><b>Each axis carries its unit vector</b>, and from that comes the decision that governs
+ * everything else: {@code highway-distance} is <b>blocks travelled</b>, not blocks per coordinate. A
+ * distance of N along {@link #X_PLUS_Z_PLUS} advances {@code N/√2} in X and as much in Z, and the
+ * flight measures N, exactly the same as a distance of N along {@link #X_PLUS}. The setting means the
+ * same on all eight axes, which is the only thing that lets you compare them without doing sums:
+ * "20 000 blocks" is always the same stretch of fireworks, wherever it points.
  *
- * <p>Por eso el par de signos que identifica al eje se normaliza en el constructor en vez de
- * escribirse ya normalizado: así el enum se lee como lo que es -{@code (1, 1)} es la diagonal de
- * X+ y Z+- y la normalización, que es la regla de verdad, aparece una sola vez y no ocho.
+ * <p>That is why the pair of signs that identifies the axis is normalised in the constructor instead
+ * of being written already normalised: that way the enum reads as what it is -{@code (1, 1)} is the
+ * diagonal of X+ and Z+- and the normalisation, which is the real rule, appears once and not eight
+ * times.
  *
- * <p><b>Los nombres son el identificador que Meteor guarda en disco.</b> {@code EnumSetting.save}
- * escribe {@code get().toString()} y {@code load} lo busca entre los valores comparando otra vez
- * {@code toString()}; si no lo encuentra, {@code parse} no asigna nada y el ajuste se queda en su
- * valor de fábrica. Así que rebautizar los cuatro cardinales -o darles un {@code toString()} más
- * bonito- le cambiaría el eje en silencio a quien tuviera uno guardado. Las cuatro diagonales se
- * nombran siguiendo el mismo esquema, que además es el que se lee de un vistazo en el desplegable
- * de la ClickGUI: el desplegable pinta {@code toString()} tal cual, sin retocarlo.
+ * <p><b>The names are the identifier Meteor saves to disk.</b> {@code EnumSetting.save} writes
+ * {@code get().toString()} and {@code load} looks it up among the values, comparing {@code
+ * toString()} again; if it does not find it, {@code parse} assigns nothing and the setting stays at
+ * its default value. So renaming the four cardinal ones -or giving them a prettier {@code
+ * toString()}- would silently change the axis for whoever had one saved. The four diagonals are
+ * named following the same scheme, which is also the one that reads at a glance in the ClickGUI
+ * dropdown: the dropdown paints {@code toString()} as it is, untouched.
  */
 public enum Axis {
     X_PLUS(1, 0),
@@ -39,8 +40,8 @@ public enum Axis {
     private final double unitZ;
 
     /**
-     * @param signX hacia dónde va el eje en X: 1, 0 o -1
-     * @param signZ hacia dónde va el eje en Z: 1, 0 o -1
+     * @param signX which way the axis goes in X: 1, 0 or -1
+     * @param signZ which way the axis goes in Z: 1, 0 or -1
      */
     Axis(int signX, int signZ) {
         double length = Math.hypot(signX, signZ);
@@ -49,20 +50,20 @@ public enum Axis {
     }
 
     /**
-     * La componente X del vector unitario del eje. En los cardinales vale 1, 0 o -1 exactos
-     * -{@code hypot(1, 0)} es 1.0 sin error de redondeo-, así que los cuatro ejes de siempre
-     * resuelven al mismo punto que resolvían antes de existir las diagonales.
+     * The X component of the axis's unit vector. On the cardinal ones it is exactly 1, 0 or -1
+     * -{@code hypot(1, 0)} is 1.0 with no rounding error-, so the four usual axes resolve to the same
+     * point they resolved to before the diagonals existed.
      */
     public double unitX() {
         return unitX;
     }
 
-    /** La componente Z del vector unitario del eje. */
+    /** The Z component of the axis's unit vector. */
     public double unitZ() {
         return unitZ;
     }
 
-    /** Si el eje es una de las cuatro diagonales, donde la distancia se reparte entre X y Z. */
+    /** Whether the axis is one of the four diagonals, where the distance is split between X and Z. */
     public boolean isDiagonal() {
         return unitX != 0 && unitZ != 0;
     }

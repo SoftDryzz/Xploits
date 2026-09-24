@@ -3,16 +3,16 @@ package com.xploits.pvp.core;
 import java.util.Map;
 
 /**
- * Atajo de los tests para construir un {@link CombatSnapshot} dando solo la mitad del enemigo y la
- * del inventario, con el resto en valores neutros: sin objetivo identificado, sin hostiles a rango
- * de cristal, la vida llena, nada de daño apuntándote, ni en agujero ni en el suelo, con la altura quieta y con el
- * {@code anti-suicide} de {@code crystal-aura} <b>encendido</b>, que es como viene de fábrica.
+ * Test shortcut to build a {@link CombatSnapshot} giving only the enemy's half and the
+ * inventory's, with the rest at neutral values: no identified target, no hostiles in crystal
+ * range, full health, no damage aimed at you, neither in a hole nor on the ground, with your height still and with the
+ * {@code anti-suicide} of {@code crystal-aura} <b>on</b>, which is how it ships.
  *
- * <p>Este atajo vivía en el núcleo como constructor de transición mientras el adaptador todavía no
- * leía los campos nuevos del rediseño. Ese andamio ya no existe —el adaptador los rellena todos—,
- * así que la comodidad se queda donde hacía falta de verdad, en los tests, y el record de
- * producción tiene una sola forma. Los tests que sí miran los ejes nuevos construyen el record
- * entero o parten de aquí con sus {@code with*}.
+ * <p>This shortcut used to live in the core as a transitional constructor while the adapter did not yet
+ * read the redesign's new fields. That scaffolding no longer exists —the adapter fills them all in—,
+ * so the convenience stays where it was really needed, in the tests, and the production
+ * record has a single shape. The tests that do look at the new axes build the whole record
+ * or start from here with its {@code with*}.
  */
 final class Snapshots {
     private Snapshots() {}
@@ -27,8 +27,8 @@ final class Snapshots {
     }
 
     /**
-     * El mismo snapshot con el {@code anti-suicide} de {@code crystal-aura} apagado: el único caso
-     * en el que el suelo de tótems sigue en pie (rediseño §7, por la puerta de §10).
+     * The same snapshot with the {@code anti-suicide} of {@code crystal-aura} off: the only case
+     * in which the totem floor stays in place (redesign §7, through the door of §10).
      */
     static CombatSnapshot antiSuicideOff(CombatSnapshot base) {
         return new CombatSnapshot(base.hasTarget(), base.targetDistance(), base.targetSurroundSides(),

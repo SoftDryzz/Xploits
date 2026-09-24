@@ -1,56 +1,57 @@
 package com.xploits.travel.core;
 
 /**
- * Un módulo de Meteor que el viaje toma prestado mientras vuela y devuelve al aterrizar (spec §6.3),
- * en lógica pura: anota cómo estaba antes de despegar y decide qué hay que hacerle en cada momento.
- * No sabe nada de Meteor ni de Minecraft -el adaptador le pasa un booleano y ejecuta lo que
- * devuelva-, así que se prueba sin arrancar el juego.
+ * A Meteor module the trip borrows while flying and gives back on landing (spec §6.3), in pure
+ * logic: it notes down how it was before take-off and decides what has to be done to it at each
+ * moment. It knows nothing about Meteor or Minecraft -the adapter passes it a boolean and carries out
+ * whatever it returns-, so it is tested without starting the game.
  *
- * <p><b>Por qué esto no es un ajuste declarado.</b> La primera versión devolvía los dos módulos a un
- * valor declarado en dos ajustes {@code *-resting}, con el argumento de spec §6.1: <i>los ajustes de
- * Baritone se pueden escribir pero no leer, así que hay que declarar a qué se vuelve</i>. Ese
- * argumento es cierto para Baritone y <b>falso para estos dos</b>, que son módulos de Meteor:
- * {@code Module.isActive()} se lee perfectamente. Declarar el reposo significaba que un jugador que
- * jamás activó {@code elytra-fly} -lo normal en un anarchy, donde un vuelo raro te delata- aterrizara
- * con él encendido y leyera "Entorno restaurado". Aquí se anota el estado real y se devuelve a ése.
+ * <p><b>Why this is not a declared setting.</b> The first version gave both modules back to a value
+ * declared in two {@code *-resting} settings, with the argument of spec §6.1: <i>Baritone's settings
+ * can be written but not read, so what to go back to must be declared</i>. That argument is true for
+ * Baritone and <b>false for these two</b>, which are Meteor modules: {@code Module.isActive()} reads
+ * perfectly well. Declaring the resting state meant that a player who never enabled {@code
+ * elytra-fly} -the norm on an anarchy server, where odd flight gives you away- would land with it on
+ * and read "Environment restored". Here the real state is noted down and given back.
  *
- * <p><b>Un movimiento a mano durante el vuelo manda sobre lo anotado</b>, igual que en
- * {@code ModuleLedger} de auto-pvp: si al soltarlo el módulo ya no está en el estado que la
- * preparación le impuso, alguien lo ha movido después que nosotros, y su decisión es más reciente que
- * nuestra anotación. En ese caso no se toca.
+ * <p><b>A manual move during the flight overrides what was noted down</b>, same as auto-pvp's {@code
+ * ModuleLedger}: if on release the module is no longer in the state the preparation imposed on it,
+ * someone moved it after us, and their decision is more recent than our note. In that case it is not
+ * touched.
  *
- * <p><b>Y hay un momento en el que no se puede tocar ningún módulo:</b> el desmontaje de salida del
- * mundo. {@code Modules.onGameLeft} desuscribe y desactiva los módulos activos <b>sin</b> poner
- * {@code active = false}, para que vuelvan solos en la siguiente entrada; encender uno ahí lo deja
- * suscrito, y {@code Modules.onGameJoined} lo suscribe otra vez al volver -{@code EventBus.insert()}
- * de orbit no deduplica-, así que sus handlers correrían dos veces por evento el resto de la sesión,
- * y ni apagarlo lo arregla porque {@code unsubscribe} usa {@code List.remove}, que quita una sola
- * copia. Para eso está el {@code canToggle} de {@link #release(boolean, boolean)}: con {@code false}
- * la decisión no se pierde, se queda <b>pendiente</b> y el adaptador la aplica cuando se puede.
+ * <p><b>And there is one moment when no module can be touched:</b> the teardown on leaving the world.
+ * {@code Modules.onGameLeft} unsubscribes and deactivates the active modules <b>without</b> setting
+ * {@code active = false}, so that they come back by themselves on the next join; turning one on there
+ * leaves it subscribed, and {@code Modules.onGameJoined} subscribes it again on coming back -orbit's
+ * {@code EventBus.insert()} does not deduplicate-, so its handlers would run twice per event for the
+ * rest of the session, and not even turning it off fixes it because {@code unsubscribe} uses {@code
+ * List.remove}, which removes a single copy. That is what the {@code canToggle} of {@link
+ * #release(boolean, boolean)} is for: with {@code false} the decision is not lost, it stays
+ * <b>pending</b> and the adapter applies it when it can.
  */
 public final class BorrowedModule {
-    /** Lo que hay que hacerle al módulo ahora mismo. */
+    /** What has to be done to the module right now. */
     public enum Action {
-        ENCENDER,
-        APAGAR,
-        NADA;
+        TURN_ON,
+        TURN_OFF,
+        NONE;
 
         static Action towards(boolean wanted) {
-            return wanted ? ENCENDER : APAGAR;
+            return wanted ? TURN_ON : TURN_OFF;
         }
     }
 
-    /** El nombre del módulo, tal y como el jugador lo ve en la ClickGUI. Solo para los avisos. */
+    /** The module's name, as the player sees it in the ClickGUI. Only for the warnings. */
     private final String name;
 
-    /** El estado que la preparación le impone mientras se vuela (spec §6.2). */
+    /** The state the preparation imposes on it while flying (spec §6.2). */
     private final boolean inFlight;
 
-    /** Cómo estaba justo antes de despegar, o {@code null} si ahora mismo no está prestado. */
+    /** How it was right before take-off, or {@code null} if it is not borrowed right now. */
     private Boolean atTakeoff;
 
-    /** Lo que quedó por hacer porque no se podía tocar el módulo cuando tocaba. */
-    private Action pending = Action.NADA;
+    /** What was left to do because the module could not be touched when it was due. */
+    private Action pending = Action.NONE;
 
     public BorrowedModule(String name, boolean inFlight) {
         this.name = name;
@@ -61,78 +62,80 @@ public final class BorrowedModule {
         return name;
     }
 
-    /** El estado que este módulo tiene que tener mientras el viaje dura. */
+    /** The state this module has to be in while the trip lasts. */
     public boolean inFlight() {
         return inFlight;
     }
 
     /**
-     * Toma el módulo al despegar: anota cómo está y contesta qué hay que hacerle para dejarlo en el
-     * estado de vuelo.
+     * Takes the module at take-off: notes down how it is and answers what has to be done to leave it
+     * in its flight state.
      *
-     * <p>Tomarlo olvida cualquier pendiente: un pendiente es la devolución de un viaje anterior, y si
-     * empieza otro viaje esa devolución ya no tiene sentido -lo que hay que devolver es lo que se
-     * anota ahora-. El adaptador aplica los pendientes antes de tomar nada, para que "lo que se anota
-     * ahora" sea de verdad el estado de reposo del jugador y no el que dejó el viaje anterior.
+     * <p>Taking it forgets anything pending: a pending action is the give-back of a previous trip,
+     * and if another trip starts that give-back no longer makes sense -what has to be given back is
+     * what gets noted down now-. The adapter applies pending actions before taking anything, so that
+     * "what gets noted down now" really is the player's resting state and not the one the previous
+     * trip left.
      *
-     * @param active si el módulo está encendido ahora mismo
+     * @param active whether the module is on right now
      */
     public Action take(boolean active) {
         atTakeoff = active;
-        pending = Action.NADA;
-        return active == inFlight ? Action.NADA : Action.towards(inFlight);
+        pending = Action.NONE;
+        return active == inFlight ? Action.NONE : Action.towards(inFlight);
     }
 
     /**
-     * Suelta el módulo al terminar el viaje y contesta qué hay que hacerle.
+     * Releases the module when the trip ends and answers what has to be done to it.
      *
-     * @param active    si el módulo está encendido ahora mismo
-     * @param canToggle si ahora mismo se puede encender o apagar un módulo de Meteor sin romperlo.
-     *                  Con {@code false} -el desmontaje de salida del mundo- no se devuelve ninguna
-     *                  acción: la que tocaba se queda pendiente y se consulta con {@link #pending()}
-     * @return lo que hay que hacerle ahora, que es {@code NADA} si no estaba prestado, si el jugador
-     *         lo movió a mano durante el vuelo, si ya está donde estaba, o si no se puede tocar
+     * @param active    whether the module is on right now
+     * @param canToggle whether a Meteor module can be turned on or off right now without breaking it.
+     *                  With {@code false} -the teardown on leaving the world- no action is returned:
+     *                  the one that was due stays pending and is read with {@link #pending()}
+     * @return what has to be done to it now, which is {@code NONE} if it was not borrowed, if the
+     *         player moved it by hand during the flight, if it is already where it was, or if it
+     *         cannot be touched
      */
     public Action release(boolean active, boolean canToggle) {
-        // Sin anotación no hay nada que devolver, y un pendiente de antes no se toca: el segundo
-        // camino de salida que llega no puede borrar lo que dejó apuntado el primero.
-        if (atTakeoff == null) return Action.NADA;
+        // Without a note there is nothing to give back, and an earlier pending action is not touched:
+        // the second exit path to arrive cannot erase what the first one left noted down.
+        if (atTakeoff == null) return Action.NONE;
 
         boolean wanted = atTakeoff;
         atTakeoff = null;
-        pending = Action.NADA;
+        pending = Action.NONE;
 
-        // Ya no está como lo dejó la preparación: alguien lo movió después que nosotros, y eso es más
-        // reciente que nuestra anotación. No se toca.
-        if (active != inFlight) return Action.NADA;
-        if (wanted == active) return Action.NADA;
+        // It is no longer as the preparation left it: someone moved it after us, and that is more
+        // recent than our note. It is not touched.
+        if (active != inFlight) return Action.NONE;
+        if (wanted == active) return Action.NONE;
 
         Action action = Action.towards(wanted);
         if (canToggle) return action;
 
         pending = action;
-        return Action.NADA;
+        return Action.NONE;
     }
 
-    /** Lo que quedó por hacer, o {@code NADA} si no hay nada pendiente. */
+    /** What was left to do, or {@code NONE} if nothing is pending. */
     public Action pending() {
         return pending;
     }
 
     public boolean hasPending() {
-        return pending != Action.NADA;
+        return pending != Action.NONE;
     }
 
-    /** Devuelve lo pendiente y lo olvida, para que no se aplique dos veces. */
+    /** Returns what is pending and forgets it, so that it is not applied twice. */
     public Action claimPending() {
         Action action = pending;
-        pending = Action.NADA;
+        pending = Action.NONE;
         return action;
     }
 
-    /** Olvida la anotación y lo pendiente. Para cuando el módulo ni siquiera está registrado. */
+    /** Forgets the note and anything pending. For when the module is not even registered. */
     public void forget() {
         atTakeoff = null;
-        pending = Action.NADA;
+        pending = Action.NONE;
     }
 }

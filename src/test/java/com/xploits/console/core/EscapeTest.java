@@ -9,24 +9,24 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EscapeTest {
     @Test
-    void escaparYDesescaparSonInversos() {
-        String raro = "a\\b\tc\nd\re;f=g,h|i";
-        assertEquals("a\\\\b\\tc\\nd\\re\\;f\\=g\\,h\\|i", Escape.escapar(raro));
-        assertEquals(raro, Escape.desescapar(Escape.escapar(raro)));
+    void escapeAndUnescapeAreInverses() {
+        String odd = "a\\b\tc\nd\re;f=g,h|i";
+        assertEquals("a\\\\b\\tc\\nd\\re\\;f\\=g\\,h\\|i", Escape.escape(odd));
+        assertEquals(odd, Escape.unescape(Escape.escape(odd)));
     }
 
     @Test
-    void unaBarraSueltaAlFinalSeRechaza() {
-        assertThrows(IllegalArgumentException.class, () -> Escape.desescapar("abc\\"));
+    void aLoneTrailingBackslashIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> Escape.unescape("abc\\"));
     }
 
     @Test
-    void unEscapeDesconocidoSeRechaza() {
-        assertThrows(IllegalArgumentException.class, () -> Escape.desescapar("a\\qb"));
+    void anUnknownEscapeIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> Escape.unescape("a\\qb"));
     }
 
     @Test
-    void partirRespetaLosSeparadoresEscapados() {
-        assertEquals(List.of("a\\;b", "c", ""), Escape.partir("a\\;b;c;", ';'));
+    void splitRespectsEscapedSeparators() {
+        assertEquals(List.of("a\\;b", "c", ""), Escape.split("a\\;b;c;", ';'));
     }
 }

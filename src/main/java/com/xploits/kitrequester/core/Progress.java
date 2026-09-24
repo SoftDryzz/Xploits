@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Modelo de progress.json (spec §7). Campos públicos para Gson; los valores iniciales cubren campos ausentes. */
+/** Model of progress.json (spec §7). Public fields for Gson; the initial values cover missing fields. */
 public final class Progress {
     public Set<Integer> delivered = new LinkedHashSet<>();
     public List<List<Integer>> partial = new ArrayList<>();
@@ -27,7 +27,7 @@ public final class Progress {
         }
     }
 
-    /** IDs que ya no hay que pedir. Los fallos y el pedido activo no cuentan. */
+    /** IDs that no longer need to be requested. Failures and the active order do not count. */
     public Set<Integer> resolved() {
         Set<Integer> all = new HashSet<>(delivered);
         partial.forEach(all::addAll);
@@ -38,10 +38,10 @@ public final class Progress {
     }
 
     /**
-     * Repara lo que Gson deja pasar en JSON tolerante (colecciones nulas, comas colgantes que añaden
-     * elementos null): huecos en cualquier colección se rellenan vacíos, y los nulls sueltos se quitan.
-     * {@code activeOrder} sin ids utilizables no se puede reparar en silencio: se lanza IOException para
-     * que el archivo no se toque (spec §7).
+     * Repairs what Gson lets through in lenient JSON (null collections, trailing commas that add
+     * null elements): gaps in any collection are filled with empty ones, and stray nulls are removed.
+     * An {@code activeOrder} without usable ids cannot be repaired silently: an IOException is thrown
+     * so the file is left untouched (spec §7).
      */
     void sanitize() throws IOException {
         if (delivered == null) delivered = new LinkedHashSet<>();
@@ -65,7 +65,7 @@ public final class Progress {
         if (activeOrder != null) {
             List<Integer> ids = activeOrder.ids();
             if (ids == null || ids.contains(null)) {
-                throw new IOException("activeOrder sin ids; no se ha modificado.");
+                throw new IOException("activeOrder without ids; it has not been modified.");
             }
         }
     }

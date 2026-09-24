@@ -26,13 +26,13 @@ class StashTextTest {
     void theIndexedLogLineReadsExactlyAsBeforeAndWithoutPosition() {
         ContainerKey chest = ContainerKey.block("minecraft:overworld", 300, 64, 400);
         assertEquals("Indexado un contenedor (overworld a 500 bloques, 4 tipos, 1 shulkers).",
-            ES.render(Msg.of(StashText.INDEXED_LOG, "where", chest.sinPosicion("minecraft:overworld", 0.0, 0.0),
+            ES.render(Msg.of(StashText.INDEXED_LOG, "where", chest.withoutPosition("minecraft:overworld", 0.0, 0.0),
                 "types", 4, "shulkers", 1)));
     }
 
     @Test
     void theDistanceReadsInEnglish() {
         ContainerKey chest = ContainerKey.block("minecraft:overworld", 300, 64, 400);
-        assertEquals("overworld, 500 blocks away", EN.render(chest.sinPosicion("minecraft:overworld", 0.0, 0.0)));
+        assertEquals("overworld, 500 blocks away", EN.render(chest.withoutPosition("minecraft:overworld", 0.0, 0.0)));
     }
 }

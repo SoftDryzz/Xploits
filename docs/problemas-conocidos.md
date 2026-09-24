@@ -87,6 +87,46 @@ español quedó con «acerca», que es lo contrario de lo que hace falta para ag
 **Qué hacer.** Ignora el verbo y separa el par de chunks que esté más junto, no lo acerques. Pendiente
 de corregir el texto en español.
 
+### `config.nbt` no se migra: un módulo oculto puede reaparecer una vez
+
+**Síntoma:** tras actualizar a la 0.4.0, un módulo que tenías oculto de la ClickGUI (por ejemplo
+`console`) vuelve a aparecer en la lista una vez, aunque `modules.nbt` sí se haya migrado bien.
+
+**Qué pasa.** La migración de la 0.4.0 renombra `modules.nbt`, los `modules.nbt` de cada perfil y
+`hud.nbt`, pero deja `config.nbt` fuera a propósito: Meteor lo carga en `Systems.init()`, antes de
+que el addon arranque, y lo reescribe entero al cerrar el juego, así que cualquier cosa que se
+escribiera ahí desde la migración se perdería igual. `config.nbt` es donde Meteor guarda qué
+módulos están ocultos de la ClickGUI, por nombre; si ese nombre era el antiguo (`consola`), deja de
+casar con el módulo ya renombrado (`console`) y el módulo deja de estar oculto.
+
+**Qué hacer.** Vuelve a ocultarlo una vez con su nombre nuevo; a partir de ahí `config.nbt` ya lo
+guarda correcto y no vuelve a pasar.
+
+### Las macros de Meteor con `.toggle consola` no se migran
+
+**Síntoma:** tras actualizar a la 0.4.0, una macro de Meteor que encendía o apagaba la consola deja
+de hacer nada.
+
+**Qué pasa.** Las macros se guardan en `macros.nbt` como el texto que escriben, y la migración de la
+0.4.0 no toca ese fichero: una macro que escribe `.toggle consola` sigue nombrando el módulo antiguo,
+que ahora se llama `console`.
+
+**Qué hacer.** Edita la macro para que escriba `.toggle console`.
+
+### Retomar `feat/dupe-audit` va a chocar con el código en inglés
+
+**Síntoma:** al retomar el trabajo sin comitear de `feat/dupe-audit` (checkout raíz, sobre `e902c52`)
+después de esta migración, aplicar sus cambios falla.
+
+**Qué pasa.** Ese trabajo toca `XploitsAddon.java` con un hunk pensado sobre la versión en español del
+fichero; tras el renombrado a inglés ese hunk ya no aplica limpio y hay que rehacerlo a mano contra el
+`XploitsAddon.java` actual. Además, `DupeAuditCommand` extiende `Command` de Meteor directamente en
+vez de la base común (`XploitsCommandBase`, antes `ComandoBase`), así que sus mensajes no pasan por la
+consola: hay que moverlo a `XploitsCommandBase` para que la consola vea lo que dice.
+
+**Qué hacer.** Al retomar esa rama: resolver el conflicto de `XploitsAddon.java` a mano y cambiar
+`DupeAuditCommand` para que extienda `XploitsCommandBase`.
+
 ### La consola necesita Windows Terminal con su configuración de ventanas por defecto
 
 La ventana pide su tamaño con una secuencia que Windows Terminal respeta. Si lo configuras para abrir
@@ -119,7 +159,7 @@ viaje y esperan su comando. Al encenderlos te lo dicen por chat.
 debajo, los vértices quedan tan juntos que se consumirían en el mismo tick y habría pasadas que no se
 vuelan **y que el barrido daría por peinadas igual**.
 
-**«`SEÑUELO` se rechaza en modo autopista.»** Correcto. Apuntar 30° fuera te saca del corredor, y eso
+**«`DECOY` se rechaza en modo autopista.»** Correcto. Apuntar 30° fuera te saca del corredor, y eso
 llama más la atención que ir recto.
 
 **«Sale un aviso de que un comando `#` se canceló.»** Es la red funcionando. Significa que Baritone

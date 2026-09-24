@@ -6,6 +6,55 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `stash-keeper`'s "indexed a container" chat line showed only "Xploits" instead of the container it
+  indexed.
+
+### Changed
+
+- The code base is now English: packages, types, members, comments, javadoc, test names and
+  exception/log messages. Player text — the catalogs, chat, toasts and the console window — stays in
+  whichever language `.xploits language` has active. What did change for players is listed below: the
+  module name, the setting group names, two setting ids, the `pattern`/`destination-mode` values, the
+  console window's title and the console's file names. Technical error details shown inside messages
+  (exception text) are now English.
+- The `consola` module is now `console`. Its setting groups are English too:
+  - `auto-travel`: `Patrón` → `Pattern`, `Vuelo` → `Flight`, `Avisos` → `Notify`.
+  - `nether-sweep`: `Pasada` → `Lane`, `Cohetes` → `Fireworks`, `Vuelo` → `Flight`, `Avisos` →
+    `Notify`.
+  - `auto-travel`'s `quiebro-leg`/`quiebro-offset` settings are now `swerve-leg`/`swerve-offset`.
+- Setting values renamed: `pattern` `RECTO` → `STRAIGHT`, `QUIEBRO` → `SWERVE`, `ESPIRAL` →
+  `SPIRAL`, `SENUELO` → `DECOY` (`ZIGZAG` unchanged); `destination-mode` `COORDENADAS` →
+  `COORDINATES`, `RELATIVO` → `RELATIVE`, `AUTOPISTA` → `HIGHWAY`.
+- The console's on-disk files moved to `meteor-client/xploits/console/`: `live.log` (plus
+  `live.1.log`), `history/`, `console.lock`/`console.pid`/`console.exit`, `console-errors.log`,
+  `size.txt`. `live.log` is now format version 3. The window's title is now "Xploits console".
+
+### Migration
+
+- The rename above is applied automatically, once, the first time 0.4.0 starts: `modules.nbt` (main
+  and per profile) is rewritten with the new module, group, setting and value names; `hud.nbt` (main
+  and per profile) only has module names renamed (it holds them as plain strings); and the
+  `xploits/consola/` folder is moved to `xploits/console/` with its files renamed to match. Every file rewritten is backed up
+  first, as `<file>.pre-0.4.0.backup.nbt`, and never overwritten if a backup already exists. A chat
+  message is shown when settings files were rewritten or when something could not be migrated (a
+  settings file that failed, or a console file still in use). The migration is kept for at least two
+  MINOR versions, then removed.
+- `config.nbt` is not migrated — Meteor loads it before any addon runs, so a rewrite would be
+  discarded. If you had hidden the console module from Meteor's module list under its old name, it
+  can reappear once; hide it again under `console` and it stays hidden from then on.
+
+### Notes
+
+- Close any console window still open from 0.3.x before starting 0.4.0. If one is still open, the
+  `xploits/consola/` folder is locked on that start and the console may create `xploits/console/`
+  alongside it; on a later start, once the old window is closed, the old folder is merged into the new
+  one — its history goes into `console/history/` (a day present in both keeps both files, the old one
+  as `<day>-old.log`), nothing is overwritten, and `xploits/consola/` is removed once empty. Anything
+  still in use is left in place and retried on the next start.
+- Meteor macros (`macros.nbt`) that type `.toggle consola` are not migrated: edit them to `console`.
+
 ## [0.3.1] — 2026-09-24
 
 ### Fixed

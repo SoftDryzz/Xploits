@@ -12,39 +12,39 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BannerTest {
-    private static final List<String> ARTE = Collections.nCopies(13, "X".repeat(99) + Ansi.RESET);
+    private static final List<String> ART = Collections.nCopies(13, "X".repeat(99) + Ansi.RESET);
 
     @Test
-    void elRecursoRealEsValidoYEsElLogo() throws IOException {
-        List<String> arte = Banner.cargar();
-        assertEquals(13, arte.size());
-        int maximo = arte.stream().mapToInt(Banner::anchoVisible).max().orElse(0);
-        assertTrue(maximo >= 90 && maximo <= 100, "ancho del logo: " + maximo);
+    void theRealResourceIsValidAndIsTheLogo() throws IOException {
+        List<String> art = Banner.load();
+        assertEquals(13, art.size());
+        int widest = art.stream().mapToInt(Banner::visibleWidth).max().orElse(0);
+        assertTrue(widest >= 90 && widest <= 100, "logo width: " + widest);
     }
 
     @Test
-    void validarRechazaLoQueNoSirve() {
-        assertThrows(IllegalArgumentException.class, () -> Banner.validar(ARTE.subList(0, 12)));
-        List<String> conBorrado = new ArrayList<>(ARTE);
-        conBorrado.set(3, "\u001b[2J" + Ansi.RESET);
-        assertThrows(IllegalArgumentException.class, () -> Banner.validar(conBorrado));
-        List<String> sinReset = new ArrayList<>(ARTE);
-        sinReset.set(0, "X");
-        assertThrows(IllegalArgumentException.class, () -> Banner.validar(sinReset));
-        List<String> ancho = new ArrayList<>(ARTE);
-        ancho.set(0, "X".repeat(101) + Ansi.RESET);
-        assertThrows(IllegalArgumentException.class, () -> Banner.validar(ancho));
+    void validateRejectsWhatIsUnusable() {
+        assertThrows(IllegalArgumentException.class, () -> Banner.validate(ART.subList(0, 12)));
+        List<String> withClear = new ArrayList<>(ART);
+        withClear.set(3, "\u001b[2J" + Ansi.RESET);
+        assertThrows(IllegalArgumentException.class, () -> Banner.validate(withClear));
+        List<String> withoutReset = new ArrayList<>(ART);
+        withoutReset.set(0, "X");
+        assertThrows(IllegalArgumentException.class, () -> Banner.validate(withoutReset));
+        List<String> wide = new ArrayList<>(ART);
+        wide.set(0, "X".repeat(101) + Ansi.RESET);
+        assertThrows(IllegalArgumentException.class, () -> Banner.validate(wide));
     }
 
     @Test
-    void conCienColumnasYCuarentaFilasVaElLogo() {
-        assertEquals(ARTE, Banner.elegir(ARTE, 100, 40));
+    void withAHundredColumnsAndFortyRowsTheLogoIsShown() {
+        assertEquals(ART, Banner.choose(ART, 100, 40));
     }
 
     @Test
-    void sinSitioVaElNombreEnUnaFila() {
-        List<String> texto = List.of(Ansi.color(Ansi.CIAN) + "XTO2002" + Ansi.RESET);
-        assertEquals(texto, Banner.elegir(ARTE, 99, 40));
-        assertEquals(texto, Banner.elegir(ARTE, 100, 39));
+    void withoutRoomTheNameGoesOnOneRow() {
+        List<String> text = List.of(Ansi.color(Ansi.CYAN) + "XTO2002" + Ansi.RESET);
+        assertEquals(text, Banner.choose(ART, 99, 40));
+        assertEquals(text, Banner.choose(ART, 100, 39));
     }
 }

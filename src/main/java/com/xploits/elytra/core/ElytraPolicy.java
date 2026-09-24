@@ -3,17 +3,17 @@ package com.xploits.elytra.core;
 import java.util.List;
 
 /**
- * Decide cuándo cambiar la elytra puesta y por cuál (spec §4). Guarda tres cosas entre
- * decisiones: cuándo fue el último cambio, para no repetirlo mientras el slot de pechera se
- * actualiza; a qué porcentaje se avisó por última vez de que no hay repuesto, para no avisar
- * veinte veces por segundo; y cuándo fue ese último aviso, para rearmarlo por tiempo si la elytra
- * puesta cambia sin que la pechera llegue a quedar vacía.
+ * Decides when to swap the worn elytra and for which one (spec §4). It keeps three things between
+ * decisions: when the last swap was, so as not to repeat it while the chest slot updates; at what
+ * percentage the last no-spare warning was given, so as not to warn twenty times a second; and
+ * when that last warning was, to rearm it by time if the worn elytra changes without the chest
+ * slot ever going empty.
  */
 public final class ElytraPolicy {
-    /** Ventana tras un SWAP durante la que no se repite el cambio, en milisegundos. */
+    /** Window after a SWAP during which the swap is not repeated, in milliseconds. */
     public static final long SWAP_COOLDOWN_MS = 2_000;
 
-    /** Si han pasado tantos milisegundos desde el último aviso de "sin repuesto", se rearma. */
+    /** If this many milliseconds have passed since the last "no spare" warning, it rearms. */
     public static final long WARNING_REARM_WINDOW_MS = 5 * 60 * 1_000;
 
     private static final long NEVER = Long.MIN_VALUE;
@@ -23,11 +23,11 @@ public final class ElytraPolicy {
     private long lastWarnedAt = NEVER;
 
     /**
-     * @param slot slot del repuesto elegido, o -1 si la decisión no es SWAP
+     * @param slot slot of the chosen spare, or -1 if the decision is not SWAP
      */
     public record Result(Decision decision, int slot, int wornPercent) {}
 
-    /** Durabilidad restante en tanto por ciento. Un ítem sin durabilidad cuenta como intacto. */
+    /** Remaining durability as a percentage. An item without durability counts as intact. */
     public static int percentOf(int damage, int maxDamage) {
         if (maxDamage <= 0) return 100;
         long remaining = (long) maxDamage - damage;
@@ -36,33 +36,33 @@ public final class ElytraPolicy {
     }
 
     /**
-     * @param wornPercent durabilidad de la elytra puesta, o null si no lleva ninguna
-     * @param candidates  elytras sueltas del inventario
-     * @param swapBelow   cambiar cuando la durabilidad de la puesta sea igual o menor que este porcentaje
-     * @param minSpare    solo considerar repuestos con al menos este porcentaje
+     * @param wornPercent durability of the worn elytra, or null if none is worn
+     * @param candidates  loose elytras in the inventory
+     * @param swapBelow   swap when the worn one's durability is at or below this percentage
+     * @param minSpare    only consider spares with at least this percentage
      * @param now         System.currentTimeMillis()
      */
     public Result decide(Integer wornPercent, List<ElytraCandidate> candidates,
                          int swapBelow, int minSpare, long now) {
         if (wornPercent == null) {
-            // La pechera vacía es la señal más fiable de que ha cambiado la elytra: cubre morir
-            // y la mayoría de los cambios a mano. Rearma aquí, no en shouldWarnNoSpare(), que no
-            // repite esta regla: el rearme por subida o por pechera vacía vive en un solo sitio.
+            // An empty chest slot is the most reliable sign that the elytra has changed: it covers
+            // dying and most swaps by hand. Rearm here, not in shouldWarnNoSpare(), which does not
+            // repeat this rule: rearming on a rise or on an empty chest slot lives in one place.
             warnedAtPercent = null;
             return new Result(Decision.NOT_WEARING, -1, 0);
         }
 
-        // Ver subir el porcentaje de la puesta significa que es otra elytra: rearma el aviso de
-        // "no hay repuesto". Esto se comprueba en cada decide(), no solo cuando se avisa, porque
-        // decide() se llama en cada tick y es lo único que ve el cambio de elytra a tiempo (spec
-        // §4.5). Es el único sitio donde se aplica esta regla: shouldWarnNoSpare() no la repite.
+        // Seeing the worn one's percentage rise means it is another elytra: rearm the "no spare"
+        // warning. This is checked on every decide(), not only when warning, because decide() is
+        // called every tick and is the only thing that sees the elytra change in time (spec
+        // §4.5). It is the only place this rule applies: shouldWarnNoSpare() does not repeat it.
         if (warnedAtPercent != null && wornPercent > warnedAtPercent) {
             warnedAtPercent = null;
         }
 
-        // Tras un cambio el slot de pechera tarda algún tick en reflejarlo (spec §4.4).
-        // El centinela se comprueba aparte a propósito: "now - Long.MIN_VALUE" desborda a un número
-        // negativo, que pasaría la comparación y dejaría el módulo sin cambiar la elytra nunca.
+        // After a swap the chest slot takes a tick or so to reflect it (spec §4.4).
+        // The sentinel is checked separately on purpose: "now - Long.MIN_VALUE" overflows to a
+        // negative number, which would pass the comparison and leave the module never swapping.
         if (lastSwapAt != NEVER && now >= lastSwapAt && now - lastSwapAt < SWAP_COOLDOWN_MS) {
             return new Result(Decision.OK, -1, wornPercent);
         }
@@ -70,7 +70,7 @@ public final class ElytraPolicy {
 
         ElytraCandidate best = null;
         for (ElytraCandidate candidate : candidates) {
-            // Estrictamente mejor que la puesta: sin esto, un mínimo bajo encadena cambios (spec §4.3).
+            // Strictly better than the worn one: without this, a low minimum chains swaps (spec §4.3).
             if (candidate.percent() < minSpare || candidate.percent() <= wornPercent) continue;
             if (best == null
                 || candidate.percent() < best.percent()
@@ -86,13 +86,13 @@ public final class ElytraPolicy {
     }
 
     /**
-     * true si toca avisar ahora de que no hay repuesto. El rearme por subida de porcentaje o por
-     * pechera vacía ya lo resuelve {@link #decide(Integer, List, int, int, long)} limpiando
-     * {@code warnedAtPercent} antes de llegar aquí; este método solo añade el rearme por tiempo,
-     * igual que {@code AutoTpyPolicy.shouldReportIgnored}, para el caso de cambiar de elytra sin
-     * que la pechera llegue a quedar vacía.
+     * true if the no-spare warning is due now. Rearming on a rising percentage or on an empty
+     * chest slot is already handled by {@link #decide(Integer, List, int, int, long)}, which clears
+     * {@code warnedAtPercent} before getting here; this method only adds rearming by time, just
+     * like {@code AutoTpyPolicy.shouldReportIgnored}, for the case of changing elytra without the
+     * chest slot ever going empty.
      *
-     * @param wornPercent durabilidad de la elytra puesta
+     * @param wornPercent durability of the worn elytra
      * @param now         System.currentTimeMillis()
      */
     public boolean shouldWarnNoSpare(int wornPercent, long now) {
@@ -106,10 +106,10 @@ public final class ElytraPolicy {
     }
 
     /**
-     * Rearma el aviso y olvida el último cambio. Se llama <strong>solo</strong> al encender el
-     * módulo. No debe llamarse después de un SWAP: eso borraría el {@code lastSwapAt} que
-     * {@code decide()} acaba de fijar y anularía la ventana anti-repetición de
-     * {@link #SWAP_COOLDOWN_MS}, haciendo que el módulo repita el mismo cambio en cada tick.
+     * Rearms the warning and forgets the last swap. Called <strong>only</strong> when the module is
+     * turned on. It must not be called after a SWAP: that would erase the {@code lastSwapAt} that
+     * {@code decide()} has just set and void the anti-repeat window of
+     * {@link #SWAP_COOLDOWN_MS}, making the module repeat the same swap on every tick.
      */
     public void reset() {
         lastSwapAt = NEVER;

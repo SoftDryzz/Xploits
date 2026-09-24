@@ -63,7 +63,7 @@ class ElytraPolicyTest {
 
     @Test
     void aSpareThatIsNotStrictlyBetterThanTheWornOneIsRefused() {
-        // min-spare por debajo de swap-below: sin la regla, esto encadenaría cambios
+        // min-spare below swap-below: without the rule, this would chain swaps
         ElytraPolicy policy = new ElytraPolicy();
         ElytraPolicy.Result result = policy.decide(8, List.of(new ElytraCandidate(3, 8)), 20, 5, 1000L);
         assertEquals(Decision.NO_SPARE, result.decision());
@@ -78,9 +78,9 @@ class ElytraPolicyTest {
 
     @Test
     void aLowMinimumCanChainSeveralSwapsButNeverLoops() {
-        // umbral 20, mínimo 5, puesta al 8 % y repuestos al 10 % y al 15 %: encadena 8→10 y luego
-        // 10→15 antes de parar. Lo que garantiza la regla de "estrictamente mejor" no es que no
-        // encadene, sino que no hay bucle infinito, porque el porcentaje solo sube.
+        // threshold 20, minimum 5, worn at 8 % and spares at 10 % and 15 %: it chains 8→10 and then
+        // 10→15 before stopping. What the "strictly better" rule guarantees is not that it does not
+        // chain, but that there is no endless loop, because the percentage only goes up.
         ElytraPolicy policy = new ElytraPolicy();
         List<ElytraCandidate> spares = List.of(new ElytraCandidate(3, 10), new ElytraCandidate(5, 15));
 
@@ -92,7 +92,7 @@ class ElytraPolicyTest {
         assertEquals(Decision.SWAP, second.decision());
         assertEquals(5, second.slot());
 
-        // Al 15 % ya no queda ningún repuesto estrictamente mejor: aquí para.
+        // At 15 % no strictly better spare is left: it stops here.
         ElytraPolicy.Result third = policy.decide(15, spares, 20, 5, 2 * ElytraPolicy.SWAP_COOLDOWN_MS);
         assertEquals(Decision.NO_SPARE, third.decision());
     }
@@ -129,12 +129,12 @@ class ElytraPolicyTest {
         assertFalse(policy.shouldWarnNoSpare(6, 1000L));
     }
 
-    // No hay un test "puttingOnABetterElytraRearmsTheWarning" que llame a shouldWarnNoSpare()
-    // directamente con un porcentaje mayor: esa secuencia no la puede producir el adaptador, que
-    // siempre pasa por decide() antes, y decide() ya es quien limpia el aviso al ver subir el
-    // porcentaje (regla en un solo sitio, spec M4). La cobertura real de "ponerse una elytra
-    // mejor rearma el aviso" la da gettingABetterElytraWithoutASwapStillRearmsTheWarning, que sí
-    // recorre ese camino.
+    // There is no "puttingOnABetterElytraRearmsTheWarning" test calling shouldWarnNoSpare()
+    // directly with a higher percentage: the adapter cannot produce that sequence, since it always
+    // goes through decide() first, and decide() is already what clears the warning on seeing the
+    // percentage rise (rule in one place, spec M4). The real coverage of "putting on a better
+    // elytra rearms the warning" comes from gettingABetterElytraWithoutASwapStillRearmsTheWarning,
+    // which does walk that path.
 
     @Test
     void resetRearmsTheWarning() {
@@ -179,18 +179,18 @@ class ElytraPolicyTest {
 
     @Test
     void gettingABetterElytraWithoutASwapStillRearmsTheWarning() {
-        // Elytra A al 8 %, sin repuesto: avisa y queda registrado el 8.
+        // Elytra A at 8 %, no spare: it warns and the 8 is recorded.
         ElytraPolicy policy = new ElytraPolicy();
         assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 1000L).decision());
         assertTrue(policy.shouldWarnNoSpare(8, 1000L));
 
-        // El jugador se pone una elytra B nueva al 95 %, sin repuestos que cumplan: decide() ve
-        // subir el porcentaje aunque la decisión sea OK, y debe rearmar el aviso.
+        // The player puts on a new elytra B at 95 %, with no qualifying spares: decide() sees the
+        // percentage rise even though the decision is OK, and must rearm the warning.
         assertEquals(Decision.OK, policy.decide(95, List.of(), SWAP_BELOW, MIN_SPARE, 2000L).decision());
 
-        // B se desgasta hasta el mismo 8 % sin repuestos: es otra elytra, así que debe avisar otra
-        // vez, y eso ocurre bien dentro de la ventana de 5 minutos: el rearme es por la subida
-        // vista en decide(), no por tiempo.
+        // B wears down to the same 8 % with no spares: it is another elytra, so it must warn again,
+        // and that happens well inside the 5-minute window: the rearm comes from the rise seen in
+        // decide(), not from time.
         assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 3000L).decision());
         assertTrue(policy.shouldWarnNoSpare(8, 3000L));
     }
@@ -207,17 +207,17 @@ class ElytraPolicyTest {
 
     @Test
     void dyingAndPuttingOnAWorseElytraRearmsTheWarning() {
-        // Vuela al 8 % sin repuesto: avisa y queda registrado el 8.
+        // Flying at 8 % with no spare: it warns and the 8 is recorded.
         ElytraPolicy policy = new ElytraPolicy();
         assertEquals(Decision.NO_SPARE, policy.decide(8, List.of(), SWAP_BELOW, MIN_SPARE, 1000L).decision());
         assertTrue(policy.shouldWarnNoSpare(8, 1000L));
 
-        // Muere: la pechera se queda vacía. decide() debe olvidar el aviso registrado, aunque la
-        // decisión en sí sea NOT_WEARING y no NO_SPARE.
+        // Dies: the chest slot goes empty. decide() must forget the recorded warning, even though
+        // the decision itself is NOT_WEARING and not NO_SPARE.
         assertEquals(Decision.NOT_WEARING, policy.decide(null, List.of(), SWAP_BELOW, MIN_SPARE, 1500L).decision());
 
-        // Reaparece y se pone la única elytra que tenía, al 5 %: es peor que la anterior (8 %),
-        // así que sin el rearme por pechera vacía nunca avisaría. Debe avisar igualmente.
+        // Respawns and puts on the only elytra it had, at 5 %: worse than the previous one (8 %),
+        // so without the empty-chest-slot rearm it would never warn. It must warn all the same.
         assertEquals(Decision.NO_SPARE, policy.decide(5, List.of(), SWAP_BELOW, MIN_SPARE, 2000L).decision());
         assertTrue(policy.shouldWarnNoSpare(5, 2000L));
     }
@@ -246,7 +246,7 @@ class ElytraPolicyTest {
 
     @Test
     void theThresholdIncludesTheWornPercentageItself() {
-        // swapBelow = 10 y la puesta también al 10 %: la frontera es inclusiva, no es OK.
+        // swapBelow = 10 and the worn one also at 10 %: the boundary is inclusive, it is not OK.
         assertEquals(Decision.SWAP, decide(10, List.of(new ElytraCandidate(3, 90)), 1000L).decision());
     }
 

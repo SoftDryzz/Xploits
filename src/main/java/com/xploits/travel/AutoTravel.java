@@ -1,7 +1,7 @@
 package com.xploits.travel;
 
 import com.xploits.XploitsAddon;
-import com.xploits.console.core.Instantanea;
+import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.Texts;
@@ -54,63 +54,64 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Adaptador de AutoTravel (spec §3): fija un destino, le pide al núcleo la ruta con patrón de
- * despiste, ordena los tres sistemas que se disputan la elytra, lanza el vuelo de Baritone por
- * comandos de chat y lo devuelve todo a su sitio al terminar.
+ * AutoTravel adapter (spec §3): sets a destination, asks the core for the route with a decoy
+ * pattern, orders the three systems that fight over the elytra, launches Baritone's flight through
+ * chat commands and puts everything back in its place when it ends.
  *
- * <p>Toda la geometría y toda la construcción de comandos viven en {@code travel.core}, que se
- * prueba sin arrancar el juego. Aquí solo queda lo que necesita a Minecraft: leer la posición,
- * emitir los comandos, vigilar el progreso, encender y apagar módulos, y armar la red de seguridad.
+ * <p>All the geometry and all the command building live in {@code travel.core}, which is tested
+ * without starting the game. What is left here is only what needs Minecraft: reading the position,
+ * sending the commands, watching the progress, turning modules on and off, and arming the safety net.
  *
- * <p><b>Encender el módulo no vuela.</b> El viaje lo lanza el jugador con {@code .xploits travel
- * go}, porque un módulo que despega solo al activarse te manda a 100 000 bloques por un clic.
+ * <p><b>Turning the module on does not fly.</b> The player launches the trip with {@code .xploits
+ * travel go}, because a module that takes off by itself when enabled sends you 100 000 blocks away
+ * with one click.
  *
- * <p><b>La red de seguridad (spec §7) es la razón de ser del módulo.</b> Mandarle {@code #elytra} a
- * Baritone significa escribir en el chat y confiar en que él lo intercepte antes de que salga el
- * paquete. La guarda que Meteor tiene para eso depende de {@code BaritoneUtils.IS_AVAILABLE}, que
- * en estas instancias vale {@code false} aunque Baritone esté instalado (spec §2), así que la
- * confianza no basta: mientras el módulo dirige, cancela él mismo todo paquete de chat saliente
- * cuyo texto empiece por el prefijo de Baritone. En un servidor anarchy, un {@code #elytra} que se
- * escape es anunciarle al servidor entero que vas volando y hacia dónde.
+ * <p><b>The safety net (spec §7) is the module's reason to exist.</b> Sending {@code #elytra} to
+ * Baritone means writing in the chat and trusting it to intercept it before the packet leaves.
+ * Meteor's guard for that depends on {@code BaritoneUtils.IS_AVAILABLE}, which is {@code false} on
+ * these instances even though Baritone is installed (spec §2), so trust is not enough: while the
+ * module is in charge, it cancels by itself every outgoing chat packet whose text starts with
+ * Baritone's prefix. On an anarchy server, an {@code #elytra} that slips out announces to the whole
+ * server that you are flying, and where to.
  *
- * <p>Esa red vive en {@link ChatNet}, <b>suscrito al bus por su cuenta</b> y no como parte del
- * módulo, porque Meteor desuscribe el módulo justo antes de {@code onDeactivate()} -que es cuando la
- * restauración emite sus seis comandos-. Y la decisión de qué texto es comando nuestro está en
- * {@link SafetyNet}, en el núcleo y con tests.
+ * <p>That net lives in {@link ChatNet}, <b>subscribed to the bus on its own</b> and not as part of
+ * the module, because Meteor unsubscribes the module right before {@code onDeactivate()} -which is
+ * when the restoration sends its six commands-. And the decision of which text is one of our
+ * commands is in {@link SafetyNet}, in the core and with tests.
  */
 public class AutoTravel extends XploitsModule {
-    /** El id con el que Baritone se registra en el cargador de mods. */
+    /** The id Baritone registers with in the mod loader. */
     private static final String BARITONE_MOD_ID = "baritone";
 
-    /** Sin acercarse al waypoint durante este tiempo, el viaje se corta (spec §8). */
+    /** Without getting closer to the waypoint for this long, the trip is cut (spec §8). */
     private static final double STALL_SECONDS = 30;
 
-    /** Cuánto tiene que bajar la distancia para contar como avance, en bloques. */
+    /** How much the distance has to drop to count as progress, in blocks. */
     private static final double PROGRESS_EPSILON = 1.0;
 
     /**
-     * Las tres formas de pedir un destino (spec §4), como vocabulario de los ajustes.
+     * The three ways of asking for a destination (spec §4), as the settings' vocabulary.
      *
-     * <p>Cada una lee <b>sus propios</b> ajustes, y por eso son tres y no dos con un interruptor:
-     * ver {@link #destination()}.
+     * <p>Each one reads <b>its own</b> settings, and that is why there are three and not two with a
+     * switch: see {@link #destination()}.
      */
     public enum DestinationMode {
-        COORDENADAS,
-        RELATIVO,
-        AUTOPISTA
+        COORDINATES,
+        RELATIVE,
+        HIGHWAY
     }
 
     private final SettingGroup sgDestination = settings.getDefaultGroup();
-    private final SettingGroup sgPattern = settings.createGroup("Patrón"); // i18n: allowed (setting group name is a save key)
-    private final SettingGroup sgFlight = settings.createGroup("Vuelo");
-    private final SettingGroup sgNotify = settings.createGroup("Avisos");
+    private final SettingGroup sgPattern = settings.createGroup("Pattern");
+    private final SettingGroup sgFlight = settings.createGroup("Flight");
+    private final SettingGroup sgNotify = settings.createGroup("Notify");
 
-    // Destino (spec §4)
+    // Destination (spec §4)
 
     private final Setting<DestinationMode> destinationMode = sgDestination.add(new EnumSetting.Builder<DestinationMode>()
         .name("destination-mode")
         .description(Texts.startupText(TravelText.SETTING_DESTINATION_MODE))
-        .defaultValue(DestinationMode.COORDENADAS)
+        .defaultValue(DestinationMode.COORDINATES)
         .build()
     );
 
@@ -120,7 +121,7 @@ public class AutoTravel extends XploitsModule {
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.COORDENADAS)
+        .visible(() -> destinationMode.get() == DestinationMode.COORDINATES)
         .build()
     );
 
@@ -130,15 +131,15 @@ public class AutoTravel extends XploitsModule {
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.COORDENADAS)
+        .visible(() -> destinationMode.get() == DestinationMode.COORDINATES)
         .build()
     );
 
-    // El desplazamiento del modo RELATIVO tiene ajustes PROPIOS, y no son x/z con otro significado.
-    // Compartirlos sería barato de escribir y caro de usar: un destino absoluto lejano ya
-    // configurado pasaría a leerse como un desplazamiento enorme desde donde estés en cuanto
-    // cambiaras de modo, sin haber tocado un número. Con ajustes propios, cambiar de modo no
-    // reinterpreta nada: lee otros campos, y los de antes siguen queriendo decir lo que decían.
+    // The RELATIVE mode's offset has its OWN settings, and they are not x/z with another meaning.
+    // Sharing them would be cheap to write and expensive to use: a far absolute destination already
+    // configured would start reading as a huge offset from wherever you are as soon as you switched
+    // mode, without touching a number. With their own settings, switching mode reinterprets nothing:
+    // it reads other fields, and the previous ones still mean what they meant.
 
     private final Setting<Double> offsetX = sgDestination.add(new DoubleSetting.Builder()
         .name("offset-x")
@@ -146,7 +147,7 @@ public class AutoTravel extends XploitsModule {
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.RELATIVO)
+        .visible(() -> destinationMode.get() == DestinationMode.RELATIVE)
         .build()
     );
 
@@ -156,7 +157,7 @@ public class AutoTravel extends XploitsModule {
         .defaultValue(0)
         .sliderRange(-100_000, 100_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.RELATIVO)
+        .visible(() -> destinationMode.get() == DestinationMode.RELATIVE)
         .build()
     );
 
@@ -164,7 +165,7 @@ public class AutoTravel extends XploitsModule {
         .name("axis")
         .description(Texts.startupText(TravelText.SETTING_AXIS))
         .defaultValue(Axis.X_PLUS)
-        .visible(() -> destinationMode.get() == DestinationMode.AUTOPISTA)
+        .visible(() -> destinationMode.get() == DestinationMode.HIGHWAY)
         .build()
     );
 
@@ -175,7 +176,7 @@ public class AutoTravel extends XploitsModule {
         .min(0)
         .sliderRange(0, 100_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.AUTOPISTA)
+        .visible(() -> destinationMode.get() == DestinationMode.HIGHWAY)
         .build()
     );
 
@@ -186,7 +187,7 @@ public class AutoTravel extends XploitsModule {
         .min(0)
         .sliderRange(0, 2_000)
         .decimalPlaces(0)
-        .visible(() -> destinationMode.get() == DestinationMode.AUTOPISTA)
+        .visible(() -> destinationMode.get() == DestinationMode.HIGHWAY)
         .build()
     );
 
@@ -200,12 +201,12 @@ public class AutoTravel extends XploitsModule {
         .build()
     );
 
-    // Patrón y sus parámetros (spec §5)
+    // Pattern and its parameters (spec §5)
 
     private final Setting<FlightPattern> pattern = sgPattern.add(new EnumSetting.Builder<FlightPattern>()
         .name("pattern")
         .description(Texts.startupText(TravelText.SETTING_PATTERN))
-        .defaultValue(FlightPattern.RECTO)
+        .defaultValue(FlightPattern.STRAIGHT)
         .build()
     );
 
@@ -232,24 +233,24 @@ public class AutoTravel extends XploitsModule {
     );
 
     private final Setting<Double> legLength = sgPattern.add(new DoubleSetting.Builder()
-        .name("quiebro-leg")
-        .description(Texts.startupText(TravelText.SETTING_QUIEBRO_LEG))
+        .name("swerve-leg")
+        .description(Texts.startupText(TravelText.SETTING_SWERVE_LEG))
         .defaultValue(PatternParams.defaults().legLength())
         .min(1)
         .sliderRange(500, 40_000)
         .decimalPlaces(0)
-        .visible(() -> pattern.get() == FlightPattern.QUIEBRO)
+        .visible(() -> pattern.get() == FlightPattern.SWERVE)
         .build()
     );
 
     private final Setting<Double> lateralOffset = sgPattern.add(new DoubleSetting.Builder()
-        .name("quiebro-offset")
-        .description(Texts.startupText(TravelText.SETTING_QUIEBRO_OFFSET))
+        .name("swerve-offset")
+        .description(Texts.startupText(TravelText.SETTING_SWERVE_OFFSET))
         .defaultValue(PatternParams.defaults().lateralOffset())
         .min(0)
         .sliderRange(0, 5_000)
         .decimalPlaces(0)
-        .visible(() -> pattern.get() == FlightPattern.QUIEBRO)
+        .visible(() -> pattern.get() == FlightPattern.SWERVE)
         .build()
     );
 
@@ -260,7 +261,7 @@ public class AutoTravel extends XploitsModule {
         .min(0)
         .sliderRange(100, 10_000)
         .decimalPlaces(0)
-        .visible(() -> pattern.get() == FlightPattern.ESPIRAL)
+        .visible(() -> pattern.get() == FlightPattern.SPIRAL)
         .build()
     );
 
@@ -271,7 +272,7 @@ public class AutoTravel extends XploitsModule {
         .min(0)
         .sliderRange(0.5, 6)
         .decimalPlaces(1)
-        .visible(() -> pattern.get() == FlightPattern.ESPIRAL)
+        .visible(() -> pattern.get() == FlightPattern.SPIRAL)
         .build()
     );
 
@@ -282,7 +283,7 @@ public class AutoTravel extends XploitsModule {
         .range(0, 89)
         .sliderRange(0, 89)
         .decimalPlaces(0)
-        .visible(() -> pattern.get() == FlightPattern.SENUELO)
+        .visible(() -> pattern.get() == FlightPattern.DECOY)
         .build()
     );
 
@@ -293,20 +294,19 @@ public class AutoTravel extends XploitsModule {
         .range(0.05, 0.95)
         .sliderRange(0.05, 0.95)
         .decimalPlaces(2)
-        .visible(() -> pattern.get() == FlightPattern.SENUELO)
+        .visible(() -> pattern.get() == FlightPattern.DECOY)
         .build()
     );
 
-    // Vuelo: el prefijo y los cuatro ajustes de Baritone, cada uno con su valor de vuelo y su valor
-    // de reposo. Los dos módulos de Meteor NO tienen ajuste de reposo: su estado se lee y se anota al
-    // despegar (ver BorrowedModule).
+    // Flight: the prefix and Baritone's four settings, each with its flight value and its resting
+    // value. The two Meteor modules have NO resting setting: their state is read and noted down at
+    // take-off (see BorrowedModule).
     //
-    // Los cuatro valores de reposo vienen de fábrica con el default REAL de Baritone 1.17.0, leído
-    // del bytecode de su clase Settings (baritone/e.class, javap -p -c) en el jar instalado:
-    // elytraAutoJump FALSE, elytraAllowEmergencyLand TRUE, elytraConserveFireworks FALSE y
-    // elytraFireworkSpeed 1.2. Poner otro valor aquí no es "dejarlo como estaba": Baritone persiste
-    // sus ajustes a disco, así que el primer viaje reconfiguraría para siempre todos los #elytra que
-    // el jugador haga a mano.
+    // The four resting values ship with Baritone 1.17.0's REAL default, read from the bytecode of its
+    // Settings class (baritone/e.class, javap -p -c) in the installed jar: elytraAutoJump FALSE,
+    // elytraAllowEmergencyLand TRUE, elytraConserveFireworks FALSE and elytraFireworkSpeed 1.2.
+    // Putting another value here is not "leaving it as it was": Baritone persists its settings to
+    // disk, so the first trip would reconfigure forever every #elytra the player runs by hand.
 
     private final Setting<String> prefix = sgFlight.add(new StringSetting.Builder()
         .name("baritone-prefix")
@@ -384,7 +384,7 @@ public class AutoTravel extends XploitsModule {
         .build()
     );
 
-    // Avisos
+    // Notify
 
     private final Setting<Boolean> notify = sgNotify.add(new BoolSetting.Builder()
         .name("notify")
@@ -409,84 +409,83 @@ public class AutoTravel extends XploitsModule {
         .build()
     );
 
-    /** Si hay un viaje en marcha: lo único que distingue "encendido" de "dirigiendo". */
+    /** Whether a trip is under way: the only thing that tells "enabled" apart from "in charge". */
     private boolean travelling;
 
     /**
-     * Si lo que está pasando ahora mismo es el desmontaje de salida del mundo, en el que <b>no se
-     * puede encender ni apagar un módulo de Meteor</b> (spec §6.4).
+     * Whether what is happening right now is the teardown on leaving the world, during which <b>no
+     * Meteor module can be turned on or off</b> (spec §6.4).
      *
-     * <p>Lo pone {@link #onGameLeft(GameLeftEvent)} y lo quita {@link #onActivate()}, que es por
-     * donde vuelve el módulo al entrar: {@code Modules.onGameJoined} suscribe cada módulo activo y le
-     * llama a {@code onActivate()}.
+     * <p>{@link #onGameLeft(GameLeftEvent)} sets it and {@link #onActivate()} clears it, which is
+     * the way back in for the module on joining: {@code Modules.onGameJoined} subscribes each active
+     * module and calls its {@code onActivate()}.
      *
-     * <p><b>Por qué se puede confiar en que el handler llega antes.</b> Verificado en las fuentes de
-     * orbit 0.2.4: {@code EventBus.insert()} recorre los oyentes ya suscritos y mete el nuevo delante
-     * del primero cuya prioridad sea <b>estrictamente menor</b>. El handler de {@code Modules} -el
-     * que desmonta- no declara prioridad, así que es {@code EventPriority.MEDIUM} (0); el nuestro es
-     * {@code HIGHEST} (200), así que queda siempre por delante, se suscriba quien se suscriba
-     * primero. Y {@code EventBus.post()} recorre esa lista en orden.
+     * <p><b>Why the handler can be trusted to run first.</b> Checked in the orbit 0.2.4 sources:
+     * {@code EventBus.insert()} walks the listeners already subscribed and puts the new one before
+     * the first whose priority is <b>strictly lower</b>. The {@code Modules} handler -the one that
+     * tears down- declares no priority, so it is {@code EventPriority.MEDIUM} (0); ours is {@code
+     * HIGHEST} (200), so it always stays ahead, whoever subscribes first. And {@code EventBus.post()}
+     * walks that list in order.
      */
     private boolean leavingWorld;
 
     /**
-     * Los dos módulos de Meteor que el viaje toma prestados (spec §6.2, paso 5). La decisión de
-     * qué hacerles al despegar y al aterrizar está en {@link BorrowedModule}, en el núcleo y con
-     * tests: aquí solo se leen los {@code isActive()} y se ejecuta lo que conteste.
+     * The two Meteor modules the trip borrows (spec §6.2, step 5). The decision of what to do with
+     * them on take-off and on landing is in {@link BorrowedModule}, in the core and with tests: here
+     * only the {@code isActive()} values are read and whatever it answers is carried out.
      *
-     * <p>No hay ajuste de reposo para ninguno de los dos, y esa es la diferencia con los cuatro
-     * ajustes de Baritone: el argumento de spec §6.1 -no se pueden leer, así que hay que declarar a
-     * qué se vuelve- vale para Baritone y no vale aquí, porque {@code Module.isActive()} se lee.
+     * <p>Neither has a resting setting, and that is the difference with Baritone's four settings:
+     * the argument of spec §6.1 -they cannot be read, so what to go back to must be declared- holds
+     * for Baritone and not here, because {@code Module.isActive()} can be read.
      */
     private final BorrowedModule elytraFly = new BorrowedModule("elytra-fly", false);
     private final BorrowedModule elytraReplace = new BorrowedModule("elytra-replace", true);
 
     /**
-     * El oyente de la red de seguridad (spec §7), <b>suscrito al bus por su cuenta</b> y no como
-     * parte del módulo. Esto no es un capricho de diseño: es el arreglo de un agujero verificado en
-     * las fuentes de Meteor.
+     * The safety net's listener (spec §7), <b>subscribed to the bus on its own</b> and not as part
+     * of the module. This is not a design whim: it is the fix for a hole verified in Meteor's
+     * sources.
      *
-     * <p>{@code Module.toggle()} desuscribe el módulo del bus <b>antes</b> de llamar a {@code
-     * onDeactivate()}, y {@code Modules.onGameLeft} hace exactamente lo mismo. Si la red viviera en
-     * un {@code @EventHandler} del módulo, la restauración -seis comandos con prefijo, {@code
-     * cancel} incluido- se emitiría con el módulo ya desuscrito: la red no correría, nada se
-     * cancelaría, y las seis líneas saldrían al chat público justo en las dos salidas en las que el
-     * jugador sigue conectado y los paquetes salen de verdad. Apagar el módulo es la reacción de
-     * pánico natural, y es lo que hace un bind.
+     * <p>{@code Module.toggle()} unsubscribes the module from the bus <b>before</b> calling {@code
+     * onDeactivate()}, and {@code Modules.onGameLeft} does exactly the same. If the net lived in an
+     * {@code @EventHandler} of the module, the restoration -six prefixed commands, {@code cancel}
+     * included- would be sent with the module already unsubscribed: the net would not run, nothing
+     * would be cancelled, and the six lines would go out to public chat precisely in the two exits
+     * in which the player is still connected and the packets really leave. Turning the module off is
+     * the natural panic reaction, and it is what a bind does.
      *
-     * <p>Un objeto suelto no depende de nada de eso: se suscribe al armar y se desuscribe en {@link
-     * #disarmNet()}, después del último comando. Verificado contra las fuentes de orbit 0.2.4:
-     * {@code EventBus.subscribe(Object)} reflexiona sobre los métodos anotados de la clase del
-     * objeto y construye el oyente con la fábrica de lambdas del paquete del addon -{@code
-     * com.xploits}, que {@code MeteorClient} registra por {@code MeteorAddon.getPackage()}-, así que
-     * una clase nuestra cualquiera sirve. Y es la <b>misma instancia</b> siempre, porque
-     * {@code EventBus} cachea los oyentes por identidad del objeto y {@code unsubscribe} necesita
-     * encontrar ahí los mismos.
+     * <p>A standalone object depends on none of that: it subscribes on arming and unsubscribes in
+     * {@link #disarmNet()}, after the last command. Checked against the orbit 0.2.4 sources: {@code
+     * EventBus.subscribe(Object)} reflects over the annotated methods of the object's class and
+     * builds the listener with the lambda factory of the addon's package -{@code com.xploits}, which
+     * {@code MeteorClient} registers through {@code MeteorAddon.getPackage()}-, so any class of ours
+     * will do. And it is always the <b>same instance</b>, because {@code EventBus} caches listeners
+     * by object identity and {@code unsubscribe} needs to find the same ones there.
      */
     private final ChatNet net = new ChatNet();
 
     /**
-     * Si la red de seguridad está armada, que ahora es exactamente lo mismo que decir si {@link
-     * #net} está suscrito al bus. El módulo puede estar encendido sin viaje en marcha, y entonces no
-     * tiene por qué comerse los comandos que el jugador escriba a mano: la red se arma antes de
-     * emitir el primer comando y se desarma cuando ya no queda ninguno por emitir.
+     * Whether the safety net is armed, which now means exactly whether {@link #net} is subscribed
+     * to the bus. The module can be on with no trip under way, and then it has no business eating
+     * the commands the player types by hand: the net is armed before the first command is sent and
+     * disarmed when none is left to send.
      */
     private boolean netArmed;
 
-    /** Si el comando que {@link #send(String)} está emitiendo ahora mismo es nuestro. */
+    /** Whether the command {@link #send(String)} is sending right now is ours. */
     private boolean emitting;
 
-    /** Si la red mató el último comando nuestro: puesto por el oyente, leído por {@link #send(String)}. */
+    /** Whether the net killed our last command: set by the listener, read by {@link #send(String)}. */
     private boolean sendCaught;
 
-    /** Si ya se avisó de que la red ha tenido que cancelar algo en este viaje (spec §7: una sola vez). */
+    /** Whether the player was already told that the net had to cancel something on this trip (spec §7: only once). */
     private boolean netCaughtWarned;
 
     /**
-     * El prefijo con el que arrancó este viaje. La red y la restauración usan este, no el del ajuste:
-     * si el jugador edita el prefijo a mitad de vuelo, los comandos que ya circulan siguen siendo los
-     * de antes, y la restauración tiene que hablarle a Baritone en el mismo idioma en que se le habló
-     * al despegar.
+     * The prefix this trip started with. The net and the restoration use this one, not the
+     * setting's: if the player edits the prefix mid-flight, the commands already in flight are still
+     * the old ones, and the restoration has to speak to Baritone in the same language it was spoken
+     * to at take-off.
      */
     private String activePrefix = "";
 
@@ -494,16 +493,16 @@ public class AutoTravel extends XploitsModule {
     private int index;
 
     /**
-     * La vigilancia del atasco (spec §8), en el núcleo y con tests. El adaptador solo le da el
-     * waypoint al que va y la distancia que queda; ella lleva la cuenta y decide si se corta,
-     * incluido reiniciarse sola al cambiar de waypoint.
+     * The stall watch (spec §8), in the core and with tests. The adapter only gives it the waypoint
+     * it is heading to and the distance left; it keeps the count and decides whether to cut,
+     * including resetting itself on a waypoint change.
      */
     private final StallWatch stallWatch = StallWatch.ofSeconds(STALL_SECONDS, PROGRESS_EPSILON);
 
     /**
-     * La decisión del aviso de fuegos (spec §8), también en el núcleo. Aquí solo se cuentan los
-     * fuegos del inventario y se saca el toast; cuándo avisar y cuándo rearmar el aviso es suyo.
-     * Se construye al lanzar cada viaje porque el umbral es un ajuste y puede haber cambiado.
+     * The firework warning decision (spec §8), also in the core. Here the inventory's fireworks are
+     * only counted and the toast shown; when to warn and when to rearm the warning is its call. It
+     * is built when each trip is launched because the threshold is a setting and may have changed.
      */
     private FireworkWatch fireworkWatch = new FireworkWatch(0);
 
@@ -513,59 +512,63 @@ public class AutoTravel extends XploitsModule {
 
     @Override
     public void onActivate() {
-        // Encender no vuela: se espera al comando del jugador.
+        // Turning on does not fly: it waits for the player's command.
         //
-        // Aquí se vuelve también al entrar al mundo -Modules.onGameJoined suscribe cada módulo activo
-        // y le llama a onActivate()-, así que es el sitio donde se olvida que estábamos saliendo. Lo
-        // que quedó pendiente de devolver NO se aplica aquí: estamos dentro del reparto de
-        // GameJoinedEvent, que es justo cuando Modules está suscribiendo módulos, y encender uno en
-        // mitad de eso es el mismo agujero por el que se llega aquí. Se aplica en el primer tick.
+        // This is also where we come back on joining the world -Modules.onGameJoined subscribes each
+        // active module and calls its onActivate()-, so it is the place to forget that we were
+        // leaving. Whatever was left pending to give back is NOT applied here: we are inside the
+        // dispatch of GameJoinedEvent, which is exactly when Modules is subscribing modules, and
+        // turning one on in the middle of that is the same hole that led here. It is applied on the
+        // first tick.
         leavingWorld = false;
         resetTrip();
 
-        // Encender este módulo no hace nada visible, y un módulo que al encenderse no hace nada ni
-        // lo dice es indistinguible de uno roto: es exactamente la conclusión a la que llegó el
-        // jugador la primera vez. Los otros cinco del addon se callan porque empiezan a trabajar
-        // solos; éste es el único que espera una segunda orden, así que es el único que tiene que
-        // decirlo. Se repite al entrar al mundo a propósito: si el módulo sigue encendido, saber
-        // que está armado y con qué destino vale más que ahorrar una línea de chat.
+        // Turning this module on does nothing visible, and a module that does nothing when turned on
+        // and does not say so cannot be told apart from a broken one: that is exactly the conclusion
+        // the player reached the first time. The addon's other five stay quiet because they start
+        // working on their own; this one is the only one that waits for a second order, so it is the
+        // only one that has to say so. It is repeated on joining the world on purpose: if the module
+        // is still on, knowing that it is armed and with which destination is worth more than saving
+        // a chat line.
         info(TravelText.ARMED);
-        infoPrivado(new PositionedMsg(
+        infoPrivate(new PositionedMsg(
             Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestination()),
-            Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestinationSinPosicion())));
+            Msg.of(TravelText.ARMED_SUMMARY, "pattern", pattern.get().name(), "destination", describeDestinationWithoutPosition())));
     }
 
     @Override
     public void onDeactivate() {
-        // Salida 5: apagado del módulo. Al dejar el mundo también se pasa por aquí -Modules llama a
-        // onDeactivate() de todos los módulos activos-, pero para entonces onGameLeft ya ha cerrado
-        // el viaje: corre antes por prioridad (spec §6.4), y finish() es idempotente, así que este
-        // segundo paso no restaura nada. Eso es justo lo que hace falta, porque aquí ya no se puede
-        // distinguir un apagado normal del desmontaje.
+        // Exit 5: the module is turned off. Leaving the world also passes through here -Modules calls
+        // onDeactivate() on every active module-, but by then onGameLeft has already closed the trip:
+        // it runs first by priority (spec §6.4), and finish() is idempotent, so this second pass
+        // restores nothing. That is exactly what is needed, because here a normal turn-off can no
+        // longer be told apart from the teardown.
         finish(TravelText.REASON_MODULE_OFF, false);
-        // Y pase lo que pase, la red no sobrevive al módulo: un oyente suscrito sin viaje en marcha
-        // se comería en silencio todo comando con prefijo que el jugador escribiera a mano, y con el
-        // módulo apagado no habría ni quién lo desarmara ni quién lo dijera. Es idempotente.
+        // And whatever happens, the net does not outlive the module: a listener subscribed with no
+        // trip under way would silently eat every prefixed command the player typed by hand, and
+        // with the module off there would be nobody to disarm it nor to say so. It is idempotent.
         disarmNet();
     }
 
     /**
-     * Salida 4: desconexión o cambio de mundo. Va en {@code HIGHEST} a propósito, y no es una
-     * preferencia de orden: es lo que hace que la restauración sepa que está en el desmontaje.
+     * Exit 4: disconnection or world change. It runs at {@code HIGHEST} on purpose, and it is not
+     * an ordering preference: it is what lets the restoration know it is inside the teardown.
      *
-     * <p>{@code Modules.onGameLeft} recorre los módulos activos haciendo {@code unsubscribe(module);
-     * module.onDeactivate();} y <b>no</b> pone {@code active = false}, para que vuelvan solos en la
-     * siguiente entrada. Nuestro {@code onDeactivate()} restaura, y restaurar encendía {@code
-     * elytra-fly}: {@code Module.toggle()} lo suscribe al bus en mitad del desmontaje y, si a él ya
-     * le tocó el bucle, termina suscrito y activo. En la siguiente entrada {@code
-     * Modules.onGameJoined} lo suscribe otra vez y {@code EventBus.insert()} de orbit no deduplica,
-     * así que sus handlers corrían dos veces por evento el resto de la sesión -y apagarlo no lo
-     * arreglaba: {@code unsubscribe} usa {@code List.remove}, que quita una sola copia-.
+     * <p>{@code Modules.onGameLeft} walks the active modules doing {@code unsubscribe(module);
+     * module.onDeactivate();} and does <b>not</b> set {@code active = false}, so that they come back
+     * by themselves on the next join. Our {@code onDeactivate()} restores, and restoring turned on
+     * {@code elytra-fly}: {@code Module.toggle()} subscribes it to the bus in the middle of the
+     * teardown and, if the loop had already reached it, it ends up subscribed and active. On the
+     * next join {@code Modules.onGameJoined} subscribes it again and orbit's {@code
+     * EventBus.insert()} does not deduplicate, so its handlers ran twice per event for the rest of
+     * the session -and turning it off did not fix it: {@code unsubscribe} uses {@code List.remove},
+     * which removes a single copy-.
      *
-     * <p>Con prioridad {@code HIGHEST} este handler corre antes que el de {@code Modules}: marca que
-     * estamos saliendo y termina el viaje él, con los comandos de Baritone -que sí se pueden mandar,
-     * porque {@code GameLeftEvent} se publica con el mundo y el jugador todavía vivos- y sin tocar
-     * ningún módulo. El {@code onDeactivate()} que llega después se encuentra el viaje ya cerrado.
+     * <p>With {@code HIGHEST} priority this handler runs before the {@code Modules} one: it marks
+     * that we are leaving and ends the trip itself, with Baritone's commands -which can still be
+     * sent, because {@code GameLeftEvent} is posted with the world and the player still alive- and
+     * without touching any module. The {@code onDeactivate()} that comes afterwards finds the trip
+     * already closed.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onGameLeft(GameLeftEvent event) {
@@ -574,18 +577,19 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * La mitad de la red de seguridad (spec §7) que necesita a Minecraft: sacar del paquete saliente
-     * por qué canal va y qué texto lleva. Decidir si ese texto es un comando de Baritone de los que
-     * dirigimos es de {@link SafetyNet}, que se prueba sin arrancar el juego.
+     * The half of the safety net (spec §7) that needs Minecraft: getting from the outgoing packet
+     * which channel it goes through and what text it carries. Deciding whether that text is one of
+     * the Baritone commands we are directing belongs to {@link SafetyNet}, which is tested without
+     * starting the game.
      *
-     * <p>{@code ClientConnectionMixin} de Meteor publica este evento al entrar en {@code
-     * ClientConnection.send} y cancela el envío si el evento se cancela, así que esto no es una
-     * advertencia: el paquete muere dentro del cliente.
+     * <p>Meteor's {@code ClientConnectionMixin} posts this event on entering {@code
+     * ClientConnection.send} and cancels the send if the event is cancelled, so this is not a
+     * warning: the packet dies inside the client.
      *
-     * <p>Se cancelan también <b>nuestros propios comandos</b>, y eso es deliberado: si la red tiene
-     * que actuar es porque Baritone no está interceptando, y entonces nuestro comando tampoco tiene
-     * a quién llegar. Lo que no se puede hacer es dar la restauración por buena después, y para eso
-     * está {@link #sendCaught}.
+     * <p><b>Our own commands</b> are cancelled too, and that is deliberate: if the net has to act it
+     * is because Baritone is not intercepting, and then our command has nobody to reach either. What
+     * cannot be done is to take the restoration as good afterwards, and that is what {@link
+     * #sendCaught} is for.
      */
     private final class ChatNet {
         @EventHandler
@@ -599,11 +603,11 @@ public class AutoTravel extends XploitsModule {
                 payload = chat.chatMessage();
             }
             else if (event.packet instanceof CommandExecutionC2SPacket command) {
-                channel = SafetyNet.Channel.COMANDO;
+                channel = SafetyNet.Channel.COMMAND;
                 payload = command.command();
             }
             else if (event.packet instanceof ChatCommandSignedC2SPacket command) {
-                channel = SafetyNet.Channel.COMANDO;
+                channel = SafetyNet.Channel.COMMAND;
                 payload = command.command();
             }
             else return;
@@ -617,27 +621,27 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * Que la red haya tenido que actuar significa que Baritone no está interceptando, y eso el
-     * jugador lo quiere saber: cualquier comando que escriba a mano sí se publicaría. Una vez por
-     * viaje, y fuerte: si se repitiera por cada comando de la preparación serían una línea por
-     * cada #set seguidas y se perdería la única que importa.
+     * The net having had to act means Baritone is not intercepting, and the player wants to know
+     * that: any command typed by hand would be published. Once per trip, and loud: if it repeated for
+     * every preparation command it would be one line per #set in a row and the only one that matters
+     * would get lost.
      */
     private void warnNetCaught(String text) {
         if (netCaughtWarned) return;
         netCaughtWarned = true;
 
         Msg message = Msg.of(TravelText.NET_CAUGHT, "command", text);
-        // El comando cancelado puede ser un #goal con coordenadas: a la consola solo va su verbo.
-        Msg sinArgumentos = Msg.of(TravelText.NET_CAUGHT_VERB, "verb", SafetyNet.verbo(text));
-        warningPrivado(new PositionedMsg(message, sinArgumentos));
+        // The cancelled command may be a #goal with coordinates: only its verb goes to the console.
+        Msg withoutArguments = Msg.of(TravelText.NET_CAUGHT_VERB, "verb", SafetyNet.verb(text));
+        warningPrivate(new PositionedMsg(message, withoutArguments));
         loudToast(message, Items.BARRIER);
     }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        // Lo que quedó por devolver al salir del mundo se devuelve aquí, en el primer tick tras
-        // volver a entrar: para entonces Modules.onGameJoined ya ha terminado de suscribir a todo el
-        // mundo, así que encender un módulo lo suscribe una sola vez.
+        // Whatever was left to give back on leaving the world is given back here, on the first tick
+        // after joining again: by then Modules.onGameJoined has finished subscribing everyone, so
+        // turning a module on subscribes it only once.
         applyPendingModules();
 
         if (!travelling) return;
@@ -646,9 +650,8 @@ public class AutoTravel extends XploitsModule {
             finish(TravelText.REASON_LOST_WORLD, true);
             return;
         }
-        // Salida 3: muerte. No hay evento de muerte en Meteor, así que se observa aquí; el jugador
-        // sigue existiendo en la pantalla de muerte, así que la restauración todavía puede hablarle
-        // a Baritone.
+        // Exit 3: death. Meteor has no death event, so it is watched here; the player still exists
+        // on the death screen, so the restoration can still talk to Baritone.
         if (!mc.player.isAlive()) {
             finish(TravelText.REASON_DIED, true);
             return;
@@ -659,12 +662,12 @@ public class AutoTravel extends XploitsModule {
         Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
         double distance = here.distanceTo(waypoints.get(index));
 
-        // El margen con el que se da por alcanzado un waypoint no es el mismo para todos -el último
-        // es el único sitio donde Baritone debe aterrizar-, y esa decisión vive en el núcleo con
-        // tests: ver RoutePlanner.reachedMargin.
+        // The margin within which a waypoint counts as reached is not the same for all of them -the
+        // last one is the only place where Baritone must land-, and that decision lives in the core
+        // with tests: see RoutePlanner.reachedMargin.
         if (distance <= RoutePlanner.reachedMargin(index, waypoints.size(), waypointMargin.get())) {
             index++;
-            // Salida 1: llegada.
+            // Exit 1: arrival.
             if (index >= waypoints.size()) {
                 finish(TravelText.REASON_ARRIVED, false);
                 return;
@@ -674,9 +677,10 @@ public class AutoTravel extends XploitsModule {
             return;
         }
 
-        // Salida 6: atasco. Lo único observable desde fuera es si la distancia baja; Baritone no
-        // informa de nada más (spec §8). El índice va en la llamada a propósito: es lo que hace que
-        // el salto de distancia al cambiar de waypoint no se lea como treinta segundos sin avanzar.
+        // Exit 6: stall. The only thing observable from outside is whether the distance drops;
+        // Baritone reports nothing else (spec §8). The index goes into the call on purpose: it is
+        // what keeps the distance jump on a waypoint change from reading as thirty seconds without
+        // progress.
         if (stallWatch.tick(index, distance)) {
             Msg message = Msg.of(TravelText.STALLED, "index", index + 1, "seconds", stallWatch.limitSeconds(),
                 "distance", Math.round(distance));
@@ -687,17 +691,16 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * El aviso fuerte de fuegos artificiales (spec §8: <i>"Enterarse a 100k importa"</i>). Lo único
-     * que hace el adaptador es contarlos; si el aviso toca o no -y si ya salió- lo decide {@link
-     * FireworkWatch}.
+     * The loud firework warning (spec §8: <i>"Finding out at 100k matters"</i>). All the adapter does
+     * is count them; whether the warning is due -and whether it already went out- is decided by
+     * {@link FireworkWatch}.
      *
-     * <p>Camino verificado contra las fuentes remapeadas de {@code meteor-client:1.21.11-SNAPSHOT}:
-     * {@code InvUtils.find(Item...)} recorre {@code mc.player.getInventory().getStack(i)} de 0 a
-     * {@code size()} y suma {@code getCount()} de cada pila que case, así que cubre la barra rápida,
-     * el inventario principal, la armadura y la mano secundaria; devuelve {@code count 0} sin
-     * jugador en vez de reventar. Es el mismo camino que usa el propio {@code ElytraFlightMode} de
-     * Meteor para sus fuegos. Lo que hay dentro de un shulker no se cuenta, igual que en
-     * {@code elytra-replace}.
+     * <p>Path checked against the remapped sources of {@code meteor-client:1.21.11-SNAPSHOT}:
+     * {@code InvUtils.find(Item...)} walks {@code mc.player.getInventory().getStack(i)} from 0 to
+     * {@code size()} and adds up {@code getCount()} of every matching stack, so it covers the hotbar,
+     * the main inventory, the armour and the offhand; it returns {@code count 0} without a player
+     * instead of blowing up. It is the same path Meteor's own {@code ElytraFlightMode} uses for its
+     * fireworks. What is inside a shulker is not counted, same as in {@code elytra-replace}.
      */
     private void checkFireworks() {
         int fireworks = InvUtils.find(Items.FIREWORK_ROCKET).count();
@@ -711,37 +714,38 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * Lanza el viaje (salida de ninguna: es la entrada). Devuelve el mensaje que el comando tiene que
-     * enseñar, sea el del lanzamiento o el motivo por el que no se vuela. Ningún fallo es silencioso
-     * y, ante la duda, no se manda un solo comando (spec §9).
+     * Launches the trip (exit of none: it is the entry). Returns the message the command has to
+     * show, be it the launch one or the reason why there is no flight. No failure is silent and,
+     * when in doubt, not a single command is sent (spec §9).
      */
     public PositionedMsg start() {
         if (!isActive()) return PositionedMsg.same(Msg.of(TravelText.START_MODULE_OFF));
         if (travelling) return PositionedMsg.same(Msg.of(TravelText.START_ALREADY_TRAVELLING));
-        Msg barridoEnMarcha = rechazoPorNetherSweep();
-        if (barridoEnMarcha != null) return PositionedMsg.same(barridoEnMarcha);
+        Msg sweepRunning = netherSweepRejection();
+        if (sweepRunning != null) return PositionedMsg.same(sweepRunning);
         if (mc.player == null || mc.world == null) return PositionedMsg.same(Msg.of(TravelText.START_NO_WORLD));
         if (!mc.player.isAlive()) {
-            // Sin esto, desde la pantalla de muerte pasan todas las demás guardas: se arma la red, se
-            // emiten los diez comandos de la preparación, y al tick siguiente onTick ve al muerto y
-            // emite los seis de la restauración. Catorce comandos y un "Viaje lanzado" para nada.
+            // Without this, every other guard passes from the death screen: the net is armed, the ten
+            // preparation commands are sent, and on the next tick onTick sees the dead player and
+            // sends the six restoration ones. Fourteen commands and a "Trip launched" for nothing.
             return PositionedMsg.same(Msg.of(TravelText.START_DEAD));
         }
         if (!FabricLoader.getInstance().isModLoaded(BARITONE_MOD_ID)) {
-            // A propósito NO se usa BaritoneUtils.IS_AVAILABLE: Meteor lo pone a true tras un
-            // Class.forName("baritone.api.BaritoneAPI") sobre una clase que el jar ofuscado no
-            // expone, así que ahí vale false aunque Baritone esté perfectamente instalado (spec §2).
+            // BaritoneUtils.IS_AVAILABLE is NOT used on purpose: Meteor sets it to true after a
+            // Class.forName("baritone.api.BaritoneAPI") on a class the obfuscated jar does not
+            // expose, so there it is false even though Baritone is perfectly installed (spec §2).
             return PositionedMsg.same(Msg.of(TravelText.START_NO_BARITONE));
         }
         if (InvUtils.find(Items.FIREWORK_ROCKET).count() == 0) {
-            // Y además es lo que hace honesto al aviso de checkFireworks(): despegando siempre con
-            // alguno, "te has quedado SIN fuegos a mitad de vuelo" solo puede decirse cuando de
-            // verdad se han acabado a mitad de vuelo.
+            // And it is also what keeps checkFireworks()'s warning honest: always taking off with
+            // some, "you ran OUT of fireworks mid-flight" can only be said when they really ran out
+            // mid-flight.
             return PositionedMsg.same(Msg.of(TravelText.START_NO_FIREWORKS));
         }
         if (!wearsElytra()) {
-            // elytra-replace no tapa esto: su política contesta NOT_WEARING cuando la pechera no lleva
-            // elytra y no hace nada, a propósito -ponerte una elytra por tu cuenta no es su trabajo-.
+            // elytra-replace does not cover this: its policy answers NOT_WEARING when the chest slot
+            // holds no elytra and does nothing, on purpose -putting an elytra on for you is not its
+            // job-.
             return PositionedMsg.same(Msg.of(TravelText.START_NO_ELYTRA));
         }
         Msg chestSwapRejection = chestSwapRejection();
@@ -750,8 +754,8 @@ public class AutoTravel extends XploitsModule {
         String launchPrefix = prefix.get();
         Msg prefixRejection = SafetyNet.prefixRejection(launchPrefix);
         if (prefixRejection != null) {
-            // Se comprueba aquí, antes de armar la red y antes del primer comando: armarla sobre un
-            // prefijo inservible es tener red sin saber qué vigila.
+            // Checked here, before arming the net and before the first command: arming it over a
+            // useless prefix is having a net without knowing what it watches.
             return PositionedMsg.same(Msg.of(TravelText.NOT_FLYING, "reason", prefixRejection));
         }
 
@@ -765,85 +769,87 @@ public class AutoTravel extends XploitsModule {
         index = 0;
         travelling = true;
         stallWatch.reset();
-        // El umbral es un ajuste: se toma al despegar, para que no cambie a mitad de vuelo.
+        // The threshold is a setting: it is taken at take-off, so that it does not change mid-flight.
         fireworkWatch = new FireworkWatch(fireworkThreshold.get());
 
-        // El orden de la preparación es el de spec §6.2: la red ANTES de emitir el primer comando.
+        // The preparation order is spec §6.2's: the net BEFORE the first command is sent.
         armNet();
         prepare();
 
-        // Y una última comprobación antes de mandar el #elytra, porque preparar mueve armadura: apagar
-        // elytra-fly con chest-swap en Always te pone la pechera en el sitio de la elytra. Eso se
-        // rechaza arriba, antes de tocar nada, así que aquí ya no debería poder pasar; esto es la red
-        // por si algún otro módulo se lleva la elytra entre una línea y la siguiente. Lanzar ahora
-        // sería decir "Viaje lanzado" y enterarse a los treinta segundos por el corte de atasco.
+        // And one last check before sending the #elytra, because preparing moves armour: turning off
+        // elytra-fly with chest-swap on Always puts the chestplate where the elytra was. That is
+        // rejected above, before touching anything, so it should no longer be able to happen here;
+        // this is the net in case some other module takes the elytra between one line and the next.
+        // Launching now would mean saying "Trip launched" and finding out thirty seconds later from
+        // the stall cut.
         if (!wearsElytra()) return PositionedMsg.same(undoLaunch());
 
         aimAtCurrentWaypoint();
 
         Waypoint target = waypoints.get(waypoints.size() - 1);
-        long distancia = Math.round(origin.distanceTo(target));
+        long distance = Math.round(origin.distanceTo(target));
         return new PositionedMsg(
             Msg.of(TravelText.LAUNCHED, "pattern", pattern.get().name(), "count", waypoints.size(),
-                "x", Math.round(target.x()), "z", Math.round(target.z()), "distance", distancia),
+                "x", Math.round(target.x()), "z", Math.round(target.z()), "distance", distance),
             Msg.of(TravelText.LAUNCHED_NO_POSITION, "pattern", pattern.get().name(), "count", waypoints.size(),
-                "distance", distancia));
+                "distance", distance));
     }
 
     /**
-     * El motivo por el que no se puede volar con {@code nether-sweep} barriendo, o {@code null} si no
-     * lo está.
+     * The reason why flying is not possible with {@code nether-sweep} sweeping, or {@code null} if
+     * it is not.
      *
-     * <p><b>Los dos módulos dirigen al mismo Baritone por los mismos comandos</b>, y ninguno
-     * preguntaba por el otro pese a que se usan en el mismo viaje -se vuela hasta la zona con esto y
-     * se barre al llegar-. Lo que pasa si se solapan, en orden: {@code #goal} solo admite un
-     * objetivo, así que el segundo en lanzar se queda con Baritone; el primero ve crecer su distancia
-     * al suyo, a los 45 s salta su vigilancia de atasco y emite su {@code #cancel} y su restauración
-     * entera, que <b>para el vuelo del segundo a mitad</b> y además le devuelve
-     * {@code elytraFireworkSpeed} a un valor de reposo distinto del que él cree estar usando; el
-     * segundo no se entera de nada y 45 s después diagnostica un atasco que no existe. Y como cada
-     * uno se presta {@code elytra-fly} y {@code elytra-replace} con su propio {@link BorrowedModule},
-     * el segundo anota como «reposo del jugador» el estado que dejó el primero, y al terminar lo deja
-     * ahí.
+     * <p><b>Both modules direct the same Baritone through the same commands</b>, and neither asked
+     * about the other even though they are used on the same trip -you fly to the area with this one
+     * and sweep on arrival-. What happens if they overlap, in order: {@code #goal} only takes one
+     * goal, so the second to launch keeps Baritone; the first sees its distance to its own goal
+     * grow, after 45 s its stall watch fires and it sends its {@code #cancel} and its whole
+     * restoration, which <b>stops the second one's flight mid-way</b> and also puts {@code
+     * elytraFireworkSpeed} back to a resting value different from the one it thinks it is using; the
+     * second notices nothing and 45 s later diagnoses a stall that does not exist. And since each
+     * borrows {@code elytra-fly} and {@code elytra-replace} with its own {@link BorrowedModule}, the
+     * second notes down as "the player's resting state" the state the first left, and leaves it
+     * there when it ends.
      *
-     * <p>Es simétrico: la misma guarda está en {@code NetherSweep.start()} mirando hacia aquí.
+     * <p>It is symmetric: the same guard is in {@code NetherSweep.start()} looking this way.
      */
-    private Msg rechazoPorNetherSweep() {
-        NetherSweep barrido = Modules.get().get(NetherSweep.class);
-        if (barrido == null || !barrido.isSweeping()) return null;
+    private Msg netherSweepRejection() {
+        NetherSweep sweep = Modules.get().get(NetherSweep.class);
+        if (sweep == null || !sweep.isSweeping()) return null;
 
         return Msg.of(TravelText.SWEEP_RUNNING);
     }
 
-    /** Si la pechera lleva una elytra puesta, que es lo único con lo que Baritone puede volar. */
+    /** Whether the chest slot holds an elytra, which is the only thing Baritone can fly with. */
     private boolean wearsElytra() {
         return mc.player != null && mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem() == Items.ELYTRA;
     }
 
     /**
-     * El motivo por el que no se puede lanzar con el {@code chest-swap} de {@code elytra-fly}
-     * configurado, o {@code null} si no hay conflicto.
+     * The reason why it cannot launch with {@code elytra-fly}'s {@code chest-swap} configured, or
+     * {@code null} if there is no conflict.
      *
-     * <p>Verificado en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}: {@code
-     * ElytraFly.onDeactivate()} llama a {@code ChestSwap.swap()} si {@code chest-swap} está en {@code
-     * Always} y llevas la elytra puesta -te cambia a la pechera-, y si está en {@code WaitForGround}
-     * suscribe un oyente que hace ese mismo cambio <b>en cuanto toques suelo</b>. La preparación
-     * apaga {@code elytra-fly} como primer paso y dos líneas después manda {@code #elytra}: con
-     * {@code Always} Baritone no puede volar porque ya no llevas elytra, y con {@code WaitForGround}
-     * te la quita en el aterrizaje, cuando el módulo cree haberlo restaurado todo.
+     * <p>Checked in the {@code meteor-client:1.21.11-SNAPSHOT} sources: {@code
+     * ElytraFly.onDeactivate()} calls {@code ChestSwap.swap()} if {@code chest-swap} is on {@code
+     * Always} and you are wearing the elytra -it swaps you to the chestplate-, and if it is on {@code
+     * WaitForGround} it subscribes a listener that makes that same swap <b>as soon as you touch the
+     * ground</b>. The preparation turns {@code elytra-fly} off as its first step and two lines later
+     * sends {@code #elytra}: with {@code Always} Baritone cannot fly because you are no longer
+     * wearing an elytra, and with {@code WaitForGround} it takes it off you on landing, when the
+     * module believes it has restored everything.
      *
-     * <p>Se rechaza en vez de acotarse, y se rechaza <b>antes</b> de armar la red y de mandar un solo
-     * comando (spec §9.2). Acotarlo significaría poner {@code chest-swap} en {@code Never} a espaldas
-     * del jugador y devolverlo después, que es un ajuste más que Meteor persiste a disco y que se
-     * perdería con el cliente si la sesión se corta: exactamente la clase de rastro que este módulo
-     * existe para no dejar.
+     * <p>It is rejected instead of worked around, and rejected <b>before</b> arming the net and
+     * sending a single command (spec §9.2). Working around it would mean setting {@code chest-swap}
+     * to {@code Never} behind the player's back and giving it back later, which is one more setting
+     * Meteor persists to disk and that would be lost with the client if the session is cut: exactly
+     * the kind of trail this module exists not to leave.
      *
-     * <p>De fábrica {@code chest-swap} es {@code Never}, así que esto solo le pasa a quien lo haya
-     * configurado -que es justo el perfil que usa este módulo-.
+     * <p>Out of the box {@code chest-swap} is {@code Never}, so this only happens to whoever
+     * configured it -which is precisely the profile that uses this module-.
      */
     private Msg chestSwapRejection() {
         ElytraFly module = Modules.get().get(ElytraFly.class);
-        // Si no está encendido, la preparación no lo apaga, y sin apagarlo no hay cambio de armadura.
+        // If it is not on, the preparation does not turn it off, and without turning it off there is no armour swap.
         if (module == null || !module.isActive()) return null;
 
         ElytraFly.ChestSwapMode mode = module.chestSwap.get();
@@ -857,14 +863,14 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * Deshace una preparación que ya no puede terminar en vuelo y contesta por qué. No se llama a
-     * {@link #finish(TravelText, boolean)} a propósito: aquí no hay ningún viaje que dar por terminado
-     * -no se ha mandado ni un {@code goal} ni un {@code elytra}-, y decir "viaje terminado" por algo
-     * que no llegó a empezar es la misma confusión que este módulo evita en la restauración.
+     * Undoes a preparation that can no longer end in flight and answers why. {@link
+     * #finish(TravelText, boolean)} is not called on purpose: here there is no trip to end -not a
+     * single {@code goal} nor {@code elytra} was sent-, and saying "trip finished" for something that
+     * never started is the same confusion this module avoids in the restoration.
      */
     private Msg undoLaunch() {
-        // No hace falta mirar si algún módulo se ha quedado pendiente: esto solo se llega a ejecutar
-        // desde start(), con el mundo cargado, que es exactamente cuando sí se pueden tocar.
+        // No need to check whether a module was left pending: this only ever runs from start(), with
+        // the world loaded, which is exactly when they can be touched.
         travelling = false;
         SafetyNet.Restoration undone = restore();
         Msg pending = undone.warning(activePrefix);
@@ -875,11 +881,12 @@ public class AutoTravel extends XploitsModule {
         return Msg.of(TravelText.UNDONE_NOT_RESTORED, "pending", pending);
     }
 
-    /** Salida 2: cancelación del jugador. Devuelve el mensaje que el comando tiene que enseñar. */
+    /** Exit 2: the player cancels. Returns the message the command has to show. */
     public Msg stop() {
         if (!travelling) return Msg.of(TravelText.STOP_NOT_TRAVELLING);
-        // Lo que conteste el comando no puede afirmar más que lo que acaba de pasar: si la
-        // restauración no llegó, finish() ya lo ha dicho entero y aquí solo se remata sin repetirlo.
+        // Whatever the command answers cannot claim more than what just happened: if the restoration
+        // did not arrive, finish() has already said it in full and here it is only wrapped up
+        // without repeating it.
         if (finish(TravelText.REASON_CANCELLED, false).arrived()) return Msg.of(TravelText.STOP_RESTORED);
         return Msg.of(TravelText.STOP_NOT_RESTORED);
     }
@@ -888,53 +895,55 @@ public class AutoTravel extends XploitsModule {
         return travelling;
     }
 
-    /** Por dónde va el viaje, sin coordenadas: waypoint, total y bloques que faltan. */
-    public Optional<Instantanea.Progreso> progreso() {
+    /** Where the trip is, without coordinates: waypoint, total and blocks left. */
+    public Optional<GameSnapshot.Progress> progress() {
         if (!travelling || mc.player == null || waypoints.isEmpty()) return Optional.empty();
         Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
-        return Optional.of(new Instantanea.Progreso(index + 1, waypoints.size(),
-            Math.round(RoutePlanner.bloquesRestantes(waypoints, index, here))));
+        return Optional.of(new GameSnapshot.Progress(index + 1, waypoints.size(),
+            Math.round(RoutePlanner.remainingBlocks(waypoints, index, here))));
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return travelling
             ? Texts.render(TravelText.NOW_WAYPOINT, "index", index + 1, "total", waypoints.size())
             : Texts.render(TravelText.NOW_ARMED);
     }
 
     /**
-     * Preparación de spec §6.2, pasos 5 y 6: los dos módulos y, de una pieza, la secuencia de
-     * ajustes de Baritone. Todos los {@code #set} salen juntos a propósito -{@code elytraAutoSwap}
-     * incluido-: es la secuencia que el núcleo construye y prueba como una sola cosa, y partirla
-     * para meter el encendido de un módulo nuestro en medio no cambia nada observable.
+     * Preparation of spec §6.2, steps 5 and 6: the two modules and, in one piece, the sequence of
+     * Baritone settings. All the {@code #set} go out together on purpose -{@code elytraAutoSwap}
+     * included-: it is the sequence the core builds and tests as one thing, and splitting it to put
+     * one of our modules being turned on in the middle changes nothing observable.
      */
     private void prepare() {
-        // Antes de anotar nada, devolver lo que quedara pendiente de un viaje anterior: si no, lo que
-        // se anotaría como "reposo del jugador" sería el estado que dejó ese viaje, no el suyo.
+        // Before noting anything down, give back whatever was left pending from a previous trip:
+        // otherwise what would be noted down as "the player's resting state" would be the state that
+        // trip left, not theirs.
         applyPendingModules();
         takeModule(Modules.get().get(ElytraFly.class), elytraFly);
         takeModule(Modules.get().get(ElytraReplace.class), elytraReplace);
         for (String command : BaritoneScript.preparation(activePrefix, flightSettings())) send(command);
     }
 
-    /** Fija el waypoint actual y relanza el vuelo: Baritone toma el objetivo al arrancar, no después. */
+    /** Sets the current waypoint and relaunches the flight: Baritone takes the goal on starting, not afterwards. */
     private void aimAtCurrentWaypoint() {
         send(BaritoneScript.goTo(activePrefix, waypoints.get(index)));
         send(BaritoneScript.launch(activePrefix));
     }
 
     /**
-     * El único final de los seis caminos de salida (spec §6.3). Es idempotente: quien llegue segundo
-     * no hace nada, que es justo lo que hace falta cuando el apagado del módulo y la salida del mundo
-     * se solapan.
+     * The one ending of the six exit paths (spec §6.3). It is idempotent: whoever arrives second does
+     * nothing, which is exactly what is needed when turning the module off and leaving the world
+     * overlap.
      *
-     * @return qué pasó de verdad con la restauración, para quien tenga que contestar algo después.
-     *         Quien llega segundo no restaura nada y contesta {@code ENTREGADA}: el primero ya dijo
-     *         lo que hubiera que decir, y repetirlo sería sacar dos veces el mismo aviso.
+     * @return what really happened with the restoration, for whoever has to answer something
+     *         afterwards. Whoever arrives second restores nothing and answers {@code DELIVERED}: the
+     *         first already said whatever had to be said, and repeating it would show the same
+     *         warning twice.
      */
     private SafetyNet.Restoration finish(TravelText reason, boolean warn) {
-        if (!travelling) return SafetyNet.Restoration.ENTREGADA;
+        if (!travelling) return SafetyNet.Restoration.DELIVERED;
         travelling = false;
 
         SafetyNet.Restoration restoration = restore();
@@ -948,43 +957,45 @@ public class AutoTravel extends XploitsModule {
             return restoration;
         }
 
-        // Emitir no es llegar, y decir "entorno restaurado" sin que haya llegado nada es la mentira
-        // más cara del módulo: el jugador cree que ha aterrizado y Baritone sigue volando. Sale
-        // siempre, se hayan pedido avisos o no, y fuerte: es el peor estado en que este módulo te
-        // puede dejar.
+        // Sending is not arriving, and saying "environment restored" when nothing arrived is the
+        // module's most expensive lie: the player believes they have landed and Baritone keeps
+        // flying. It always goes out, whether notifications were asked for or not, and loud: it is
+        // the worst state this module can leave you in.
         warning(TravelText.FINISHED_NOT_RESTORED, "reason", reason, "pending", pending);
         loudToast(Msg.of(TravelText.TOAST_FINISHED_NOT_RESTORED), Items.BARRIER);
         return restoration;
     }
 
     /**
-     * Devuelve los cinco puntos que se tocaron a su estado de reposo (spec §6.3) y dice si de verdad
-     * llegaron. La red se desarma la última, cuando ya no queda ni un comando por emitir: desarmarla
-     * antes dejaría el {@code cancel} y la restauración sin cubrir, que es exactamente cuando más
-     * comandos se mandan de golpe. Y va en un {@code finally} porque una red armada que sobreviviera
-     * a una excepción se comería en silencio todo comando que el jugador escribiera a mano.
+     * Puts the five points that were touched back to their resting state (spec §6.3) and says
+     * whether they really arrived. The net is disarmed last, when not a single command is left to
+     * send: disarming it earlier would leave the {@code cancel} and the restoration uncovered, which
+     * is exactly when the most commands go out at once. And it is in a {@code finally} because an
+     * armed net that survived an exception would silently eat every command the player typed by
+     * hand.
      */
     private SafetyNet.Restoration restore() {
         try {
             SafetyNet.Restoration outcome;
             if (mc.player == null) {
-                outcome = SafetyNet.Restoration.SIN_JUGADOR;
+                outcome = SafetyNet.Restoration.NO_PLAYER;
             }
             else {
-                // El && va detrás a propósito: primero se manda, siempre, y luego se acumula. Con la
-                // condición delante, el primer comando cancelado se llevaría por delante los cinco
-                // siguientes.
+                // The && goes last on purpose: first it is sent, always, and then accumulated. With
+                // the condition first, the first cancelled command would take the next five down with
+                // it.
                 boolean delivered = send(BaritoneScript.cancel(activePrefix));
                 for (String command : BaritoneScript.restoration(activePrefix, restingSettings())) {
                     delivered = send(command) && delivered;
                 }
-                outcome = delivered ? SafetyNet.Restoration.ENTREGADA : SafetyNet.Restoration.CANCELADA;
+                outcome = delivered ? SafetyNet.Restoration.DELIVERED : SafetyNet.Restoration.CANCELLED;
             }
 
-            // Los dos módulos son nuestros y no viajan por el chat: se devuelven haya jugador o no,
-            // y lo que les pase no cambia el veredicto de los comandos. Lo único que los frena es el
-            // desmontaje de salida del mundo (spec §6.4): ahí la devolución se queda pendiente y la
-            // hace el primer tick de la siguiente entrada.
+            // The two modules are ours and do not travel through the chat: they are given back
+            // whether there is a player or not, and what happens to them does not change the
+            // commands' verdict. The only thing that holds them back is the teardown on leaving the
+            // world (spec §6.4): there the give-back stays pending and the first tick of the next
+            // join does it.
             releaseModule(Modules.get().get(ElytraFly.class), elytraFly);
             releaseModule(Modules.get().get(ElytraReplace.class), elytraReplace);
 
@@ -997,11 +1008,11 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * El aviso de los módulos que no se han podido devolver todavía (spec §6.4). Sale fuerte y con
-     * toast, no como línea de chat corriente, por dos motivos: <i>"aterrizar con ElytraFly apagado
-     * sin saberlo es tan malo como el problema original"</i> (spec §6.3), y porque el único momento
-     * en que esto pasa es al salir del mundo, donde el chat se va con la desconexión y lo único que
-     * el jugador llega a leer es el toast.
+     * The warning about the modules that could not be given back yet (spec §6.4). It goes out loud
+     * and with a toast, not as an ordinary chat line, for two reasons: <i>"landing with ElytraFly
+     * off without knowing it is as bad as the original problem"</i> (spec §6.3), and because the
+     * only moment this happens is on leaving the world, where the chat goes away with the
+     * disconnection and the only thing the player gets to read is the toast.
      */
     private void warnPendingModules() {
         Object names;
@@ -1028,7 +1039,7 @@ public class AutoTravel extends XploitsModule {
         fireworkWatch.reset();
     }
 
-    /** Suscribe el oyente de la red al bus. Idempotente: armar dos veces no duplica la suscripción. */
+    /** Subscribes the net's listener to the bus. Idempotent: arming twice does not duplicate the subscription. */
     private void armNet() {
         netCaughtWarned = false;
         if (netArmed) return;
@@ -1036,24 +1047,24 @@ public class AutoTravel extends XploitsModule {
         MeteorClient.EVENT_BUS.subscribe(net);
     }
 
-    /** Desuscribe el oyente. Idempotente, que es lo que hace segura la llamada de {@code onDeactivate}. */
+    /** Unsubscribes the listener. Idempotent, which is what makes the {@code onDeactivate} call safe. */
     private void disarmNet() {
         if (!netArmed) return;
         netArmed = false;
         MeteorClient.EVENT_BUS.unsubscribe(net);
     }
 
-    /** Anota cómo está el módulo y lo deja en su estado de vuelo. */
+    /** Notes down how the module is and leaves it in its flight state. */
     private static void takeModule(Module module, BorrowedModule loan) {
         if (module == null) {
-            // Ni se anota lo que no se puede leer ni se devuelve lo que no se tomó.
+            // What cannot be read is not noted down, and what was not taken is not given back.
             loan.forget();
             return;
         }
         apply(module, loan.take(module.isActive()));
     }
 
-    /** Devuelve el módulo a donde estaba, o deja la devolución pendiente si no se puede tocar. */
+    /** Gives the module back to where it was, or leaves the give-back pending if it cannot be touched. */
     private void releaseModule(Module module, BorrowedModule loan) {
         if (module == null) {
             loan.forget();
@@ -1063,9 +1074,9 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * Hace lo que quedó pendiente del desmontaje de salida del mundo. Es idempotente y barato: sin
-     * nada pendiente no consulta ni el registro de módulos, que es lo que permite llamarlo en cada
-     * tick.
+     * Does whatever was left pending from the teardown on leaving the world. It is idempotent and
+     * cheap: with nothing pending it does not even query the module registry, which is what allows
+     * calling it every tick.
      */
     private void applyPendingModules() {
         if (elytraFly.hasPending()) applyPending(Modules.get().get(ElytraFly.class), elytraFly);
@@ -1082,30 +1093,30 @@ public class AutoTravel extends XploitsModule {
 
     private static void apply(Module module, BorrowedModule.Action action) {
         switch (action) {
-            case ENCENDER -> {
+            case TURN_ON -> {
                 if (!module.isActive()) module.enable();
             }
-            case APAGAR -> {
+            case TURN_OFF -> {
                 if (module.isActive()) module.disable();
             }
-            case NADA -> { }
+            case NONE -> { }
         }
     }
 
     /**
-     * Manda un comando por el chat del jugador. Camino verificado contra las fuentes de
-     * {@code meteor-client:1.21.11-SNAPSHOT}: {@code ChatUtils.sendPlayerMsg} manda el texto "como si
-     * el usuario lo hubiera escrito en el chat", que es exactamente lo que Baritone escucha. Se pasa
-     * {@code addToHistory = false} para no llenar el historial del chat de comandos con almohadilla,
-     * donde la tecla arriba los dejaría a un intro de publicarse.
+     * Sends a command through the player's chat. Path checked against the {@code
+     * meteor-client:1.21.11-SNAPSHOT} sources: {@code ChatUtils.sendPlayerMsg} sends the text "as if
+     * the user had typed it in the chat", which is exactly what Baritone listens to. {@code
+     * addToHistory = false} is passed so as not to fill the chat history with hash commands, where
+     * the up key would leave them one enter away from being published.
      *
-     * <p>Sin jugador no se manda nada: {@code sendPlayerMsg} lo dereferencia sin comprobarlo.
+     * <p>Without a player nothing is sent: {@code sendPlayerMsg} dereferences it without checking.
      *
-     * @return si el comando salió del cliente hacia Baritone. {@code false} significa que la red
-     *         tuvo que cancelarlo -Baritone no lo interceptó, así que no tenía a quién llegar- o que
-     *         no había jugador. Todo el camino es síncrono: {@code sendPlayerMsg} acaba en {@code
-     *         ClientConnection.send}, donde el mixin publica el evento y nuestro oyente contesta
-     *         antes de que esta llamada vuelva, así que {@link #sendCaught} ya está decidido aquí.
+     * @return whether the command left the client towards Baritone. {@code false} means the net had
+     *         to cancel it -Baritone did not intercept it, so it had nobody to reach- or that there
+     *         was no player. The whole path is synchronous: {@code sendPlayerMsg} ends in {@code
+     *         ClientConnection.send}, where the mixin posts the event and our listener answers
+     *         before this call returns, so {@link #sendCaught} is already settled here.
      */
     private boolean send(String command) {
         if (mc.player == null) return false;
@@ -1123,20 +1134,20 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * El destino que se le pasa al núcleo, leído de los ajustes del modo que esté puesto.
+     * The destination handed to the core, read from the settings of the current mode.
      *
-     * <p><b>Cada modo lee sus propios ajustes</b>, y esa es la razón de que {@code offset-x} y
-     * {@code offset-z} existan en vez de reutilizar {@code x} y {@code z} con otro significado. Con
-     * un solo par de campos, quien tuviera puesto un destino absoluto lejano y cambiara a RELATIVO
-     * se encontraría con que esos números pasan a ser un desplazamiento desde donde está: el mismo
-     * ajuste, sin tocarlo, querría decir otra cosa, y el viaje no se parecería a ninguno de los dos
-     * que el jugador pidió nunca. Aquí cambiar de modo no reinterpreta ningún número: lee otros.
+     * <p><b>Each mode reads its own settings</b>, and that is why {@code offset-x} and {@code
+     * offset-z} exist instead of reusing {@code x} and {@code z} with another meaning. With a single
+     * pair of fields, whoever had a far absolute destination set and switched to RELATIVE would find
+     * those numbers turned into an offset from where they are: the same setting, untouched, would
+     * mean something else, and the trip would look like neither of the two the player ever asked
+     * for. Here switching mode reinterprets no number: it reads others.
      */
     private Destination destination() {
         return switch (destinationMode.get()) {
-            case AUTOPISTA -> Destination.highway(axis.get(), highwayDistance.get());
-            case RELATIVO -> Destination.relative(offsetX.get(), offsetZ.get());
-            case COORDENADAS -> Destination.coordinates(destinationX.get(), destinationZ.get());
+            case HIGHWAY -> Destination.highway(axis.get(), highwayDistance.get());
+            case RELATIVE -> Destination.relative(offsetX.get(), offsetZ.get());
+            case COORDINATES -> Destination.coordinates(destinationX.get(), destinationZ.get());
         };
     }
 
@@ -1151,17 +1162,17 @@ public class AutoTravel extends XploitsModule {
     }
 
     private BaritoneScript.FlightSettings restingSettings() {
-        // La semilla no se restaura: nunca fue un cambio nuestro, solo un dato que se le pasó a
-        // Baritone si lo teníamos, y el núcleo no la escribe en la restauración.
+        // The seed is not restored: it was never a change of ours, only a piece of data handed to
+        // Baritone if we had it, and the core does not write it in the restoration.
         return new BaritoneScript.FlightSettings(autoJumpResting.get(), allowEmergencyLandResting.get(),
             conserveFireworksResting.get(), fireworkSpeedResting.get(), "");
     }
 
-    /** La mitad visual de un aviso fuerte: el toast que acompaña al chat. */
+    /** The visual half of a loud warning: the toast that goes with the chat. */
     private void loudToast(Msg message, Item icon) {
         MeteorToast.Builder toast = new MeteorToast.Builder("Xploits").text(Texts.render(message)).icon(icon);
-        // MeteorToast.update() llama a play(customSound) sin comprobar el nulo y vanilla lo dereferencia:
-        // NPE en el hilo de render. Nunca pasar null; se silencia con volumen cero, igual que ElytraReplace.
+        // MeteorToast.update() calls play(customSound) without a null check and vanilla dereferences it:
+        // NPE on the render thread. Never pass null; it is silenced with zero volume, same as ElytraReplace.
         if (!notifySound.get()) {
             toast.sound(PositionedSoundInstance.master(SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(), 1.2f, 0f));
         }
@@ -1172,15 +1183,15 @@ public class AutoTravel extends XploitsModule {
         return new PositionedMsg(status(true), status(false));
     }
 
-    private Msg status(boolean conPosicion) {
+    private Msg status(boolean withPosition) {
         if (!isActive()) return Msg.of(TravelText.STATUS_OFF);
         if (!travelling) {
             return Msg.of(TravelText.STATUS_IDLE, "pattern", pattern.get().name(),
-                "destination", conPosicion ? describeDestination() : describeDestinationSinPosicion());
+                "destination", withPosition ? describeDestination() : describeDestinationWithoutPosition());
         }
 
         Waypoint target = waypoints.get(index);
-        Msg position = conPosicion
+        Msg position = withPosition
             ? Msg.of(TravelText.STATUS_AT, "x", Math.round(target.x()), "z", Math.round(target.z()))
             : Msg.of(TravelText.NOTHING);
         Msg progress = Msg.of(TravelText.NOTHING);
@@ -1197,27 +1208,27 @@ public class AutoTravel extends XploitsModule {
 
     private Msg describeDestination() {
         return switch (destinationMode.get()) {
-            case AUTOPISTA -> Msg.of(TravelText.DESTINATION_HIGHWAY, "distance", Math.round(highwayDistance.get()),
+            case HIGHWAY -> Msg.of(TravelText.DESTINATION_HIGHWAY, "distance", Math.round(highwayDistance.get()),
                 "axis", axis.get().name());
-            // El desplazamiento se dice tal cual, con su signo y diciendo que es un desplazamiento: si
-            // se resolviera aquí a coordenadas, el modo que existe para no escribir el destino en
-            // ningún sitio lo estaría escribiendo en el chat.
-            case RELATIVO -> Msg.of(TravelText.DESTINATION_RELATIVE,
+            // The offset is stated as it is, with its sign and saying that it is an offset: if it were
+            // resolved to coordinates here, the mode that exists so as not to write the destination
+            // anywhere would be writing it in the chat.
+            case RELATIVE -> Msg.of(TravelText.DESTINATION_RELATIVE,
                 "dx", String.format("%+d", Math.round(offsetX.get())), "dz", String.format("%+d", Math.round(offsetZ.get())));
-            case COORDENADAS -> Msg.of(TravelText.DESTINATION_COORDINATES,
+            case COORDINATES -> Msg.of(TravelText.DESTINATION_COORDINATES,
                 "x", Math.round(destinationX.get()), "z", Math.round(destinationZ.get()));
         };
     }
 
-    /** El destino sin coordenadas, para la consola: en autopista ya no las lleva; si no, la distancia. */
-    private Msg describeDestinationSinPosicion() {
+    /** The destination without coordinates, for the console: in highway mode it no longer has them; otherwise, the distance. */
+    private Msg describeDestinationWithoutPosition() {
         return switch (destinationMode.get()) {
-            case AUTOPISTA -> describeDestination();
-            // Solo la distancia: el desplazamiento con su signo dice el rumbo desde un punto que se
-            // puede adivinar (el spawn, una autopista), y a la consola solo van distancias.
-            case RELATIVO -> Msg.of(TravelText.DESTINATION_RELATIVE_DISTANCE,
+            case HIGHWAY -> describeDestination();
+            // Only the distance: the offset with its sign gives the heading from a point that can be
+            // guessed (the spawn, a highway), and only distances go to the console.
+            case RELATIVE -> Msg.of(TravelText.DESTINATION_RELATIVE_DISTANCE,
                 "distance", Math.round(Math.hypot(offsetX.get(), offsetZ.get())));
-            case COORDENADAS -> {
+            case COORDINATES -> {
                 if (mc.player == null) yield Msg.of(TravelText.DESTINATION_BY_COORDINATES);
                 Waypoint here = new Waypoint(mc.player.getX(), mc.player.getZ());
                 Waypoint target = new Waypoint(destinationX.get(), destinationZ.get());

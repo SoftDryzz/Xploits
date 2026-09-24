@@ -11,68 +11,68 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FriendLedgerTest {
-    private static final Set<String> SIN_AMIGOS = Set.of();
-    private static final boolean SIN_DESCONOCIDOS = false;
-    private static final boolean CON_DESCONOCIDOS = true;
+    private static final Set<String> NO_FRIENDS = Set.of();
+    private static final boolean DISTRUST_UNKNOWN = false;
+    private static final boolean TRUST_UNKNOWN = true;
 
     @Test
-    void unNombreNuevoSeAnadeYQuedaApuntadoComoNuestro() {
+    void aNewNameIsAddedAndRecordedAsOurs() {
         FriendLedger ledger = new FriendLedger();
 
-        FriendLedger.Result result = ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
+        FriendLedger.Result result = ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
 
         assertEquals(List.of("StormAegis44"), result.toAdd());
         assertTrue(result.toRemove().isEmpty());
         assertEquals(Set.of("StormAegis44"), ledger.added());
     }
 
-    /** La invariante que manda sobre todas: lo que ya tenía el jugador no se toca jamás. */
+    /** The invariant that rules over all: what the player already had is never touched. */
     @Test
-    void unAmigoQueElJugadorYaTeniaNiSeAnadeNiSeBorra() {
+    void aFriendThePlayerAlreadyHadIsNeitherAddedNorRemoved() {
         FriendLedger ledger = new FriendLedger();
 
-        FriendLedger.Result puesta = ledger.reconcile(Set.of("StormAegis44"), Set.of("StormAegis44"));
-        assertTrue(puesta.toAdd().isEmpty(), "ya está: no hay nada que añadir");
-        assertTrue(ledger.added().isEmpty(), "y sobre todo, no es nuestro");
+        FriendLedger.Result added = ledger.reconcile(Set.of("StormAegis44"), Set.of("StormAegis44"));
+        assertTrue(added.toAdd().isEmpty(), "it is already there: there is nothing to add");
+        assertTrue(ledger.added().isEmpty(), "and above all, it is not ours");
 
-        FriendLedger.Result soltada = ledger.release(Set.of("StormAegis44"));
-        assertTrue(soltada.toRemove().isEmpty(), "no lo pusimos nosotros: no lo quitamos nosotros");
+        FriendLedger.Result released = ledger.release(Set.of("StormAegis44"));
+        assertTrue(released.toRemove().isEmpty(), "we did not put it there: we do not take it out");
     }
 
     @Test
-    void alSoltarSaleLoNuestroYSoloLoNuestro() {
+    void releasingRemovesOursAndOnlyOurs() {
         FriendLedger ledger = new FriendLedger();
         ledger.reconcile(Set.of("StormAegis44"), Set.of("Dryzzical"));
 
-        FriendLedger.Result soltada = ledger.release(Set.of("Dryzzical", "StormAegis44"));
+        FriendLedger.Result released = ledger.release(Set.of("Dryzzical", "StormAegis44"));
 
-        assertEquals(List.of("StormAegis44"), soltada.toRemove());
+        assertEquals(List.of("StormAegis44"), released.toRemove());
         assertTrue(ledger.added().isEmpty());
     }
 
     /**
-     * Misma regla que {@code BorrowedModule}: si el jugador lo mueve a mano después que nosotros, su
-     * decisión es más reciente que nuestra anotación y manda.
+     * Same rule as {@code BorrowedModule}: if the player moves it by hand after us, their
+     * decision is more recent than our record and wins.
      */
     @Test
-    void siElJugadorQuitaAManoUnoQuePusimosDejaDeSerNuestroYNoSeVuelveAPoner() {
+    void ifThePlayerRemovesOneWeAddedItStopsBeingOursAndIsNotReAdded() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
 
-        // El jugador lo borra de su lista; las de origen siguen pidiéndolo.
-        FriendLedger.Result tras = ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
-        assertTrue(tras.toAdd().isEmpty(), "no se le discute al jugador lo que acaba de decidir");
-        assertTrue(tras.toRemove().isEmpty());
+        // The player removes it from their list; the source lists still ask for it.
+        FriendLedger.Result after = ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
+        assertTrue(after.toAdd().isEmpty(), "what the player has just decided is not argued with");
+        assertTrue(after.toRemove().isEmpty());
         assertTrue(ledger.added().isEmpty());
 
-        // Y sigue sin ponerse en las reconciliaciones siguientes de esta misma activación.
-        assertTrue(ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS).toAdd().isEmpty());
+        // And it is still not added in the following reconciliations of this same activation.
+        assertTrue(ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS).toAdd().isEmpty());
     }
 
     @Test
-    void unNombreQueSaleDeLaListaDeOrigenSeQuitaDeLosAmigos() {
+    void aNameLeavingTheSourceListIsRemovedFromFriends() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44", "Dryzzical"), SIN_AMIGOS);
+        ledger.reconcile(Set.of("StormAegis44", "Dryzzical"), NO_FRIENDS);
 
         FriendLedger.Result result =
             ledger.reconcile(Set.of("Dryzzical"), Set.of("StormAegis44", "Dryzzical"));
@@ -82,12 +82,12 @@ class FriendLedgerTest {
     }
 
     /**
-     * Friends.add rechaza el nombre si get(name) != null, y get compara con equalsIgnoreCase: pedir
-     * el añadido sería pedir algo que Meteor va a rechazar, y apuntarlo sería apuntar como nuestro
-     * al amigo del jugador.
+     * Friends.add rejects the name if get(name) != null, and get compares with equalsIgnoreCase: asking
+     * for the addition would be asking for something Meteor is going to reject, and recording it would
+     * record the player's friend as ours.
      */
     @Test
-    void laPresenciaSeMiraSinDistinguirMayusculas() {
+    void presenceIsCheckedCaseInsensitively() {
         FriendLedger ledger = new FriendLedger();
 
         FriendLedger.Result result = ledger.reconcile(Set.of("StormAegis44"), Set.of("stormaegis44"));
@@ -97,123 +97,123 @@ class FriendLedgerTest {
     }
 
     /**
-     * Y la propiedad va al revés: exige el nombre exacto. Si lo que hay ya no está escrito como lo
-     * escribimos, no podemos demostrar que sea el nuestro, y ante la duda se suelta sin borrar nada.
+     * And ownership goes the other way: it requires the exact name. If what is there is no longer
+     * written the way we wrote it, we cannot prove it is ours, and when in doubt it is released without removing anything.
      */
     @Test
-    void laPropiedadExigeElNombreExacto() {
+    void ownershipRequiresTheExactName() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
 
         FriendLedger.Result result = ledger.release(Set.of("stormaegis44"));
 
-        assertTrue(result.toRemove().isEmpty(), "no es demostrablemente el nuestro: no se borra");
+        assertTrue(result.toRemove().isEmpty(), "it is not provably ours: it is not removed");
         assertTrue(ledger.added().isEmpty());
     }
 
     @Test
-    void reconciliarDosVecesSinCambiosNoHaceNada() {
+    void reconcilingTwiceWithoutChangesDoesNothing() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
 
-        FriendLedger.Result segunda = ledger.reconcile(Set.of("StormAegis44"), Set.of("StormAegis44"));
+        FriendLedger.Result second = ledger.reconcile(Set.of("StormAegis44"), Set.of("StormAegis44"));
 
-        assertTrue(segunda.isEmpty(), "sin cambios no se escribe nada, y cada escritura va al disco");
+        assertTrue(second.isEmpty(), "without changes nothing is written, and every write goes to disk");
         assertEquals(Set.of("StormAegis44"), ledger.added());
     }
 
     @Test
-    void unAnadidoRechazadoPorMeteorDejaDeSerNuestroYNoSeReintenta() {
+    void anAddRejectedByMeteorStopsBeingOursAndIsNotRetried() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
 
         ledger.disown("StormAegis44");
         assertTrue(ledger.added().isEmpty());
 
-        FriendLedger.Result result = ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
-        assertTrue(result.isEmpty(), "ni se reintenta ni, sobre todo, se borra");
+        FriendLedger.Result result = ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
+        assertTrue(result.isEmpty(), "it is neither retried nor, above all, removed");
     }
 
     @Test
-    void resetOlvidaLoPuestoYLoAbandonado() {
+    void resetForgetsWhatWasAddedAndWhatWasAbandoned() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS);
-        ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS); // el jugador lo quitó: queda abandonado
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS);
+        ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS); // the player removed it: it is abandoned
 
         ledger.reset();
 
         assertTrue(ledger.added().isEmpty());
-        assertEquals(List.of("StormAegis44"), ledger.reconcile(Set.of("StormAegis44"), SIN_AMIGOS).toAdd(),
-            "una activación nueva vuelve a empezar de cero");
+        assertEquals(List.of("StormAegis44"), ledger.reconcile(Set.of("StormAegis44"), NO_FRIENDS).toAdd(),
+            "a new activation starts from zero again");
     }
 
     @Test
-    void soltarSinHaberPuestoNadaNoBorraNada() {
+    void releasingWithoutHavingAddedAnythingRemovesNothing() {
         FriendLedger ledger = new FriendLedger();
 
         assertTrue(ledger.release(Set.of("StormAegis44", "Dryzzical")).isEmpty());
     }
 
     @Test
-    void reconciliarConNulosNoRevienta() {
+    void reconcilingWithNullsDoesNotCrash() {
         FriendLedger ledger = new FriendLedger();
 
         assertTrue(ledger.reconcile(null, null).isEmpty());
         assertEquals(List.of("StormAegis44"), ledger.reconcile(Set.of("StormAegis44"), null).toAdd());
     }
 
-    // --- syncable: qué se sincroniza y qué no ---------------------------------------------------
+    // --- syncable: what is synced and what is not ------------------------------------------------
 
     @Test
-    void syncableUneLasDosListasYRecortaLosEspacios() {
+    void syncableMergesBothListsAndTrimsSpaces() {
         Set<String> result = FriendLedger.syncable(
-            Set.of(" StormAegis44 "), SIN_DESCONOCIDOS, Set.of("Dryzzical\t"));
+            Set.of(" StormAegis44 "), DISTRUST_UNKNOWN, Set.of("Dryzzical\t"));
 
         assertEquals(Set.of("StormAegis44", "Dryzzical"), result);
     }
 
     /**
-     * La vía de ataque de una línea de chat (spec §14.2): con trust-unknown-couriers encendido,
-     * cualquiera que imite un READY entra solo en known-couriers. De ahí no sale nada hacia la lista
-     * de amigos de Meteor, que es global y persiste a disco.
+     * The one-chat-line attack path (spec §14.2): with trust-unknown-couriers on,
+     * anyone who imitates a READY gets into known-couriers on their own. Nothing from there goes to the
+     * Meteor friends list, which is global and persists to disk.
      */
     @Test
-    void syncableNoSincronizaNingunCourierConTrustUnknownCouriers() {
+    void syncableSyncsNoCourierWithTrustUnknownCouriers() {
         Set<String> result = FriendLedger.syncable(
-            Set.of("StormAegis44", "Mallory"), CON_DESCONOCIDOS, Set.of("Dryzzical"));
+            Set.of("StormAegis44", "Mallory"), TRUST_UNKNOWN, Set.of("Dryzzical"));
 
-        assertEquals(Set.of("Dryzzical"), result, "la lista users se escribe a mano: esa sí");
+        assertEquals(Set.of("Dryzzical"), result, "the users list is only written by hand: that one is synced");
     }
 
     @Test
-    void syncableDescartaLoQueMeteorNoPodriaGuardar() {
+    void syncableDropsWhatMeteorCouldNotSave() {
         Set<String> result = FriendLedger.syncable(
             Arrays.asList(null, "", "   ", "Storm Aegis", "Storm\tAegis", "StormAegis44"),
-            SIN_DESCONOCIDOS, Set.of());
+            DISTRUST_UNKNOWN, Set.of());
 
         assertEquals(Set.of("StormAegis44"), result);
     }
 
     @Test
-    void syncableTrataLasListasNulasComoVacias() {
-        assertTrue(FriendLedger.syncable(null, SIN_DESCONOCIDOS, null).isEmpty());
-        assertEquals(Set.of("Dryzzical"), FriendLedger.syncable(null, SIN_DESCONOCIDOS, Set.of("Dryzzical")));
+    void syncableTreatsNullListsAsEmpty() {
+        assertTrue(FriendLedger.syncable(null, DISTRUST_UNKNOWN, null).isEmpty());
+        assertEquals(Set.of("Dryzzical"), FriendLedger.syncable(null, DISTRUST_UNKNOWN, Set.of("Dryzzical")));
     }
 
     @Test
-    void unNombreEnLasDosListasSeSincronizaUnaSolaVez() {
+    void aNameInBothListsIsSyncedOnlyOnce() {
         FriendLedger ledger = new FriendLedger();
-        Set<String> wanted = FriendLedger.syncable(Set.of("Dryzzical"), SIN_DESCONOCIDOS, Set.of("Dryzzical"));
+        Set<String> wanted = FriendLedger.syncable(Set.of("Dryzzical"), DISTRUST_UNKNOWN, Set.of("Dryzzical"));
 
-        assertEquals(List.of("Dryzzical"), ledger.reconcile(wanted, SIN_AMIGOS).toAdd());
+        assertEquals(List.of("Dryzzical"), ledger.reconcile(wanted, NO_FRIENDS).toAdd());
     }
 
     @Test
-    void apagarLaSincronizacionSueltaLoPuestoSinTocarNadaMas() {
+    void turningSyncOffReleasesWhatWasAddedWithoutTouchingAnythingElse() {
         FriendLedger ledger = new FriendLedger();
         ledger.reconcile(Set.of("StormAegis44"), Set.of("Dryzzical"));
 
-        // El adaptador pasa el conjunto vacío en cuanto sync-friends se apaga.
+        // The adapter passes the empty set as soon as sync-friends is turned off.
         FriendLedger.Result result = ledger.reconcile(Set.of(), Set.of("Dryzzical", "StormAegis44"));
 
         assertEquals(List.of("StormAegis44"), result.toRemove());

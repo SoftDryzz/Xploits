@@ -10,7 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-/** Carga y guarda progress.json. Escritura atómica; un archivo corrupto nunca se sobrescribe (spec §7). */
+/** Loads and saves progress.json. Atomic write; a corrupt file is never overwritten (spec §7). */
 public final class ProgressStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -24,16 +24,16 @@ public final class ProgressStore {
         return file;
     }
 
-    /** Sin archivo devuelve un progreso vacío. Si existe pero no se entiende, lanza IOException sin tocarlo. */
+    /** Without a file it returns an empty progress. If it exists but cannot be understood, throws IOException without touching it. */
     public Progress load() throws IOException {
         if (!Files.exists(file)) return new Progress();
         String json = Files.readString(file);
         Progress progress;
         try {
             progress = GSON.fromJson(json, Progress.class);
-            if (progress == null) throw new IOException(file + " está vacío; no se ha modificado.");
+            if (progress == null) throw new IOException(file + " is empty; it has not been modified.");
         } catch (JsonParseException e) {
-            throw new IOException(file + " está corrupto; no se ha modificado: " + e.getMessage(), e);
+            throw new IOException(file + " is corrupt; it has not been modified: " + e.getMessage(), e);
         }
         try {
             progress.sanitize();

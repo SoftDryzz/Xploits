@@ -42,10 +42,10 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Adaptador: traduce eventos de Meteor a OrderMachine y ejecuta sus acciones. No decide nada (spec §3).
- * No hace falta un handler propio de reconexión: Meteor ya llama a {@link #onDeactivate()} al salir del
- * servidor (aquí se guarda el progreso) y a {@link #onActivate()} al volver (aquí se recargan
- * kits-queue.txt y progress.json y se llama a {@code machine.onJoin}).
+ * Adapter: translates Meteor events into OrderMachine and runs its actions. It decides nothing
+ * (spec §3). No dedicated reconnect handler is needed: Meteor already calls {@link #onDeactivate()}
+ * on leaving the server (progress is saved here) and {@link #onActivate()} on rejoining (this is
+ * where kits-queue.txt and progress.json are reloaded and {@code machine.onJoin} is called).
  */
 public class KitRequester extends XploitsModule {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -105,7 +105,7 @@ public class KitRequester extends XploitsModule {
             progress = store.load();
             machine = newMachine(queue);
         } catch (IOException e) {
-            errorPrivado(new PositionedMsg(Msg.of(KitText.LOAD_FAILED, "detail", String.valueOf(e.getMessage())),
+            errorPrivate(new PositionedMsg(Msg.of(KitText.LOAD_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(KitText.LOAD_FAILED_LOG)));
             progress = null;
             machine = null;
@@ -136,11 +136,11 @@ public class KitRequester extends XploitsModule {
     }
 
     /**
-     * Alimenta a {@link EnderDepositor} con cada interacción de bloque, sea propia (el interact que
-     * {@code start()} manda al ender chest) o del jugador (abrir otro contenedor a mano mientras se
-     * espera respuesta del servidor). Es la única señal para atar la operación a un contenedor
-     * concreto (spec §6); sin ella, EnderDepositor no puede distinguir su ender chest de cualquier
-     * otro que se abra en la misma ventana de tiempo.
+     * Feeds {@link EnderDepositor} with every block interaction, whether its own (the interact that
+     * {@code start()} sends to the ender chest) or the player's (opening another container by hand
+     * while waiting on the server's response). It is the only signal to tie the operation to a
+     * specific container (spec §6); without it, EnderDepositor cannot tell its ender chest apart from
+     * any other one opened in the same time window.
      */
     @EventHandler
     private void onInteractBlock(InteractBlockEvent event) {
@@ -148,16 +148,16 @@ public class KitRequester extends XploitsModule {
     }
 
     /**
-     * Los cofres de vagoneta y de barca son entidades: {@code InteractBlockEvent} nunca se dispara
-     * para ellos, así que sin este gancho un clic ahí pasaba desapercibido para
-     * {@link EnderDepositor#start} (spec §6.1, tercera corrección).
+     * Minecart chests and boat chests are entities: {@code InteractBlockEvent} never fires for them,
+     * so without this hook a click there went unnoticed by {@link EnderDepositor#start} (spec §6.1,
+     * third fix).
      */
     @EventHandler
     private void onInteractEntity(InteractEntityEvent event) {
         depositor.onInteractEntity(System.currentTimeMillis());
     }
 
-    /** Prioridad máxima para ver el mensaje antes de que BetterChat u otros lo modifiquen (spec §2.3). */
+    /** Highest priority to see the message before BetterChat or others modify it (spec §2.3). */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onMessage(ReceiveMessageEvent event) {
         if (machine == null) return;
@@ -170,19 +170,19 @@ public class KitRequester extends XploitsModule {
     }
 
     @Override
-    public String ahora() {
+    public String activity() {
         return machine == null ? "" : Texts.render(KitText.of(machine.state()));
     }
 
-    /** Couriers configurados; AutoTPY los deja en manos de este módulo mientras esté activo. */
+    /** Configured couriers; AutoTPY leaves them to this module while it is active. */
     public Set<String> knownCouriers() {
         return Set.copyOf(knownCouriers.get());
     }
 
     /**
-     * Si ahora mismo un desconocido puede meterse solo en {@link #knownCouriers()} con un READY y
-     * una TPA. Lo pregunta auto-pvp: con esto encendido la lista deja de ser fiable y no se escribe
-     * nada de ella en la lista de amigos de Meteor (spec §14.2 de auto-pvp).
+     * Whether an unknown player can currently get into {@link #knownCouriers()} on their own with a
+     * READY and a TPA. auto-pvp asks this: with it on, the list is no longer trustworthy and none of
+     * it is written to Meteor's friends list (spec §14.2 of auto-pvp).
      */
     public boolean trustsUnknownCouriers() {
         return trustUnknownCouriers.get();
@@ -214,10 +214,10 @@ public class KitRequester extends XploitsModule {
     private KitQueue loadQueue() throws IOException {
         Path file = folder.resolve("kits-queue.txt");
         if (!Files.exists(file)) {
-            throw new IOException("No existe " + file + ". Pega ahí la salida de 'Copiar pendientes' del HTML.");
+            throw new IOException(file + " does not exist. Paste the HTML's 'Copy pending' output there.");
         }
         KitQueue queue = KitQueue.parse(Files.readString(file));
-        if (queue.ids().isEmpty()) throw new IOException(file + " no contiene ningún ID de kit.");
+        if (queue.ids().isEmpty()) throw new IOException(file + " does not contain any kit ID.");
         return queue;
     }
 
@@ -227,10 +227,10 @@ public class KitRequester extends XploitsModule {
         }
         boolean kitbotOnline = mc.getNetworkHandler().getPlayerListEntry(ChatPatterns.KITBOT) != null;
         int free = freeSlots();
-        // Solo se busca el ender chest cuando hace falta: son ~1300 bloques por consulta.
+        // The ender chest is only searched for when needed: it is ~1300 blocks per query.
         boolean enderInReach = autoEnder.get() && free < KitQueue.MAX_BATCH && EnderDepositor.findInReach(mc).isPresent();
-        // Si ya hay una pantalla abierta a mano, pedir el depósito ahora es justo lo que vacía
-        // shulkers en el contenedor equivocado (spec §6): OrderMachine no debe ni intentarlo.
+        // If a screen is already open by hand, requesting the deposit now is exactly what empties
+        // shulkers into the wrong container (spec §6): OrderMachine must not even try.
         boolean screenOpen = !(mc.player.currentScreenHandler instanceof PlayerScreenHandler);
         return new OrderMachine.Context(true, kitbotOnline, free, enderInReach, screenOpen);
     }
@@ -292,7 +292,7 @@ public class KitRequester extends XploitsModule {
         try {
             store.save(progress);
         } catch (IOException e) {
-            errorPrivado(new PositionedMsg(Msg.of(KitText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
+            errorPrivate(new PositionedMsg(Msg.of(KitText.SAVE_FAILED, "detail", String.valueOf(e.getMessage())),
                 Msg.of(KitText.SAVE_FAILED_LOG)));
         }
     }

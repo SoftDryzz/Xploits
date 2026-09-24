@@ -5,49 +5,49 @@ import java.util.Deque;
 import java.util.Objects;
 
 /**
- * "El objetivo se aleja de forma sostenida" (rediseño §4.3), medido de manera que no oscile.
+ * "The target is moving away steadily" (redesign §4.3), measured so that it does not oscillate.
  *
- * <p>Hace falta porque {@code auto-web} y {@code crystal-aura} se pisan: el aura exige que el bloque
- * de encima del apoyo sea aire y {@code auto-web} telaraña exactamente esa casilla, así que
- * encendidos a la vez la telaraña le quita al aura su mejor posición de cristal a cambio de una
- * telaraña que el otro rompe a mano en medio segundo. La telaraña sirve para <b>impedir que se
- * vaya</b>, no mientras le pegas, y por eso hay que distinguir "se está yendo" de "se ha movido".
+ * <p>It is needed because {@code auto-web} and {@code crystal-aura} step on each other: the aura
+ * requires the block above the base to be air and {@code auto-web} webs exactly that cell, so with
+ * both on at once the web takes the aura's best crystal position away in exchange for a web the other
+ * one breaks by hand in half a second. The web is for <b>stopping them from leaving</b>, not for while
+ * you hit them, and that is why "is leaving" has to be told apart from "has moved".
  *
- * <h2>Cómo se mide</h2>
- * No por la velocidad de un tick -el ruido se la come- sino por el <b>terreno ganado en una
- * ventana</b>: la distancia de ahora menos la de hace {@link #WINDOW_TICKS} ticks. Esa diferencia es
- * la separación neta, que es justo lo que importa: si los dos corréis a la misma velocidad, el otro
- * no se está yendo por mucho que se mueva.
+ * <h2>How it is measured</h2>
+ * Not by the speed of one tick -the noise swallows it- but by the <b>ground gained over a
+ * window</b>: the distance now minus the one {@link #WINDOW_TICKS} ticks ago. That difference is
+ * the net separation, which is exactly what matters: if you both run at the same speed, the other one
+ * is not leaving however much they move.
  *
- * <p>Y el resultado lleva <b>banda muerta</b>, no un umbral pelado: se entra en "se aleja" con
- * {@link #START_GAIN} bloques ganados en la ventana y solo se sale cuando baja de
- * {@link #STOP_GAIN}. Con un único umbral, una diferencia que se quedara rondando el valor exacto
- * encendería y apagaría {@code auto-web} en ticks alternos, que es la oscilación que hay que
- * evitar; con dos, hacen falta {@link #START_GAIN} - {@link #STOP_GAIN} = 0,75 bloques de cambio en
- * la diferencia para que el resultado se dé la vuelta, y eso no lo produce ni el retroceso de un
- * golpe ni orbitar alrededor del enemigo.
+ * <p>And the result has a <b>dead band</b>, not a bare threshold: "moving away" is entered with
+ * {@link #START_GAIN} blocks gained over the window and only left when it drops below
+ * {@link #STOP_GAIN}. With a single threshold, a difference hovering around the exact value
+ * would turn {@code auto-web} on and off on alternate ticks, which is the oscillation to
+ * avoid; with two, it takes {@link #START_GAIN} - {@link #STOP_GAIN} = 0.75 blocks of change in
+ * the difference for the result to flip, and neither the knockback of a hit nor
+ * orbiting around the enemy produces that.
  */
 public final class RetreatWatch {
     /**
-     * Ancho de la ventana, en ticks. Medio segundo: la misma unidad de tiempo de combate que usa
-     * §9 ("medio segundo son 2-5 ciclos de cristal") y del orden de un ciclo de cristal completo.
-     * Más corta, el ruido de un golpe domina la medida; más larga, la telaraña llega tarde a alguien
-     * que ya se fue.
+     * Width of the window, in ticks. Half a second: the same unit of combat time §9 uses
+     * ("half a second is 2-5 crystal cycles") and about one whole crystal cycle.
+     * Shorter, the noise of a hit dominates the measurement; longer, the web arrives late for someone
+     * who has already left.
      */
     public static final int WINDOW_TICKS = 10;
 
     /**
-     * Bloques de separación ganados en la ventana para declarar que se aleja. 1,0 bloque en medio
-     * segundo son 2 bloques por segundo de separación neta, poco más de un tercio de la velocidad
-     * de sprint (5,6 b/s): el retroceso de un golpe (unos 0,4 bloques) y orbitar alrededor del
-     * enemigo mientras le cristaleas (±0,5) se quedan claramente por debajo, y en cambio lo alcanza
-     * quien de verdad se marcha -y también quien te deja atrás porque a ti te han frenado-.
+     * Blocks of separation gained over the window to declare that it is moving away. 1.0 block in half a
+     * second is 2 blocks per second of net separation, little more than a third of sprint
+     * speed (5.6 b/s): the knockback of a hit (about 0.4 blocks) and orbiting around the
+     * enemy while you crystal them (±0.5) stay clearly below it, whereas whoever really leaves
+     * reaches it -and so does whoever leaves you behind because you have been slowed down-.
      */
     public static final double START_GAIN = 1.0;
 
     /**
-     * Bloques ganados por debajo de los cuales se deja de considerar que se aleja. No es cero para
-     * que el final tampoco parpadee: mientras siga ganando algo de terreno, sigue yéndose.
+     * Blocks gained below which it stops being considered to be moving away. It is not zero so
+     * that the end does not flicker either: as long as it keeps gaining some ground, it is still leaving.
      */
     public static final double STOP_GAIN = 0.25;
 
@@ -56,13 +56,13 @@ public final class RetreatWatch {
     private boolean retreating;
 
     /**
-     * Añade la distancia de este tick y devuelve si el objetivo se aleja de forma sostenida.
+     * Adds this tick's distance and returns whether the target is moving away steadily.
      *
-     * <p>Perder el objetivo o cambiar de objetivo borra la serie: comparar la distancia a uno con la
-     * distancia a otro daría un salto enorme y una telaraña a nadie. El cambio se detecta por
-     * {@link CombatSnapshot#targetId()}; mientras el adaptador no lo rellene, dos objetivos
-     * distintos seguidos comparten serie y lo peor que puede pasar es que {@code auto-web} se
-     * encienda de más durante media ventana, que es el lado barato del sesgo de §10.
+     * <p>Losing the target or changing target clears the series: comparing the distance to one with the
+     * distance to another would give a huge jump and a web for nobody. The change is detected by
+     * {@link CombatSnapshot#targetId()}; while the adapter does not fill it in, two different targets
+     * in a row share a series and the worst that can happen is that {@code auto-web} is
+     * on too much for half a window, which is the cheap side of the §10 bias.
      */
     public boolean update(CombatSnapshot snapshot) {
         if (!snapshot.hasTarget()) {
@@ -76,8 +76,8 @@ public final class RetreatWatch {
 
         distances.addLast(snapshot.targetDistance());
         while (distances.size() > WINDOW_TICKS + 1) distances.removeFirst();
-        // Hasta que la ventana no está llena no hay nada que comparar: no se afirma que se aleje
-        // alguien al que se acaba de ver.
+        // Until the window is full there is nothing to compare: nobody just seen is claimed
+        // to be moving away.
         if (distances.size() <= WINDOW_TICKS) return retreating;
 
         double gained = distances.getLast() - distances.getFirst();
@@ -85,12 +85,12 @@ public final class RetreatWatch {
         return retreating;
     }
 
-    /** Si la última llamada a {@link #update} concluyó que se aleja. */
+    /** Whether the last call to {@link #update} concluded it is moving away. */
     public boolean retreating() {
         return retreating;
     }
 
-    /** Olvida la serie entera. */
+    /** Forgets the whole series. */
     public void reset() {
         distances.clear();
         targetId = null;

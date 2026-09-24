@@ -54,10 +54,10 @@ class StashStoreTest {
     @Test
     void aCorruptFileIsReportedAndLeftUntouched(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("index.json");
-        Files.writeString(file, "{ esto no es json");
+        Files.writeString(file, "{ this is not json");
 
         assertThrows(IOException.class, () -> new StashStore(file).load());
-        assertEquals("{ esto no es json", Files.readString(file));
+        assertEquals("{ this is not json", Files.readString(file));
     }
 
     @Test

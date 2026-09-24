@@ -3,12 +3,13 @@ package com.xploits;
 import com.mojang.logging.LogUtils;
 import com.xploits.autotpy.AutoTpy;
 import com.xploits.commands.XploitsCommand;
-import com.xploits.console.Consola;
+import com.xploits.console.ConsoleModule;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.stash.StashKeeper;
 import com.xploits.shared.Languages;
+import com.xploits.shared.SettingsMigration;
 import com.xploits.shared.XploitsSettings;
 import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
@@ -25,6 +26,7 @@ public class XploitsAddon extends MeteorAddon {
     @Override
     public void onInitialize() {
         LOG.info("Initializing Xploits");
+        SettingsMigration.run();
         Languages.start();
         Modules.get().add(new XploitsSettings());
         Modules.get().add(new KitRequester());
@@ -34,7 +36,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new AutoPvp());
         Modules.get().add(new AutoTravel());
         Modules.get().add(new NetherSweep());
-        Modules.get().add(new Consola());
+        Modules.get().add(new ConsoleModule());
         Commands.add(new XploitsCommand());
     }
 

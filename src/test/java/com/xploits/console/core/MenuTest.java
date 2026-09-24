@@ -16,32 +16,32 @@ class MenuTest {
         throw new AssertionError(p);
     });
     @Test
-    void cadaNumeroSuOrden() {
-        assertEquals(new Menu.CambiarFiltro(Filtro.TODO), Menu.interpretar("1"));
-        assertEquals(new Menu.CambiarFiltro(Filtro.PVP), Menu.interpretar("2"));
-        assertEquals(new Menu.CambiarFiltro(Filtro.TRAVEL), Menu.interpretar(" 3 "));
-        assertEquals(new Menu.CambiarFiltro(Filtro.SWEEP), Menu.interpretar("4"));
-        assertEquals(new Menu.CambiarFiltro(Filtro.AVISOS), Menu.interpretar("5"));
-        assertEquals(new Menu.AlternarPausa(), Menu.interpretar("6"));
-        assertEquals(new Menu.Salir(), Menu.interpretar("0"));
+    void eachNumberItsCommand() {
+        assertEquals(new Menu.ChangeFilter(LogFilter.ALL), Menu.parse("1"));
+        assertEquals(new Menu.ChangeFilter(LogFilter.PVP), Menu.parse("2"));
+        assertEquals(new Menu.ChangeFilter(LogFilter.TRAVEL), Menu.parse(" 3 "));
+        assertEquals(new Menu.ChangeFilter(LogFilter.SWEEP), Menu.parse("4"));
+        assertEquals(new Menu.ChangeFilter(LogFilter.WARNINGS), Menu.parse("5"));
+        assertEquals(new Menu.TogglePause(), Menu.parse("6"));
+        assertEquals(new Menu.Quit(), Menu.parse("0"));
     }
 
     @Test
-    void loQueNoEsDelMenuSeDice() {
-        assertEquals("escribe el número de una opción del menú", ES.render(motivo(Menu.interpretar("   "))));
-        assertEquals("«9» no es una opción del menú", ES.render(motivo(Menu.interpretar("9"))));
-        assertEquals("«9» is not a menu option", EN.render(motivo(Menu.interpretar("9"))));
+    void whatIsNotOnTheMenuIsReported() {
+        assertEquals("escribe el número de una opción del menú", ES.render(reason(Menu.parse("   "))));
+        assertEquals("«9» no es una opción del menú", ES.render(reason(Menu.parse("9"))));
+        assertEquals("«9» is not a menu option", EN.render(reason(Menu.parse("9"))));
     }
 
     @Test
-    void laLineaDelMenu() {
-        assertEquals("[1] todo  [2] pvp  [3] travel  [4] sweep  [5] solo avisos  [6] pausar  [0] salir", Menu.linea(ES));
-        assertEquals(80, Texto.ancho(Menu.linea(ES)));
-        assertEquals("[1] all  [2] pvp  [3] travel  [4] sweep  [5] warnings only  [6] pause  [0] exit", Menu.linea(EN));
-        assertTrue(Texto.ancho(Menu.linea(EN)) <= 80);
+    void theMenuLine() {
+        assertEquals("[1] todo  [2] pvp  [3] travel  [4] sweep  [5] solo avisos  [6] pausar  [0] salir", Menu.line(ES));
+        assertEquals(80, TerminalText.width(Menu.line(ES)));
+        assertEquals("[1] all  [2] pvp  [3] travel  [4] sweep  [5] warnings only  [6] pause  [0] exit", Menu.line(EN));
+        assertTrue(TerminalText.width(Menu.line(EN)) <= 80);
     }
 
-    private static Msg motivo(Menu.Orden orden) {
-        return ((Menu.Desconocida) orden).motivo();
+    private static Msg reason(Menu.Command command) {
+        return ((Menu.Unknown) command).reason();
     }
 }

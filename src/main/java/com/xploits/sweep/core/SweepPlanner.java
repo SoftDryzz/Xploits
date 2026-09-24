@@ -6,64 +6,65 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Convierte un área y la cobertura que el jugador ya tiene acumulada en la lista de pasadas que hay
- * que volar (spec Nether Sweep §4 y §5.1). Es el corazón del módulo: todo lo demás lo alimenta -el
- * área, la cobertura leída de {@code NewerNewChunks}, la anchura medida del flujo de chunks- o
- * ejecuta lo que sale de aquí.
+ * Turns an area and the coverage the player has already accumulated into the list of lanes to fly
+ * (Nether Sweep spec §4 and §5.1). It is the heart of the module: everything else feeds it -the
+ * area, the coverage read from {@code NewerNewChunks}, the width measured from the chunk stream- or
+ * carries out what comes out of here.
  *
- * <p>Geometría de cortacésped, deliberadamente simple: pasadas rectas y paralelas, separadas por la
- * anchura de pasada. Nada que ver con {@code travel/core/RoutePlanner}, cuyo trabajo es justo el
- * contrario -hacer la ruta impredecible-; aquí lo que se quiere es cobertura regular y sin
- * sorpresas, y por eso el barrido lleva su propio planificador.
+ * <p>Lawnmower geometry, deliberately simple: straight, parallel lanes, separated by the lane width.
+ * Nothing to do with {@code travel/core/RoutePlanner}, whose job is exactly the opposite -making the
+ * route unpredictable-; here what is wanted is regular coverage with no surprises, and that is why
+ * the sweep has its own planner.
  *
- * <p><b>El criterio que decide todas las dudas de esta clase:</b> el peor fallo posible del módulo
- * no es dejar de volar, es dar por peinada una zona que nunca se miró (spec §9). Eso no se descubre
- * nunca: el jugador simplemente no vuelve, y la base que buscaba seguía ahí. De ahí salen las dos
- * decisiones que parecen desperdicio y no lo son:
+ * <p><b>The criterion that settles every doubt in this class:</b> the worst possible failure of the
+ * module is not failing to fly, it is counting as combed an area that was never looked at (spec §9).
+ * That is never discovered: the player simply does not come back, and the base they were looking for
+ * was still there. From that come the two decisions that look like waste and are not:
  *
  * <ul>
- *   <li><b>Un hueco más estrecho que una pasada no se ignora.</b> Es la optimización tentadora
- *       -parece ruido y ahorra una pasada entera-, pero un hueco de un solo chunk es terreno sin
- *       ver, y el barrido lo marcaría como peinado igual.</li>
- *   <li><b>Las pasadas van de punta a punta del área</b>, aunque el hueco de esa banda sea un trozo
- *       corto. Recortarlas al hueco ahorraría vuelo a cambio de hacer depender la cobertura de los
- *       bordes de un dato que puede estar incompleto; volar de más es barato, ver de menos no.</li>
+ *   <li><b>A gap narrower than a lane is not ignored.</b> It is the tempting optimisation -it looks
+ *       like noise and saves a whole lane-, but a single-chunk gap is unseen terrain, and the sweep
+ *       would mark it as combed anyway.</li>
+ *   <li><b>Lanes run from end to end of the area</b>, even if the gap in that band is a short
+ *       stretch. Trimming them to the gap would save flight in exchange for making the coverage of
+ *       the edges depend on a figure that may be incomplete; flying too much is cheap, seeing too
+ *       little is not.</li>
  * </ul>
  *
- * <p>Esta clase no toca Minecraft ni Meteor: trabaja sobre chunks y bloques como números.
+ * <p>This class does not touch Minecraft or Meteor: it works on chunks and blocks as numbers.
  */
 public final class SweepPlanner {
-    private static final int BLOQUES_POR_CHUNK = 16;
+    private static final int BLOCKS_PER_CHUNK = 16;
 
     private SweepPlanner() {
     }
 
     /**
-     * El resultado de planificar: o bien la lista de pasadas a volar, o bien un rechazo con su
-     * motivo, igual que hace {@code travel/core/Route}.
+     * The result of planning: either the list of lanes to fly, or a rejection with its reason, just
+     * as {@code travel/core/Route} does.
      *
-     * <p>Con una diferencia que importa y que es el motivo de que no se reutilice aquel record: una
-     * ruta aceptada sin waypoints no significa nada, pero <b>un plan aceptado sin pasadas sí</b>. Es
-     * el área ya cubierta entera: no hay nada que volar y eso no es un error, es el barrido
-     * terminado. Lo que no puede existir es lo contrario -un plan rechazado que traiga pasadas-,
-     * porque quien leyera solo la lista volaría un barrido que se había rechazado.
+     * <p>With one difference that matters and that is why that record is not reused here: an
+     * accepted route with no waypoints means nothing, but <b>an accepted plan with no lanes does</b>.
+     * It is the area already fully covered: there is nothing to fly and that is not an error, it is
+     * the sweep finished. What cannot exist is the opposite -a rejected plan that carries lanes-,
+     * because whoever read only the list would fly a sweep that had been rejected.
      */
     public record SweepPlan(List<Lane> lanes, Msg rejection) {
         public SweepPlan {
             lanes = List.copyOf(lanes);
             if (rejection != null && !lanes.isEmpty()) {
                 throw new IllegalArgumentException(
-                    "un plan rechazado no puede traer pasadas: quien leyera solo la lista volaría" // i18n: allowed (exception message, continuation line)
-                        + " un barrido que se había rechazado"); // i18n: allowed (exception message, continuation line)
+                    "a rejected plan cannot carry lanes: whoever read only the list would fly"
+                        + " a sweep that had been rejected");
             }
         }
 
-        /** Un plan aceptado, con sus pasadas -que pueden ser ninguna si no queda nada por ver-. */
+        /** An accepted plan, with its lanes -which may be none if there is nothing left to see-. */
         public static SweepPlan of(List<Lane> lanes) {
             return new SweepPlan(lanes, null);
         }
 
-        /** Un plan rechazado: sin pasadas, con el motivo. */
+        /** A rejected plan: no lanes, with the reason. */
         public static SweepPlan rejected(Msg reason) {
             return new SweepPlan(List.of(), reason);
         }
@@ -73,44 +74,44 @@ public final class SweepPlanner {
         }
 
         /**
-         * Los bloques del barrido en sí: <b>la longitud de todas las pasadas más la de los enlaces
-         * que las unen</b>, es decir el trayecto <b>desde el arranque de la primera pasada hasta el
-         * final de la última</b>. Un plan sin pasadas mide cero, y uno de una sola pasada mide esa
-         * pasada, porque no hay ningún enlace.
+         * The blocks of the sweep itself: <b>the length of every lane plus that of the links joining
+         * them</b>, that is the stretch <b>from the start of the first lane to the end of the
+         * last</b>. A plan with no lanes measures zero, and one with a single lane measures that
+         * lane, because there is no link.
          *
-         * <p><b>No es todo lo que el jugador va a volar</b>, y quien estime cohetes con esto tiene
-         * que saberlo: falta la aproximación, el trayecto desde donde esté el jugador hasta el
-         * arranque de la primera pasada. En un barrido de los que justifican este módulo -a una hora
-         * de casa- esa pata es la más larga de todas, y sobre el ejemplo de spec §6, unos 116.000
-         * bloques de barrido, son decenas de miles más. <b>Quien calcule el presupuesto de cohetes
-         * debe sumarla aparte</b>, y si además piensa volver, también la vuelta.
+         * <p><b>It is not everything the player is going to fly</b>, and whoever estimates fireworks
+         * with this has to know it: the approach is missing, the stretch from wherever the player is
+         * to the start of the first lane. In a sweep of the kind that justifies this module -an hour
+         * from home- that leg is the longest of all, and on the example of spec §6, about 116,000
+         * blocks of sweep, it is tens of thousands more. <b>Whoever computes the firework budget must
+         * add it separately</b>, and if they also plan to come back, the return too.
          *
-         * <p>Aquí no se puede incluir: un {@link SweepPlan} es geometría del área y no sabe dónde
-         * está el jugador. Por eso este método promete el barrido y no «el viaje», y por eso lo dice
-         * en la primera línea en vez de dejarlo a que alguien lo deduzca del nombre.
+         * <p>It cannot be included here: a {@link SweepPlan} is geometry of the area and does not
+         * know where the player is. That is why this method promises the sweep and not "the trip",
+         * and why it says so in the first line instead of leaving someone to deduce it from the name.
          *
-         * <p>Los enlaces sí cuentan porque este número alimenta una decisión de seguridad: de él sale
-         * la estimación de cohetes que se enseña <b>antes</b> de despegar (spec §6), y quedarse sin
-         * cohetes lejos de casa cuesta la sesión entera. Una distancia por debajo de la real da
-         * cohetes estimados de menos, y entonces el módulo dice «te llegan» a un jugador al que no
-         * le llegan: la comprobación previa, que es justo la que existe para evitar el viaje, la
-         * pasaría en falso. Que la medición en vuelo lo cace a la media hora no lo salva, porque
-         * para entonces ya está lejos.
+         * <p>The links do count because this number feeds a safety decision: the firework estimate
+         * shown <b>before</b> takeoff comes from it (spec §6), and running out of fireworks far from
+         * home costs the whole session. A distance below the real one gives too few estimated
+         * fireworks, and then the module says "you have enough" to a player who does not: the
+         * advance check, which is exactly the one that exists to prevent the trip, would pass
+         * falsely. The in-flight measurement catching it half an hour later does not save them,
+         * because by then they are already far away.
          *
-         * <p>Y no son un redondeo. Con las pasadas de punta a punta, el enlace entre dos pasadas
-         * consecutivas es un salto perpendicular que vale una anchura de pasada si las bandas van
-         * seguidas, pero tantas como bandas ya vistas se hayan saltado por en medio si no —y
-         * saltarse bandas es el caso normal aquí, porque se planifica sobre huecos—.
+         * <p>And they are not a rounding error. With lanes from end to end, the link between two
+         * consecutive lanes is a perpendicular hop worth one lane width if the bands are adjacent,
+         * but as many as the already seen bands skipped in between if not —and skipping bands is
+         * the normal case here, because the plan is made over gaps—.
          */
         public double totalBlocks() {
             double total = 0.0;
             for (int i = 0; i < lanes.size(); i++) {
-                Lane pasada = lanes.get(i);
-                total += pasada.lengthInBlocks();
+                Lane lane = lanes.get(i);
+                total += lane.lengthInBlocks();
                 if (i + 1 < lanes.size()) {
-                    Lane siguiente = lanes.get(i + 1);
-                    total += Math.hypot(siguiente.fromX() - pasada.toX(),
-                        siguiente.fromZ() - pasada.toZ());
+                    Lane next = lanes.get(i + 1);
+                    total += Math.hypot(next.fromX() - lane.toX(),
+                        next.fromZ() - lane.toZ());
                 }
             }
             return total;
@@ -118,64 +119,65 @@ public final class SweepPlanner {
     }
 
     /**
-     * Planifica el barrido del área, saltándose lo que ya se ha visto.
+     * Plans the sweep of the area, skipping what has already been seen.
      *
-     * <p>Las pasadas van <b>paralelas al eje largo</b> del rectángulo y se apilan a lo ancho del eje
-     * corto, separadas por {@code laneWidthInChunks}. Por ahí salen menos pasadas y menos giros que
-     * apilándolas al revés, y cada giro es un waypoint en el que Baritone frena y aterriza.
+     * <p>The lanes run <b>parallel to the long axis</b> of the rectangle and are stacked across the
+     * short axis, separated by {@code laneWidthInChunks}. That way there are fewer lanes and fewer
+     * turns than stacking them the other way, and every turn is a waypoint where Baritone slows down
+     * and lands.
      *
-     * <p>Cada banda de {@code laneWidthInChunks} chunks se mira entera: si le queda algún chunk sin
-     * ver, se vuela; si está vista del todo, se salta. La pasada se coloca en el centro de la banda,
-     * con lo que ningún chunk de esa banda queda a más de media anchura de pasada de ella.
+     * <p>Every band of {@code laneWidthInChunks} chunks is looked at in full: if it has any unseen
+     * chunk left, it is flown; if it is fully seen, it is skipped. The lane is placed in the center of
+     * the band, so no chunk of that band is more than half a lane width away from it.
      *
-     * @param area              el rectángulo a barrer, en chunks del Nether
-     * @param seen              los chunks que el jugador ya ha visto
-     * @param laneWidthInChunks separación entre pasadas, en chunks; normalmente medida del flujo de
-     *                          chunks que manda el servidor, no tecleada
-     * @return el plan, o un rechazo si la anchura de pasada no sirve para barrer
+     * @param area              the rectangle to sweep, in Nether chunks
+     * @param seen              the chunks the player has already seen
+     * @param laneWidthInChunks spacing between lanes, in chunks; normally measured from the stream
+     *                          of chunks the server sends, not typed
+     * @return the plan, or a rejection if the lane width is no use for sweeping
      */
     public static SweepPlan plan(SweepArea area, Coverage seen, int laneWidthInChunks) {
         if (laneWidthInChunks <= 0) {
-            return SweepPlan.rejected(anchuraInservible(laneWidthInChunks));
+            return SweepPlan.rejected(unusableWidth(laneWidthInChunks));
         }
 
-        boolean pasadasEnX = area.widthInChunks() >= area.heightInChunks();
-        int minRecorrido = pasadasEnX ? area.minChunkX() : area.minChunkZ();
-        int maxRecorrido = pasadasEnX ? area.maxChunkX() : area.maxChunkZ();
-        int minApilado = pasadasEnX ? area.minChunkZ() : area.minChunkX();
-        int maxApilado = pasadasEnX ? area.maxChunkZ() : area.maxChunkX();
+        boolean lanesAlongX = area.widthInChunks() >= area.heightInChunks();
+        int minRun = lanesAlongX ? area.minChunkX() : area.minChunkZ();
+        int maxRun = lanesAlongX ? area.maxChunkX() : area.maxChunkZ();
+        int minStack = lanesAlongX ? area.minChunkZ() : area.minChunkX();
+        int maxStack = lanesAlongX ? area.maxChunkZ() : area.maxChunkX();
 
-        // En long para que un área enorme con una anchura de pasada de 1 no desborde la cuenta de
-        // bandas antes de poder recorrerlas.
-        long chunksApilados = (long) maxApilado - minApilado + 1;
-        long bandas = (chunksApilados + laneWidthInChunks - 1) / laneWidthInChunks;
+        // In long so that a huge area with a lane width of 1 does not overflow the band count before
+        // they can be walked.
+        long stackedChunks = (long) maxStack - minStack + 1;
+        long bands = (stackedChunks + laneWidthInChunks - 1) / laneWidthInChunks;
 
-        List<Lane> pasadas = new ArrayList<>();
-        for (long banda = 0; banda < bandas; banda++) {
-            int desde = (int) (minApilado + banda * laneWidthInChunks);
-            int hasta = (int) Math.min((long) desde + laneWidthInChunks - 1, maxApilado);
-            if (bandaVistaEntera(seen, pasadasEnX, desde, hasta, minRecorrido, maxRecorrido)) {
+        List<Lane> lanes = new ArrayList<>();
+        for (long band = 0; band < bands; band++) {
+            int bandStart = (int) (minStack + band * laneWidthInChunks);
+            int bandEnd = (int) Math.min((long) bandStart + laneWidthInChunks - 1, maxStack);
+            if (bandFullySeen(seen, lanesAlongX, bandStart, bandEnd, minRun, maxRun)) {
                 continue;
             }
-            pasadas.add(pasadaDeLaBanda(pasadasEnX, desde, hasta, minRecorrido, maxRecorrido,
-                pasadas.size()));
+            lanes.add(laneForBand(lanesAlongX, bandStart, bandEnd, minRun, maxRun,
+                lanes.size()));
         }
-        return SweepPlan.of(pasadas);
+        return SweepPlan.of(lanes);
     }
 
     /**
-     * Si toda la banda está ya vista. En cuanto aparece un chunk sin ver se corta y la banda se
-     * vuela: <b>no hay ningún umbral por debajo del cual un hueco se desprecie</b>. Un hueco de un
-     * chunk es igual de terreno sin ver que uno de cien, y la única diferencia es que el pequeño
-     * resulta más fácil de justificar tirando a la basura.
+     * Whether the whole band has already been seen. As soon as an unseen chunk shows up it stops and
+     * the band is flown: <b>there is no threshold below which a gap is disregarded</b>. A one-chunk
+     * gap is just as much unseen terrain as a hundred-chunk one, and the only difference is that the
+     * small one is easier to justify throwing away.
      */
-    private static boolean bandaVistaEntera(Coverage seen, boolean pasadasEnX, int desde, int hasta,
-                                             int minRecorrido, int maxRecorrido) {
-        for (int apilado = desde; apilado <= hasta; apilado++) {
-            for (int recorrido = minRecorrido; recorrido <= maxRecorrido; recorrido++) {
-                ChunkPos chunk = pasadasEnX
-                    ? new ChunkPos(recorrido, apilado)
-                    : new ChunkPos(apilado, recorrido);
+    private static boolean bandFullySeen(Coverage seen, boolean lanesAlongX, int bandStart, int bandEnd,
+                                             int minRun, int maxRun) {
+        for (int stacked = bandStart; stacked <= bandEnd; stacked++) {
+            for (int run = minRun; run <= maxRun; run++) {
+                ChunkPos chunk = lanesAlongX
+                    ? new ChunkPos(run, stacked)
+                    : new ChunkPos(stacked, run);
                 if (!seen.seen(chunk)) {
                     return false;
                 }
@@ -185,78 +187,78 @@ public final class SweepPlanner {
     }
 
     /**
-     * La pasada de una banda, centrada en ella y de punta a punta del eje largo.
+     * The lane of a band, centred in it and from end to end of the long axis.
      *
-     * <p><b>El sentido alterna, y alterna contando las pasadas que se vuelan, no las bandas.</b> La
-     * lista sale en el orden en que el adaptador las va a volar, una detrás de otra, así que si dos
-     * pasadas seguidas fueran en el mismo sentido el jugador tendría que recorrer el largo entero
-     * del área en vacío para colocarse al principio de la segunda. Alternar por número de banda
-     * parece lo mismo y no lo es: en cuanto una banda se salta por estar ya vista -que es el caso
-     * normal aquí, porque se planifica sobre huecos- la paridad se rompe y aparecen justo esos
-     * viajes en vacío. Contando las pasadas emitidas, cada una arranca donde terminó la anterior
-     * pase lo que pase con las bandas de en medio.
+     * <p><b>The direction alternates, and it alternates counting the lanes that are flown, not the
+     * bands.</b> The list comes out in the order the adapter is going to fly them, one after the
+     * other, so if two consecutive lanes went in the same direction the player would have to fly the
+     * whole length of the area empty to get to the start of the second. Alternating by band number
+     * looks the same and is not: as soon as a band is skipped for being already seen -which is the
+     * normal case here, because the plan is made over gaps- the parity breaks and exactly those empty
+     * trips appear. Counting the lanes emitted, each one starts where the previous one ended whatever
+     * happens with the bands in between.
      *
-     * <p><b>Ninguna pasada sale con los dos extremos en el mismo punto.</b> Los extremos caen sobre
-     * el centro del primer y del último chunk del eje largo, así que un área de un solo chunk los
-     * dejaría encima: una «pasada» de longitud cero. No emitirla sería el fallo que este módulo no
-     * puede cometer -ese chunk se quedaría sin ver y el barrido lo daría por peinado igual-, y
-     * entregarla tal cual tampoco vale: una pasada de longitud cero no es una instrucción de vuelo,
-     * es un vector nulo que el adaptador tendría que normalizar y un objetivo idéntico al origen
-     * para Baritone. Así que se le da la longitud mínima que significa algo aquí: el chunk entero,
-     * de borde a borde, que es exactamente el terreno que hay que hacer que el servidor mande. El
-     * centro del chunk sigue cayendo sobre la pasada, así que la cobertura no cambia. Solo puede
-     * pasar en un área de 1x1 chunk: en cualquier otra, el eje largo mide dos chunks o más.
+     * <p><b>No lane comes out with both ends at the same point.</b> The ends fall on the center of the
+     * first and the last chunk of the long axis, so a single-chunk area would put them on top of each
+     * other: a "lane" of zero length. Not emitting it would be the failure this module cannot make
+     * -that chunk would stay unseen and the sweep would count it as combed anyway-, and handing it
+     * over as is does not work either: a zero-length lane is not a flight instruction, it is a null
+     * vector the adapter would have to normalise and a target identical to the origin for Baritone.
+     * So it is given the minimum length that means something here: the whole chunk, from edge to
+     * edge, which is exactly the terrain the server has to be made to send. The center of the chunk
+     * still falls on the lane, so the coverage does not change. It can only happen in a 1x1 chunk
+     * area: in any other, the long axis measures two chunks or more.
      */
-    private static Lane pasadaDeLaBanda(boolean pasadasEnX, int desde, int hasta, int minRecorrido,
-                                         int maxRecorrido, int pasadasYaEmitidas) {
-        boolean deIda = pasadasYaEmitidas % 2 == 0;
-        double centro = centroDeLaBandaEnBloques(desde, hasta);
-        double principio = centroDelChunkEnBloques(minRecorrido);
-        double fin = centroDelChunkEnBloques(maxRecorrido);
-        if (principio == fin) {
-            principio -= BLOQUES_POR_CHUNK / 2.0;
-            fin += BLOQUES_POR_CHUNK / 2.0;
+    private static Lane laneForBand(boolean lanesAlongX, int bandStart, int bandEnd, int minRun,
+                                         int maxRun, int lanesAlreadyEmitted) {
+        boolean outbound = lanesAlreadyEmitted % 2 == 0;
+        double center = bandCenterInBlocks(bandStart, bandEnd);
+        double runStart = chunkCenterInBlocks(minRun);
+        double runEnd = chunkCenterInBlocks(maxRun);
+        if (runStart == runEnd) {
+            runStart -= BLOCKS_PER_CHUNK / 2.0;
+            runEnd += BLOCKS_PER_CHUNK / 2.0;
         }
-        double arranque = deIda ? principio : fin;
-        double remate = deIda ? fin : principio;
-        return pasadasEnX
-            ? new Lane(arranque, centro, remate, centro)
-            : new Lane(centro, arranque, centro, remate);
+        double laneStart = outbound ? runStart : runEnd;
+        double laneEnd = outbound ? runEnd : runStart;
+        return lanesAlongX
+            ? new Lane(laneStart, center, laneEnd, center)
+            : new Lane(center, laneStart, center, laneEnd);
     }
 
     /**
-     * El centro de la banda en bloques. Con anchura par cae entre dos chunks, que es lo correcto: lo
-     * que hay que minimizar es la distancia del chunk más alejado de la banda, no cuadrar la pasada
-     * con una rejilla.
+     * The center of the band in blocks. With an even width it falls between two chunks, which is
+     * right: what has to be minimised is the distance of the band's farthest chunk, not squaring the
+     * lane with a grid.
      */
-    private static double centroDeLaBandaEnBloques(int desde, int hasta) {
-        double centroEnChunks = (desde + (double) hasta) / 2.0;
-        return centroEnChunks * BLOQUES_POR_CHUNK + BLOQUES_POR_CHUNK / 2.0;
+    private static double bandCenterInBlocks(int bandStart, int bandEnd) {
+        double centerInChunks = (bandStart + (double) bandEnd) / 2.0;
+        return centerInChunks * BLOCKS_PER_CHUNK + BLOCKS_PER_CHUNK / 2.0;
     }
 
-    /** El centro de un chunk en bloques, para que los extremos de la pasada caigan sobre él. */
-    private static double centroDelChunkEnBloques(int chunk) {
-        return chunk * (double) BLOQUES_POR_CHUNK + BLOQUES_POR_CHUNK / 2.0;
+    /** The center of a chunk in blocks, so that the ends of the lane fall on it. */
+    private static double chunkCenterInBlocks(int chunk) {
+        return chunk * (double) BLOCKS_PER_CHUNK + BLOCKS_PER_CHUNK / 2.0;
     }
 
     /**
-     * El motivo del rechazo por anchura de pasada inservible, con el estilo de
-     * {@code travel/core/RoutePlanner}: dice qué ajuste tocar, cuánto vale ahora y a qué subirlo, no
-     * solo que algo está mal. Un rechazo que no dice cómo salir del atasco es casi tan malo como el
-     * silencio.
+     * The rejection reason for an unusable lane width, in the style of
+     * {@code travel/core/RoutePlanner}: it says which setting to change, what it is now and what to
+     * raise it to, not only that something is wrong. A rejection that does not say how to get unstuck
+     * is almost as bad as silence.
      *
-     * <p><b>Los ajustes se nombran tal y como aparecen en la interfaz de Meteor</b> -{@code
-     * lane-width} y {@code lane-width-margin} del módulo {@code nether-sweep}-, y no solo por su
-     * nombre en prosa. Un motivo que dijera únicamente «sube la anchura de pasada» manda al jugador a
-     * buscar en la ClickGUI algo que no existe con ese nombre, y entonces el rechazo vuelve a ser lo
-     * que este texto existe para no ser: saber que algo está mal y no saber qué tocar.
+     * <p><b>The settings are named as they appear in Meteor's UI</b> -{@code lane-width} and
+     * {@code lane-width-margin} of the {@code nether-sweep} module-, and not only by their name in
+     * prose. A reason that only said "raise the lane width" sends the player to look in the ClickGUI
+     * for something that does not exist under that name, and then the rejection goes back to being
+     * what this text exists not to be: knowing something is wrong and not knowing what to change.
      *
-     * <p>Y se rechaza en vez de degradar a 1 por lo de siempre: un barrido volado con una separación
-     * que el módulo se inventa deja franjas sin mirar y las marca como peinadas igual. Degradar aquí
-     * sería contar en silencio la única mentira que este módulo no puede contar.
+     * <p>And it is rejected instead of degrading to 1 for the usual reason: a sweep flown with a
+     * spacing the module makes up leaves unlooked-at strips and marks them as combed anyway.
+     * Degrading here would be silently telling the one lie this module cannot tell.
      */
-    private static Msg anchuraInservible(int laneWidthInChunks) {
-        SweepText queHaria = laneWidthInChunks == 0 ? SweepText.LANE_WIDTH_ZERO : SweepText.LANE_WIDTH_NEGATIVE;
-        return Msg.of(SweepText.UNUSABLE_LANE_WIDTH, "width", laneWidthInChunks, "effect", queHaria);
+    private static Msg unusableWidth(int laneWidthInChunks) {
+        SweepText effect = laneWidthInChunks == 0 ? SweepText.LANE_WIDTH_ZERO : SweepText.LANE_WIDTH_NEGATIVE;
+        return Msg.of(SweepText.UNUSABLE_LANE_WIDTH, "width", laneWidthInChunks, "effect", effect);
     }
 }

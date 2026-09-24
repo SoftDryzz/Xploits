@@ -5,17 +5,17 @@ import com.xploits.shared.core.i18n.Msg;
 import java.util.List;
 
 /**
- * Qué debería estar encendido este tick (spec §4, rediseño §3).
+ * What should be enabled this tick (spec §4, redesign §3).
  *
- * @param state    cómo se informa la situación; puede ser SIN_RECURSOS aunque la fase física sea otra
- * @param posture  el eje defensivo de este tick (rediseño §5), independiente de la fase
- * @param enable   la <b>unión</b> de lo que pide cada eje, ya filtrada por lo que llevas encima
- * @param skipped  lo que la situación pedía y no se puede sostener, con el motivo
- * @param warnings avisos que no son omisiones: cosas que se encienden igual pero de las que el
- *                 jugador tiene que enterarse. El caso es {@code crystal-aura} sin cristales
- *                 (rediseño §7): es el único módulo dirigido con una mitad útil a coste cero, el
- *                 autobreak, que es justo lo que te mantiene vivo cuando no tienes con qué
- *                 responder, así que no se apaga por quedarte sin cristales; se avisa
+ * @param state    how the situation is reported; it can be OUT_OF_RESOURCES even when the physical phase is another
+ * @param posture  the defensive axis of this tick (redesign §5), independent of the phase
+ * @param enable   the <b>union</b> of what each axis asks for, already filtered by what you carry
+ * @param skipped  what the situation asked for and cannot be sustained, with the reason
+ * @param warnings warnings that are not omissions: things that are enabled anyway but that the
+ *                 player has to know about. The case is {@code crystal-aura} without crystals
+ *                 (redesign §7): it is the only managed module with a useful half at zero cost, the
+ *                 autobreak, which is exactly what keeps you alive when you have nothing to answer
+ *                 with, so it is not turned off for running out of crystals; a warning is given
  */
 public record Plan(CombatState state, CombatPosture posture, List<ManagedModule> enable,
                    List<Skipped> skipped, List<Msg> warnings) {

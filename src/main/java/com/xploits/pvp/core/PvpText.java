@@ -80,15 +80,15 @@ public enum PvpText implements MessageKey {
     IDLE_LINE,
     IDLE_PART,
     IDLE_JOINT,
-    STATE_SIN_COMBATE,
-    STATE_ACERCAMIENTO,
-    STATE_SUPERFICIE,
-    STATE_RODEADO,
-    STATE_ENTERRADO,
-    STATE_PERSECUCION,
-    STATE_SIN_RECURSOS,
-    POSTURE_TRANQUILO,
-    POSTURE_AMENAZADO;
+    STATE_NO_COMBAT,
+    STATE_APPROACH,
+    STATE_SURFACE,
+    STATE_SURROUNDED,
+    STATE_BURROWED,
+    STATE_CHASE,
+    STATE_OUT_OF_RESOURCES,
+    POSTURE_CALM,
+    POSTURE_THREATENED;
 
     /** How a phase of the fight is named to the player. */
     public static PvpText of(CombatState state) {

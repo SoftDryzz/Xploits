@@ -7,8 +7,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Cola de kits leída de kits-queue.txt (spec §7). Es inmutable: los pendientes se calculan contra el progreso,
- * así que "devolver un lote al frente" es simplemente no marcarlo como resuelto.
+ * Kit queue read from kits-queue.txt (spec §7). Immutable: the pending ones are computed against
+ * the progress, so "putting a batch back at the front" is simply not marking it resolved.
  */
 public final class KitQueue {
     public static final int MAX_BATCH = 5;
@@ -21,7 +21,7 @@ public final class KitQueue {
         this.ids = List.copyOf(ids);
     }
 
-    /** Acepta la salida de "Copiar pendientes" ("#285 Stash Kit"); cabeceras, líneas vacías y ruido se ignoran. */
+    /** Accepts the "Copy pending" output ("#285 Stash Kit"); headers, blank lines and noise are ignored. */
     public static KitQueue parse(String text) {
         Set<Integer> ids = new LinkedHashSet<>();
         for (String line : text.split("\\R")) {

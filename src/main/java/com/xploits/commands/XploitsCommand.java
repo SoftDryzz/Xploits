@@ -2,10 +2,10 @@ package com.xploits.commands;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.xploits.console.core.Nivel;
+import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
-import com.xploits.shared.ComandoBase;
+import com.xploits.shared.XploitsCommandBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-public class XploitsCommand extends ComandoBase {
+public class XploitsCommand extends XploitsCommandBase {
     private static final int MAX_HITS = 10;
 
     public XploitsCommand() {
@@ -39,11 +39,11 @@ public class XploitsCommand extends ComandoBase {
     @Override
     public void build(LiteralArgumentBuilder<CommandSource> builder) {
         builder.then(literal("status").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.status())));
+            kitRequester().ifPresent(kr -> reply(Level.INFO, kr.name, PositionedMsg.same(kr.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("reload").executes(context -> {
-            kitRequester().ifPresent(kr -> responder(Nivel.INFO, kr.name, PositionedMsg.same(kr.reload())));
+            kitRequester().ifPresent(kr -> reply(Level.INFO, kr.name, PositionedMsg.same(kr.reload())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("stash").executes(context -> {
@@ -55,12 +55,12 @@ public class XploitsCommand extends ComandoBase {
             return SINGLE_SUCCESS;
         })));
         builder.then(literal("pvp").executes(context -> {
-            pvp().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+            pvp().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
             return SINGLE_SUCCESS;
         }));
         builder.then(literal("travel")
             .executes(context -> {
-                travel().ifPresent(module -> responder(Nivel.INFO, module.name, module.status()));
+                travel().ifPresent(module -> reply(Level.INFO, module.name, module.status()));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -73,7 +73,7 @@ public class XploitsCommand extends ComandoBase {
             })));
         builder.then(literal("sweep")
             .executes(context -> {
-                sweep().ifPresent(module -> responder(Nivel.INFO, module.name, PositionedMsg.same(module.status())));
+                sweep().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("go").executes(context -> {
@@ -100,47 +100,48 @@ public class XploitsCommand extends ComandoBase {
     }
 
     /**
-     * Lanza el viaje y enseña lo que el módulo conteste: el mensaje del lanzamiento, o el motivo por
-     * el que no se vuela.
+     * Starts the trip and shows whatever the module answers: the launch message, or the reason it
+     * does not fly.
      *
-     * <p>El motivo de un rechazo de ruta es lo más valioso que sale por aquí -nombra el ajuste que
-     * hay que tocar, su valor actual y la salida concreta-, así que llega al chat de una pieza: una
-     * sola llamada, sin recortar, sin partir en líneas y sin resumir. Llega como {@link PositionedMsg}
-     * (las coordenadas solo en la mitad del chat) y {@link #responder} lo traduce y lo pasa como
-     * argumento, nunca como cadena de formato: un motivo con un porcentaje no puede romper la llamada.
+     * <p>The reason for a route rejection is the most valuable thing that comes out of here -it names
+     * the setting to change, its current value and the concrete way out-, so it reaches the chat in
+     * one piece: a single call, not trimmed, not split into lines and not summarised. It arrives as a
+     * {@link PositionedMsg} (coordinates only in the chat half) and {@link #reply} translates it and
+     * passes it as an argument, never as a format string: a reason with a percent sign cannot break
+     * the call.
      *
-     * <p>Un rechazo sale en amarillo: si no hay viaje en marcha después de pedirlo, no se ha volado.
+     * <p>A rejection comes out in yellow: if no trip is running after asking for one, nothing flew.
      */
     private void travelGo(AutoTravel autoTravel) {
         PositionedMsg message = autoTravel.start();
-        responder(autoTravel.isTravelling() ? Nivel.INFO : Nivel.AVISO, autoTravel.name, message);
+        reply(autoTravel.isTravelling() ? Level.INFO : Level.WARNING, autoTravel.name, message);
     }
 
-    /** Corta el viaje. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
+    /** Stops the trip. If none was running, what the module answers is a warning. */
     private void travelStop(AutoTravel autoTravel) {
         boolean travelling = autoTravel.isTravelling();
         Msg message = autoTravel.stop();
-        responder(travelling ? Nivel.INFO : Nivel.AVISO, autoTravel.name, PositionedMsg.same(message));
+        reply(travelling ? Level.INFO : Level.WARNING, autoTravel.name, PositionedMsg.same(message));
     }
 
     /**
-     * Lanza el barrido y enseña lo que conteste {@link NetherSweep#start()}: el resumen del
-     * lanzamiento, o el motivo entero por el que no se vuela.
+     * Starts the sweep and shows whatever {@link NetherSweep#start()} answers: the launch summary, or
+     * the whole reason it does not fly.
      *
-     * <p>Igual que en {@link #travelGo}, el motivo de un rechazo aquí nombra el ajuste que hay que
-     * tocar y a cuánto ponerlo, y llega entero: es un {@link Msg} que se traduce en el idioma del
-     * jugador, y el texto ya traducido nunca se usa como cadena de formato.
+     * <p>As in {@link #travelGo}, the reason for a rejection here names the setting to change and what
+     * to set it to, and arrives whole: it is a {@link Msg} translated into the player's language, and
+     * the translated text is never used as a format string.
      */
     private void sweepGo(NetherSweep sweep) {
         Msg message = sweep.start();
-        responder(sweep.isSweeping() ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweep.isSweeping() ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
     }
 
-    /** Corta el barrido. Si no había ninguno en marcha, lo que contesta el módulo es un aviso. */
+    /** Stops the sweep. If none was running, what the module answers is a warning. */
     private void sweepStop(NetherSweep sweep) {
         boolean sweeping = sweep.isSweeping();
         Msg message = sweep.stop();
-        responder(sweeping ? Nivel.INFO : Nivel.AVISO, sweep.name, PositionedMsg.same(message));
+        reply(sweeping ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -148,7 +149,7 @@ public class XploitsCommand extends ComandoBase {
             warning(Msg.of(CommandText.STASH_OFF_STATUS));
             return;
         }
-        responder(Nivel.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
+        reply(Level.INFO, stashKeeper.name, PositionedMsg.same(stashKeeper.status()));
     }
 
     private void find(String query) {
@@ -186,13 +187,13 @@ public class XploitsCommand extends ComandoBase {
             Msg chat = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
                 "place", hit.key().id(), "shulker", where, "ago", ago(hit.seenAt()));
             Msg log = Msg.of(CommandText.FIND_HIT, "item", shortId(hit.itemId()), "count", hit.count(),
-                "place", hit.key().sinPosicion(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
-            responder(Nivel.INFO, stashKeeper.name, new PositionedMsg(chat, log));
+                "place", hit.key().withoutPosition(dimension, x, z), "shulker", where, "ago", ago(hit.seenAt()));
+            reply(Level.INFO, stashKeeper.name, new PositionedMsg(chat, log));
         }
         if (hits.size() > MAX_HITS) info(Msg.of(CommandText.FIND_MORE, "count", hits.size() - MAX_HITS));
     }
 
-    /** Casa la consulta contra el id del ítem y contra su nombre traducido, para que "obsidiana" funcione. */
+    /** Matches the query against the item id and its translated name, so that a translated name such as "obsidiana" works. */
     private static Set<String> resolve(String query) {
         String needle = query.toLowerCase().strip();
         Set<String> ids = new LinkedHashSet<>();
@@ -217,7 +218,7 @@ public class XploitsCommand extends ComandoBase {
         return days == 1 ? Msg.of(CommandText.AGO_DAY) : Msg.of(CommandText.AGO_DAYS, "n", days);
     }
 
-    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    /** Returns the module, or warns that it is not registered and returns nothing. */
     private Optional<KitRequester> kitRequester() {
         KitRequester module = Modules.get().get(KitRequester.class);
         if (module == null) {
@@ -227,7 +228,7 @@ public class XploitsCommand extends ComandoBase {
         return Optional.of(module);
     }
 
-    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    /** Returns the module, or warns that it is not registered and returns nothing. */
     private Optional<StashKeeper> keeper() {
         StashKeeper module = Modules.get().get(StashKeeper.class);
         if (module == null) {
@@ -237,7 +238,7 @@ public class XploitsCommand extends ComandoBase {
         return Optional.of(module);
     }
 
-    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    /** Returns the module, or warns that it is not registered and returns nothing. */
     private Optional<AutoPvp> pvp() {
         AutoPvp module = Modules.get().get(AutoPvp.class);
         if (module == null) {
@@ -247,7 +248,7 @@ public class XploitsCommand extends ComandoBase {
         return Optional.of(module);
     }
 
-    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    /** Returns the module, or warns that it is not registered and returns nothing. */
     private Optional<AutoTravel> travel() {
         AutoTravel module = Modules.get().get(AutoTravel.class);
         if (module == null) {
@@ -257,7 +258,7 @@ public class XploitsCommand extends ComandoBase {
         return Optional.of(module);
     }
 
-    /** Devuelve el módulo, o avisa de que no está registrado y no devuelve nada. */
+    /** Returns the module, or warns that it is not registered and returns nothing. */
     private Optional<NetherSweep> sweep() {
         NetherSweep module = Modules.get().get(NetherSweep.class);
         if (module == null) {

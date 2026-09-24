@@ -10,186 +10,188 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * "Lo tengo encendido y no está haciendo nada", medido en vez de supuesto.
+ * "I have it on and it is not doing anything", measured instead of assumed.
  *
- * <h2>El problema</h2>
- * El director enciende y apaga módulos, pero <b>no controla sus ajustes</b>, y esos ajustes deciden
- * si el módulo hace algo. De fábrica {@code CrystalAura} trae {@code min-damage} en 6 -el daño
- * mínimo que el cristal tiene que hacerle al objetivo para colocarlo- y {@code support} en
- * {@code Disabled}; en un servidor donde todos llevan netherita con Protección IV ese umbral puede
- * rechazar casi todas las posiciones. Entonces {@code auto-pvp} anuncia {@code SUPERFICIE · enemigo},
- * enciende el aura y <b>no pasa nada</b>, y desde fuera es indistinguible de que funcione. Eso es lo
- * que el principio del módulo prohíbe: <i>un fallo no puede parecerse a un resultado normal</i>
- * (rediseño §10).
+ * <h2>The problem</h2>
+ * The director enables and disables modules, but <b>does not control their settings</b>, and those
+ * settings decide whether the module does anything. Out of the box {@code CrystalAura} ships with
+ * {@code min-damage} at 6 -the minimum damage the crystal must deal to the target for it to be
+ * placed- and {@code support} at {@code Disabled}; on a server where everyone wears netherite with
+ * Protection IV that threshold can reject almost every position. Then {@code auto-pvp} announces
+ * {@code SURFACE · enemy}, enables the aura and <b>nothing happens</b>, and from outside it is
+ * indistinguishable from it working. That is what the module's principle forbids: <i>a failure must
+ * not look like a normal result</i> (redesign §10).
  *
- * <h2>Por qué no se leen los ajustes</h2>
- * Leer {@code min-damage} y compararlo con algo exigiría adivinar la lista de causas -y siempre
- * faltaría una: el {@code walls-range}, el {@code height} del yunque, la posición ocupada, el
- * servidor que rechaza el swap-. Aquí se mide el <b>efecto</b>, que es uno solo y se ve: si el
- * director quiere el módulo, lo ha encendido, hay objetivo a rango y hay material -y el material
- * <b>no baja</b> durante {@link #IDLE_TICKS} ticks- ese módulo no está actuando, y da igual por qué.
- * Es el mismo razonamiento con el que {@code nether-sweep} mide la anchura de pasada del servidor y
- * el gasto real de cohetes en vez de suponer un número.
+ * <h2>Why the settings are not read</h2>
+ * Reading {@code min-damage} and comparing it with something would mean guessing the list of causes
+ * -and one would always be missing: the {@code walls-range}, the anvil's {@code height}, the occupied
+ * position, the server rejecting the swap-. Here the <b>effect</b> is measured, which is a single one
+ * and visible: if the director wants the module, has enabled it, there is a target in range and there
+ * is material -and the material <b>does not go down</b> for {@link #IDLE_TICKS} ticks- that module is
+ * not acting, whatever the reason. It is the same reasoning with which {@code nether-sweep} measures
+ * the server's lane width and the real firework spending instead of assuming a number.
  *
- * <h2>El veredicto es de la pila, no del módulo</h2>
- * Lo que se mide es <b>una pila del inventario</b>, y una pila puede tener varios consumidores:
- * {@code auto-trap}, {@code surround} y {@code hole-filler} beben de la misma obsidiana (I3). El
- * inventario dice cuánta obsidiana queda, <b>no quién la colocó</b>, así que con este dato no se
- * puede afirmar nada de uno solo de los tres: la única frase honesta es "no ha colocado ninguno de
- * estos". Por eso la cuenta va <b>por recurso</b> y el aviso sale con los nombres de todos los que
- * estaban en condiciones de gastarlo, diciendo con todas las letras que el veredicto es conjunto.
- * Cuando el recurso tiene un solo consumidor -los cuatro casos habituales- el grupo es de uno y el
- * aviso es del módulo.
+ * <h2>The verdict belongs to the stack, not to the module</h2>
+ * What is measured is <b>one inventory stack</b>, and a stack can have several consumers:
+ * {@code auto-trap}, {@code surround} and {@code hole-filler} draw from the same obsidian (I3). The
+ * inventory says how much obsidian is left, <b>not who placed it</b>, so with this data nothing can be
+ * claimed about any single one of the three: the only honest sentence is "none of these has placed
+ * anything". That is why the count goes <b>by resource</b> and the warning names every module that
+ * was in a position to spend it, saying in so many words that the verdict is joint.
+ * When the resource has a single consumer -the four usual cases- the group has one member and the
+ * warning belongs to that module.
  *
- * <p><b>Y eso tiene un precio que hay que decir, no esconder:</b> mientras uno del grupo gaste de
- * verdad, la pila se mueve y del resto <b>no se dice nada</b>. En una guerra de trampa, con el rival
- * rompiendo el trap y {@code auto-trap} reconstruyéndolo una y otra vez, un {@code hole-filler} roto
- * de verdad puede no avisar en toda la pelea. Eso no es un retraso, es silencio, y con este dato no
- * se arregla: se arreglaría viendo quién coloca, que es justo lo que el inventario no cuenta. Lo que
- * sí se puede hacer -y es lo que se hace- es no afirmar una certeza por módulo que no existe.
+ * <p><b>And that has a price that must be said, not hidden:</b> as long as one of the group really
+ * spends, the stack moves and <b>nothing is said</b> about the rest. In a trap war, with the rival
+ * breaking the trap and {@code auto-trap} rebuilding it again and again, a truly broken
+ * {@code hole-filler} may not warn during the whole fight. That is not a delay, it is silence, and
+ * with this data it cannot be fixed: it would be fixed by seeing who places, which is exactly what the
+ * inventory does not tell. What can be done -and is what is done- is not to claim a per-module
+ * certainty that does not exist.
  *
- * <h2>A quién vigila, y a quién no</h2>
- * El vigilante cubre <b>seis de los diez</b> módulos dirigidos: {@code crystal-aura},
- * {@code auto-trap}, {@code auto-web}, {@code auto-anvil} y los dos de la obsidiana,
- * {@code surround} y {@code hole-filler}. Los cuatro que quedan fuera están fuera por una razón
- * escrita, no fingida:
+ * <h2>Whom it watches, and whom it does not</h2>
+ * The watch covers <b>six of the ten</b> managed modules: {@code crystal-aura},
+ * {@code auto-trap}, {@code auto-web}, {@code auto-anvil} and the two obsidian ones,
+ * {@code surround} and {@code hole-filler}. The four left out are left out for a written reason,
+ * not a pretended one:
  *
  * <ul>
- *   <li><b>{@code auto-city} usa pico, y el pico no se consume</b> ({@link Resource#PICKAXE}).
- *       Minar le quita durabilidad, no lo quita del inventario, y la cuenta del snapshot es de
- *       ítems. "El recurso no baja" no significa nada ahí, así que vigilarlo sería avisar de un
- *       fallo cada vez que {@code auto-city} funciona bien.</li>
- *   <li><b>Los tres {@code anti-} declaran {@link Resource#NONE}</b>: no colocan nada, solo escuchan
- *       y reaccionan (rediseño §5). No hay nada que pueda bajar, así que tampoco hay nada que
- *       medir.</li>
+ *   <li><b>{@code auto-city} uses a pickaxe, and the pickaxe is not consumed</b> ({@link Resource#PICKAXE}).
+ *       Mining takes durability from it, it does not take it out of the inventory, and the snapshot
+ *       count is of items. "The resource does not go down" means nothing there, so watching it would
+ *       mean warning of a failure every time {@code auto-city} works well.</li>
+ *   <li><b>The three {@code anti-} modules declare {@link Resource#NONE}</b>: they place nothing, they
+ *       only listen and react (redesign §5). There is nothing that can go down, so there is nothing to
+ *       measure either.</li>
  * </ul>
  *
- * <p>La exclusión no es una lista escrita a mano que se quede vieja: sale del recurso que cada
- * módulo declara en {@link ManagedModules} ({@link #watches}), así que un módulo nuevo entra o queda
- * fuera solo.
+ * <p>The exclusion is not a hand-written list that goes stale: it comes from the resource each module
+ * declares in {@link ManagedModules} ({@link #watches}), so a new module gets in or stays out on its
+ * own.
  *
- * <h2>Qué hace y qué no hace</h2>
- * <b>No corta ni apaga nada.</b> Un módulo que no actúa puede ser perfectamente correcto -puede no
- * haber posición válida ahora mismo, el {@code surround} puede estar ya completo, la casilla que
- * {@code auto-web} telaraña puede tener ya telaraña-, y apagarlo sería peor que avisar: el módulo
- * dejaría de estar listo para el tick en el que sí haya posición. Lo único que hace es decirlo
- * <b>una vez</b>, nombrando los módulos y apuntando a los sospechosos <b>sin afirmar cuál es</b>, y
- * volver a armarse cuando la situación cambia.
+ * <h2>What it does and what it does not</h2>
+ * <b>It neither cuts nor turns off anything.</b> A module that does not act can be perfectly correct
+ * -there may be no valid position right now, the {@code surround} may already be complete, the cell
+ * that {@code auto-web} webs may already have a web-, and turning it off would be worse than warning:
+ * the module would stop being ready for the tick in which there is a position. The only thing it does
+ * is say so <b>once</b>, naming the modules and pointing at the suspects <b>without claiming which one
+ * it is</b>, and rearm when the situation changes.
  */
 public final class ActionWatch {
-    /** Ticks por segundo del juego, para decir el margen en segundos en el aviso. */
+    /** Game ticks per second, to state the margin in seconds in the warning. */
     private static final int TICKS_PER_SECOND = 20;
 
     /**
-     * Ticks seguidos con alguien en condiciones de gastar la pila y sin que la pila se mueva antes
-     * de avisar. Sesenta, tres segundos.
+     * Consecutive ticks with someone in a position to spend the stack and without the stack moving
+     * before warning. Sixty, three seconds.
      *
-     * <p>El número sale de las dos formas de equivocarse, y son muy asimétricas.
+     * <p>The number comes from the two ways of getting it wrong, and they are very asymmetric.
      *
-     * <p><b>Por abajo</b> manda la cadencia legítima más lenta de los seis vigilados, que está
-     * medida, no supuesta: {@code AutoAnvil} trae {@code delay} en {@code defaultValue(10)}
-     * -verificado en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT}: su {@code onTick}
-     * coloca solo cuando {@code timer >= delay.get()} y reinicia el contador-, así que un
-     * {@code auto-anvil} que funciona perfectamente gasta un yunque cada <b>once</b> ticks. Un
-     * margen de veinte ticks le dejaría menos de dos cadencias de holgura: un solo hueco tapado
-     * sobre la cabeza del objetivo ya lo cruzaría, y el aviso saldría constantemente con el módulo
-     * funcionando. Con sesenta caben cinco colocaciones seguidas falladas antes de decir nada. Para
-     * {@code crystal-aura} el mismo margen son de 6 a 15 ciclos de cristal enteros (§9 mide medio
-     * segundo en 2-5 ciclos, o sea 4-10 ticks por ciclo): tres segundos con un hostil a menos de
-     * 4,5, el aura encendida y cristales en la mano sin colocar <b>ni uno</b> no es un hueco de
-     * combate, es un muro.
+     * <p><b>From below</b>, the slowest legitimate cadence of the six watched modules rules, and it is
+     * measured, not assumed: {@code AutoAnvil} ships with {@code delay} at {@code defaultValue(10)}
+     * -checked in the {@code meteor-client:1.21.11-SNAPSHOT} sources: its {@code onTick} places only
+     * when {@code timer >= delay.get()} and resets the counter-, so an {@code auto-anvil} that works
+     * perfectly spends one anvil every <b>eleven</b> ticks. A margin of twenty ticks would leave it
+     * less than two cadences of slack: a single covered gap over the target's head would already
+     * cross it, and the warning would fire constantly with the module working. With sixty, five
+     * consecutive failed placements fit before anything is said. For {@code crystal-aura} the same
+     * margin is 6 to 15 whole crystal cycles (§9 measures half a second in 2-5 cycles, that is 4-10
+     * ticks per cycle): three seconds with a hostile closer than 4.5, the aura on and crystals in hand
+     * without placing <b>a single one</b> is not a combat gap, it is a wall.
      *
-     * <p><b>Por arriba no hay prisa</b>, y esa es la asimetría: la causa que esto busca -un umbral
-     * que rechaza todas las posiciones, un rango corto, una lista de bloques que no incluye lo que
-     * llevas- <b>es permanente</b>. No se cura sola, así que esperar de más nunca pierde el aviso;
-     * solo lo retrasa tres segundos. Equivocarse por el otro lado sí cuesta: una línea de chat
-     * falsa en cada pelea enseña al jugador a ignorar el aviso, y entonces el vigilante no sirve
-     * para nada.
+     * <p><b>From above there is no hurry</b>, and that is the asymmetry: the cause this looks for -a
+     * threshold that rejects every position, a short range, a block list that does not include what
+     * you carry- <b>is permanent</b>. It does not heal by itself, so waiting too long never loses the
+     * warning; it only delays it by three seconds. Getting it wrong the other way does cost: a false
+     * chat line in every fight teaches the player to ignore the warning, and then the watch is of no
+     * use at all.
      */
     public static final int IDLE_TICKS = 60;
 
     /**
-     * Si un módulo dirigido se puede vigilar así. La pregunta es si su recurso <b>se gasta al
-     * usarlo</b>: {@link Resource#PICKAXE} no -minar gasta durabilidad, no ítems- y
-     * {@link Resource#NONE} no existe.
+     * Whether a managed module can be watched this way. The question is whether its resource <b>is
+     * spent when used</b>: {@link Resource#PICKAXE} is not -mining spends durability, not items- and
+     * {@link Resource#NONE} does not exist.
      */
     public static boolean watches(ManagedModule module) {
         return module.needs() != Resource.PICKAXE && module.needs() != Resource.NONE;
     }
 
-    /** Los seis vigilados, derivados del catálogo por {@link #watches} y en su mismo orden. */
+    /** The six watched modules, derived from the catalog by {@link #watches} and in the same order. */
     public static final List<ManagedModule> WATCHED =
         ManagedModules.ALL.stream().filter(ActionWatch::watches).toList();
 
-    /** Las pilas que hay que mirar, sin repetir y en el orden en que aparecen en {@link #WATCHED}. */
+    /** The stacks to look at, without repeats and in the order they appear in {@link #WATCHED}. */
     public static final List<Resource> WATCHED_RESOURCES =
         List.copyOf(new LinkedHashSet<>(WATCHED.stream().map(ManagedModule::needs).toList()));
 
     /**
-     * Un veredicto: la pila que no se mueve, los módulos que estaban en condiciones de gastarla y
-     * cuántos ticks llevan así.
+     * A verdict: the stack that does not move, the modules that were in a position to spend it and
+     * how many ticks they have been like that.
      *
-     * <p>Con más de un módulo el veredicto es <b>conjunto y no se puede repartir</b> ({@link
-     * #joint()}): lo único medido es que la pila no baja, y el inventario no dice quién coloca.
+     * <p>With more than one module the verdict is <b>joint and cannot be split</b> ({@link
+     * #joint()}): the only thing measured is that the stack does not go down, and the inventory does
+     * not say who places.
      *
-     * @param resource la pila que no se ha movido
-     * @param modules  los que se querían, estaban encendidos y tenían material de sobra, en el orden
-     *                 del catálogo
-     * @param ticks    ticks seguidos que lleva así, ya cumplido el margen
+     * @param resource the stack that has not moved
+     * @param modules  those that were wanted, were on and had material to spare, in catalog
+     *                 order
+     * @param ticks    consecutive ticks it has been like that, the margin already reached
      */
     public record Idle(Resource resource, List<ManagedModule> modules, int ticks) {
         public Idle {
             modules = List.copyOf(modules);
         }
 
-        /** Si el veredicto es de varios módulos a la vez y por tanto no se puede repartir. */
+        /** Whether the verdict covers several modules at once and therefore cannot be split. */
         public boolean joint() {
             return modules.size() > 1;
         }
     }
 
-    /** Ticks seguidos que cada pila lleva quieta con alguien en condiciones de gastarla. */
+    /** Consecutive ticks each stack has been still with someone in a position to spend it. */
     private final Map<Resource, Integer> idleTicks = new EnumMap<>(Resource.class);
 
-    /** Quiénes estaban en condiciones de gastar cada pila en el tick anterior. */
+    /** Who was in a position to spend each stack on the previous tick. */
     private final Map<Resource, List<ManagedModule>> lastEligible = new EnumMap<>(Resource.class);
 
-    /** Cuánto había de cada pila vigilada en el tick anterior. */
+    /** How much of each watched stack there was on the previous tick. */
     private final Map<Resource, Integer> lastAmount = new EnumMap<>(Resource.class);
 
-    /** De qué pilas ya se avisó, para decirlo una vez y no en bucle. */
+    /** Which stacks have already been warned about, to say it once and not in a loop. */
     private final Set<Resource> warned = new LinkedHashSet<>();
 
     /**
-     * Un tick de vigilancia. Devuelve los veredictos de los que <b>hay que avisar ahora</b>: las
-     * pilas que acaban de cumplir el margen y de las que todavía no se había avisado.
+     * One tick of watching. Returns the verdicts to <b>warn about now</b>: the stacks that have just
+     * reached the margin and that have not been warned about yet.
      *
-     * <p>Las cuatro condiciones que ponen a un módulo "en condiciones de gastar" son: el plan lo
-     * <b>quiere</b>, está <b>encendido de verdad</b>, hay <b>objetivo</b> y hay <b>recurso
-     * suficiente</b> (su {@link ManagedModule#minimum()}). La cuenta de una pila corre mientras haya
-     * al menos uno en esas condiciones.
+     * <p>The four conditions that put a module "in a position to spend" are: the plan
+     * <b>wants</b> it, it is <b>really on</b>, there is a <b>target</b> and there is <b>enough
+     * resource</b> (its {@link ManagedModule#minimum()}). A stack's count runs while there is
+     * at least one module in those conditions.
      *
-     * <p>Que deje de haberlo no pausa la cuenta: la <b>reinicia</b>, y además rearma el aviso. Es lo
-     * conservador y es lo que hace falta -la afirmación que se va a hacer es "lleva tres segundos
-     * seguidos sin gastar pudiendo gastar", y un tick en el que no podía gastar la rompe entera-.
+     * <p>When there stops being one, the count is not paused: it is <b>reset</b>, and the warning is
+     * rearmed too. It is the conservative choice and the one that is needed -the claim about to be
+     * made is "three seconds in a row without spending while able to spend", and one tick in which it
+     * could not spend breaks it entirely-.
      *
-     * <p><b>Que cambie quién está en condiciones también reinicia.</b> Si {@code auto-trap} se suma
-     * a la obsidiana en el tick 50, el veredicto de los tres no puede apoyarse en los cincuenta
-     * ticks en los que él no estaba: esa serie se refería a otro grupo. Se empieza de cero.
+     * <p><b>A change in who is in a position to spend also resets.</b> If {@code auto-trap} joins
+     * the obsidian on tick 50, the verdict about the three cannot rest on the fifty ticks in which it
+     * was not there: that run referred to another group. It starts from zero.
      *
-     * <p>El objetivo se exige también a los dos defensivos, aunque {@code surround} y
-     * {@code hole-filler} no lo necesiten para colocar: sin nadie delante, que no gasten es lo
-     * normal, y contar esos ticks solo produciría avisos de nada.
+     * <p>The target is also required of the two defensive modules, even though {@code surround} and
+     * {@code hole-filler} do not need one to place: with nobody in front, not spending is
+     * normal, and counting those ticks would only produce warnings about nothing.
      *
-     * <p><b>Cualquier movimiento de la pila reinicia, no solo una bajada.</b> Si baja, alguien del
-     * grupo está actuando y no hay nada que decir. Si sube -recoges obsidiana, sacas telarañas de la
-     * mochila- la serie deja de comparar lo mismo, y una subida puede además tapar un gasto (gastas
-     * una y recoges dos). No se puede afirmar que no se gasta mientras la pila se mueve, así que no
-     * se afirma.
+     * <p><b>Any movement of the stack resets, not only a drop.</b> If it drops, someone in the
+     * group is acting and there is nothing to say. If it rises -you pick up obsidian, you take webs out
+     * of the backpack- the run stops comparing the same thing, and a rise can also hide spending (you
+     * spend one and pick up two). It cannot be claimed that nothing is spent while the stack moves, so
+     * it is not claimed.
      *
-     * @param snapshot la situación de este tick, para el objetivo y para las cuentas del inventario
-     * @param wanted   los nombres de módulo que el plan de este tick quiere encendidos
-     * @param active   los nombres de módulo que están encendidos de verdad ahora mismo
+     * @param snapshot the situation of this tick, for the target and for the inventory counts
+     * @param wanted   the module names the plan of this tick wants on
+     * @param active   the module names that are really on right now
      */
     public List<Idle> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active) {
         List<Idle> newlyIdle = new ArrayList<>();
@@ -220,7 +222,7 @@ public final class ActionWatch {
         return List.copyOf(newlyIdle);
     }
 
-    /** Los vigilados de esa pila que este tick estaban en condiciones de gastarla. */
+    /** The watched modules of that stack that were in a position to spend it this tick. */
     private static List<ManagedModule> eligibleFor(Resource resource, CombatSnapshot snapshot,
                                                    Set<String> wanted, Set<String> active) {
         if (!snapshot.hasTarget()) return List.of();
@@ -235,15 +237,15 @@ public final class ActionWatch {
         return List.copyOf(eligible);
     }
 
-    /** Ticks que esa pila lleva quieta con alguien en condiciones de gastarla; cero si no es el caso. */
+    /** Ticks that stack has been still with someone in a position to spend it; zero if that is not the case. */
     public int idleTicksOf(Resource resource) {
         return idleTicks.getOrDefault(resource, 0);
     }
 
     /**
-     * Los veredictos que ya han cumplido el margen entero y siguen en pie, en el orden de las pilas.
-     * Es lo que enseña {@code .xploits pvp}: el aviso se dice una vez, pero la situación dura, y
-     * tiene que poder consultarse mientras dura.
+     * The verdicts that have already reached the whole margin and still stand, in stack order.
+     * It is what {@code .xploits pvp} shows: the warning is said once, but the situation lasts, and
+     * it has to be possible to check it while it lasts.
      */
     public List<Idle> idle() {
         List<Idle> result = new ArrayList<>();
@@ -254,7 +256,7 @@ public final class ActionWatch {
         return List.copyOf(result);
     }
 
-    /** Olvida las cuentas, las pilas y lo ya avisado. Se llama al encender o apagar el módulo. */
+    /** Forgets the counts, the stacks and what was already warned about. Called when the module is turned on or off. */
     public void reset() {
         idleTicks.clear();
         lastEligible.clear();
@@ -263,14 +265,14 @@ public final class ActionWatch {
     }
 
     /**
-     * El aviso de un veredicto: nombra los módulos, dice qué se ha medido y <b>apunta a los
-     * sospechosos sin afirmar cuál es</b>. Todos los ajustes y valores de fábrica que se nombran
-     * están verificados en las fuentes de {@code meteor-client:1.21.11-SNAPSHOT} y, donde son
-     * nombres de bloque, contra las mappings de yarn 1.21.11+build.3; ninguno es supuesto.
+     * The warning for a verdict: it names the modules, says what has been measured and <b>points at
+     * the suspects without claiming which one it is</b>. Every setting and default value named is
+     * checked in the {@code meteor-client:1.21.11-SNAPSHOT} sources and, where they are block names,
+     * against the yarn 1.21.11+build.3 mappings; none is assumed.
      *
-     * <p>Con un solo módulo se nombra <b>primero la causa inocente</b> ({@link #innocent}) y después
-     * los sospechosos. Con varios -solo puede pasar con la obsidiana- se dice además, con todas las
-     * letras, que el veredicto es conjunto y por qué no se puede repartir.
+     * <p>With a single module the <b>innocent cause comes first</b> ({@link #innocent}) and then the
+     * suspects. With several -which can only happen with the obsidian- it also says, in so many
+     * words, that the verdict is joint and why it cannot be split.
      */
     public static Msg reason(Idle idle) {
         PvpText material = material(idle.resource());
@@ -291,12 +293,12 @@ public final class ActionWatch {
             "material", material, "count", idle.modules().size(), "suspects", tails);
     }
 
-    /** Los segundos que lleva el veredicto, como se leen en el aviso. */
+    /** The seconds the verdict has lasted, as they read in the warning. */
     private static int seconds(Idle idle) {
         return idle.ticks() / TICKS_PER_SECOND;
     }
 
-    /** "a, b y c", como se enumera en el idioma del jugador. */
+    /** "a, b and c", listed the way the player's language does it. */
     private static Object join(List<String> names) {
         if (names.size() == 1) return names.getFirst();
         Object head = names.getFirst();
@@ -307,17 +309,17 @@ public final class ActionWatch {
     }
 
     /**
-     * La razón por la que <b>no</b> sería un fallo, que va delante de los sospechosos porque en
-     * varios casos es la más probable con diferencia.
+     * The reason why it would <b>not</b> be a failure, which goes before the suspects because in
+     * several cases it is by far the most likely one.
      *
-     * <p>Las tres que no son "no hay posición" están verificadas en las fuentes: {@code Surround}
-     * pone {@code complete = true} y deja de colocar cuando el surround está terminado, y con
-     * {@code toggle-on-complete} en {@code false} de fábrica <b>se queda encendido para siempre</b>;
-     * {@code HoleFiller} con {@code smart} encendido solo tapa huecos cerca de un objetivo, y puede
-     * no haber ninguno; y {@code AutoWeb} solo coloca donde {@code isReplaceable()}, y una telaraña
-     * no lo es, así que en cuanto la casilla prevista tiene telaraña deja de colocar ahí -contra
-     * alguien arrinconado que sigue contando como "se aleja", la casilla prevista no cambia y no
-     * vuelve a gastar ni una-.
+     * <p>The three that are not "there is no position" are checked in the sources: {@code Surround}
+     * sets {@code complete = true} and stops placing when the surround is finished, and with
+     * {@code toggle-on-complete} at {@code false} by default <b>it stays on forever</b>;
+     * {@code HoleFiller} with {@code smart} on only fills holes near a target, and there may be
+     * none; and {@code AutoWeb} only places where {@code isReplaceable()}, and a web is not, so as
+     * soon as the intended cell has a web it stops placing there -against someone cornered who still
+     * counts as "moving away", the intended cell does not change and it does not spend a single one
+     * again-.
      */
     private static PvpText innocent(ManagedModule module) {
         return switch (module.name()) {
@@ -328,7 +330,7 @@ public final class ActionWatch {
         };
     }
 
-    /** A qué ajustes mirar, sin afirmar que el culpable esté entre ellos. */
+    /** Which settings to look at, without claiming the culprit is among them. */
     private static PvpText suspects(ManagedModule module) {
         return switch (module.name()) {
             case "crystal-aura" -> PvpText.SUSPECTS_CRYSTAL_AURA;
@@ -341,7 +343,7 @@ public final class ActionWatch {
         };
     }
 
-    /** Cómo se llama lo que sale de esa pila, para el aviso. */
+    /** What the material in that stack is called, for the warning. */
     private static PvpText material(Resource resource) {
         return switch (resource) {
             case CRYSTALS -> PvpText.MATERIAL_CRYSTALS;

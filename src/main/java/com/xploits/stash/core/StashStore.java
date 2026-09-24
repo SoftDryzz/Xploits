@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Carga y guarda index.json (spec §11). Escritura atómica y, igual que ProgressStore, un archivo
- * corrupto se denuncia y nunca se sobrescribe.
+ * Loads and saves index.json (spec §11). Atomic writes and, just like ProgressStore, a corrupt file
+ * is reported and never overwritten.
  */
 public final class StashStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -39,10 +39,10 @@ public final class StashStore {
         try {
             dto = GSON.fromJson(Files.readString(file), FileDto.class);
         } catch (JsonParseException e) {
-            throw new IOException(file + " está corrupto; no se ha modificado: " + e.getMessage(), e);
+            throw new IOException(file + " is corrupt; it was not modified: " + e.getMessage(), e);
         }
         if (dto == null || dto.containers == null) {
-            throw new IOException(file + " está vacío; no se ha modificado.");
+            throw new IOException(file + " is empty; it was not modified.");
         }
 
         try {
@@ -50,7 +50,7 @@ public final class StashStore {
                 index.put(container.toSnapshot());
             }
         } catch (RuntimeException e) {
-            throw new IOException(file + " está corrupto; no se ha modificado: " + e.getMessage(), e);
+            throw new IOException(file + " is corrupt; it was not modified: " + e.getMessage(), e);
         }
         return index;
     }

@@ -5,27 +5,27 @@ import com.xploits.shared.core.i18n.Msg;
 import java.util.List;
 
 /**
- * El resultado de planear un viaje: o bien la lista de waypoints a seguir, o bien un rechazo con
- * su motivo (spec AutoTravel: el señuelo con destino de autopista se rechaza, no se degrada).
+ * The result of planning a trip: either the list of waypoints to follow, or a rejection with its
+ * reason (AutoTravel spec: the decoy with a highway destination is rejected, not downgraded).
  *
- * <p>Una ruta rechazada lleva siempre la lista de waypoints vacía: nadie debe leer {@code
- * waypoints()} de una ruta rechazada esperando encontrar algo utilizable.
+ * <p>A rejected route always carries an empty waypoint list: nobody should read {@code waypoints()}
+ * from a rejected route expecting to find something usable.
  */
 public record Route(List<Waypoint> waypoints, Msg rejection) {
     public Route {
         waypoints = List.copyOf(waypoints);
         if (rejection == null && waypoints.isEmpty()) {
             throw new IllegalArgumentException(
-                "una ruta aceptada no puede tener la lista de waypoints vacía: nadie sabría interpretarla"); // i18n: allowed (exception message, continuation line)
+                "an accepted route cannot have an empty waypoint list: nobody would know how to read it");
         }
     }
 
-    /** Una ruta aceptada, con sus waypoints. */
+    /** An accepted route, with its waypoints. */
     public static Route of(List<Waypoint> waypoints) {
         return new Route(waypoints, null);
     }
 
-    /** Una ruta rechazada: sin waypoints, con el motivo del rechazo. */
+    /** A rejected route: no waypoints, with the rejection's reason. */
     public static Route rejected(Msg reason) {
         return new Route(List.of(), reason);
     }

@@ -15,6 +15,17 @@ cualquier `xploits-*.jar` anterior**: el nombre lleva la versión, y con dos a l
 dos veces. Reinicia el juego. Los módulos salen en la ClickGUI, categoría **Xploits**. Qué cambia en
 cada versión: [CHANGELOG](CHANGELOG.md).
 
+⚠️ **Si vienes de antes de la 0.4.0**, cierra cualquier ventana de la consola que sigas teniendo
+abierta antes de arrancar: al primer arranque de la 0.4.0, el addon renombra automáticamente los
+ajustes y ficheros que cambiaron de nombre en esa versión (`modules.nbt`, `hud.nbt` y la carpeta
+`xploits/consola/`), hace una copia de cada fichero que toca como `<fichero>.pre-0.4.0.backup.nbt`
+antes de escribirlo, y te avisa por chat de lo que hizo. No pierdes nada; si una ventana de la
+consola sigue teniendo la carpeta abierta, lo que no pudo moverse se reintenta en el siguiente
+arranque: con la ventana antigua ya cerrada, `xploits/consola/` se fusiona con `xploits/console/`
+(el historial pasa a `console/history/`, sin sobrescribir nada; si un mismo día está en las dos, se
+guardan ambos y el antiguo queda como `<día>-old.log`) y la carpeta antigua se borra al quedar vacía.
+Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `console`.
+
 ### Qué necesitas instalado, y qué deja de funcionar si falta
 
 Este addon **se apoya en otros mods a propósito**: cuando algo ya está resuelto y bien resuelto, lo
@@ -61,12 +72,12 @@ una recta que apunte a donde vives.
 
 | Modo | Qué pides | Ajustes |
 |---|---|---|
-| `COORDENADAS` | Un punto del mundo | `x`, `z` |
-| `RELATIVO` | Un desplazamiento desde donde estés: 5000 y −3000 es «5000 en X y −3000 en Z desde aquí» | `offset-x`, `offset-z` |
-| `AUTOPISTA` | Un eje y cuántos bloques volar por él | `axis`, `highway-distance` |
+| `COORDINATES` | Un punto del mundo | `x`, `z` |
+| `RELATIVE` | Un desplazamiento desde donde estés: 5000 y −3000 es «5000 en X y −3000 en Z desde aquí» | `offset-x`, `offset-z` |
+| `HIGHWAY` | Un eje y cuántos bloques volar por él | `axis`, `highway-distance` |
 
-**`RELATIVO` es el que menos rastro deja.** Meteor guarda los ajustes en
-`<instancia>/meteor-client/modules.nbt`: con `COORDENADAS` tu destino acaba escrito ahí; con un
+**`RELATIVE` es el que menos rastro deja.** Meteor guarda los ajustes en
+`<instancia>/meteor-client/modules.nbt`: con `COORDINATES` tu destino acaba escrito ahí; con un
 desplazamiento, solo cuánto te mueves, que no dice desde dónde. Si venías de usar coordenadas, pon
 `x` y `z` a 0: cambiar de modo no borra lo que ya se guardó.
 
@@ -77,18 +88,18 @@ X y otros tantos en Z, y cuestan los mismos cohetes que 20 000 en recto.
 
 | Patrón | Qué hace | Cuándo |
 |---|---|---|
-| `RECTO` | Nada | **En autopista.** Ahí tu traza es una más entre miles; ondular solo gasta cohetes y te saca del corredor |
+| `STRAIGHT` | Nada | **En autopista.** Ahí tu traza es una más entre miles; ondular solo gasta cohetes y te saca del corredor |
 | `ZIGZAG` | Ondula a los lados a menudo | Que quien te vea de lejos no pueda trazar tu rumbo con una regla |
-| `QUIEBRO` | Igual, con tramos largos y desvíos anchos | Contra quien te vio desde más lejos. Gasta bastante más |
-| `ESPIRAL` | Recto casi todo, espiral al final | **Protege la llegada**: no te acercas a casa en línea recta |
-| `SEÑUELO` | Apunta a un sitio falso y corrige a mitad | **Protege la salida**: contra quien te ve despegar |
+| `SWERVE` | Igual, con tramos largos y desvíos anchos | Contra quien te vio desde más lejos. Gasta bastante más |
+| `SPIRAL` | Recto casi todo, espiral al final | **Protege la llegada**: no te acercas a casa en línea recta |
+| `DECOY` | Apunta a un sitio falso y corrige a mitad | **Protege la salida**: contra quien te ve despegar |
 
 **El desvío se paga en cohetes.** La espiral es cara en absoluto: su largo depende del radio y las
 vueltas, no de la distancia. **Baja `spiral-turns` a 0,5** salvo que quieras pagarlo — cuadruplica
 el coste frente a 1,5 para solo un 31 % más de desvío.
 
-**Para fundar una base**, dos viajes: primero por autopista con `RECTO` lo más lejos que aguante el
-inventario; luego sales de la autopista y vas a las coordenadas con `ESPIRAL`. El punto donde
+**Para fundar una base**, dos viajes: primero por autopista con `STRAIGHT` lo más lejos que aguante el
+inventario; luego sales de la autopista y vas a las coordenadas con `SPIRAL`. El punto donde
 abandonas la autopista es la pista más fuerte que vas a dejar: no lo hagas en una coordenada
 redonda ni dos veces en el mismo sitio.
 
@@ -160,7 +171,7 @@ trae gente hacia ti, nunca te mueve a ti.
 Apunta el contenido de los contenedores que abres y de los shulkers que ves. **No mueve nada.**
 Luego `.xploits find <ítem>` te dice dónde estaba.
 
-### `consola` — ver lo que hace el addon en una ventana aparte
+### `console` — ver lo que hace el addon en una ventana aparte
 
 Abre una ventana de terminal con el logo XTO2002 arriba, el estado del juego debajo y el registro de
 todo lo que dicen los módulos de Xploits. Para tenerla en la otra pantalla mientras juegas, o para
@@ -172,7 +183,7 @@ leer después qué pasó.
   `4` sweep, `5` solo avisos, `6` pausa, `0` salir.
 - **Nunca enseña coordenadas.** Lo que en el chat lleva una posición, en la ventana sale con la
   distancia o sin nada. El chat no cambia.
-- **Lo que escribe se queda en disco** mientras está encendida: `meteor-client/xploits/consola/historial/`,
+- **Lo que escribe se queda en disco** mientras está encendida: `meteor-client/xploits/console/history/`,
   un fichero por día, 30 días como mucho.
 - Si el juego se cierra o se cuelga, la ventana **se queda abierta** y lo dice, para que puedas leer
   lo último que pasó.
@@ -226,7 +237,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 ```
 <instancia>/meteor-client/xploits/        Cola de kits y progreso
 <instancia>/meteor-client/xploits/stash/  Índice de contenedores, por mundo
-<instancia>/meteor-client/xploits/consola/  Historial de la consola, 30 días como mucho
+<instancia>/meteor-client/xploits/console/  Historial de la consola, 30 días como mucho
 <instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
 <instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
 ```

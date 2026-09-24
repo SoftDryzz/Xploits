@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-/** Decide si AutoTPY acepta una TPA. Guarda la hora de la última aceptación por nombre para no responder dos veces a la misma TPA repetida. */
+/** Decides whether AutoTPY accepts a TPA. Keeps the time of the last acceptance per name so as not to answer the same repeated TPA twice. */
 public final class AutoTpyPolicy {
     public static final long DUPLICATE_WINDOW_MS = 2_000;
     public static final long IGNORED_NOTICE_WINDOW_MS = 60_000;
@@ -16,11 +16,11 @@ public final class AutoTpyPolicy {
     private final Map<String, Long> lastIgnoredNotice = new HashMap<>();
 
     /**
-     * @param requester       nombre capturado de "X wants to teleport to you."
-     * @param users           lista del ajuste users (exacta, distingue mayúsculas)
-     * @param isFriend        el adaptador ya consultó los amigos de Meteor
-     * @param includeFriends  ajuste include-friends
-     * @param kitRequesterCouriers couriers de KitRequester si ese módulo está activo; vacío si no
+     * @param requester       name captured from "X wants to teleport to you."
+     * @param users           the users setting's list (exact, case-sensitive)
+     * @param isFriend        the adapter has already checked Meteor's friends
+     * @param includeFriends  the include-friends setting
+     * @param kitRequesterCouriers KitRequester's couriers if that module is active; empty otherwise
      * @param now             System.currentTimeMillis()
      */
     public Decision decide(String requester, Set<String> users, boolean isFriend, boolean includeFriends,

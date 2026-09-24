@@ -1,27 +1,27 @@
 package com.xploits.pvp.core;
 
 /**
- * Un módulo de combate de Meteor que el director dirige (spec §6).
+ * A Meteor combat module that the director manages (spec §6).
  *
- * @param name           el nombre exacto con el que aparece en la ClickGUI
- * @param needs          qué recurso necesita para servir de algo
- * @param minimum        cuánto hace falta como mínimo
- * @param turnsItselfOff si este módulo puede apagarse solo, por diseño de Meteor, sin que el
- *                       jugador toque nada (spec §7) — no las tres marcas por el mismo motivo, ni
- *                       todas de fábrica: {@code auto-trap} tras colocar el trap con éxito, con
- *                       {@code self-toggle} activo de fábrica; {@code auto-city} de fábrica y sin
- *                       ningún ajuste de por medio, si no encuentra objetivo, bloque o pico
- *                       (incluso dentro de su propio {@code onActivate()}) y también tras minar con
- *                       éxito; y {@code auto-anvil}, marcado como decisión conservadora aunque el
- *                       {@code toggle()} que lo apaga con la cabeza del objetivo vacía está detrás
- *                       de {@code toggle-on-break}, que es {@code false} de fábrica — con los
- *                       ajustes de fábrica {@code auto-anvil} no se apaga solo.
- *                       {@link ModuleLedger} usa esta marca para no confundir ese apagado
- *                       automático con que el jugador lo soltó a mano.
- *                       <p>{@code surround} <b>ya no la lleva</b> (crítico C2): llevarla le quitaba
- *                       el antirrebote de §8 y con él la posibilidad de apagarlo a mano. Su único
- *                       autoapagado con los ajustes de fábrica es {@code toggle-on-y-change}, y ese
- *                       caso se excluye aguas arriba, en la postura, que no lo pide mientras tu Y
- *                       esté cambiando.
+ * @param name           the exact name it shows in the ClickGUI
+ * @param needs          which resource it needs to be of any use
+ * @param minimum        how much of it is needed at least
+ * @param turnsItselfOff whether this module can turn itself off, by Meteor's design, without the
+ *                       player touching anything (spec §7) — the three are not flagged for the same
+ *                       reason, nor all out of the box: {@code auto-trap} after placing the trap
+ *                       successfully, with {@code self-toggle} on by default; {@code auto-city} out
+ *                       of the box and with no setting involved, if it finds no target, block or
+ *                       pickaxe (even inside its own {@code onActivate()}) and also after mining
+ *                       successfully; and {@code auto-anvil}, flagged as a conservative decision even
+ *                       though the {@code toggle()} that turns it off when the target's head is empty
+ *                       sits behind {@code toggle-on-break}, which is {@code false} by default — with
+ *                       the default settings {@code auto-anvil} does not turn itself off.
+ *                       {@link ModuleLedger} uses this flag so as not to mistake that automatic
+ *                       shutdown for the player releasing it by hand.
+ *                       <p>{@code surround} <b>no longer carries it</b> (critical C2): carrying it
+ *                       took away the debounce of §8 and with it the ability to turn it off by hand.
+ *                       Its only self-shutdown with the default settings is {@code toggle-on-y-change},
+ *                       and that case is excluded upstream, in the posture, which does not ask for it
+ *                       while your Y is changing.
  */
 public record ManagedModule(String name, Resource needs, int minimum, boolean turnsItselfOff) {}

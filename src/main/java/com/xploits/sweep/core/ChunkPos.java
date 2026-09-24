@@ -1,8 +1,8 @@
 package com.xploits.sweep.core;
 
 /**
- * Un chunk del Nether identificado por sus coordenadas de chunk (no de bloque). Es la unidad en la
- * que se piensa el barrido: la cobertura se marca chunk a chunk, no bloque a bloque.
+ * A Nether chunk identified by its chunk coordinates (not block coordinates). It is the unit the
+ * sweep is thought in: coverage is marked chunk by chunk, not block by block.
  */
 public record ChunkPos(int x, int z) {
 }

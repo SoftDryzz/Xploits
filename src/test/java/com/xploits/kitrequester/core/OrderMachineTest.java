@@ -45,7 +45,7 @@ class OrderMachineTest {
         return actions.stream().anyMatch(a -> a instanceof Action.Notify n && !n.alert() && n.message().equals(expected));
     }
 
-    /** Entra, espera el margen, pide el lote 1-5 y recibe PLACED. Devuelve el instante de PLACED. */
+    /** Joins, waits the grace period, requests batch 1-5 and receives PLACED. Returns the PLACED instant. */
     private long placeOrder() {
         machine.onJoin(T0);
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
@@ -81,7 +81,7 @@ class OrderMachineTest {
         long placedAt = placeOrder();
         assertEquals(new Progress.ActiveOrder(List.of(1, 2, 3, 4, 5), placedAt, null), progress.activeOrder);
 
-        // 13:52:03 — la TPA llega 1 s antes que el susurro READY
+        // 13:52:03 — the TPA arrives 1 s before the READY whisper
         assertTrue(sent(machine.onChat(new ChatEvent.Tpa("ValorKnight27"), placedAt + 76_000), "/tpy ValorKnight27"));
         assertEquals(AWAIT_DELIVERY, machine.state());
         assertFalse(anySent(machine.onChat(new ChatEvent.Ready("ValorKnight27"), placedAt + 77_000)));
@@ -380,9 +380,9 @@ class OrderMachineTest {
 
     @Test
     void doesNotDepositWhenAScreenIsAlreadyOpen() {
-        // Crítico: pedir el depósito con una pantalla abierta a mano es lo que vacía shulkers en
-        // el contenedor equivocado (spec §6.1). OrderMachine debe quedarse quieto, sin pausar, y
-        // reintentarlo en un tick posterior; pero sí debe avisar una vez de por qué no pide kits.
+        // Critical: requesting the deposit with a screen open by hand is what empties shulkers into
+        // the wrong container (spec §6.1). OrderMachine must sit still, without pausing, and retry on
+        // a later tick; but it must warn once about why it is not requesting kits.
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
@@ -390,14 +390,14 @@ class OrderMachineTest {
         assertFalse(anySent(out));
         assertFalse(out.contains(new Action.Deposit()));
         assertEquals(1, out.stream().filter(a -> a instanceof Action.Notify).count(),
-            "avisa una sola vez de que espera a que se cierre la pantalla");
+            "warns exactly once that it is waiting for the screen to close");
         assertEquals(IDLE, machine.state());
 
-        // Un segundo tick con la pantalla todavía abierta no repite el aviso.
+        // A second tick with the screen still open does not repeat the warning.
         List<Action> again = machine.tick(t + 500, new OrderMachine.Context(true, true, 2, true, true));
-        assertTrue(again.isEmpty(), "el aviso no se repite mientras la situación no cambie");
+        assertTrue(again.isEmpty(), "the warning does not repeat while the situation has not changed");
 
-        // En cuanto se cierra la pantalla, el mismo tick vuelve a intentarlo con normalidad.
+        // As soon as the screen closes, the same tick retries normally.
         assertTrue(machine.tick(t + 1_000, new OrderMachine.Context(true, true, 2, true, false))
             .contains(new Action.Deposit()));
         assertEquals(DEPOSIT, machine.state());
@@ -405,26 +405,26 @@ class OrderMachineTest {
 
     @Test
     void screenOpenNoticeRepeatsIfTheBlockReturnsAfterClearing() {
-        // El aviso "una sola vez" es por episodio de bloqueo, no para siempre: si la pantalla se
-        // cierra (deja de bloquear) y vuelve a abrirse más tarde, tiene que avisar de nuevo.
+        // The "only once" warning is per blocking episode, not forever: if the screen closes (stops
+        // blocking) and opens again later, it has to warn again.
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         long t = T0 + OrderMachine.JOIN_GRACE_MS;
         List<Action> first = machine.tick(t, new OrderMachine.Context(true, true, 2, true, true));
         assertEquals(1, first.stream().filter(a -> a instanceof Action.Notify).count());
 
-        // Se cierra sin llegar a depositar (huecos siguen insuficientes, pantalla ya no abierta):
-        // sigue bloqueado por huecos, pero ya no por pantalla, así que se reintenta sin repetir aviso.
+        // It closes without actually depositing (slots still insufficient, screen no longer open):
+        // still blocked by slots, but no longer by the screen, so it retries without repeating the warning.
         List<Action> closed = machine.tick(t + 100, new OrderMachine.Context(true, true, 2, true, false));
         assertTrue(closed.contains(new Action.Deposit()));
 
-        machine.onDepositResult(false, 2); // aborta, vuelve a IDLE (reintenta, spec §6.1)
+        machine.onDepositResult(false, 2); // aborts, goes back to IDLE (retries, spec §6.1)
         assertEquals(IDLE, machine.state());
 
-        // Se vuelve a abrir una pantalla: es una situación nueva, así que avisa otra vez.
+        // A screen opens again: it is a new situation, so it warns again.
         List<Action> again = machine.tick(t + 200, new OrderMachine.Context(true, true, 2, true, true));
         assertEquals(1, again.stream().filter(a -> a instanceof Action.Notify).count(),
-            "un nuevo episodio de bloqueo vuelve a avisar");
+            "a new blocking episode warns again");
     }
 
     @Test
@@ -438,21 +438,20 @@ class OrderMachineTest {
 
     @Test
     void depositAbortRetriesInsteadOfPausing() {
-        // CRÍTICO, corregido: antes un aborto (interacción ajena, timeout...) pausaba el módulo, y
-        // de PAUSED solo se sale con huecos suficientes -justo lo que el depósito iba a conseguir.
-        // Un aborto debe reintentar; PAUSED se reserva para cuando de verdad no hay forma de
-        // depositar (spec §6.1).
+        // CRITICAL, fixed: an abort (unrelated interaction, timeout...) used to pause the module, and
+        // PAUSED can only be left with enough slots -exactly what the deposit was going to achieve.
+        // An abort must retry; PAUSED is reserved for when there really is no way to deposit (spec §6.1).
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true, false));
         assertEquals(DEPOSIT, machine.state());
 
         List<Action> out = machine.onDepositResult(false, 2);
-        assertEquals(IDLE, machine.state(), "un aborto reintenta, no pausa");
+        assertEquals(IDLE, machine.state(), "an abort retries, it does not pause");
         assertFalse(out.stream().anyMatch(a -> a instanceof Action.Notify),
-            "un reintento silencioso no debe generar aviso por cada intento fallido");
+            "a silent retry must not produce a warning for every failed attempt");
 
-        // El siguiente tick, con el ender todavía al alcance, vuelve a intentar el depósito solo.
+        // The next tick, with the ender still in reach, tries the deposit again on its own.
         assertTrue(machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 50, new OrderMachine.Context(true, true, 2, true, false))
             .contains(new Action.Deposit()));
         assertEquals(DEPOSIT, machine.state());
@@ -460,9 +459,9 @@ class OrderMachineTest {
 
     @Test
     void depositAbortPausesWithStrongNoticeAfterThreeConsecutiveAborts() {
-        // CRÍTICO, corregido: un reintento sin tope es mudo ante una causa persistente (un ender
-        // chest tapado nunca abre pantalla). Al tercer aborto seguido, PAUSED con aviso fuerte -el
-        // mismo que había antes de que el aborto reintentara- en vez de un bucle silencioso.
+        // CRITICAL, fixed: an uncapped retry is silent in the face of a persistent cause (a covered
+        // ender chest never opens a screen). On the third abort in a row, PAUSED with a loud warning
+        // -the same one that used to fire before the abort started retrying- instead of a silent loop.
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         OrderMachine.Context reach = new OrderMachine.Context(true, true, 2, true, false);
@@ -471,18 +470,18 @@ class OrderMachineTest {
 
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, reach);
         assertEquals(DEPOSIT, machine.state());
-        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "primer aborto: sin aviso");
+        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "first abort: no warning");
         assertEquals(IDLE, machine.state());
 
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 10, reach);
         assertEquals(DEPOSIT, machine.state());
-        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "segundo aborto: sin aviso");
+        assertFalse(alerts(machine.onDepositResult(false, 2), abortsExceeded), "second abort: no warning");
         assertEquals(IDLE, machine.state());
 
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 20, reach);
         assertEquals(DEPOSIT, machine.state());
         List<Action> third = machine.onDepositResult(false, 2);
-        assertTrue(alerts(third, abortsExceeded), "tercer aborto seguido: aviso fuerte");
+        assertTrue(alerts(third, abortsExceeded), "third abort in a row: loud warning");
         assertEquals(PAUSED, machine.state());
     }
 
@@ -492,7 +491,7 @@ class OrderMachineTest {
         machine.onJoin(T0);
         OrderMachine.Context reach = new OrderMachine.Context(true, true, 2, true, false);
 
-        // Dos abortos, luego un depósito correcto: el contador se olvida.
+        // Two aborts, then a successful deposit: the counter is forgotten.
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, reach);
         machine.onDepositResult(false, 2);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 10, reach);
@@ -502,19 +501,19 @@ class OrderMachineTest {
         machine.onDepositResult(true, 36);
         assertEquals(IDLE, machine.state());
 
-        // Dos abortos más tras el éxito no deberían bastar para pausar (el contador reinició en 0).
+        // Two more aborts after the success should not be enough to pause (the counter reset to 0).
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 30, reach);
         machine.onDepositResult(false, 2);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS + 40, reach);
         List<Action> out = machine.onDepositResult(false, 2);
         assertFalse(alerts(out, Msg.of(KitText.DEPOSIT_ABORTS_EXCEEDED, "max", OrderMachine.MAX_DEPOSIT_ABORTS)));
-        assertEquals(IDLE, machine.state(), "el contador reinició tras el éxito, así que sigue reintentando");
+        assertEquals(IDLE, machine.state(), "the counter reset after the success, so it keeps retrying");
     }
 
     @Test
     void depositAbortPausesWhenTheEnderIsNoLongerReachable() {
-        // Si de verdad ya no hay forma de depositar -el ender salió de alcance, o alguien lo rompió-
-        // idle() es quien pausa, con el mismo aviso de siempre de huecos insuficientes.
+        // If there really is no way to deposit anymore -the ender went out of reach, or someone
+        // broke it- idle() is the one that pauses, with the same insufficient-slots warning as always.
         config = new OrderMachine.Config(300_000, COURIERS, false, true);
         machine.onJoin(T0);
         machine.tick(T0 + OrderMachine.JOIN_GRACE_MS, new OrderMachine.Context(true, true, 2, true, false));

@@ -3,17 +3,17 @@ package com.xploits.stash.core;
 import java.util.Map;
 
 /**
- * Un shulker dentro de un contenedor (spec §4.1). Guarda el slot que ocupaba porque es lo único
- * que permite reconocer a un shulker sin nombre; con nombre, el nombre manda (spec §4.3).
+ * A shulker inside a container (spec §4.1). It keeps the slot it was in because that is the only
+ * thing that identifies an unnamed shulker; when it has a name, the name wins (spec §4.3).
  *
- * @param customName nombre personalizado, o null si no tiene
+ * @param customName custom name, or null if it has none
  */
 public record NestedShulker(int slot, String customName, String color, Map<String, Integer> items) {
     public NestedShulker {
         items = Map.copyOf(items);
     }
 
-    /** Nombre si lo tiene; si no, su posición. Es la identidad con la que se le sigue la pista. */
+    /** Its name if it has one; otherwise its slot. It is the identity it is tracked by. */
     public String identity() {
         return customName != null && !customName.isBlank() ? customName : "slot:" + slot;
     }

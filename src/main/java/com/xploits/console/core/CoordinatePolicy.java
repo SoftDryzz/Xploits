@@ -14,6 +14,6 @@ public final class CoordinatePolicy {
     }
 
     public static boolean hold(boolean hide, String text) {
-        return hide && Centinela.sospecha(text);
+        return hide && CoordinateSentinel.isSuspect(text);
     }
 }

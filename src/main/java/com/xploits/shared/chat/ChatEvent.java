@@ -1,6 +1,6 @@
 package com.xploits.shared.chat;
 
-/** Mensaje de chat reconocido. Lo produce {@link ChatPatterns#classify(String)}. */
+/** A recognised chat message. Produced by {@link ChatPatterns#classify(String)}. */
 public sealed interface ChatEvent {
     record Placed() implements ChatEvent {}
     record Cooldown(long millis) implements ChatEvent {}
