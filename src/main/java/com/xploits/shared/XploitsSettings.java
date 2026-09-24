@@ -1,6 +1,7 @@
 package com.xploits.shared;
 
 import com.xploits.XploitsAddon;
+import com.xploits.shared.core.ChatLogMask;
 import com.xploits.shared.core.i18n.LanguageChoice;
 import com.xploits.shared.core.i18n.LanguageText;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -18,6 +19,13 @@ public class XploitsSettings extends XploitsModule {
         .description(Texts.startupText(LanguageText.SETTING_LANGUAGE))
         .defaultValue(LanguageChoice.AUTO)
         .onChanged(Languages::settingChanged)
+        .build());
+
+    public final Setting<ChatLogMask.Mode> hideCoordinatesInLog = sgGeneral.add(new EnumSetting.Builder<ChatLogMask.Mode>()
+        .name("hide-coordinates-in-log")
+        .description(Texts.startupText(LanguageText.SETTING_HIDE_COORDINATES_IN_LOG))
+        .defaultValue(ChatLogMask.Mode.ALL)
+        .onChanged(ChatLogFilter::set)
         .build());
 
     public XploitsSettings() {

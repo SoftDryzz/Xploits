@@ -2,9 +2,11 @@ package com.xploits.console;
 
 import com.xploits.console.core.Centinela;
 import com.xploits.console.core.ConsoleText;
+import com.xploits.console.core.CoordinatePolicy;
 import com.xploits.console.core.Instantanea;
 import com.xploits.console.core.Nivel;
 import com.xploits.shared.Texts;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
@@ -31,6 +33,7 @@ public final class Salida {
     private static final AtomicBoolean CENTINELA_AVISADO = new AtomicBoolean();
     private static final AtomicBoolean GANCHO = new AtomicBoolean();
     private static volatile Sumidero activo;
+    private static volatile boolean ocultarCoordenadas = true;
 
     private Salida() {
     }
@@ -43,6 +46,16 @@ public final class Salida {
         activo = null;
     }
 
+    /** The console module's {@code hide-coordinates} setting; takes effect from the next line. */
+    static void ocultarCoordenadas(boolean ocultar) {
+        ocultarCoordenadas = ocultar;
+    }
+
+    /** The half of a positioned message the console gets under the current setting. */
+    public static Msg paraConsola(PositionedMsg msg) {
+        return CoordinatePolicy.pick(ocultarCoordenadas, msg.chat(), msg.log());
+    }
+
     static long siguienteSeq() {
         return SEQ.getAndIncrement();
     }
@@ -51,7 +64,7 @@ public final class Salida {
         Sumidero s = activo;
         if (s == null) return;
         String escrito = texto;
-        if (Centinela.sospecha(texto)) {
+        if (CoordinatePolicy.hold(ocultarCoordenadas, texto)) {
             avisarCentinela(fuente);
             escrito = Texts.render(Centinela.retenido(fuente));
         }
@@ -63,7 +76,7 @@ public final class Salida {
         if (s == null) return;
         List<Instantanea.EstadoModulo> modulos = new ArrayList<>();
         for (Instantanea.EstadoModulo m : foto.modulos()) {
-            if (Centinela.sospecha(m.ahora())) {
+            if (CoordinatePolicy.hold(ocultarCoordenadas, m.ahora())) {
                 avisarCentinela(m.nombre());
                 modulos.add(new Instantanea.EstadoModulo(m.nombre(), m.activo(), Texts.render(ConsoleText.HELD_SHORT)));
             } else {

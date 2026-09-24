@@ -61,7 +61,7 @@ public abstract class ComandoBase extends Command {
     }
 
     protected void responder(Nivel nivel, String fuente, PositionedMsg msg) {
-        Salida.mensaje(nivel, fuente, Texts.render(msg.log()));
+        Salida.mensaje(nivel, fuente, Texts.render(Salida.paraConsola(msg)));
         String chat = Texts.render(msg.chat());
         switch (nivel) {
             case INFO -> super.info("%s", chat); // i18n: allowed

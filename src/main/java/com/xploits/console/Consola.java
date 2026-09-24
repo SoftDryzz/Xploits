@@ -10,6 +10,9 @@ import com.xploits.shared.XploitsModule;
 import com.xploits.shared.core.i18n.Msg;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.settings.BoolSetting;
+import meteordevelopment.meteorclient.settings.Setting;
+import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.Items;
@@ -44,6 +47,15 @@ public class Consola extends XploitsModule {
     private FileChannel canalDelCerrojo;
     private FileLock cerrojo;
     private int ticks;
+
+    private final SettingGroup sgGeneral = settings.getDefaultGroup();
+
+    private final Setting<Boolean> hideCoordinates = sgGeneral.add(new BoolSetting.Builder()
+        .name("hide-coordinates")
+        .description(Texts.startupText(ConsoleText.SETTING_HIDE_COORDINATES))
+        .defaultValue(true)
+        .onChanged(Salida::ocultarCoordenadas)
+        .build());
 
     public Consola() {
         super(XploitsAddon.CATEGORY, "consola", Texts.startupText(ConsoleText.MODULE_DESC));

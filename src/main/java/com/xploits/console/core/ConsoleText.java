@@ -5,6 +5,7 @@ import com.xploits.shared.core.i18n.MessageKey;
 /** Game-side texts of the console: the module, its notices, the held-back marker and the history file. */
 public enum ConsoleText implements MessageKey {
     MODULE_DESC,
+    SETTING_HIDE_COORDINATES,
     LEVEL_INFO,
     LEVEL_WARNING,
     LEVEL_ERROR,

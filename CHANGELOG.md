@@ -6,6 +6,31 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-09-24
+
+### Fixed
+
+- Coordinates no longer reach Minecraft's `latest.log`. Minecraft copies every chat line there, so
+  Baritone's goal echoes, Xploits' own launch and status messages and other mods' finds wrote the
+  player's position to disk.
+  - `auto-travel` and `nether-sweep` turn on Baritone's `censorCoordinates` and `censorRanCommands`
+    before the first goal. They stay on after landing: Baritone saves them to disk, and turning them
+    off would undo a censor the player already had.
+  - A new `hide-coordinates-in-log` setting in the `xploits` module masks coordinates (`***`) in the
+    logged copy of chat lines and in Baritone's region-file lines (`Saving region x,z`). The chat on
+    screen is unchanged. Values: `Off`, `Baritone`, `All` (default), `All but Baritone`.
+
+### Added
+
+- `consola` has a `hide-coordinates` setting, on by default. Turned off, the window and its history
+  show the same text as the chat, positions included, and keep them on disk.
+
+### Notes
+
+- Logs written before this version are not cleaned.
+- If another mod replaces how Minecraft logs chat, the game will not start with Xploits: hiding
+  coordinates fails closed.
+
 ## [0.3.0] — 2026-09-23
 
 ### Added

@@ -619,8 +619,8 @@ public class AutoTravel extends XploitsModule {
     /**
      * Que la red haya tenido que actuar significa que Baritone no está interceptando, y eso el
      * jugador lo quiere saber: cualquier comando que escriba a mano sí se publicaría. Una vez por
-     * viaje, y fuerte: si se repitiera por cada comando de la preparación serían ocho líneas
-     * seguidas y se perdería la única que importa.
+     * viaje, y fuerte: si se repitiera por cada comando de la preparación serían una línea por
+     * cada #set seguidas y se perdería la única que importa.
      */
     private void warnNetCaught(String text) {
         if (netCaughtWarned) return;
@@ -905,7 +905,7 @@ public class AutoTravel extends XploitsModule {
 
     /**
      * Preparación de spec §6.2, pasos 5 y 6: los dos módulos y, de una pieza, la secuencia de
-     * ajustes de Baritone. Los siete {@code #set} salen juntos a propósito -{@code elytraAutoSwap}
+     * ajustes de Baritone. Todos los {@code #set} salen juntos a propósito -{@code elytraAutoSwap}
      * incluido-: es la secuencia que el núcleo construye y prueba como una sola cosa, y partirla
      * para meter el encendido de un módulo nuestro en medio no cambia nada observable.
      */

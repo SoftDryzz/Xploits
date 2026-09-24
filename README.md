@@ -232,8 +232,9 @@ escribieras a mano se publicarían en el chat del servidor**.
 ```
 
 ⚠️ **Tus coordenadas viven en más sitios de los que crees**: en `modules.nbt` si pones un destino
-absoluto, en `logs/latest.log` cada vez que Baritone recibe un objetivo, y en los datos de Xaero. Si
-compartes un log para que te ayuden con algo, **límpialo antes**. Ver [Seguridad](docs/seguridad.md).
+absoluto, en los logs de Minecraft anteriores a la 0.3.1 (desde entonces se tapan, ver [Coordenadas
+en los logs](#coordenadas-en-los-logs)) y en los datos de Xaero. Si compartes un log para que te
+ayuden con algo, **límpialo antes**. Ver [Seguridad](docs/seguridad.md).
 
 ---
 
@@ -249,6 +250,20 @@ el siguiente reinicio.
 
 ⚠️ **Con Minecraft en inglés, el addon arranca en inglés.** Si quieres español desde el principio,
 pon `.xploits language es` la primera vez.
+
+## Coordenadas en los logs
+
+Minecraft copia cada línea del chat en `logs/latest.log`, así que cualquier posición que salga en el
+chat acaba en disco. El ajuste `hide-coordinates-in-log` del módulo `xploits` las tapa con `***` en
+esa copia (en pantalla se siguen viendo): `Off`, `Baritone` (solo sus líneas), `All` (por defecto) o
+`All but Baritone`. También tapa los `Saving region x,z` que Baritone escribe por su cuenta.
+`auto-travel` y `nether-sweep` además activan la censura de Baritone (`censorCoordinates`,
+`censorRanCommands`) antes del primer objetivo, y la dejan puesta.
+
+La consola oculta las coordenadas por defecto. Con su ajuste `hide-coordinates` apagado muestra lo
+mismo que el chat y las guarda en disco (hasta 30 días de historial).
+
+Los logs anteriores a la 0.3.1 no se limpian.
 
 ---
 

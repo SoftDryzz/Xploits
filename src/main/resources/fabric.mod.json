@@ -9,6 +9,7 @@
   "entrypoints": {
     "meteor": ["com.xploits.XploitsAddon"]
   },
+  "mixins": ["xploits.mixins.json"],
   "custom": {
     "meteor-client:color": "125,78,155"
   },

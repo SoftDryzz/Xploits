@@ -62,6 +62,21 @@ class BaritoneScriptTest {
     }
 
     @Test
+    void preparationCensorsCoordinatesBeforeAnyGoalIsSent() {
+        List<String> commands = BaritoneScript.preparation(PREFIX, flying());
+        assertEquals("#set censorCoordinates true", commands.get(0));
+        assertEquals("#set censorRanCommands true", commands.get(1));
+    }
+
+    @Test
+    void restorationLeavesTheCensorsOn() {
+        // Baritone saves #set to disk: turning them off would undo a censor the player already had.
+        List<String> restoration = BaritoneScript.restoration(PREFIX, flying());
+        assertFalse(any(restoration, "censorCoordinates"));
+        assertFalse(any(restoration, "censorRanCommands"));
+    }
+
+    @Test
     void anEmptySeedIsNotWritten() {
         assertFalse(any(BaritoneScript.preparation(PREFIX, flying()), "elytraNetherSeed"));
     }

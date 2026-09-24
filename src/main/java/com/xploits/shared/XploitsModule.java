@@ -78,17 +78,17 @@ public abstract class XploitsModule extends Module {
     }
 
     public void infoPrivado(PositionedMsg msg) {
-        Salida.mensaje(Nivel.INFO, name, Texts.render(msg.log()));
+        Salida.mensaje(Nivel.INFO, name, Texts.render(Salida.paraConsola(msg)));
         super.info("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void warningPrivado(PositionedMsg msg) {
-        Salida.mensaje(Nivel.AVISO, name, Texts.render(msg.log()));
+        Salida.mensaje(Nivel.AVISO, name, Texts.render(Salida.paraConsola(msg)));
         super.warning("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
     public void errorPrivado(PositionedMsg msg) {
-        Salida.mensaje(Nivel.ERROR, name, Texts.render(msg.log()));
+        Salida.mensaje(Nivel.ERROR, name, Texts.render(Salida.paraConsola(msg)));
         super.error("%s", Texts.render(msg.chat())); // i18n: allowed
     }
 
