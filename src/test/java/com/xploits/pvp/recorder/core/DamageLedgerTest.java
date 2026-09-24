@@ -171,6 +171,15 @@ class DamageLedgerTest {
     }
 
     @Test
+    void theTotemsHealthMayStillArriveThreeTicksAfterThePop() {
+        DamageLedger ledger = ledger(20);
+        ledger.noteHit(300, CRYSTAL_BY_FOO);
+        ledger.observe(300, 20, true);
+        // Last tick of the grace: the hit at 300 is matched and within ten ticks, yet this is the totem.
+        assertEquals(List.of(), ledger.observe(303, 9, false));
+    }
+
+    @Test
     void aSecondHitRightAfterAPopIsStillCounted() {
         DamageLedger ledger = ledger(20);
         ledger.noteHit(300, CRYSTAL_BY_FOO);

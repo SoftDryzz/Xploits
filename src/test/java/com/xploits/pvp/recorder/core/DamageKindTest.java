@@ -23,12 +23,12 @@ class DamageKindTest {
         MAPPED.put("explosion", DamageKind.EXPLOSION);
         MAPPED.put("bad_respawn_point", DamageKind.RESPAWN_POINT);
         MAPPED.put("falling_anvil", DamageKind.ANVIL);
-        for (String id : new String[] {"player_attack", "mace_smash", "spear"}) MAPPED.put(id, DamageKind.MELEE);
+        for (String id : new String[] {"player_attack", "mace_smash", "spear", "thorns"}) MAPPED.put(id, DamageKind.MELEE);
         for (String id : new String[] {"arrow", "trident", "fireworks", "thrown", "wind_charge", "mob_projectile",
             "fireball", "unattributed_fireball", "wither_skull", "spit"}) {
             MAPPED.put(id, DamageKind.PROJECTILE);
         }
-        for (String id : new String[] {"fall", "fly_into_wall", "ender_pearl", "stalagmite"}) MAPPED.put(id, DamageKind.FALL);
+        for (String id : new String[] {"fall", "fly_into_wall", "ender_pearl", "stalagmite", "falling_stalactite"}) MAPPED.put(id, DamageKind.FALL);
         for (String id : new String[] {"in_fire", "on_fire", "lava", "hot_floor", "campfire", "lightning_bolt"}) {
             MAPPED.put(id, DamageKind.FIRE);
         }
