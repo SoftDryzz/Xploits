@@ -40,6 +40,7 @@ final class Ticks {
     private final Set<String> modules = new TreeSet<>();
     private boolean autoPvpOn;
     private AutoPvpView autoPvp;
+    private String profile;
 
     /** The tick the next {@link #next} builds. */
     long tick() {
@@ -138,12 +139,18 @@ final class Ticks {
         return this;
     }
 
+    /** The active style profile from here on, or null (the default) when it is not known. */
+    Ticks profile(String name) {
+        profile = name;
+        return this;
+    }
+
     /** This tick, with these events; then moves on to the next. */
     TickInput next(CombatEvent... events) {
         List<Hostile> list = new ArrayList<>();
         hostiles.forEach((name, distance) -> list.add(new Hostile(name, distance)));
         SelfState self = new SelfState(health, incoming, totems, offhandTotem, crystals, obsidian, gapples, armor, inHole, gliding);
-        TickInput in = new TickInput(tick, millis(tick), alive, self, list, modules, autoPvpOn, autoPvp, List.of(events));
+        TickInput in = new TickInput(tick, millis(tick), alive, self, list, modules, autoPvpOn, autoPvp, List.of(events), profile);
         tick++;
         return in;
     }

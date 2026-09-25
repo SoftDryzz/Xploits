@@ -9,15 +9,24 @@ import java.util.Set;
 
 /**
  * Everything the adapter measured in one client tick, with no position in it: distances, counts,
- * booleans and names only. {@code autoPvp} is null when auto-pvp is off or has no plan yet.
+ * booleans and names only. {@code autoPvp} is null when auto-pvp is off or has no plan yet. {@code profile}
+ * is the name of the active style profile, null when it is not known (the adapter has not wired it, or an
+ * older one that never sent it).
  */
 public record TickInput(long tick, long epochMillis, boolean alive, SelfState self, List<Hostile> hostiles,
-                        Set<String> activeModules, boolean autoPvpOn, AutoPvpView autoPvp, List<CombatEvent> events) {
+                        Set<String> activeModules, boolean autoPvpOn, AutoPvpView autoPvp, List<CombatEvent> events,
+                        String profile) {
     public TickInput {
         Objects.requireNonNull(self, "self");
         hostiles = List.copyOf(hostiles);
         activeModules = Set.copyOf(activeModules);
         events = List.copyOf(events);
+    }
+
+    /** Old shape with no profile known yet (nullable {@link #profile}, kept so existing callers still compile). */
+    public TickInput(long tick, long epochMillis, boolean alive, SelfState self, List<Hostile> hostiles,
+                     Set<String> activeModules, boolean autoPvpOn, AutoPvpView autoPvp, List<CombatEvent> events) {
+        this(tick, epochMillis, alive, self, hostiles, activeModules, autoPvpOn, autoPvp, events, null);
     }
 
     /**

@@ -813,6 +813,84 @@ class FightTrackerTest {
         assertEquals(2, tracker.seconds());
     }
 
+    // --- profile -------------------------------------------------------------------------------------
+
+    @Test
+    void theProfileAtStartIsTheOneOnTheOpeningTickAndChangesAreRecordedWhileTheFightIsOpen() {
+        ticks.profile("balanced");
+        attackFoo();
+        idle(19);
+        ticks.profile("aggressive");
+        feed(attack("Foo"));
+        idle(19);
+        ticks.profile("defensive");
+        feed(attack("Foo"));
+        FightRecord f = abortNow();
+        assertEquals("balanced", f.profile());
+        assertEquals(List.of(new FightRecord.ProfileChange(1, "aggressive"), new FightRecord.ProfileChange(2, "defensive")),
+            f.profileChanges());
+    }
+
+    @Test
+    void theDeathKeepsTheProfileOfTheLastTickAlive() {
+        ticks.hostile("Foo", 4).profile("balanced");
+        attackFoo();
+        idle(10);
+        ticks.alive(false).profile(null);
+        FightRecord f = feed(selfDied()).finished().orElseThrow();
+        assertEquals("balanced", f.profile());
+        assertEquals(List.of(), f.profileChanges());
+    }
+
+    @Test
+    void aFightWithNoProfileEverKnownHasANullProfileAndNoChanges() {
+        attackFoo();
+        idle(5);
+        FightRecord f = abortNow();
+        assertNull(f.profile());
+        assertEquals(List.of(), f.profileChanges());
+    }
+
+    @Test
+    void profileChangesAreCappedAtMaxChanges() {
+        attackFoo();
+        for (int i = 0; i < FightTracker.MAX_CHANGES + 50; i++) {
+            ticks.profile(i % 2 == 0 ? "aggressive" : "balanced");
+            feed(attack("Foo"));
+        }
+        FightRecord f = abortNow();
+        assertEquals(FightTracker.MAX_CHANGES, f.profileChanges().size());
+    }
+
+    // --- live ----------------------------------------------------------------------------------------
+
+    @Test
+    void liveIsEmptyBeforeAndAfterAFight() {
+        assertEquals(Optional.empty(), tracker.live());
+        attackFoo();
+        abortNow();
+        assertEquals(Optional.empty(), tracker.live());
+    }
+
+    @Test
+    void liveReportsSecondsPopsOnEachSideAndDamageWhileTheFightIsOpen() {
+        ticks.hostile("Foo", 4).totems(8);
+        attackFoo();
+        ticks.totems(7);
+        // The crystal and the pop on the same tick, as popsAreToldAsTheyHappen() does: the pop is the
+        // hit's totem save, not an extra unseen one.
+        feed(crystalBy("Foo"), ownPop());
+        feed(popOf("Foo"));
+        feed(popOf("Foo"));
+        idle(19);
+
+        FightTracker.LiveFight live = tracker.live().orElseThrow();
+        assertEquals(tracker.seconds(), live.seconds());
+        assertEquals(1, live.yourPops());
+        assertEquals(2, live.theirPops());
+        assertEquals(20.0, live.damageTaken());
+    }
+
     @Test
     void resetForgetsTheFight() {
         attackFoo();

@@ -24,11 +24,16 @@ class FightSummaryTest {
         throw new AssertionError(p);
     });
 
-    /** A realistic win: crystals then melee, a module turned off partway, two named opponents. */
+    /**
+     * A realistic win: crystals then melee, a module turned off partway, a profile switch later in the
+     * same fight, two named opponents.
+     */
     private static FightRecord won() {
         return Fights.ending(FightOutcome.WON).seconds(25).totems(8, 6, true)
             .modules("auto-totem", "crystal-aura", "surround")
             .moduleChange(12, "surround", false)
+            .profile("balanced")
+            .profileChange(18, "aggressive")
             .phase(0, CombatState.SURFACE, FOE)
             .phase(15, CombatState.SURROUNDED, FOE)
             .opponent(OTHER_FOE)
@@ -80,12 +85,12 @@ class FightSummaryTest {
 
     @Test
     void droppingALineFromTheReviewChangesItsLength() {
-        // header, self, damage header + crystal + melee + unseen, offense, modules,
+        // header, self, damage header + crystal + melee + unseen, offense, modules, changes header + 1 change,
         // phases header + 1 phase, causes header + 4 causes (OUT_OF_TOTEMS, CRYSTAL_OUTPACED, UNDEFENDED, ARMOR_BROKE)
-        assertEquals(15, FightSummary.review(Fights.crystalDeath(), 1).size());
-        // won(): header, self, damage header + crystal + melee (no unseen), offense, modules,
-        // phases header + 2 phases; WON has no causes section at all
-        assertEquals(10, FightSummary.review(won(), 1).size());
+        assertEquals(17, FightSummary.review(Fights.crystalDeath(), 1).size());
+        // won(): header, self, damage header + crystal + melee (no unseen), offense, modules, profile,
+        // changes header + 2 changes, phases header + 2 phases; WON has no causes section at all
+        assertEquals(14, FightSummary.review(won(), 1).size());
     }
 
     @Test
@@ -165,5 +170,42 @@ class FightSummaryTest {
         assertEquals("#3 · lost · 43 s · Foo · auto-pvp · 2 h ago", EN.render(FightSummary.listLine(3, Fights.crystalDeath(), "2 h ago")));
         assertEquals("#1 · won · 25 s · Foo, Bar · manual · just now", EN.render(FightSummary.listLine(1, won(), "just now")));
         assertEquals("#5 · ended · 20 s · Foo · manual · 1 d ago", EN.render(FightSummary.listLine(5, ended(), "1 d ago")));
+    }
+
+    // --- profile and changes -------------------------------------------------------------------------
+
+    @Test
+    void theProfileLineNamesTheProfileActiveWhenTheFightOpened() {
+        List<String> en = FightSummary.review(won(), 1).stream().map(EN::render).toList();
+        List<String> es = FightSummary.review(won(), 1).stream().map(ES::render).toList();
+        assertTrue(en.contains("Profile: balanced"), en.toString());
+        assertTrue(es.contains("Perfil: balanced"), es.toString());
+    }
+
+    @Test
+    void aFightWithNoProfileOrChangesShowsNeitherLine() {
+        List<String> rendered = FightSummary.review(ended(), 1).stream().map(EN::render).toList();
+        assertTrue(rendered.stream().noneMatch(l -> l.startsWith("Profile:")), rendered.toString());
+        assertTrue(rendered.stream().noneMatch(l -> l.equals("Changes:")), rendered.toString());
+    }
+
+    @Test
+    void changesMergeModuleAndProfileSwitchesInTimeOrder() {
+        FightRecord f = Fights.ending(FightOutcome.ENDED).seconds(10).totems(8, 8, true).modules("auto-totem")
+            .profile("balanced")
+            .moduleChange(3, "surround", true)
+            .profileChange(5, "aggressive")
+            .moduleChange(5, "surround", false)
+            .build();
+        List<Msg> lines = FightSummary.review(f, 1);
+        List<String> rendered = lines.stream().map(EN::render).toList();
+
+        int header = rendered.indexOf("Changes:");
+        assertTrue(header >= 0, rendered.toString());
+        assertEquals(List.of("  3 s · surround · on", "  5 s · surround · off", "  5 s · profile · aggressive"),
+            rendered.subList(header + 1, header + 4));
+
+        assertEquals("Cambios:", ES.render(lines.get(header)));
+        assertEquals("  5 s · perfil · aggressive", ES.render(lines.get(header + 3)));
     }
 }

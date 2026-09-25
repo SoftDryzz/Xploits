@@ -80,6 +80,12 @@ public enum RecorderText implements MessageKey {
     SUMMARY_UNSEEN,
     SUMMARY_OFFENSE,
     SUMMARY_MODULES,
+    /** The style profile active when the fight opened; absent from a fight recorded before profiles existed. */
+    SUMMARY_PROFILE,
+    /** Header before the merged, time-ordered module and profile changes. */
+    SUMMARY_CHANGES,
+    SUMMARY_CHANGE_MODULE,
+    SUMMARY_CHANGE_PROFILE,
     SUMMARY_PHASES,
     SUMMARY_PHASE_PART,
     /** Shown before the kept phases when older ones were trimmed: how many are not shown. */

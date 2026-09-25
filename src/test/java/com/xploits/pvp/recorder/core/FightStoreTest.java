@@ -222,8 +222,28 @@ class FightStoreTest {
         List<String> modulesAtStart = List.of("auto-totem", "crystal-aura", "surround");
         List<ModuleChange> moduleChanges = List.of(new ModuleChange(12, "hole-filler", true));
         List<PhaseChange> phases = List.of(new PhaseChange(0, CombatState.SURFACE, CombatPosture.CALM, "Foo"));
+        List<FightRecord.ProfileChange> profileChanges = List.of(new FightRecord.ProfileChange(20, "aggressive"));
 
         return new FightRecord(FightRecord.SCHEMA, "0.5.0", startedAt, endedAt, 43, FightOutcome.LOST, false,
-            FightMode.AUTO_PVP, 41, opponents, 2, self, damage, 0, samples, modulesAtStart, moduleChanges, phases);
+            FightMode.AUTO_PVP, 41, opponents, 2, self, damage, 0, samples, modulesAtStart, moduleChanges, phases,
+            "balanced", profileChanges);
+    }
+
+    @Test
+    void aSchemaOneFileWithoutProfileOrProfileChangesReadsAsNullAndEmpty() throws IOException {
+        Path file = dir.resolve("fight-1.json");
+        String json = "{\"schema\": 1, \"addonVersion\": \"0.5.0\", \"startedAt\": 0, \"endedAt\": 1000,"
+            + " \"durationSeconds\": 1, \"outcome\": \"ENDED\", \"truncated\": false, \"mode\": \"MANUAL\","
+            + " \"autoPvpSeconds\": 0, \"opponents\": [], \"maxHostilesNear\": 0,"
+            + " \"self\": {\"pops\": 0, \"totemsStart\": 0, \"totemsEnd\": 0, \"offhandTotemEnd\": false,"
+            + " \"damageTaken\": 0, \"crystalsPlaced\": 0, \"crystalsBroken\": 0, \"attacks\": 0, \"enemyCrystalsNear\": 0},"
+            + " \"damage\": [], \"damageEventsDropped\": 0, \"samples\": [], \"modulesAtStart\": [],"
+            + " \"moduleChanges\": [], \"phases\": []}";
+        Files.writeString(file, json);
+
+        FightRecord loaded = new FightStore(dir).load(file);
+
+        assertNull(loaded.profile());
+        assertEquals(List.of(), loaded.profileChanges());
     }
 }
