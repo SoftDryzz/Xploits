@@ -372,6 +372,7 @@ pvp.concat={first}{second}
 pvp.ally-friend=es amigo de Meteor
 pvp.ally-courier=es courier de kit-requester
 pvp.ally-tpy-user=está en la lista users de auto-tpy
+pvp.profile-off=el perfil activo no lo permite
 pvp.totem-floor=no llevas tótems y el anti-suicide de crystal-aura está apagado
 pvp.aura-no-crystals=crystal-aura sin cristales: solo romperá los que te pongan.
 pvp.shortage=tienes {have}, necesita {minimum}

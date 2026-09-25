@@ -21,6 +21,7 @@ public enum PvpText implements MessageKey {
     ALLY_FRIEND,
     ALLY_COURIER,
     ALLY_TPY_USER,
+    PROFILE_OFF,
     TOTEM_FLOOR,
     AURA_NO_CRYSTALS,
     SHORTAGE,
