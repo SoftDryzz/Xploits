@@ -6,22 +6,71 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-25
+
+What is new, in short:
+
+- **Style profiles for `auto-pvp`**: switch between fighting styles with one key.
+- **Choose which modules `auto-pvp` may use**: ten on/off toggles in the ClickGUI.
+- **A HUD panel** that shows what `auto-pvp` is doing, live.
+- **`fight-recorder` records the style** each fight was fought with.
+
 ### Added
 
-- **Style profiles** for `auto-pvp`: three built in (`balanced`, `aggressive`, `defensive`) and up
-  to 20 of your own, each setting `target-range`, `approach-distance`, `threat-margin` and which of
-  the ten managed modules the director may use (`Modules` group, one `use-<module>` toggle each). A
-  profile changes only auto-pvp's own values, never a module's inner settings. Editing a value by
-  hand marks the active profile as modified (`aggressive*`) until saved. The `next-profile` key
-  cycles them; `.xploits pvp profile [list|use|save|delete|reset-file]` manages them with auto-pvp
-  on or off. `fight-recorder` now keeps the profile active when a fight opened and every switch
-  during it, and `.xploits pvp review` shows both.
-- **`xploits-pvp` HUD panel** — a Meteor HUD element, group **Xploits**: phase, posture, target and
-  distance, which modules are on/released/off by profile, crystals/totems/obsidian against what the
-  situation needs, the live fight from `fight-recorder`, and a highlighted danger line (no totems in
-  a fight, out of resources, a resource idle, or the aura without crystals). Settings: `scale`,
-  `shadow`, `background`, `show-fight`. Adds `{xploits.pvp.state|posture|profile|target|distance}`
-  to Starscript.
+- **Style profiles.** A profile sets `auto-pvp`'s `target-range`, `approach-distance` and
+  `threat-margin`, and which modules it may use. It never changes the settings inside
+  crystal-aura, surround or any other module.
+  - Three built in, all editable:
+
+    | Profile | target-range | approach-distance | threat-margin | Modules |
+    |---|---|---|---|---|
+    | `balanced` | 16 | 6 | 12 | all (same as before 0.6.0) |
+    | `aggressive` | 24 | 4 | 8 (defends later) | all |
+    | `defensive` | 12 | 6 | 16 (defends sooner) | all but `auto-city` and `auto-anvil` |
+
+  - Up to 20 of your own: set things up as you like, then `.xploits pvp profile save <name>`.
+  - **`next-profile`** key (in `auto-pvp`'s settings) cycles the profiles in a fight.
+  - Changing a value by hand marks the active profile as modified (`aggressive*`) until you save it.
+  - Commands, with `auto-pvp` on or off: `.xploits pvp profile` (active one),
+    `profile list`, `profile use <name>`, `profile save <name>`, `profile delete <name>` (a built-in
+    goes back to its factory values), `profile reset-file`. Names are suggested as you type.
+  - Kept in `meteor-client/xploits/pvp/profiles.json`. A damaged file is never overwritten: the
+    built-ins keep working and saving is refused until `profile reset-file`.
+- **Allowed modules.** A new `Modules` group in `auto-pvp` with one toggle per module it manages
+  (`use-crystal-aura`, `use-auto-trap`, `use-auto-web`, `use-auto-anvil`, `use-auto-city`,
+  `use-surround`, `use-hole-filler`, `use-anti-anvil`, `use-anti-bed`, `use-anti-anchor`). All on by
+  default, which is the behaviour before 0.6.0. Turning `use-crystal-aura` off warns you that you
+  lose the automatic breaking of enemy crystals.
+- **`xploits-pvp` HUD panel.** Add it from Meteor's HUD editor (group **Xploits**). It shows:
+  - a red danger line when something critical is missing (no totems in a fight, out of resources, a
+    module idle for lack of a resource, crystal-aura without crystals);
+  - profile, phase and posture;
+  - target and distance (never a position);
+  - modules on (green), released by you (amber) and off by the profile (grey);
+  - crystals, totems and obsidian, in amber when short of what the fight needs;
+  - the fight in progress from `fight-recorder`: seconds, pops on each side, damage taken.
+
+  Settings: `scale`, `shadow`, `background`, `show-fight`. With `auto-pvp` off it shows one line
+  with the active profile.
+- **Starscript**: `{xploits.pvp.state}`, `{xploits.pvp.posture}`, `{xploits.pvp.profile}`,
+  `{xploits.pvp.target}`, `{xploits.pvp.distance}` for your own text HUD lines.
+
+### Changed
+
+- `auto-pvp` skips a module the profile does not allow, and never keeps a shared resource (for
+  example obsidian) reserved for it. The loud "out of resources" warning now counts only the modules
+  the profile allows, so a defensive profile does not trigger it every fight. Modules skipped by the
+  profile are not announced in chat; the panel shows them.
+- `.xploits pvp` status shows the active profile and lists the modules the profile turned off on one
+  line.
+- `.xploits pvp review` shows the profile a fight started with, and profile and module changes in
+  time order (the last eight).
+
+### How to start
+
+Nothing changes until you use it: after updating, every module is still allowed and `auto-pvp`
+behaves as in 0.5.0. Add the `xploits-pvp` panel from the HUD editor, bind `next-profile` if you want
+a key, and try `.xploits pvp profile use defensive`.
 
 ## [0.5.0] — 2026-09-25
 
