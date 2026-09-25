@@ -371,21 +371,29 @@ public final class Bench {
 
     /** The fights saved since T0, oldest first. */
     public List<FightRecord> newFights() {
-        if (fightsAtT0 == null) throw new BenchException("new fights were read before T0");
+        List<Path> files = newFightFiles();
         return fromClient(client -> {
             FightStore store = recorderModule().store();
-            List<Path> added = new ArrayList<>(listFights());
-            added.removeAll(fightsAtT0);
             List<FightRecord> records = new ArrayList<>();
-            // list() is newest first.
-            for (int i = added.size() - 1; i >= 0; i--) {
+            for (Path file : files) {
                 try {
-                    records.add(store.load(added.get(i)));
+                    records.add(store.load(file));
                 } catch (IOException e) {
                     throw new BenchException("a saved fight could not be read");
                 }
             }
             return records;
+        });
+    }
+
+    /** The files of the fights saved since T0, oldest first (the same order as {@link #newFights}). */
+    public List<Path> newFightFiles() {
+        if (fightsAtT0 == null) throw new BenchException("new fights were read before T0");
+        return fromClient(client -> {
+            List<Path> added = new ArrayList<>(listFights());
+            added.removeAll(fightsAtT0);
+            // list() is newest first.
+            return List.copyOf(added.reversed());
         });
     }
 

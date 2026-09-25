@@ -122,6 +122,17 @@ public final class Arena {
         bench.onServer(srv -> fill(srv.getOverworld(), -1, -1, -1, 1, -1, 1, Blocks.OBSIDIAN));
     }
 
+    /**
+     * Summons an end crystal {@code dx dy dz} blocks from the player and explodes it with {@code /damage}
+     * at once; the explosion has no attacker. Relative commands only: no position is read or printed.
+     */
+    public void explodeCrystal(int dx, int dy, int dz) {
+        String offset = "~" + dx + " ~" + dy + " ~" + dz;
+        bench.command("execute at " + Bench.PLAYER + " run summon minecraft:end_crystal " + offset);
+        bench.command("execute at " + Bench.PLAYER + " positioned " + offset
+            + " run damage @e[type=minecraft:end_crystal,distance=..0.5,limit=1] 1");
+    }
+
     // --- Loadouts -------------------------------------------------------------------------------
 
     /**
