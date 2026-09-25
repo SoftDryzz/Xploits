@@ -2,6 +2,7 @@ package com.xploits.bench;
 
 import com.mojang.authlib.GameProfile;
 import net.fabricmc.fabric.api.entity.FakePlayer;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
@@ -15,6 +16,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Hand;
+import net.minecraft.util.Unit;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.List;
@@ -57,8 +59,8 @@ public final class Sparring extends FakePlayer {
 
     /**
      * Builds the script's blocks, then spawns the sparring at the script's spawn point, facing the
-     * player: netherite with blast protection IV, an offhand totem, full health, no effects. The tab entry
-     * goes out before the entity, so the client never sees a player without one.
+     * player: unbreakable netherite with blast protection IV, an offhand totem, full health, no effects.
+     * The tab entry goes out before the entity, so the client never sees a player without one.
      */
     static Sparring spawn(MinecraftServer srv, ServerPlayerEntity player, Arena arena, Script script) {
         ServerWorld world = srv.getOverworld();
@@ -88,8 +90,15 @@ public final class Sparring extends FakePlayer {
      * (armour, toughness) and its enchantments' attribute effects (blast protection's knockback
      * resistance) in its tick, which a fake player never runs; this does the same for one piece, as
      * {@code LivingEntity.getEquipmentChanges} does.
+     *
+     * <p>The piece is made unbreakable first: hits wear armour down, and a piece that broke would drop
+     * its blast protection while the attributes applied here stayed (and the client, which gets no
+     * equipment update from a fake player, would keep showing it whole), so the numbers would depend on
+     * when it broke.
      */
     private void wear(ServerWorld world, EquipmentSlot slot, ItemStack stack) {
+        stack.set(DataComponentTypes.UNBREAKABLE, Unit.INSTANCE);
+        if (stack.isDamageable()) throw new BenchException("the sparring's armour is still breakable");
         equipStack(slot, stack);
         stack.applyAttributeModifiers(slot, (attribute, modifier) -> {
             EntityAttributeInstance instance = getAttributes().getCustomInstance(attribute);
