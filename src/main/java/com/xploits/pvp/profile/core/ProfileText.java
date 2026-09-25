@@ -28,6 +28,8 @@ public enum ProfileText implements MessageKey {
     PROFILE_RESET,
     /** The profile that just became active, from {@code use} or {@code next}. */
     PROFILE_ACTIVE,
+    /** {@code .xploits pvp profile} with no argument: the active profile and whether it is modified. */
+    PROFILE_STATUS,
     PROFILE_LIST_HEADER,
     /** One row of {@code profile list}; {@code {active}} is {@link #PROFILE_LIST_ACTIVE} or empty. */
     PROFILE_LIST_LINE,
