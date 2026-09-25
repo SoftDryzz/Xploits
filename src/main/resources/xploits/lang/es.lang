@@ -442,6 +442,26 @@ pvp.state-out-of-resources=SIN_RECURSOS
 pvp.posture-calm=TRANQUILO
 pvp.posture-threatened=AMENAZADO
 
+# profile
+profile.profile-unknown=No hay ningún perfil llamado {name}. Conocidos: {list}.
+profile.profile-bad-name={name} no es un nombre de perfil válido: minúsculas, dígitos y guiones, de 1 a 16 caracteres.
+profile.profile-limit-reached=Ya tienes {limit} perfiles propios: borra uno antes de guardar otro nuevo.
+profile.profile-nothing-allowed=El perfil {name} no permite ningún módulo: auto-pvp solo observará.
+profile.profile-no-autobreak=El perfil {name} no permite crystal-aura: pierde el autobreak.
+profile.profile-saved=Perfil {name} guardado.
+profile.profile-deleted=Perfil {name} borrado.
+profile.profile-reset=El perfil {name} es de fábrica: se restablece a sus valores en vez de borrarse.
+profile.profile-active=Perfil activo: {name}.
+profile.profile-list-header=Perfiles:
+profile.profile-list-line={name}{active}
+profile.profile-list-active= (activo)
+profile.profile-file-corrupt=profiles.json está corrupto: {detail}. Uso los perfiles de fábrica; el guardado está apagado hasta .xploits pvp profile reset-file.
+profile.profile-file-corrupt-log=profiles.json está corrupto. El detalle, solo en el chat.
+profile.profile-file-locked=Guardado apagado: profiles.json está corrupto. Ejecuta .xploits pvp profile reset-file para empezar de nuevo.
+profile.profile-save-failed=No se pudieron guardar los perfiles: {detail}
+profile.profile-save-failed-log=No se pudieron guardar los perfiles. El detalle, solo en el chat.
+profile.profile-file-reset=profiles.json restablecido: el fichero corrupto se apartó y los perfiles de fábrica vuelven a estar disponibles. Ya puedes guardar.
+
 # recorder
 recorder.module-desc=Graba cada pelea, con auto-pvp encendido o apagado, y averigua por qué moriste. No guarda posiciones: solo distancias, cantidades y nombres. Repásalas con .xploits pvp review.
 recorder.setting-death-notice=Al morir en una pelea grabada, una línea en el chat con la causa probable principal.

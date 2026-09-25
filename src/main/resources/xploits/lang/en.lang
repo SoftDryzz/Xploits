@@ -442,6 +442,26 @@ pvp.state-out-of-resources=OUT OF RESOURCES
 pvp.posture-calm=CALM
 pvp.posture-threatened=THREATENED
 
+# profile
+profile.profile-unknown=No profile named {name}. Known: {list}.
+profile.profile-bad-name={name} is not a valid profile name: lowercase letters, digits and hyphens, 1 to 16 characters.
+profile.profile-limit-reached=You already have {limit} profiles of your own: delete one before saving a new one.
+profile.profile-nothing-allowed=Profile {name} allows no module: auto-pvp will only watch.
+profile.profile-no-autobreak=Profile {name} does not allow crystal-aura: it loses the autobreak.
+profile.profile-saved=Profile {name} saved.
+profile.profile-deleted=Profile {name} deleted.
+profile.profile-reset=Profile {name} is built in: reset to its factory values instead of deleted.
+profile.profile-active=Active profile: {name}.
+profile.profile-list-header=Profiles:
+profile.profile-list-line={name}{active}
+profile.profile-list-active= (active)
+profile.profile-file-corrupt=profiles.json is corrupt: {detail}. Using the built-in profiles; saving is off until .xploits pvp profile reset-file.
+profile.profile-file-corrupt-log=profiles.json is corrupt. The detail is in chat only.
+profile.profile-file-locked=Saving is off: profiles.json is corrupt. Run .xploits pvp profile reset-file to start over.
+profile.profile-save-failed=Could not save the profiles: {detail}
+profile.profile-save-failed-log=Could not save the profiles. The detail is in chat only.
+profile.profile-file-reset=profiles.json reset: the corrupt file was moved aside and the built-in profiles are back. You can save again.
+
 # recorder
 recorder.module-desc=Records every fight, with auto-pvp on or off, and works out why you died. No positions are stored: distances, counts and names only. Review them with .xploits pvp review.
 recorder.setting-death-notice=When you die in a recorded fight, one chat line with the main probable cause.
