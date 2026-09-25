@@ -584,6 +584,11 @@ hud.join-comma={first}, {rest}
 hud.join-and={first} and {second}
 hud.script-off=off
 hud.script-distance={distance,1}
+hud.element-description=Auto-pvp status: phase, posture, target, modules and resources.
+hud.setting-scale=Text scale of the panel.
+hud.setting-shadow=Draws a shadow behind the panel's text.
+hud.setting-background=Background colour of the panel.
+hud.setting-show-fight=Shows the live fight line while the recorder has one open.
 
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.

@@ -37,7 +37,17 @@ public enum HudText implements MessageKey {
     /** {@code {xploits.pvp.state}} with auto-pvp off or no world. */
     SCRIPT_OFF,
     /** One decimal, locale-formatted; used for {@code {xploits.pvp.distance}}. */
-    SCRIPT_DISTANCE;
+    SCRIPT_DISTANCE,
+    /** The {@code xploits-pvp} HUD element's description in the Add-element screen. */
+    ELEMENT_DESCRIPTION,
+    /** The element's {@code scale} setting. */
+    SETTING_SCALE,
+    /** The element's {@code shadow} setting. */
+    SETTING_SHADOW,
+    /** The element's {@code background} setting (a {@code SettingColor}; alpha 0 hides it). */
+    SETTING_BACKGROUND,
+    /** The element's {@code show-fight} setting. */
+    SETTING_SHOW_FIGHT;
 
     @Override
     public String area() {
