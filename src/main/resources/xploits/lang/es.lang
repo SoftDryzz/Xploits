@@ -498,6 +498,7 @@ recorder.material-obsidian=obsidiana
 recorder.material-totems=tótems
 recorder.nobody=nadie
 recorder.nothing=
+recorder.none-listed=ninguno
 recorder.join-comma={first}, {rest}
 recorder.concat={first}{second}
 recorder.on=encendido
