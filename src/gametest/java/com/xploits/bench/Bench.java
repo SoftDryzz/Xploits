@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
+import net.fabricmc.fabric.api.client.gametest.v1.screenshot.TestScreenshotOptions;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.command.ReturnValueConsumer;
 import net.minecraft.server.MinecraftServer;
@@ -54,6 +55,8 @@ public final class Bench {
     private final ClientGameTestContext ctx;
     private final TestServerContext server;
     private final int budget;
+    /** {@code build/bench}: where screenshots go. */
+    private final Path out;
     private final List<Runnable> everyTick = new ArrayList<>();
     private final List<Runnable> despawn = new ArrayList<>();
     private final List<Runnable> screenRestore = new ArrayList<>();
@@ -67,10 +70,11 @@ public final class Bench {
     /** The fight files there were at T0. */
     private Set<Path> fightsAtT0;
 
-    Bench(ClientGameTestContext ctx, TestServerContext server, int budgetTicks) {
+    Bench(ClientGameTestContext ctx, TestServerContext server, int budgetTicks, Path out) {
         this.ctx = ctx;
         this.server = server;
         this.budget = budgetTicks;
+        this.out = out;
     }
 
     // --- Time ------------------------------------------------------------------------------------
@@ -121,6 +125,15 @@ public final class Bench {
 
     public <T, E extends Throwable> T fromServer(FailableFunction<MinecraftServer, T, E> function) throws E {
         return server.computeOnServer(function);
+    }
+
+    /**
+     * Saves what the screen shows as {@code <name>.png} in {@code build/bench} (no counter prefix) and
+     * returns the file. The ticks the capture waits are not {@link #ticks bench ticks}: the sparring does
+     * not step during them and they do not count against the budget.
+     */
+    public Path screenshot(String name) {
+        return ctx.takeScreenshot(TestScreenshotOptions.of(name).disableCounterPrefix().withDestinationDir(out));
     }
 
     // --- Player and commands ---------------------------------------------------------------------

@@ -58,7 +58,7 @@ public class BenchTest implements FabricClientGameTest {
 
         for (Scenario scenario : selected) {
             for (int i = 1; i <= scenario.runs(); i++) {
-                Run run = runOnce(ctx, scenario);
+                Run run = runOnce(ctx, scenario, config.out());
                 LOG.info("[bench] {} run {}/{}: {}{}", scenario.name(), i, scenario.runs(), run.status(),
                     run.error() == null ? "" : " (" + run.error() + ")");
                 report.add(scenario, run);
@@ -96,12 +96,12 @@ public class BenchTest implements FabricClientGameTest {
      * teardown step that fails, or a module it leaves on, turns a passing run into ERROR, and is added to
      * the error of a run that already failed.
      */
-    private static Run runOnce(ClientGameTestContext ctx, Scenario scenario) {
+    private static Run runOnce(ClientGameTestContext ctx, Scenario scenario, Path out) {
         String phase = "world";
         Run run;
         try (TestSingleplayerContext world = ctx.worldBuilder().adjustSettings(BenchTest::superflat).create()) {
             world.getClientWorld().waitForChunksRender();
-            Bench bench = new Bench(ctx, world.getServer(), scenario.budgetTicks());
+            Bench bench = new Bench(ctx, world.getServer(), scenario.budgetTicks(), out);
             try {
                 phase = "prepare";
                 bench.prepare();

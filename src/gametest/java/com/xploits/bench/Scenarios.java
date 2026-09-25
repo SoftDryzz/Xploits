@@ -8,6 +8,7 @@ public final class Scenarios {
     }
 
     public static List<Scenario> all() {
-        return List.of(new Smoke(), new RecorderPopEnd(), new RecorderLost(), new RecorderOpponent());
+        return List.of(new Smoke(), new RecorderPopEnd(), new RecorderLost(), new RecorderOpponent(),
+            new AutoPvpEngages(), new ProfileDefensive(), new Panel());
     }
 }
