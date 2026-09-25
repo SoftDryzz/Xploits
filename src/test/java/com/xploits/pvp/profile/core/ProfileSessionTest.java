@@ -135,15 +135,38 @@ class ProfileSessionTest {
         assertEquals(BuiltInProfiles.AGGRESSIVE, session.book().active());
     }
 
-    /** Deleting a built-in that is active but already untouched (already at factory values) is a no-op
-     *  to apply: nothing actually changed, so there is nothing to reapply and no extra message. */
+    /**
+     * Deleting the active profile always re-applies the resulting active profile's values, even when the
+     * stored entry already matches them (here: {@code balanced} was never saved over, so in the book it
+     * already equals its factory values). The book alone cannot see this, but the player may well have
+     * hand-edited the live settings without saving ("balanced*" in the panel); the ruling is that a
+     * delete of what is active is a deliberate action that must always take effect, not a silent no-op
+     * just because the two {@code PvpProfile} records happen to be equal.
+     */
     @Test
-    void deletingTheActiveBuiltInAlreadyAtFactoryValuesAppliesNothing() {
+    void deletingTheActiveProfileAlwaysAppliesEvenWhenTheStoredEntryAlreadyMatchesTheResult() {
         ProfileSession session = new ProfileSession(new ProfileStore(file));
         ProfileSession.Outcome outcome = session.delete("balanced");
 
+        assertEquals(BuiltInProfiles.BALANCED, outcome.apply().orElseThrow());
+        assertEquals(List.of(Msg.of(ProfileText.PROFILE_RESET, "name", "balanced"),
+            Msg.of(ProfileText.PROFILE_ACTIVE, "name", "balanced")), outcome.infos());
+        assertEquals("balanced", session.book().activeName());
+    }
+
+    /** Same rule, own profile: deleting the active own profile falls back to balanced and applies it, even
+     *  though nothing was ever saved that would make {@code balanced}'s own record differ (it was already
+     *  the untouched factory copy) — only {@link #deletingTheActiveProfileAlwaysAppliesEvenWhenTheStoredEntryAlreadyMatchesTheResult}
+     *  isolates that "stored copy unchanged" condition; this one keeps the original "own profile" path covered. */
+    @Test
+    void deletingAnInactiveProfileNeverReappliesTheStillActiveOne() {
+        ProfileSession session = new ProfileSession(new ProfileStore(file));
+        session.save("mine", 20, 4, 10.0, Set.of(ManagedModules.CRYSTAL_AURA.name()));
+        // active stays "balanced" throughout: deleting an unrelated, inactive profile must not reapply.
+        ProfileSession.Outcome outcome = session.delete("mine");
+
         assertTrue(outcome.apply().isEmpty());
-        assertEquals(List.of(Msg.of(ProfileText.PROFILE_RESET, "name", "balanced")), outcome.infos());
+        assertEquals(List.of(Msg.of(ProfileText.PROFILE_DELETED, "name", "mine")), outcome.infos());
         assertEquals("balanced", session.book().activeName());
     }
 

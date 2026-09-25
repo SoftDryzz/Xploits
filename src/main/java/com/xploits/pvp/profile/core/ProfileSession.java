@@ -96,14 +96,20 @@ public final class ProfileSession {
     }
 
     public Outcome save(String name, int targetRange, int approachDistance, double threatMargin, Set<String> allowed) {
-        return commit(book.save(name, targetRange, approachDistance, threatMargin, allowed));
+        return commit(book.save(name, targetRange, approachDistance, threatMargin, allowed), false);
     }
 
     public Outcome delete(String name) {
-        return commit(book.delete(name));
+        // Whether this delete touches the active profile has to be asked BEFORE the book changes: a
+        // built-in delete keeps the active name (it is reset to factory values in place, not removed),
+        // and an own-profile delete changes it to balanced. Either way, the player asked to get rid of
+        // what they were looking at, and the ruling is that always re-applies, whether or not the stored
+        // entry happens to already match what comes out (e.g. resetting a built-in nobody had saved over,
+        // while the *live* settings are still hand-edited and unsaved: the book alone cannot see that).
+        return commit(book.delete(name), name.equals(book.activeName()));
     }
 
-    private Outcome commit(ProfileBook.Outcome outcome) {
+    private Outcome commit(ProfileBook.Outcome outcome, boolean deletingTheActiveProfile) {
         if (outcome instanceof ProfileBook.Rejected rejected) return refused(rejected.reason());
         ProfileBook.Applied applied = (ProfileBook.Applied) outcome;
         ProfileStore.SaveResult result = store.save(applied.book());
@@ -123,11 +129,13 @@ public final class ProfileSession {
                 infos.add(message);
             }
         }
-        // Deleting the active profile falls back to balanced, and that one is then applied, as if chosen.
-        // Deleting the active built-in keeps the same name (it is reset to factory values in place, not
-        // removed): comparing the whole profile, not just the name, is what catches that case too, so the
-        // factory values are applied and the player stops seeing "name*" for values nothing restored.
-        Optional<PvpProfile> apply = activeBefore.equals(book.active()) ? Optional.empty() : Optional.of(book.active());
+        // save() only re-applies when the active profile's values actually moved (comparing the whole
+        // profile, not just its name, so overwriting the active built-in in place is caught too); delete()
+        // of the active profile always re-applies (see the comment in #delete), whether it fell back to
+        // balanced or reset a built-in whose stored copy already matched its factory values.
+        Optional<PvpProfile> apply = deletingTheActiveProfile || !activeBefore.equals(book.active())
+            ? Optional.of(book.active())
+            : Optional.empty();
         if (apply.isPresent()) infos.add(Msg.of(ProfileText.PROFILE_ACTIVE, "name", book.activeName()));
         return new Outcome(apply, infos, warnings);
     }
