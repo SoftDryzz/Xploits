@@ -40,10 +40,12 @@ class PanelModelTest {
     }
 
     @Test
-    void theOffLineNeverShowsTheModifiedMarkEvenWhenModified() {
-        PanelInput in = PanelInputs.base().autoPvpOn(false).profileName("aggressive").profileModified(true).build();
-        String line = EN.render(PanelModel.lines(in).getFirst().text());
-        assertFalse(line.contains("*"), line);
+    void theOffLineShowsTheModifiedMarkTheSameWayTheHeaderDoes() {
+        PanelInput unmodified = PanelInputs.base().autoPvpOn(false).profileName("aggressive").profileModified(false).build();
+        PanelInput modified = PanelInputs.base().autoPvpOn(false).profileName("aggressive").profileModified(true).build();
+
+        assertEquals("auto-pvp off · profile aggressive", EN.render(PanelModel.lines(unmodified).getFirst().text()));
+        assertEquals("auto-pvp off · profile aggressive*", EN.render(PanelModel.lines(modified).getFirst().text()));
     }
 
     // --- line 2: profile / state / posture -----------------------------------------------------------

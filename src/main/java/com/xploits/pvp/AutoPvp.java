@@ -1174,7 +1174,6 @@ public class AutoPvp extends XploitsModule {
     }
 
     /** I6: which combat modules you have active that the director does not control, not a fixed list. */
-
     private List<String> yourActiveModules(Set<String> owned) {
         List<String> result = new ArrayList<>();
         for (ManagedModule managed : ManagedModules.ALL) {

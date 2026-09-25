@@ -112,7 +112,7 @@ public final class ProfileSession {
                 ? PositionedMsg.same(refused.reason())
                 : failed(refused.reason())));
         }
-        String before = book.activeName();
+        PvpProfile activeBefore = book.active();
         book = applied.book();
         List<Msg> infos = new ArrayList<>();
         List<PositionedMsg> warnings = new ArrayList<>();
@@ -124,7 +124,10 @@ public final class ProfileSession {
             }
         }
         // Deleting the active profile falls back to balanced, and that one is then applied, as if chosen.
-        Optional<PvpProfile> apply = before.equals(book.activeName()) ? Optional.empty() : Optional.of(book.active());
+        // Deleting the active built-in keeps the same name (it is reset to factory values in place, not
+        // removed): comparing the whole profile, not just the name, is what catches that case too, so the
+        // factory values are applied and the player stops seeing "name*" for values nothing restored.
+        Optional<PvpProfile> apply = activeBefore.equals(book.active()) ? Optional.empty() : Optional.of(book.active());
         if (apply.isPresent()) infos.add(Msg.of(ProfileText.PROFILE_ACTIVE, "name", book.activeName()));
         return new Outcome(apply, infos, warnings);
     }

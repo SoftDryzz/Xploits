@@ -25,7 +25,7 @@ public final class PanelModel {
      */
     public static List<PanelLine> lines(PanelInput in) {
         if (!in.autoPvpOn()) {
-            return List.of(new PanelLine(Msg.of(HudText.OFF, "name", in.profileName()), Tone.NORMAL));
+            return List.of(new PanelLine(Msg.of(HudText.OFF, "name", markedProfileName(in)), Tone.NORMAL));
         }
 
         List<PanelLine> lines = new ArrayList<>();
@@ -87,10 +87,15 @@ public final class PanelModel {
 
     /** Posture colours: CALM normal, THREATENED warn. */
     private static PanelLine header(PanelInput in) {
-        String profile = in.profileName() + (in.profileModified() ? "*" : "");
-        Msg text = Msg.of(HudText.HEADER, "profile", profile, "state", PvpText.of(in.state()), "posture", PvpText.of(in.posture()));
+        Msg text = Msg.of(HudText.HEADER, "profile", markedProfileName(in), "state", PvpText.of(in.state()), "posture", PvpText.of(in.posture()));
         Tone tone = in.posture() == CombatPosture.THREATENED ? Tone.WARN : Tone.NORMAL;
         return new PanelLine(text, tone);
+    }
+
+    /** The active profile's name, with the trailing {@code *} the on-state panel uses for "modified" (line 2's
+     *  header): the off line reuses the same mark instead of hiding that the live values would not match it. */
+    private static String markedProfileName(PanelInput in) {
+        return in.profileName() + (in.profileModified() ? "*" : "");
     }
 
     // --- 3. target ---------------------------------------------------------------------------------

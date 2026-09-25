@@ -9,7 +9,8 @@ import com.xploits.shared.core.i18n.MessageKey;
  * {@code AURA_NO_CRYSTALS}) so the same fact is not said two different ways in two catalogs.
  */
 public enum HudText implements MessageKey {
-    /** Auto-pvp off: the panel's only line. {@code {name}} is the active profile, without a modified mark. */
+    /** Auto-pvp off: the panel's only line. {@code {name}} is the active profile, with its trailing
+     *  {@code *} when the live values no longer match it (same mark as {@link #HEADER}'s {@code {profile}}). */
     OFF,
     /** Line 2: {@code {profile}} already carries its own trailing {@code *} when modified. */
     HEADER,

@@ -118,6 +118,35 @@ class ProfileSessionTest {
         assertEquals("balanced", new ProfileStore(file).load().book().activeName());
     }
 
+    /** Deleting the active built-in resets it to factory values in place (same name): those factory
+     *  values must also be applied, or the player is left staring at "aggressive*" forever. */
+    @Test
+    void deletingTheActiveBuiltInAppliesItsFactoryValuesAndSaysProfileActiveAfterTheResetMessage() {
+        ProfileSession session = new ProfileSession(new ProfileStore(file));
+        session.save("aggressive", 40, 2, 20.0, Set.of(ManagedModules.CRYSTAL_AURA.name()));
+        session.use("aggressive");
+
+        ProfileSession.Outcome outcome = session.delete("aggressive");
+
+        assertEquals(BuiltInProfiles.AGGRESSIVE, outcome.apply().orElseThrow());
+        assertEquals(List.of(Msg.of(ProfileText.PROFILE_RESET, "name", "aggressive"),
+            Msg.of(ProfileText.PROFILE_ACTIVE, "name", "aggressive")), outcome.infos());
+        assertEquals("aggressive", session.book().activeName());
+        assertEquals(BuiltInProfiles.AGGRESSIVE, session.book().active());
+    }
+
+    /** Deleting a built-in that is active but already untouched (already at factory values) is a no-op
+     *  to apply: nothing actually changed, so there is nothing to reapply and no extra message. */
+    @Test
+    void deletingTheActiveBuiltInAlreadyAtFactoryValuesAppliesNothing() {
+        ProfileSession session = new ProfileSession(new ProfileStore(file));
+        ProfileSession.Outcome outcome = session.delete("balanced");
+
+        assertTrue(outcome.apply().isEmpty());
+        assertEquals(List.of(Msg.of(ProfileText.PROFILE_RESET, "name", "balanced")), outcome.infos());
+        assertEquals("balanced", session.book().activeName());
+    }
+
     @Test
     void aFailedWriteOnSaveKeepsTheBookAndGivesAPathFreeLogHalf() {
         ProfileStore failing = new ProfileStore(file, (from, to) -> {
