@@ -539,6 +539,7 @@ recorder.summary-profile=Perfil: {name}
 recorder.summary-changes=Cambios:
 recorder.summary-change-module=  {second} s · {module} · {state}
 recorder.summary-change-profile=  {second} s · perfil · {name}
+recorder.summary-changes-earlier=  {count} cambios anteriores no mostrados.
 recorder.summary-phases=Fases:
 recorder.summary-phase-part=  {second} s · {state} · {posture} · {target}
 recorder.summary-phases-earlier=  {count} cambios anteriores no mostrados.

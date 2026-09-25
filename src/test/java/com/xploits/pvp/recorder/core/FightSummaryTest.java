@@ -208,4 +208,34 @@ class FightSummaryTest {
         assertEquals("Cambios:", ES.render(lines.get(header)));
         assertEquals("  5 s · perfil · aggressive", ES.render(lines.get(header + 3)));
     }
+
+    @Test
+    void moreThanEightChangesShowOnlyTheLastEightWithAnEarlierLineFirst() {
+        Fights.Builder builder = Fights.ending(FightOutcome.ENDED).seconds(25).totems(8, 8, true).modules("auto-totem");
+        for (int i = 0; i < 20; i++) builder.moduleChange(i, "surround", i % 2 == 0);
+        List<String> rendered = FightSummary.review(builder.build(), 1).stream().map(EN::render).toList();
+
+        int header = rendered.indexOf("Changes:");
+        assertTrue(header >= 0, rendered.toString());
+        assertEquals("  12 earlier changes not shown.", rendered.get(header + 1), rendered.toString());
+        // The 8 most recent (seconds 12..19) are shown; anything before second 12 is not.
+        assertFalse(rendered.contains("  11 s · surround · off"), rendered.toString());
+        assertTrue(rendered.contains("  12 s · surround · on"), rendered.toString());
+        assertTrue(rendered.contains("  19 s · surround · off"), rendered.toString());
+        long changeLines = rendered.stream().filter(l -> l.startsWith("  ") && l.contains(" s ·")).count();
+        assertEquals(8, changeLines);
+    }
+
+    @Test
+    void exactlyEightChangesShowNoEarlierLine() {
+        Fights.Builder builder = Fights.ending(FightOutcome.ENDED).seconds(25).totems(8, 8, true).modules("auto-totem");
+        for (int i = 0; i < 8; i++) builder.moduleChange(i, "surround", i % 2 == 0);
+        List<String> rendered = FightSummary.review(builder.build(), 1).stream().map(EN::render).toList();
+
+        assertTrue(rendered.stream().noneMatch(l -> l.endsWith("earlier changes not shown.")), rendered.toString());
+        assertTrue(rendered.contains("  0 s · surround · on"), rendered.toString());
+        assertTrue(rendered.contains("  7 s · surround · off"), rendered.toString());
+        long changeLines = rendered.stream().filter(l -> l.startsWith("  ") && l.contains(" s ·")).count();
+        assertEquals(8, changeLines);
+    }
 }

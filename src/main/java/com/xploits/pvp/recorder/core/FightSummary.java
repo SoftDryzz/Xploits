@@ -118,7 +118,9 @@ public final class FightSummary {
      * Module toggles and profile switches, merged into one list and shown in the order they happened (not
      * two separate sections): a drop right after a switch then reads next to it, with no inference rule
      * needed. Ties at the same second keep module changes before profile changes, the order they are read
-     * from the record.
+     * from the record. Only the last {@link #PHASES_SHOWN} merged entries are shown, the same trim
+     * {@link #addPhases} does: unbounded, this could flood the chat (each list is capped at
+     * {@code FightTracker.MAX_CHANGES} on its own, but the merge of both is not).
      */
     private static void addChanges(FightRecord f, List<Msg> lines) {
         List<ModuleChange> moduleChanges = f.moduleChanges();
@@ -140,7 +142,9 @@ public final class FightSummary {
         entries.sort(Comparator.comparingInt(Entry::second).thenComparingInt(Entry::order));
 
         lines.add(Msg.of(RecorderText.SUMMARY_CHANGES));
-        for (Entry e : entries) lines.add(e.line());
+        int earlier = Math.max(0, entries.size() - PHASES_SHOWN);
+        if (earlier > 0) lines.add(Msg.of(RecorderText.SUMMARY_CHANGES_EARLIER, "count", earlier));
+        for (Entry e : entries.subList(earlier, entries.size())) lines.add(e.line());
     }
 
     private static void addPhases(FightRecord f, List<Msg> lines) {

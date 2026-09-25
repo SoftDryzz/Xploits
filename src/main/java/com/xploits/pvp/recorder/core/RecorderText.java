@@ -86,6 +86,8 @@ public enum RecorderText implements MessageKey {
     SUMMARY_CHANGES,
     SUMMARY_CHANGE_MODULE,
     SUMMARY_CHANGE_PROFILE,
+    /** Shown before the kept changes when older ones were trimmed: how many are not shown. */
+    SUMMARY_CHANGES_EARLIER,
     SUMMARY_PHASES,
     SUMMARY_PHASE_PART,
     /** Shown before the kept phases when older ones were trimmed: how many are not shown. */
