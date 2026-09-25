@@ -6,6 +6,23 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Style profiles** for `auto-pvp`: three built in (`balanced`, `aggressive`, `defensive`) and up
+  to 20 of your own, each setting `target-range`, `approach-distance`, `threat-margin` and which of
+  the ten managed modules the director may use (`Modules` group, one `use-<module>` toggle each). A
+  profile changes only auto-pvp's own values, never a module's inner settings. Editing a value by
+  hand marks the active profile as modified (`aggressive*`) until saved. The `next-profile` key
+  cycles them; `.xploits pvp profile [list|use|save|delete|reset-file]` manages them with auto-pvp
+  on or off. `fight-recorder` now keeps the profile active when a fight opened and every switch
+  during it, and `.xploits pvp review` shows both.
+- **`xploits-pvp` HUD panel** — a Meteor HUD element, group **Xploits**: phase, posture, target and
+  distance, which modules are on/released/off by profile, crystals/totems/obsidian against what the
+  situation needs, the live fight from `fight-recorder`, and a highlighted danger line (no totems in
+  a fight, out of resources, a resource idle, or the aura without crystals). Settings: `scale`,
+  `shadow`, `background`, `show-fight`. Adds `{xploits.pvp.state|posture|profile|target|distance}`
+  to Starscript.
+
 ## [0.5.0] — 2026-09-25
 
 ### Added

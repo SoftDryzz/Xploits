@@ -151,6 +151,24 @@ enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que 
 **mete a los tuyos en tu lista de amigos de Meteor** para que ellos tampoco. Al apagarlo quita solo
 los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/security.md).
 
+**Los perfiles de estilo cambian los valores propios de auto-pvp y qué módulos de los diez puede
+usar** — nunca los ajustes internos de un módulo que enciende (`crystal-aura`, `surround`...). Hay
+tres de fábrica siempre disponibles, más hasta 20 tuyos:
+
+| Perfil | `target-range` | `approach-distance` | `threat-margin` | Módulos |
+|---|---|---|---|---|
+| `balanced` | 16 | 6 | 12 | los diez |
+| `aggressive` | 24 | 4 | 8 | los diez |
+| `defensive` | 12 | 6 | 16 | todos menos `auto-city` y `auto-anvil` |
+
+Qué módulos permite un perfil son los interruptores `use-<módulo>` del grupo de ajustes `Modules`,
+uno por módulo gestionado, en la ClickGUI de `auto-pvp`: desmarca uno y el director se lo salta (se
+ve en el panel HUD de abajo, no en el chat). **Un perfil que guardes se queda con lo que tengan
+puesto.** Tocar un valor a mano —un slider o un `use-*`— marca el perfil activo como modificado
+(`aggressive*`) hasta que hagas `profile save`. La tecla `next-profile` pasa por ellos, primero los
+de fábrica y luego los tuyos; salta al soltarla, con `auto-pvp` encendido y no mientras escribes en
+un campo de texto — apagado, usa `.xploits pvp profile use`.
+
 ### `fight-recorder` — grabar cada pelea y averiguar por qué moriste
 
 Vigila cada pelea en la que entras —con `auto-pvp` encendido o apagado— y guarda un fichero JSON por
@@ -171,7 +189,9 @@ las más antiguas se borran según se escriben las nuevas.
 
 Repasa lo grabado con `.xploits pvp review [n]` (el desglose completo de la pelea `n`, 1 = la más
 reciente) y `.xploits pvp fights` (las últimas 10, una línea cada una) — las dos funcionan con el
-módulo apagado.
+módulo apagado. Una pelea grabada también guarda **el perfil de estilo activo al abrirse, y cada
+cambio durante ella**: `review` enseña los dos, los cambios de perfil mezclados con los de módulos,
+en el orden en que pasaron.
 
 ### `elytra-replace` — cambiar la elytra antes de que se rompa
 
@@ -217,6 +237,33 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 
 ---
 
+## El panel HUD de auto-pvp
+
+`xploits-pvp` es un elemento HUD —editor de HUD de Meteor, grupo **Xploits**—, no un módulo:
+colócalo como cualquier otro elemento. Con `auto-pvp` apagado se reduce a una línea,
+`auto-pvp off · profile <nombre>`; si no, muestra, una línea por dato y solo cuando hay algo que
+decir:
+
+- Una **línea de peligro** (roja), la de más prioridad primero: sin tótems en pelea, sin recursos,
+  un recurso vigilado inactivo un rato sin que nada lo gaste, o `crystal-aura` encendida sin
+  cristales.
+- **`perfil · estado · postura`** — ámbar mientras la postura es `THREATENED`.
+- **Objetivo y distancia**, o `sin objetivo`.
+- **Módulos**: encendidos (verde), sueltos por ti (ámbar), apagados por el perfil (gris).
+- **Recursos**: cristales, tótems, obsidiana — ámbar por debajo de lo que necesitan los módulos
+  encendidos ahora.
+- **La pelea en vivo**, mientras `fight-recorder` tenga una abierta: segundos, tus pops, los suyos,
+  daño recibido.
+
+Ajustes: `scale`, `shadow`, `background` y `show-fight` (encendido por defecto; apaga la línea de
+pelea).
+
+**Starscript**: `{xploits.pvp.state}`, `{xploits.pvp.posture}`, `{xploits.pvp.profile}`,
+`{xploits.pvp.target}` y `{xploits.pvp.distance}` — los mismos datos que el panel, traducidos al
+idioma activo, nunca una posición.
+
+---
+
 ## Comandos
 
 | Comando | Qué hace |
@@ -227,6 +274,12 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 | `.xploits pvp` | Fase, postura, tu vida y el daño que te apunta |
 | `.xploits pvp review [n]` | Desglose completo de una pelea grabada (1 = la más reciente) |
 | `.xploits pvp fights` | Las últimas 10 peleas grabadas |
+| `.xploits pvp profile` | Perfil de estilo activo, y si está modificado |
+| `.xploits pvp profile list` | Todos los perfiles de estilo, marcado el activo |
+| `.xploits pvp profile use <nombre>` | Cambia a ese perfil |
+| `.xploits pvp profile save <nombre>` | Guarda los valores actuales con ese nombre |
+| `.xploits pvp profile delete <nombre>` | Borra uno tuyo, o restablece uno de fábrica a sus valores |
+| `.xploits pvp profile reset-file` | Aparta un `profiles.json` corrupto para poder volver a guardar |
 | `.xploits travel` · `go` · `stop` | Estado del viaje, lanzarlo, cortarlo |
 | `.xploits sweep` · `go` · `stop` | Estado del barrido, lanzarlo, cortarlo |
 | `.xploits language [auto\|es\|en]` | Idioma activo, o lo cambia |
@@ -267,6 +320,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 <instancia>/meteor-client/xploits/stash/  Índice de contenedores, por mundo
 <instancia>/meteor-client/xploits/console/  Historial de la consola, 30 días como mucho
 <instancia>/meteor-client/xploits/pvp/fights/  Peleas grabadas, 50 como mucho
+<instancia>/meteor-client/xploits/pvp/profiles.json  Tus perfiles de estilo
 <instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
 <instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
 ```

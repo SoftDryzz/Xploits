@@ -154,6 +154,24 @@ of you —placed crystals, people with swords—, not with a totem counter.
 your people to your Meteor friends list** so they do not either. When turned off it removes only
 the ones it added, never one you already had. See [Security](docs/security.md).
 
+**Style profiles change auto-pvp's own values and which of the ten modules it may use** — never the
+inner settings of a module it turns on (`crystal-aura`, `surround`...). Three are built in and
+always available, plus up to 20 of your own:
+
+| Profile | `target-range` | `approach-distance` | `threat-margin` | Modules |
+|---|---|---|---|---|
+| `balanced` | 16 | 6 | 12 | all ten |
+| `aggressive` | 24 | 4 | 8 | all ten |
+| `defensive` | 12 | 6 | 16 | all but `auto-city` and `auto-anvil` |
+
+Which modules a profile allows is the `Modules` setting group's `use-<module>` toggles, one per
+managed module, in the `auto-pvp` ClickGUI: untick one and the director skips it (shown in the HUD
+panel below, not in chat). **A profile you save keeps whatever they are set to.** Editing a value by
+hand — a slider or a `use-*` toggle — marks the active profile as modified (`aggressive*`) until you
+`profile save` it. The `next-profile` key cycles through them, built-in first, then yours; it fires
+on release, with `auto-pvp` on and not while typing in a text field — with it off, use
+`.xploits pvp profile use`.
+
 ### `fight-recorder` — record every fight and work out why you died
 
 Watches every fight you are in — with `auto-pvp` on or off — and keeps a JSON file for each one: who
@@ -172,7 +190,9 @@ are deleted as new ones are written.
   big hits, deaths) and its summary when it ends.
 
 Review what it recorded with `.xploits pvp review [n]` (the full breakdown of fight `n`, 1 = most
-recent) and `.xploits pvp fights` (the last 10, one line each) — both work with the module off.
+recent) and `.xploits pvp fights` (the last 10, one line each) — both work with the module off. A
+recorded fight also keeps the **style profile active when it opened, and every switch during it**:
+`review` shows both, the switches merged in with the module changes, in the order they happened.
 
 ### `elytra-replace` — swap the elytra before it breaks
 
@@ -218,6 +238,30 @@ It needs Windows Terminal, which is the default console in Windows 11.
 
 ---
 
+## The auto-pvp HUD panel
+
+`xploits-pvp` is a HUD element — Meteor's HUD editor, group **Xploits** — not a module: place it
+like any other element. Auto-pvp off collapses it to one line, `auto-pvp off · profile <name>`;
+otherwise it shows, one line per fact and only when there is something to say:
+
+- A **danger line** (red), highest priority first: no totems in a fight, out of resources, a
+  watched resource idle for a while without anything spending it, or `crystal-aura` on without
+  crystals.
+- **`profile · state · posture`** — amber while the posture is `THREATENED`.
+- **Target and distance**, or `no target`.
+- **Modules**: on (green), released by you (amber), off by the active profile (grey).
+- **Resources**: crystals, totems, obsidian — amber below what the modules currently on need.
+- **The live fight**, while `fight-recorder` has one open: seconds, your pops, theirs, damage taken.
+
+Settings: `scale`, `shadow`, `background` and `show-fight` (on by default; turns off the fight
+line).
+
+**Starscript**: `{xploits.pvp.state}`, `{xploits.pvp.posture}`, `{xploits.pvp.profile}`,
+`{xploits.pvp.target}` and `{xploits.pvp.distance}` — the same facts the panel shows, translated
+into the active language, never a position.
+
+---
+
 ## Commands
 
 | Command | What it does |
@@ -228,6 +272,12 @@ It needs Windows Terminal, which is the default console in Windows 11.
 | `.xploits pvp` | Phase, posture, your health and the damage aimed at you |
 | `.xploits pvp review [n]` | Full breakdown of a recorded fight (1 = most recent) |
 | `.xploits pvp fights` | The last 10 recorded fights |
+| `.xploits pvp profile` | Active style profile, and whether it is modified |
+| `.xploits pvp profile list` | All style profiles, the active one marked |
+| `.xploits pvp profile use <name>` | Switches to that profile |
+| `.xploits pvp profile save <name>` | Saves the current values under that name |
+| `.xploits pvp profile delete <name>` | Deletes one of yours, or resets a built-in to factory values |
+| `.xploits pvp profile reset-file` | Moves a corrupt `profiles.json` aside so saving works again |
 | `.xploits travel` · `go` · `stop` | Trip status, launch it, stop it |
 | `.xploits sweep` · `go` · `stop` | Sweep status, launch it, stop it |
 | `.xploits language [auto\|es\|en]` | Active language, or sets it |
@@ -268,6 +318,7 @@ be published in the server chat**.
 <instance>/meteor-client/xploits/stash/  Container index, per world
 <instance>/meteor-client/xploits/console/  Console history, 30 days at most
 <instance>/meteor-client/xploits/pvp/fights/  Recorded fights, 50 at most
+<instance>/meteor-client/xploits/pvp/profiles.json  Your style profiles
 <instance>/meteor-client/modules.nbt     Settings (written by Meteor)
 <instance>/meteor-client/friends.nbt     Friends list (written by Meteor)
 ```
