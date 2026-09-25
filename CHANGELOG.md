@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-25
+
 ### Fixed
 
 - `fight-recorder`: a fight whose last exchange was a totem pop kept the used totem in its end
