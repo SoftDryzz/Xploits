@@ -93,7 +93,8 @@ public class BenchTest implements FabricClientGameTest {
 
     /**
      * One run in a fresh world (§Run timeline). The teardown runs even when the scenario threw; a
-     * teardown step that fails, or a module it leaves on, turns a passing run into ERROR.
+     * teardown step that fails, or a module it leaves on, turns a passing run into ERROR, and is added to
+     * the error of a run that already failed.
      */
     private static Run runOnce(ClientGameTestContext ctx, Scenario scenario) {
         String phase = "world";
@@ -116,8 +117,12 @@ public class BenchTest implements FabricClientGameTest {
             }
             phase = "teardown";
             List<String> leftovers = bench.teardown();
-            if (!leftovers.isEmpty() && !run.status().fails()) {
-                run = new Run(Status.ERROR, "teardown: " + String.join("; ", leftovers), Map.of());
+            if (!leftovers.isEmpty()) {
+                String teardown = "teardown: " + String.join("; ", leftovers);
+                // A failed run keeps its status and its first error; what the teardown left is added to it.
+                run = run.status().fails()
+                    ? new Run(run.status(), run.error() + "; " + teardown, run.metrics())
+                    : new Run(Status.ERROR, teardown, Map.of());
             }
             phase = "world close";
         } catch (RuntimeException | AssertionError e) {

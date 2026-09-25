@@ -363,9 +363,18 @@ public final class Bench {
     List<String> teardown() {
         List<String> failed = new ArrayList<>();
         step(failed, "recorder off", () -> recorder(false));
-        step(failed, "modules off", () -> onClient(client -> {
-            for (Module module : groupModules()) module.disable();
-        }));
+        step(failed, "modules off", () -> failed.addAll(fromClient(client -> {
+            // One by one: a module that throws while turning off does not keep the others on.
+            List<String> refused = new ArrayList<>();
+            for (Module module : groupModules()) {
+                try {
+                    module.disable();
+                } catch (RuntimeException | AssertionError e) {
+                    refused.add("module off: " + module.name + " (" + e.getClass().getSimpleName() + ")");
+                }
+            }
+            return refused;
+        })));
         step(failed, "profile balanced", () -> {
             boolean ok = fromClient(client -> {
                 AutoPvp autoPvp = Modules.get().get(AutoPvp.class);
@@ -383,7 +392,7 @@ public final class Bench {
                 }
                 return names;
             });
-            if (!on.isEmpty()) throw new BenchException(String.join(", ", on).toLowerCase(Locale.ROOT));
+            if (!on.isEmpty()) throw new BenchException(String.join(", ", on).toLowerCase(Locale.ROOT) + " still on");
         });
         return failed;
     }
