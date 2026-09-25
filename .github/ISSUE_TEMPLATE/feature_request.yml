@@ -1,0 +1,30 @@
+name: Suggestion
+description: An idea to improve Xploits or a new module
+labels: [enhancement]
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: Which module it is about, or "new module".
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: What happens today that you would like to change.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How you imagine it working in game.
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server it matters for
+      description: Optional. Some behaviour depends on the server's anticheat.

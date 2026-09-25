@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Known issues
+    url: https://github.com/SoftDryzz/Xploits/blob/main/docs/known-issues.md
+    about: Bugs we already know about, with their symptom and workaround.

@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in Xploits does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Xploits. Check [Known issues](https://github.com/SoftDryzz/Xploits/blob/main/docs/known-issues.md) first, it may already be there.
+
+        ⚠️ **Never paste your coordinates.** Review every log before attaching it. Logs from before 0.3.1 do not mask them.
+  - type: input
+    id: xploits-version
+    attributes:
+      label: Xploits version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: input
+    id: meteor-version
+    attributes:
+      label: Meteor Client version
+      placeholder: "1.21.11-..."
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server
+      description: Where it happened (singleplayer, server name...)
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - auto-travel
+        - nether-sweep
+        - auto-pvp
+        - fight-recorder
+        - elytra-replace
+        - kit-requester
+        - auto-tpy
+        - stash-keeper
+        - console
+        - Commands / other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include the exact chat message if there was one.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Turn on ...
+        2. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Drag and drop the files here:
+        - Console history for that day: `meteor-client/xploits/console/history/`
+        - If the game crashed: `logs/latest.log`
+        - For auto-pvp / fight-recorder: the output of `.xploits pvp review 1`
+        - Output of `.xploits status`
+    validations:
+      required: true
+  - type: checkboxes
+    id: coords
+    attributes:
+      label: Privacy
+      options:
+        - label: I checked that nothing I attached shows my coordinates.
+          required: true
