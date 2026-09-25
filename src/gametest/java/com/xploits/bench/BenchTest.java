@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,13 +54,14 @@ public class BenchTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext ctx) {
         Config config = Config.fromSystemProperties();
         List<Scenario> selected = select(Scenarios.all(), config.only());
-        BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out());
-        LOG.info("[bench] {} scenario(s) selected", selected.size());
+        Baseline baseline = loadBaseline(config.baseline());
+        BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline);
+        LOG.info("[bench] {} scenario(s) selected; the baseline has {} scenario(s)", selected.size(), baseline.size());
 
         for (Scenario scenario : selected) {
             for (int i = 1; i <= scenario.runs(); i++) {
                 Run run = runOnce(ctx, scenario, config.out());
-                LOG.info("[bench] {} run {}/{}: {}{}", scenario.name(), i, scenario.runs(), run.status(),
+                LOG.info("[bench] {} run {} of {}: {}{}", scenario.name(), i, scenario.runs(), run.status(),
                     run.error() == null ? "" : " (" + run.error() + ")");
                 report.add(scenario, run);
                 write(report);
@@ -67,8 +69,58 @@ public class BenchTest implements FabricClientGameTest {
         }
         write(report);
 
+        if (config.updateBaseline()) updateBaseline(report, config.baseline());
+        hygiene(report, config);
+
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
+    }
+
+    /** The committed baseline; a missing file compares nothing, a broken one ends the bench before any run. */
+    private static Baseline loadBaseline(Path file) {
+        try {
+            return Baseline.load(file);
+        } catch (BenchException e) {
+            throw new AssertionError(describe(e));
+        }
+    }
+
+    /** {@code -Pbench.updateBaseline}: every DONE MEASURE's medians go into the committed baseline. */
+    private static void updateBaseline(BenchReport report, Path file) {
+        if (file == null) throw new AssertionError("xploits.bench.baseline is not set: run the bench with ./gradlew runClientGameTest");
+        // Re-read: only the entries this run replaces change, whatever the file holds now.
+        Baseline baseline = loadBaseline(file);
+        int put = report.updateBaseline(baseline);
+        try {
+            baseline.write(file);
+        } catch (IOException e) {
+            throw new AssertionError("the bench baseline could not be written (" + e.getClass().getSimpleName() + ")");
+        }
+        LOG.info("[bench] baseline updated with {} scenario(s)", put);
+    }
+
+    /**
+     * The hygiene scan, after the last write (§Proving the bench works): a report line that looks like a
+     * position is ERROR. The report is written once more to say so, and the bench fails. The committed
+     * baseline, when there is one, is scanned too.
+     */
+    private static void hygiene(BenchReport report, Config config) {
+        List<String> hits;
+        try {
+            hits = new ArrayList<>(Hygiene.scan(config.out()));
+            if (config.baseline() != null && Files.isRegularFile(config.baseline())) {
+                hits.addAll(Hygiene.scanFile(config.baseline(), "baseline.json"));
+            }
+        } catch (IOException e) {
+            throw new AssertionError("the bench report could not be scanned (" + e.getClass().getSimpleName() + ")");
+        }
+        if (hits.isEmpty()) {
+            LOG.info("[bench] hygiene: no line looks like a position");
+            return;
+        }
+        for (String hit : hits) LOG.error("[bench] hygiene: {} looks like a position", hit);
+        report.hygiene(hits);
+        write(report);
     }
 
     /** All the scenarios, or those named in {@code only}; a name that matches nothing is an error. */

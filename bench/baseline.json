@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "scenarios": {
+    "ca-still": {
+      "damage_dealt": 30.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 0.75,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.626,
+      "self_pops": 0.0,
+      "min_health": 3.374,
+      "placements_per_s": 0.567
+    },
+    "ca-circler": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.3,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.244,
+      "self_pops": 0.0,
+      "min_health": 3.756,
+      "placements_per_s": 0.6
+    },
+    "ca-defender": {
+      "damage_dealt": 0.0,
+      "sparring_pops": 0.0,
+      "no_pop_runs": 3.0,
+      "self_damage": 0.0,
+      "self_pops": 0.0,
+      "min_health": 20.0,
+      "placements_per_s": 0.0
+    },
+    "defense-attacker": {
+      "self_pops": 0.0,
+      "min_health": 17.681,
+      "damage_taken": 2.319
+    }
+  }
+}
