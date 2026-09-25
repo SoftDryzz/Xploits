@@ -118,6 +118,28 @@ class ProfileStoreTest {
     }
 
     @Test
+    void aProfileNamingAnUnknownModuleLocksTheStoreAndLeavesTheFileUntouched() throws IOException {
+        // Valid JSON, valid schema, all three built-ins present, but "balanced" allows a module that
+        // does not exist: PvpProfile's constructor rejects it (not a managed module) and that
+        // IllegalArgumentException has to be treated exactly like a Gson parse failure, not let through.
+        String json = "{\"schema\": 1, \"active\": \"balanced\", \"profiles\": ["
+            + "{\"name\": \"balanced\", \"targetRange\": 16, \"approachDistance\": 6, \"threatMargin\": 12.0, \"allowed\": [\"not-a-real-module\"]},"
+            + "{\"name\": \"aggressive\", \"targetRange\": 24, \"approachDistance\": 4, \"threatMargin\": 8.0, \"allowed\": []},"
+            + "{\"name\": \"defensive\", \"targetRange\": 12, \"approachDistance\": 6, \"threatMargin\": 16.0, \"allowed\": []}"
+            + "]}";
+        Files.writeString(file, json);
+
+        ProfileStore store = new ProfileStore(file);
+        ProfileStore.Result result = store.load();
+
+        assertTrue(result.warning().isPresent());
+        assertEquals(ProfileText.PROFILE_FILE_CORRUPT, result.warning().get().key());
+        assertEquals(ProfileBook.defaults().profiles(), result.book().profiles());
+        assertTrue(store.locked());
+        assertEquals(json, Files.readString(file));
+    }
+
+    @Test
     void savingWhileLockedIsRefusedAndTheCorruptFileStaysUntouched() throws IOException {
         Files.writeString(file, "{not json");
         ProfileStore store = new ProfileStore(file);
