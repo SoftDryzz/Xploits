@@ -561,6 +561,25 @@ recorder.prune-failed=Could not clean up old fights: {detail}
 recorder.prune-failed-log=Could not clean up old fights. The detail is in chat only.
 recorder.tick-failed=The recorder hit an error and dropped the fight in progress. It keeps recording, but this may happen again: the details are in the game log.
 
+# hud
+hud.off=auto-pvp off · profile {name}
+hud.header={profile} · {state} · {posture}
+hud.no-target=no target
+hud.target=target {name} · {distance,1} blocks
+hud.modules-on=on: {modules}
+hud.modules-released=released: {modules}
+hud.modules-off-by-profile=off by profile: {modules}
+hud.resource-crystals=crystals {count}
+hud.resource-totems=totems {count}
+hud.resource-obsidian=obsidian {count}
+hud.fight={seconds} s · your pops {yourPops} · theirs {theirPops} · damage {damageTaken,1}
+hud.danger-no-totems=no totems in a fight
+hud.danger-idle={material} idle: {modules}
+hud.join-comma={first}, {rest}
+hud.join-and={first} and {second}
+hud.script-off=off
+hud.script-distance={distance,1}
+
 # elytra
 elytra.module-desc=Swaps your elytra before it breaks and warns you when there is no spare.
 elytra.setting-swap-below=Swaps the worn elytra when its durability is at or below this percentage.

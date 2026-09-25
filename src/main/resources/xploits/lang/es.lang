@@ -561,6 +561,25 @@ recorder.prune-failed=No se pudo limpiar peleas antiguas: {detail}
 recorder.prune-failed-log=No se pudo limpiar peleas antiguas. El detalle, solo en el chat.
 recorder.tick-failed=El grabador tuvo un error y descartó la pelea en curso. Sigue grabando, pero puede volver a pasar: los detalles están en el log del juego.
 
+# hud
+hud.off=auto-pvp apagado · perfil {name}
+hud.header={profile} · {state} · {posture}
+hud.no-target=sin objetivo
+hud.target=objetivo {name} · {distance,1} bloques
+hud.modules-on=encendidos: {modules}
+hud.modules-released=liberados: {modules}
+hud.modules-off-by-profile=apagados por perfil: {modules}
+hud.resource-crystals=cristales {count}
+hud.resource-totems=tótems {count}
+hud.resource-obsidian=obsidiana {count}
+hud.fight={seconds} s · tus pops {yourPops} · los suyos {theirPops} · daño {damageTaken,1}
+hud.danger-no-totems=sin tótems en plena pelea
+hud.danger-idle={material} sin gastar: {modules}
+hud.join-comma={first}, {rest}
+hud.join-and={first} y {second}
+hud.script-off=apagado
+hud.script-distance={distance,1}
+
 # elytra
 elytra.module-desc=Cambia la elytra antes de que se rompa y avisa si no hay repuesto.
 elytra.setting-swap-below=Cambia la elytra puesta cuando su durabilidad sea igual o menor que este porcentaje.
