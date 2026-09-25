@@ -228,6 +228,36 @@ class FightTrackerTest {
     }
 
     @Test
+    void aPopAsTheLastExchangeCountsTheTotemItUsedOnceTheInventoryCatchesUp() {
+        ticks.totems(1).offhandTotem(true);
+        attackFoo();
+        // The server sends the pop before the inventory update: on the pop's tick the totem is still there.
+        feed(crystalBy("Foo"), ownPop());
+        long pop = ticks.tick() - 1;
+        ticks.totems(0).offhandTotem(false);
+        while (ticks.tick() < pop + FightTracker.QUIET_TICKS) feed();
+        FightRecord f = feed().finished().orElseThrow();
+        assertEquals(FightOutcome.ENDED, f.outcome());
+        assertEquals(1, f.self().pops());
+        assertEquals(0, f.self().totemsEnd());
+        assertFalse(f.self().offhandTotemEnd());
+    }
+
+    @Test
+    void inventoryChangesPastTheSettleWindowDoNotReachTheEndTotals() {
+        ticks.totems(3);
+        attackFoo();
+        feed(crystalBy("Foo"));
+        long last = ticks.tick() - 1;
+        while (ticks.tick() <= last + FightTracker.INVENTORY_SETTLE_TICKS) feed();
+        // A restock after the fight's last exchange is not what you ended the fight with.
+        ticks.totems(9);
+        while (ticks.tick() < last + FightTracker.QUIET_TICKS) feed();
+        FightRecord f = feed().finished().orElseThrow();
+        assertEquals(3, f.self().totemsEnd());
+    }
+
+    @Test
     void theDeathKeepsThePhaseAndModulesOfTheLastTickAlive() {
         ticks.hostile("Foo", 4).modules("crystal-aura", "surround")
             .autoPvp(CombatState.SURFACE, CombatPosture.THREATENED, "Foo");
