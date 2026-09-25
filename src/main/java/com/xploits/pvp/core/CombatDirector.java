@@ -315,7 +315,7 @@ public final class CombatDirector {
         missingTargetTicks = 0;
     }
 
-    /** A whole cycle of the judgement with the default defensive margin. */
+    /** A whole cycle of the judgement with the default defensive margin and every module allowed. */
     public Plan tick(CombatSnapshot snapshot, int approachDistance) {
         return tick(snapshot, approachDistance, DefensivePolicy.THREAT_MARGIN);
     }
@@ -353,6 +353,27 @@ public final class CombatDirector {
      *     left out with their reason and the warnings
      */
     public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin) {
+        return tick(snapshot, approachDistance, threatMargin, Set.copyOf(ManagedModules.ALL));
+    }
+
+    /**
+     * The full signature, with the allowed set a profile restricts the director to (design §1).
+     * The other two overloads are the short ones: they pass the default margin and/or every
+     * managed module as allowed, which is today's behaviour and what a corrupt or missing profile
+     * falls back to.
+     *
+     * <p>A module outside {@code allowed} is filtered in {@link #planFor} as the <b>first</b> thing
+     * the share-out loop does for it: before the totem floor and before it can reserve any of a
+     * shared resource ({@link #hasEnough}). That order is why a disallowed {@code auto-trap} never
+     * takes obsidian that {@code surround} or {@code hole-filler} need -filtering it after the claim
+     * would have reserved the resource and then thrown the reservation away, the same silent waste
+     * §10 forbids elsewhere. It is reported with {@link PvpText#PROFILE_OFF} in {@link Skipped}, same
+     * as any other reason a module does not go up.
+     *
+     * @param allowed the modules the active profile permits (design §1); {@code Set.copyOf(ManagedModules.ALL)}
+     *                is "no restriction", what the three-, two- and one-argument overloads pass
+     */
+    public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed) {
         CombatSnapshot effective = rememberTarget(snapshot);
 
         CombatState candidate = classify(effective, approachDistance, state);
@@ -367,7 +388,7 @@ public final class CombatDirector {
 
         ticksInState++;
         boolean retreating = retreat.update(effective);
-        Plan plan = planFor(state, effective, retreating, threatMargin);
+        Plan plan = planFor(state, effective, retreating, threatMargin, allowed);
         previouslyEnabled = rememberEnabled(plan);
         return plan;
     }
@@ -571,7 +592,8 @@ public final class CombatDirector {
         return modules;
     }
 
-    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, double threatMargin) {
+    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, double threatMargin,
+                         Set<ManagedModule> allowed) {
         List<ManagedModule> offensive = offensiveModules(state, snapshot, retreating);
 
         Set<ManagedModule> wanted = new LinkedHashSet<>(offensive);
@@ -600,6 +622,14 @@ public final class CombatDirector {
         Map<Resource, List<String>> claimedBy = new HashMap<>();
 
         for (ManagedModule module : inSharePriorityOrder(wanted)) {
+            // Design §1: a module the active profile does not allow is out before anything else can
+            // happen to it -before the totem floor and before hasEnough can reserve any of a shared
+            // resource for it- so a disallowed auto-trap never sets aside obsidian that surround or
+            // hole-filler need.
+            if (!allowed.contains(module)) {
+                skipped.add(new Skipped(module, Msg.of(PvpText.PROFILE_OFF)));
+                continue;
+            }
             if (module.equals(ManagedModules.CRYSTAL_AURA)) {
                 // The totem floor, now only as an emergency net. It is §7 through another door: it was
                 // a life decision taken with an item counter, and Meteor already takes it with the exact
@@ -634,8 +664,16 @@ public final class CombatDirector {
         // on the offensive half: the posture having raised an anti-bed does not mean you
         // can fight, and there being nothing to fight -APPROACH, CHASE- is not
         // running out of resources either.
-        boolean offensiveUp = enable.stream().anyMatch(offensive::contains);
-        CombatState reported = !offensive.isEmpty() && !offensiveUp ? CombatState.OUT_OF_RESOURCES : state;
+        //
+        // Design §1: it also counts only what the profile allows. offensive itself stays whatever the
+        // phase asked for -unfiltered, so offensiveModules() does not need to know about profiles at
+        // all-; offensiveAllowed narrows it to what could possibly go up. Without this a defensive
+        // profile that disallows every offensive module would raise the loud OUT_OF_RESOURCES alarm on
+        // every single fight, for modules it was never going to enable in the first place.
+        List<ManagedModule> offensiveAllowed = offensive.stream().filter(allowed::contains).toList();
+        boolean offensiveAllowedUp = enable.stream().anyMatch(offensiveAllowed::contains);
+        CombatState reported = !offensiveAllowed.isEmpty() && !offensiveAllowedUp
+            ? CombatState.OUT_OF_RESOURCES : state;
         return new Plan(reported, posture, enable, skipped, warnings);
     }
 

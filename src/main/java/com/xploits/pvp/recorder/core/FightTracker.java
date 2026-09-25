@@ -60,6 +60,13 @@ public final class FightTracker {
 
     private static final Step NOTHING = new Step(List.of(), Optional.empty());
 
+    /**
+     * A live snapshot of the fight in progress, for the HUD: seconds so far, pops on each side and the
+     * damage taken (unseen included, same as the finished record's total).
+     */
+    public record LiveFight(int seconds, int yourPops, int theirPops, double damageTaken) {
+    }
+
     private final String addonVersion;
     private FightBuilder fight;
     /**
@@ -144,6 +151,11 @@ public final class FightTracker {
     /** Whole seconds since the fight started, or 0 when idle. */
     public int seconds() {
         return fight == null ? 0 : (int) ((fight.lastTick() - fight.startTick()) / FightBuilder.TICKS_PER_SECOND);
+    }
+
+    /** A live snapshot of the fight in progress, empty while idle. Read-only, game thread only. */
+    public Optional<LiveFight> live() {
+        return fight == null ? Optional.empty() : Optional.of(fight.live(seconds()));
     }
 
     /** Forgets the fight in progress and the state remembered from before it, without a record. */

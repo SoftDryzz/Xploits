@@ -6,6 +6,7 @@ import com.xploits.pvp.recorder.core.FightRecord.DamageEvent;
 import com.xploits.pvp.recorder.core.FightRecord.ModuleChange;
 import com.xploits.pvp.recorder.core.FightRecord.Opponent;
 import com.xploits.pvp.recorder.core.FightRecord.PhaseChange;
+import com.xploits.pvp.recorder.core.FightRecord.ProfileChange;
 import com.xploits.pvp.recorder.core.FightRecord.Sample;
 import com.xploits.pvp.recorder.core.FightRecord.SelfTotals;
 import com.xploits.pvp.recorder.core.TickInput.AutoPvpView;
@@ -45,6 +46,7 @@ final class FightBuilder {
     private final List<Sample> samples = new ArrayList<>();
     private final List<ModuleChange> moduleChanges = new ArrayList<>();
     private final List<PhaseChange> phases = new ArrayList<>();
+    private final List<ProfileChange> profileChanges = new ArrayList<>();
     private int damageEventsDropped;
 
     private long lastTick;
@@ -71,6 +73,10 @@ final class FightBuilder {
     private List<Hostile> hostiles;
     private Set<String> modules;
     private AutoPvpView phase;
+    /** The profile on the opening tick, kept for the record even past {@link FightTracker#MAX_CHANGES}. */
+    private final String profileAtStart;
+    /** The profile as of the last measured tick, to detect a change; null is a value like any other here. */
+    private String currentProfile;
 
     /** The totals as they stood at the end of the last tick with an exchange. */
     private Frozen frozen;
@@ -103,6 +109,8 @@ final class FightBuilder {
         modulesAtStart = List.copyOf(new TreeSet<>(context.activeModules()));
         autoPvpOn = context.autoPvpOn();
         hostiles = context.hostiles();
+        profileAtStart = context.profile();
+        currentProfile = profileAtStart;
         lastTick = startTick;
         lastExchangeTick = startTick;
         lastExchangeMillis = startedAt;
@@ -262,6 +270,13 @@ final class FightBuilder {
             modules = in.activeModules();
         }
 
+        if (!Objects.equals(in.profile(), currentProfile)) {
+            // A drop to "no profile known" (adapter not wired, or auto-pvp momentarily unreadable) is not
+            // itself a switch worth a line; the name it eventually settles back on is.
+            if (in.profile() != null) change(new ProfileChange(second, in.profile()));
+            currentProfile = in.profile();
+        }
+
         AutoPvpView view = in.autoPvp();
         if (view != null) {
             if (view.target() != null) opponent(view.target());
@@ -309,6 +324,10 @@ final class FightBuilder {
 
     private void change(ModuleChange c) {
         if (moduleChanges.size() < FightTracker.MAX_CHANGES) moduleChanges.add(c);
+    }
+
+    private void change(ProfileChange c) {
+        if (profileChanges.size() < FightTracker.MAX_CHANGES) profileChanges.add(c);
     }
 
     /**
@@ -414,6 +433,7 @@ final class FightBuilder {
         List<Sample> keptSamples;
         List<ModuleChange> keptChanges;
         List<PhaseChange> keptPhases;
+        List<ProfileChange> keptProfileChanges;
         Frozen totals;
         if (atLastExchange) {
             endedAt = Math.max(startedAt, lastExchangeMillis);
@@ -421,6 +441,7 @@ final class FightBuilder {
             keptSamples = samples.stream().filter(s -> s.second() <= last).toList();
             keptChanges = moduleChanges.stream().filter(c -> c.second() <= last).toList();
             keptPhases = phases.stream().filter(p -> p.second() <= last).toList();
+            keptProfileChanges = profileChanges.stream().filter(c -> c.second() <= last).toList();
             totals = frozen;
         } else {
             endedAt = Math.max(startedAt, endMillis);
@@ -431,6 +452,7 @@ final class FightBuilder {
             keptSamples = samples;
             keptChanges = moduleChanges;
             keptPhases = phases;
+            keptProfileChanges = profileChanges;
             totals = new Frozen(pops, placed, broken, attacks, spawnedNear, maxHostilesNear, self, opponents.size());
         }
         int seconds = keptSamples.size();
@@ -446,11 +468,18 @@ final class FightBuilder {
             Math.max(0, totals.spawnedNear() - totals.placed()));
         return new FightRecord(FightRecord.SCHEMA, addonVersion, startedAt, endedAt, seconds, outcome, truncated,
             FightMode.of(autoPvpSeconds, seconds), autoPvpSeconds, opponentList, totals.maxHostilesNear(), self, damage,
-            damageEventsDropped, keptSamples, modulesAtStart, keptChanges, keptPhases);
+            damageEventsDropped, keptSamples, modulesAtStart, keptChanges, keptPhases, profileAtStart, keptProfileChanges);
     }
 
     /** Whether auto-pvp is engaged in a fight on this tick (its phase is not NO_COMBAT). */
     static boolean engaged(TickInput in) {
         return in.autoPvp() != null && in.autoPvp().state() != CombatState.NO_COMBAT;
+    }
+
+    /** A snapshot for {@link FightTracker#live()}: seconds so far, pops on each side, damage taken (unseen included). */
+    FightTracker.LiveFight live(int seconds) {
+        int theirPops = 0;
+        for (Tally t : opponents.values()) theirPops += t.pops;
+        return new FightTracker.LiveFight(seconds, pops, theirPops, damageTaken);
     }
 }

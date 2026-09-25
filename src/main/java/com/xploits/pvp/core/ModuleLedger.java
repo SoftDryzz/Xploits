@@ -200,6 +200,11 @@ public final class ModuleLedger {
         return Set.copyOf(owned);
     }
 
+    /** What the player released by hand and the ledger still leaves alone (read-only copy, for the panel). */
+    public Set<String> released() {
+        return Set.copyOf(released);
+    }
+
     /**
      * Forgets what was released by hand on <b>a single axis</b> and its half-done debounce (important I6).
      * Each axis changes situation on its own: the offensive one with the phase, the defensive one with

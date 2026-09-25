@@ -4,7 +4,10 @@ import com.xploits.shared.core.i18n.Msg;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1297,6 +1300,98 @@ class CombatDirectorTest {
         assertEquals(CombatState.SURFACE, director.state());
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP),
             "the resource memory should have survived the blip, not required the full minimum all at once");
+    }
+
+    // --- design §1: the allowed set a profile restricts the director to ---
+
+    private static Set<ManagedModule> allExcept(ManagedModule... excluded) {
+        Set<ManagedModule> allowed = new LinkedHashSet<>(ManagedModules.ALL);
+        allowed.removeAll(List.of(excluded));
+        return Set.copyOf(allowed);
+    }
+
+    private static Plan settle(CombatDirector director, CombatSnapshot snapshot, Set<ManagedModule> allowed) {
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.GLIDE_EXIT_HOLD_TICKS + 5; i++) {
+            plan = director.tick(snapshot, APPROACH, DefensivePolicy.THREAT_MARGIN, allowed);
+        }
+        return plan;
+    }
+
+    @Test
+    void aDisallowedModuleIsSkippedWithProfileOffAndNeverEnabled() {
+        Plan plan = settle(new CombatDirector(), surface(), allExcept(ManagedModules.AUTO_TRAP));
+
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+        assertTrue(skips(plan, ManagedModules.AUTO_TRAP));
+        Msg reason = plan.skipped().stream()
+            .filter(skipped -> skipped.module().equals(ManagedModules.AUTO_TRAP))
+            .map(Skipped::reason).findFirst().orElse(null);
+        assertEquals(Msg.of(PvpText.PROFILE_OFF), reason);
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA), "what the profile does allow still comes up");
+    }
+
+    @Test
+    void withEveryOffensiveModuleDisallowedTheReportedStateIsThePhysicalOneNotOutOfResources() {
+        // SURFACE asks for crystal-aura and auto-trap (§4.2): disallow both and there was never
+        // anything the profile would have let go up. Design §1: OUT_OF_RESOURCES is measured only
+        // on offensive ∩ allowed, so an empty intersection must not raise the loud alarm -a
+        // defensive profile that disallows every offensive module must not shout it on every fight.
+        Set<ManagedModule> allowed = allExcept(ManagedModules.CRYSTAL_AURA, ManagedModules.AUTO_TRAP);
+        Plan plan = settle(new CombatDirector(), surface(), allowed);
+
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertTrue(plan.enable().isEmpty());
+    }
+
+    @Test
+    void oneAllowedWithoutResourcesAndOneDisallowedStillReportsOutOfResources() {
+        // Mixed case: crystal-aura disallowed (a profile choice the spec itself allows, §1) and
+        // auto-trap allowed but broke. offensiveAllowed is {auto-trap} alone, and nothing in it
+        // went up, so it is still OUT_OF_RESOURCES: being choosy is not the same as being broke,
+        // but here both happen at once and the shortage must still be reported.
+        Map<Resource, Integer> noObsidian = Map.of(
+            Resource.CRYSTALS, 12, Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
+        CombatSnapshot snapshot = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, noObsidian)
+            .withTargetId("enemy");
+        Set<ManagedModule> allowed = allExcept(ManagedModules.CRYSTAL_AURA);
+
+        Plan plan = settle(new CombatDirector(), snapshot, allowed);
+
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+        assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA), "disallowed, not merely skipped for a shortage");
+        assertEquals(CombatState.OUT_OF_RESOURCES, plan.state());
+    }
+
+    @Test
+    void aDisallowedAutoTrapNeverReservesTheObsidianSurroundAndHoleFillerNeed() {
+        // The I3 share-out with auto-trap disallowed: the filter has to run before hasEnough can
+        // claim anything on its behalf, so with only 5 obsidian hole-filler (1) and surround (4)
+        // still both fit exactly as they do in the existing eight-obsidian share-out test -
+        // disallowing auto-trap changes nothing about what the still-allowed ones get.
+        Set<ManagedModule> allowed = allExcept(ManagedModules.AUTO_TRAP);
+        Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(5), allowed);
+
+        assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
+        assertTrue(enables(plan, ManagedModules.SURROUND));
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+
+        Msg reason = plan.skipped().stream()
+            .filter(skipped -> skipped.module().equals(ManagedModules.AUTO_TRAP))
+            .map(Skipped::reason).findFirst().orElse(null);
+        assertEquals(Msg.of(PvpText.PROFILE_OFF), reason,
+            "filtered before it could ever reserve part of the shared stack, not skipped for a shortage");
+    }
+
+    @Test
+    void theShortOverloadsStillAllowEveryManagedModule() {
+        // The two- and three-argument overloads must keep behaving exactly as before design §1:
+        // they pass every managed module as allowed, so none of the existing tests above them move.
+        Plan plan = settle(new CombatDirector(), surface());
+
+        assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP));
     }
 
     // --- reset ---

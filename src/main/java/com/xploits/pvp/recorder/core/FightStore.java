@@ -166,6 +166,10 @@ public final class FightStore {
         List<String> modulesAtStart;
         List<ModuleChangeDto> moduleChanges;
         List<PhaseChangeDto> phases;
+        /** Optional (schema {@value FightRecord#SCHEMA} added it later): absent on a file saved before profiles existed. */
+        String profile;
+        /** Optional, same as {@link #profile}: absent, not an empty list, on an old file. */
+        List<ProfileChangeDto> profileChanges;
 
         static FileDto of(FightRecord f) {
             FileDto dto = new FileDto();
@@ -187,6 +191,8 @@ public final class FightStore {
             dto.modulesAtStart = f.modulesAtStart();
             dto.moduleChanges = map(f.moduleChanges(), ModuleChangeDto::of);
             dto.phases = map(f.phases(), PhaseChangeDto::of);
+            dto.profile = f.profile();
+            dto.profileChanges = map(f.profileChanges(), ProfileChangeDto::of);
             return dto;
         }
 
@@ -196,7 +202,9 @@ public final class FightStore {
                 map(opponents, OpponentDto::toOpponent), maxHostilesNear, self == null ? null : self.toSelfTotals(),
                 map(damage, DamageDto::toDamageEvent), damageEventsDropped, map(samples, SampleDto::toSample),
                 modulesAtStart, map(moduleChanges, ModuleChangeDto::toModuleChange),
-                map(phases, PhaseChangeDto::toPhaseChange));
+                map(phases, PhaseChangeDto::toPhaseChange), profile,
+                // Absent on a file saved before profiles existed: null, not an empty list, from Gson.
+                profileChanges == null ? List.of() : map(profileChanges, ProfileChangeDto::toProfileChange));
         }
     }
 
@@ -364,6 +372,22 @@ public final class FightStore {
 
         FightRecord.PhaseChange toPhaseChange() {
             return new FightRecord.PhaseChange(second, CombatState.valueOf(state), CombatPosture.valueOf(posture), target);
+        }
+    }
+
+    private static final class ProfileChangeDto {
+        int second;
+        String name;
+
+        static ProfileChangeDto of(FightRecord.ProfileChange c) {
+            ProfileChangeDto dto = new ProfileChangeDto();
+            dto.second = c.second();
+            dto.name = c.name();
+            return dto;
+        }
+
+        FightRecord.ProfileChange toProfileChange() {
+            return new FightRecord.ProfileChange(second, name);
         }
     }
 }

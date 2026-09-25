@@ -3,9 +3,14 @@ package com.xploits.commands;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.pvp.profile.core.ProfileText;
+import com.xploits.pvp.profile.core.PvpProfile;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightRecord;
 import com.xploits.pvp.recorder.core.FightStore;
@@ -36,6 +41,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 public class XploitsCommand extends XploitsCommandBase {
     private static final int MAX_HITS = 10;
@@ -80,7 +86,38 @@ public class XploitsCommand extends XploitsCommandBase {
             .then(literal("fights").executes(context -> {
                 fights();
                 return SINGLE_SUCCESS;
-            })));
+            }))
+            .then(literal("profile")
+                .executes(context -> {
+                    pvp().ifPresent(this::profileStatus);
+                    return SINGLE_SUCCESS;
+                })
+                .then(literal("list").executes(context -> {
+                    pvp().ifPresent(this::profileList);
+                    return SINGLE_SUCCESS;
+                }))
+                .then(literal("use").then(argument("name", StringArgumentType.word())
+                    .suggests(this::suggestProfileNames)
+                    .executes(context -> {
+                        pvp().ifPresent(module -> module.useProfile(StringArgumentType.getString(context, "name")));
+                        return SINGLE_SUCCESS;
+                    })))
+                .then(literal("save").then(argument("name", StringArgumentType.word())
+                    .suggests(this::suggestProfileNames)
+                    .executes(context -> {
+                        pvp().ifPresent(module -> module.saveProfile(StringArgumentType.getString(context, "name")));
+                        return SINGLE_SUCCESS;
+                    })))
+                .then(literal("delete").then(argument("name", StringArgumentType.word())
+                    .suggests(this::suggestProfileNames)
+                    .executes(context -> {
+                        pvp().ifPresent(module -> module.deleteProfile(StringArgumentType.getString(context, "name")));
+                        return SINGLE_SUCCESS;
+                    })))
+                .then(literal("reset-file").executes(context -> {
+                    pvp().ifPresent(AutoPvp::resetProfileFile);
+                    return SINGLE_SUCCESS;
+                }))));
         builder.then(literal("travel")
             .executes(context -> {
                 travel().ifPresent(module -> reply(Level.INFO, module.name, module.status()));
@@ -289,6 +326,34 @@ public class XploitsCommand extends XploitsCommandBase {
             }
             reply(Level.INFO, recorder.name, PositionedMsg.same(FightSummary.listLine(i + 1, record, ago(record.endedAt()))));
         }
+    }
+
+    /**
+     * {@code .xploits pvp profile}: the active profile and whether the live values still match it.
+     * Works with auto-pvp off (design §2): {@link AutoPvp#activeProfile()} and {@link
+     * AutoPvp#profileModified()} do not require the module to be active.
+     */
+    private void profileStatus(AutoPvp module) {
+        reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(ProfileText.PROFILE_STATUS,
+            "name", module.activeProfile().name(), "modified", module.profileModified() ? "*" : "")));
+    }
+
+    /** {@code .xploits pvp profile list}: built-ins first, then the player's own, the active one marked. */
+    private void profileList(AutoPvp module) {
+        reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(ProfileText.PROFILE_LIST_HEADER)));
+        String active = module.activeProfile().name();
+        for (PvpProfile profile : module.profiles()) {
+            Object mark = profile.name().equals(active) ? Msg.of(ProfileText.PROFILE_LIST_ACTIVE) : "";
+            reply(Level.INFO, module.name, PositionedMsg.same(
+                Msg.of(ProfileText.PROFILE_LIST_LINE, "name", profile.name(), "active", mark)));
+        }
+    }
+
+    /** {@code use}/{@code delete} suggest existing names; {@code save} suggests them too but accepts a new one. */
+    private CompletableFuture<Suggestions> suggestProfileNames(CommandContext<CommandSource> context, SuggestionsBuilder builder) {
+        AutoPvp module = Modules.get().get(AutoPvp.class);
+        List<String> names = module == null ? List.of() : module.profiles().stream().map(PvpProfile::name).toList();
+        return CommandSource.suggestMatching(names, builder);
     }
 
     /** A corrupt fight file, said once: the name and the detail stay in chat, never in the console or its log. */

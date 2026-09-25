@@ -2,12 +2,15 @@ package com.xploits.pvp.recorder.core;
 
 import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.recorder.core.FightAnalysis.Cause;
+import com.xploits.pvp.recorder.core.FightRecord.ModuleChange;
 import com.xploits.pvp.recorder.core.FightRecord.Opponent;
 import com.xploits.pvp.recorder.core.FightRecord.PhaseChange;
+import com.xploits.pvp.recorder.core.FightRecord.ProfileChange;
 import com.xploits.pvp.recorder.core.FightRecord.SelfTotals;
 import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +49,8 @@ public final class FightSummary {
 
         lines.add(Msg.of(RecorderText.SUMMARY_MODULES, "modules", joinOrNothing(f.modulesAtStart())));
 
+        addProfile(f, lines);
+        addChanges(f, lines);
         addPhases(f, lines);
         addCauses(f, lines);
         return List.copyOf(lines);
@@ -101,6 +106,45 @@ public final class FightSummary {
         for (Opponent o : f.opponents()) hits += o.hitsByYou();
         lines.add(Msg.of(RecorderText.SUMMARY_OFFENSE, "attacks", self.attacks(), "placed", self.crystalsPlaced(),
             "broken", self.crystalsBroken(), "hits", hits));
+    }
+
+    /** The profile active when the fight opened; nothing for a fight recorded before profiles existed. */
+    private static void addProfile(FightRecord f, List<Msg> lines) {
+        if (f.profile() == null) return;
+        lines.add(Msg.of(RecorderText.SUMMARY_PROFILE, "name", f.profile()));
+    }
+
+    /**
+     * Module toggles and profile switches, merged into one list and shown in the order they happened (not
+     * two separate sections): a drop right after a switch then reads next to it, with no inference rule
+     * needed. Ties at the same second keep module changes before profile changes, the order they are read
+     * from the record. Only the last {@link #PHASES_SHOWN} merged entries are shown, the same trim
+     * {@link #addPhases} does: unbounded, this could flood the chat (each list is capped at
+     * {@code FightTracker.MAX_CHANGES} on its own, but the merge of both is not).
+     */
+    private static void addChanges(FightRecord f, List<Msg> lines) {
+        List<ModuleChange> moduleChanges = f.moduleChanges();
+        List<ProfileChange> profileChanges = f.profileChanges();
+        if (moduleChanges.isEmpty() && profileChanges.isEmpty()) return;
+
+        record Entry(int second, int order, Msg line) {
+        }
+        List<Entry> entries = new ArrayList<>();
+        int order = 0;
+        for (ModuleChange c : moduleChanges) {
+            entries.add(new Entry(c.second(), order++, Msg.of(RecorderText.SUMMARY_CHANGE_MODULE, "second", c.second(),
+                "module", c.module(), "state", c.on() ? RecorderText.ON : RecorderText.OFF)));
+        }
+        for (ProfileChange c : profileChanges) {
+            entries.add(new Entry(c.second(), order++, Msg.of(RecorderText.SUMMARY_CHANGE_PROFILE, "second", c.second(),
+                "name", c.name())));
+        }
+        entries.sort(Comparator.comparingInt(Entry::second).thenComparingInt(Entry::order));
+
+        lines.add(Msg.of(RecorderText.SUMMARY_CHANGES));
+        int earlier = Math.max(0, entries.size() - PHASES_SHOWN);
+        if (earlier > 0) lines.add(Msg.of(RecorderText.SUMMARY_CHANGES_EARLIER, "count", earlier));
+        for (Entry e : entries.subList(earlier, entries.size())) lines.add(e.line());
     }
 
     private static void addPhases(FightRecord f, List<Msg> lines) {

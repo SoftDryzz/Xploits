@@ -7,6 +7,7 @@ import com.xploits.pvp.recorder.core.FightRecord.DamageEvent;
 import com.xploits.pvp.recorder.core.FightRecord.ModuleChange;
 import com.xploits.pvp.recorder.core.FightRecord.Opponent;
 import com.xploits.pvp.recorder.core.FightRecord.PhaseChange;
+import com.xploits.pvp.recorder.core.FightRecord.ProfileChange;
 import com.xploits.pvp.recorder.core.FightRecord.Sample;
 import com.xploits.pvp.recorder.core.FightRecord.SelfTotals;
 
@@ -113,6 +114,8 @@ final class Fights {
         private final List<ModuleChange> moduleChanges = new ArrayList<>();
         private final List<PhaseChange> phases = new ArrayList<>();
         private final List<Edit> edits = new ArrayList<>();
+        private String profile;
+        private final List<ProfileChange> profileChanges = new ArrayList<>();
 
         private Builder(FightOutcome outcome) {
             this.outcome = outcome;
@@ -222,6 +225,17 @@ final class Fights {
             return this;
         }
 
+        /** The profile active when the fight opened; null (the default) is the pre-profiles shape. */
+        Builder profile(String name) {
+            profile = name;
+            return this;
+        }
+
+        Builder profileChange(int second, String name) {
+            profileChanges.add(new ProfileChange(second, name));
+            return this;
+        }
+
         /** Changes the samples of seconds {@code from} (included) to {@code to} (excluded). */
         Builder samples(int from, int to, Consumer<Row> edit) {
             edits.add(new Edit(from, to, edit));
@@ -283,7 +297,7 @@ final class Fights {
                 Math.max(0, crystalsPlaced - 2), 0, enemyCrystalsNear);
             return new FightRecord(FightRecord.SCHEMA, "0.5.0", STARTED_AT, STARTED_AT + seconds * 1000L, seconds, outcome,
                 false, FightMode.of(autoPvpSeconds, seconds), autoPvpSeconds, opponentList, maxHostilesNear, self, damage, 0,
-                samples, modulesAtStart, moduleChanges, phases);
+                samples, modulesAtStart, moduleChanges, phases, profile, profileChanges);
         }
 
         private Builder nonLethal(DamageKind kind, AttackerKind by, String attacker, double amount) {

@@ -70,6 +70,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -321,7 +322,7 @@ public class FightRecorder extends XploitsModule {
             && (view == null || view.state() == CombatState.NO_COMBAT);
 
         TickInput in = new TickInput(tick, System.currentTimeMillis(), alive, measureSelf(me, autoPvp, !idle && alive),
-            hostiles, activeModules(), autoPvpOn, view, events);
+            hostiles, activeModules(), autoPvpOn, view, events, autoPvp == null ? null : autoPvp.activeProfile().name());
         FightTracker.Step step = tracker.tick(in);
         if (liveConsole.get()) {
             for (Msg line : step.live()) logToConsole(Level.INFO, line);
@@ -534,6 +535,11 @@ public class FightRecorder extends XploitsModule {
             store = new FightStore(folder);
         }
         return store;
+    }
+
+    /** The recorder's live totals for the fight under way, for the HUD; empty while off or idle. Game thread only. */
+    public Optional<FightTracker.LiveFight> live() {
+        return isActive() ? tracker.live() : Optional.empty();
     }
 
     @Override

@@ -16,12 +16,17 @@ import java.util.Objects;
  * exactly one sample per such second: {@code samples.size() == durationSeconds}, so
  * {@code autoPvpSeconds <= durationSeconds} always. It is not {@code endedAt - startedAt}: that is the wall
  * clock, which a lagging client lets run ahead of the game ticks.
+ *
+ * <p>{@code profile} (the style profile active when the fight opened) and {@code profileChanges} are the
+ * only optional fields in schema {@value #SCHEMA}: a file saved before profiles existed has neither, and
+ * loads with {@code profile} null and {@code profileChanges} empty.
  */
 public record FightRecord(int schema, String addonVersion, long startedAt, long endedAt, int durationSeconds,
                           FightOutcome outcome, boolean truncated, FightMode mode, int autoPvpSeconds,
                           List<Opponent> opponents, int maxHostilesNear, SelfTotals self, List<DamageEvent> damage,
                           int damageEventsDropped, List<Sample> samples, List<String> modulesAtStart,
-                          List<ModuleChange> moduleChanges, List<PhaseChange> phases) {
+                          List<ModuleChange> moduleChanges, List<PhaseChange> phases, String profile,
+                          List<ProfileChange> profileChanges) {
     public static final int SCHEMA = 1;
 
     public FightRecord {
@@ -40,6 +45,18 @@ public record FightRecord(int schema, String addonVersion, long startedAt, long 
         modulesAtStart = List.copyOf(modulesAtStart);
         moduleChanges = List.copyOf(moduleChanges);
         phases = List.copyOf(phases);
+        profileChanges = List.copyOf(profileChanges);
+    }
+
+    /** Old shape from before profiles existed: no {@link #profile}, no {@link #profileChanges}. */
+    public FightRecord(int schema, String addonVersion, long startedAt, long endedAt, int durationSeconds,
+                       FightOutcome outcome, boolean truncated, FightMode mode, int autoPvpSeconds,
+                       List<Opponent> opponents, int maxHostilesNear, SelfTotals self, List<DamageEvent> damage,
+                       int damageEventsDropped, List<Sample> samples, List<String> modulesAtStart,
+                       List<ModuleChange> moduleChanges, List<PhaseChange> phases) {
+        this(schema, addonVersion, startedAt, endedAt, durationSeconds, outcome, truncated, mode, autoPvpSeconds,
+            opponents, maxHostilesNear, self, damage, damageEventsDropped, samples, modulesAtStart, moduleChanges,
+            phases, null, List.of());
     }
 
     /** A player you fought: someone who hit you, was hit by you, popped, died or was auto-pvp's target. */
@@ -117,6 +134,14 @@ public record FightRecord(int schema, String addonVersion, long startedAt, long 
             requireCount("second", second);
             Objects.requireNonNull(state, "state");
             Objects.requireNonNull(posture, "posture");
+        }
+    }
+
+    /** The active style profile changed during the fight: {@code name} is what it changed to. */
+    public record ProfileChange(int second, String name) {
+        public ProfileChange {
+            requireCount("second", second);
+            Objects.requireNonNull(name, "name");
         }
     }
 

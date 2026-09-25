@@ -7,6 +7,8 @@ import com.xploits.console.ConsoleModule;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.pvp.hud.AutoPvpHud;
+import com.xploits.pvp.hud.PvpStarscript;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.stash.StashKeeper;
 import com.xploits.shared.Languages;
@@ -16,6 +18,7 @@ import com.xploits.sweep.NetherSweep;
 import com.xploits.travel.AutoTravel;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
 import meteordevelopment.meteorclient.commands.Commands;
+import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.modules.Category;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import org.slf4j.Logger;
@@ -39,6 +42,8 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new AutoTravel());
         Modules.get().add(new NetherSweep());
         Modules.get().add(new ConsoleModule());
+        Hud.get().register(AutoPvpHud.INFO);
+        PvpStarscript.register();
         Commands.add(new XploitsCommand());
     }
 
