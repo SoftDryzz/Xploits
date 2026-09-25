@@ -47,7 +47,7 @@ public final class FightSummary {
         addDamageSplit(f, lines);
         addOffense(f, lines);
 
-        lines.add(Msg.of(RecorderText.SUMMARY_MODULES, "modules", joinOrNothing(f.modulesAtStart())));
+        lines.add(Msg.of(RecorderText.SUMMARY_MODULES, "modules", joinOrNone(f.modulesAtStart())));
 
         addProfile(f, lines);
         addChanges(f, lines);
@@ -173,11 +173,11 @@ public final class FightSummary {
         }
     }
 
-    /** {@code names} joined with commas, or {@link RecorderText#NOTHING} when there are none. */
-    private static Object joinOrNothing(List<String> names) {
+    /** {@code names} joined with commas, or {@link RecorderText#NONE_LISTED} when there are none. */
+    private static Object joinOrNone(List<String> names) {
         Object head = null;
         for (String name : names) head = head == null ? name : Msg.of(RecorderText.JOIN_COMMA, "first", head, "rest", name);
-        return head == null ? RecorderText.NOTHING : head;
+        return head == null ? RecorderText.NONE_LISTED : head;
     }
 
     private static int percent(double share) {

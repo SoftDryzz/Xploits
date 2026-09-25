@@ -6,6 +6,14 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `fight-recorder`: a fight whose last exchange was a totem pop kept the used totem in its end
+  totals, because the server sends the pop before the inventory update. The review then said you
+  still had totems, which could blame the wrong cause (double pop, unused totems). The end totals now
+  read the inventory for a quarter of a second after the last exchange.
+- `.xploits pvp review` left "Modules at start:" blank when no module was on; it now says "none".
+
 ## [0.6.0] — 2026-09-25
 
 What is new, in short:

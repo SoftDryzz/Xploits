@@ -33,6 +33,8 @@ public enum RecorderText implements MessageKey {
     MATERIAL_TOTEMS,
     NOBODY,
     NOTHING,
+    /** An empty list of names, said out loud ({@link #NOTHING} is deliberately blank: it is an empty suffix). */
+    NONE_LISTED,
     JOIN_COMMA,
     CONCAT,
     ON,

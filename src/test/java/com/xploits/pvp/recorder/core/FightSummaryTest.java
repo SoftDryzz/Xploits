@@ -78,6 +78,15 @@ class FightSummaryTest {
     // --- content --------------------------------------------------------------------------------------
 
     @Test
+    void aFightWithNoModulesAtStartSaysSoInsteadOfLeavingTheLineBlank() {
+        FightRecord f = Fights.ending(FightOutcome.ENDED).modules().build();
+        Msg modules = FightSummary.review(f, 1).stream()
+            .filter(m -> m.key() == RecorderText.SUMMARY_MODULES).findFirst().orElseThrow();
+        assertEquals("Modules at start: none", EN.render(modules));
+        assertEquals("Módulos al empezar: ninguno", ES.render(modules));
+    }
+
+    @Test
     void theHeaderNamesTheNumberOutcomeSecondsOpponentsAndMode() {
         assertEquals("Fight #7 · lost · 43 s · Foo · auto-pvp", EN.render(FightSummary.review(Fights.crystalDeath(), 7).get(0)));
         assertEquals("Pelea #7 · perdida · 43 s · Foo · auto-pvp", ES.render(FightSummary.review(Fights.crystalDeath(), 7).get(0)));

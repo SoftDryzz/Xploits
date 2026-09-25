@@ -38,6 +38,13 @@ public final class FightTracker {
     public static final int QUIET_TICKS = 400;
     /** 5 s after the last opponent died. */
     public static final int SETTLE_TICKS = 100;
+
+    /**
+     * Ticks after the last exchange during which the end totals still read your inventory (totems, offhand
+     * totem). The server sends a pop before the inventory update that removes the totem, so on the pop's
+     * own tick the totem is still counted; a quarter of a second covers that lag with room to spare.
+     */
+    public static final int INVENTORY_SETTLE_TICKS = 5;
     /** Four hearts. */
     public static final double BIG_HIT = 8.0;
     /** Ten minutes. */

@@ -238,6 +238,11 @@ final class FightBuilder {
         if (measured) measure(in, lines);
         if (lastExchangeTick == tick && exchanges > 0) {
             frozen = new Frozen(pops, placed, broken, attacks, spawnedNear, maxHostilesNear, self, opponents.size());
+        } else if (measured && frozen != null && tick - lastExchangeTick <= FightTracker.INVENTORY_SETTLE_TICKS) {
+            // The inventory lags the pop by a tick or two: keep reading it for a short while after the last
+            // exchange. Only the inventory fields of the frozen self reach the end totals.
+            frozen = new Frozen(frozen.pops(), frozen.placed(), frozen.broken(), frozen.attacks(),
+                frozen.spawnedNear(), frozen.maxHostilesNear(), self, frozen.opponents());
         }
 
         if (exchanges == 0) return;
