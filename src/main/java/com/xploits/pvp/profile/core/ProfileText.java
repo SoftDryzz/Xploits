@@ -19,6 +19,8 @@ public enum ProfileText implements MessageKey {
     PROFILE_NOTHING_ALLOWED,
     /** {@code save} of a profile that does not allow {@code crystal-aura}: it loses the autobreak. */
     PROFILE_NO_AUTOBREAK,
+    /** {@code use-crystal-aura} unticked by hand (not while a profile is applied): the director loses the autobreak. */
+    PROFILE_NO_AUTOBREAK_UNTICKED,
     PROFILE_SAVED,
     /** A player profile actually removed (a built-in gets {@link #PROFILE_RESET} instead). */
     PROFILE_DELETED,

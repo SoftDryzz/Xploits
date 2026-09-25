@@ -15,22 +15,34 @@ import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
+import com.xploits.pvp.core.PvpStatus;
 import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
+import com.xploits.pvp.hud.core.PanelInput;
+import com.xploits.pvp.profile.core.AutobreakWatch;
+import com.xploits.pvp.profile.core.ProfileSession;
+import com.xploits.pvp.profile.core.ProfileStore;
+import com.xploits.pvp.profile.core.ProfileText;
+import com.xploits.pvp.profile.core.PvpProfile;
+import com.xploits.pvp.recorder.FightRecorder;
+import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.core.i18n.Msg;
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
+import meteordevelopment.meteorclient.settings.KeybindSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.friends.Friend;
 import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
@@ -56,6 +68,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -159,6 +172,63 @@ public class AutoPvp extends XploitsModule {
         .build()
     );
 
+    /**
+     * Switches to the next style profile (design §2). Last in General (precise rules "Settings order");
+     * Meteor fires it on key release and only while this module is on.
+     */
+    private final Setting<Keybind> nextProfile = sgGeneral.add(new KeybindSetting.Builder()
+        .name("next-profile")
+        .description(Texts.startupText(PvpText.SETTING_NEXT_PROFILE))
+        .defaultValue(Keybind.none())
+        .action(this::nextProfile)
+        .build()
+    );
+
+    /**
+     * True while a profile's values are being set, so no {@code onChanged} takes that for a hand edit
+     * (design §2 adapter: the guard flag).
+     */
+    private boolean applyingProfile;
+    private final AutobreakWatch autobreakWatch = new AutobreakWatch();
+
+    private final SettingGroup sgModules = settings.createGroup("Modules");
+
+    /** {@code use-<module>} per managed module, in {@link ManagedModules#ALL} order: the allowed set a profile saves. */
+    private final Map<String, Setting<Boolean>> useModules = useModuleSettings();
+
+    private Map<String, Setting<Boolean>> useModuleSettings() {
+        Map<String, Setting<Boolean>> result = new LinkedHashMap<>();
+        for (ManagedModule module : ManagedModules.ALL) {
+            BoolSetting.Builder builder = new BoolSetting.Builder()
+                .name("use-" + module.name())
+                .description(Texts.startupText(PvpText.SETTING_USE_MODULE))
+                .defaultValue(true);
+            if (module.equals(ManagedModules.CRYSTAL_AURA)) builder.onChanged(this::onUseCrystalAuraChanged);
+            result.put(module.name(), sgModules.add(builder.build()));
+        }
+        return result;
+    }
+
+    /**
+     * Unticking {@code use-crystal-aura} by hand loses the autobreak: said on each such change, never
+     * while a profile is applied nor while Meteor loads the saved value (no world yet).
+     */
+    private void onUseCrystalAuraChanged(boolean value) {
+        if (autobreakWatch.changed(value, !applyingProfile && mc.world != null)) {
+            warning(ProfileText.PROFILE_NO_AUTOBREAK_UNTICKED);
+        }
+    }
+
+    /** The player's style profiles and their file (ruling R1: owned here, reached by the commands through this module). */
+    private final ProfileSession profileSession = new ProfileSession(new ProfileStore(
+        MeteorClient.FOLDER.toPath().resolve("xploits").resolve("pvp").resolve("profiles.json")));
+
+    /**
+     * Names released by hand this fight, for the panel only: the ledger forgets its own on every
+     * phase/posture change, and the panel should not drop them mid-fight. Emptied on NO_COMBAT.
+     */
+    private final Set<String> panelReleased = new LinkedHashSet<>();
+
     private final CombatDirector director = new CombatDirector();
     private final ModuleLedger ledger = new ModuleLedger();
 
@@ -211,6 +281,8 @@ public class AutoPvp extends XploitsModule {
 
     @Override
     public void onActivate() {
+        sayLoadWarning();
+        panelReleased.clear();
         director.reset();
         ledger.reset();
         actionWatch.reset();
@@ -260,10 +332,12 @@ public class AutoPvp extends XploitsModule {
         CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
         lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get());
+        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed());
         lastPlan = plan;
 
         apply(plan);
+        if (plan.state() == CombatState.NO_COMBAT) panelReleased.clear();
+        else panelReleased.addAll(ledger.released());
         reportPhaseChange(plan);
         reportPostureChange(plan);
         reportNotes(plan);
@@ -471,7 +545,8 @@ public class AutoPvp extends XploitsModule {
         // show, and up to date, in .xploits pvp-.
         Map<Object, Msg> notes = new LinkedHashMap<>();
         for (Msg warning : plan.warnings()) notes.put(warning, warning);
-        for (Skipped skipped : plan.skipped()) {
+        // PROFILE_OFF is never said in chat (design §1): the player chose it, and the panel shows it.
+        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
             notes.put(skipped.module().name(),
                 Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
         }
@@ -816,6 +891,7 @@ public class AutoPvp extends XploitsModule {
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
+        panelReleased.clear();
     }
 
     private static Module byName(String name) {
@@ -838,7 +914,7 @@ public class AutoPvp extends XploitsModule {
 
     private static Msg outOfResourcesMessage(Plan plan) {
         Object reasons = null;
-        for (Skipped skipped : plan.skipped()) {
+        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
             Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", skipped.module().name(), "reason", skipped.reason());
             reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
         }
@@ -882,11 +958,6 @@ public class AutoPvp extends XploitsModule {
             ? Msg.of(PvpText.NOTHING)
             : Msg.of(PvpText.STATUS_ALLY, "name", skippedAlly.name(), "reason", skippedAlly.allegiance().reason(),
                 "distance", skippedAlly.distance());
-        Msg skippedLines = null;
-        for (Skipped skipped : lastPlan.skipped()) {
-            skippedLines = append(skippedLines,
-                Msg.of(PvpText.STATUS_SKIPPED, "module", skipped.module().name(), "reason", skipped.reason()));
-        }
         Msg warningLines = null;
         for (Msg warning : lastPlan.warnings()) {
             warningLines = append(warningLines, Msg.of(PvpText.STATUS_WARNING, "warning", warning));
@@ -894,11 +965,12 @@ public class AutoPvp extends XploitsModule {
         List<String> yours = yourActiveModules(owned);
         return Msg.of(PvpText.STATUS, "state", PvpText.of(lastPlan.state()),
             "seconds", director.ticksInState() / TICKS_PER_SECOND, "posture", PvpText.of(lastPlan.posture()),
+            "profile", PvpStatus.profile(activeProfile().name(), profileModified()),
             "target", target, "self", self, "ally", ally,
             "friends", syncedFriendsLine(),
             "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),
             "idle", idleLine(),
-            "skipped", skippedLines == null ? Msg.of(PvpText.NOTHING) : skippedLines,
+            "skipped", PvpStatus.skippedLines(lastPlan.skipped()),
             "warnings", warningLines == null ? Msg.of(PvpText.NOTHING) : warningLines,
             "yours", yours.isEmpty() ? PvpText.NONE : String.join(", ", yours));
     }
@@ -952,7 +1024,157 @@ public class AutoPvp extends XploitsModule {
         return Msg.of(PvpText.FRIENDS_SYNCED, "names", String.join(", ", synced));
     }
 
+    // --- Style profiles (design §2) ------------------------------------------------------------------
+
+    /** The modules the director may use now: the ticked {@code use-*} settings. */
+    private Set<ManagedModule> allowed() {
+        Set<ManagedModule> result = new LinkedHashSet<>();
+        for (ManagedModule module : ManagedModules.ALL) {
+            if (useModules.get(module.name()).get()) result.add(module);
+        }
+        return result;
+    }
+
+    private Set<String> allowedNames() {
+        Set<String> names = new LinkedHashSet<>();
+        for (ManagedModule module : allowed()) names.add(module.name());
+        return names;
+    }
+
+    /** Built-ins first, then the player's own by name. Works with auto-pvp off. */
+    public List<PvpProfile> profiles() {
+        sayLoadWarning();
+        return profileSession.book().profiles();
+    }
+
+    public PvpProfile activeProfile() {
+        return profileSession.book().active();
+    }
+
+    /** Whether the live values no longer match the active profile (shown as {@code name*}). */
+    public boolean profileModified() {
+        return profileSession.book().modified(targetRange.get(), approachDistance.get(), threatMargin.get(), allowedNames());
+    }
+
+    /**
+     * Makes {@code name} active and sets its values (they apply on the next tick, or when auto-pvp is
+     * turned on). This module says the outcome itself; the result tells a command whether it worked.
+     */
+    public ProfileSession.Outcome useProfile(String name) {
+        sayLoadWarning();
+        return carryOut(profileSession.use(name));
+    }
+
+    /** Saves the current values under {@code name}; the active profile does not change. */
+    public ProfileSession.Outcome saveProfile(String name) {
+        sayLoadWarning();
+        return carryOut(profileSession.save(name, targetRange.get(), approachDistance.get(), threatMargin.get(), allowedNames()));
+    }
+
+    /** Deletes a profile of the player's own, or resets a built-in to factory values. */
+    public ProfileSession.Outcome deleteProfile(String name) {
+        sayLoadWarning();
+        return carryOut(profileSession.delete(name));
+    }
+
+    /** Moves a corrupt {@code profiles.json} aside so saving works again. */
+    public ProfileSession.Outcome resetProfileFile() {
+        sayLoadWarning();
+        return carryOut(profileSession.resetFile());
+    }
+
+    /** The {@code next-profile} key. */
+    private void nextProfile() {
+        sayLoadWarning();
+        carryOut(profileSession.next());
+    }
+
+    private ProfileSession.Outcome carryOut(ProfileSession.Outcome outcome) {
+        outcome.apply().ifPresent(this::applyProfile);
+        for (Msg line : outcome.infos()) info(line);
+        for (PositionedMsg line : outcome.warnings()) warningPrivate(line);
+        return outcome;
+    }
+
+    /**
+     * Sets a profile's values with {@code Setting.set}. The guard keeps the {@code onChanged}
+     * handlers from taking this for a hand edit; the director only sees it on its next tick, and keeps
+     * its phase and dwell.
+     */
+    private void applyProfile(PvpProfile profile) {
+        applyingProfile = true;
+        try {
+            targetRange.set(profile.targetRange());
+            approachDistance.set(profile.approachDistance());
+            threatMargin.set(profile.threatMargin());
+            for (Map.Entry<String, Setting<Boolean>> use : useModules.entrySet()) {
+                use.getValue().set(profile.allowed().contains(use.getKey()));
+            }
+        } finally {
+            applyingProfile = false;
+        }
+    }
+
+    /** The corrupt-file warning from loading, said once, the first time there is someone to read it. */
+    private void sayLoadWarning() {
+        profileSession.takeLoadWarning().ifPresent(this::warningPrivate);
+    }
+
+    // --- HUD panel (design §3) -----------------------------------------------------------------------
+
+    /** What the panel draws from auto-pvp (design §3 "AutoPvp accessor"). Game thread only. */
+    public record PanelState(Plan plan, String target, double targetDistance, Set<String> released,
+                             List<ActionWatch.Idle> idle, int crystals, int totems, int obsidian) {
+        public PanelState {
+            released = Set.copyOf(released);
+            idle = List.copyOf(idle);
+        }
+    }
+
+    /** Empty while off or before the first reading. Game thread only. */
+    public Optional<PanelState> panelState() {
+        if (!isActive() || lastPlan == null || lastSnapshot == null) return Optional.empty();
+        return Optional.of(new PanelState(lastPlan, lastTargetName,
+            lastTargetDistance == null ? 0 : lastTargetDistance, new LinkedHashSet<>(panelReleased),
+            actionWatch.idle(), lastSnapshot.resources().getOrDefault(Resource.CRYSTALS, 0),
+            lastSnapshot.selfTotems(), lastSnapshot.resources().getOrDefault(Resource.OBSIDIAN, 0)));
+    }
+
+    /**
+     * Everything the {@code xploits-pvp} panel draws, in plain values: {@link #panelState()}, the
+     * active profile and the recorder's live fight. Game thread only.
+     */
+    public PanelInput panelInput(boolean showFight) {
+        String profile = activeProfile().name();
+        boolean modified = profileModified();
+        Optional<PanelState> state = panelState();
+        if (state.isEmpty()) {
+            return new PanelInput(false, profile, modified, CombatState.NO_COMBAT, CombatPosture.CALM, null, 0,
+                List.of(), List.of(), List.of(), List.of(), 0, 0, 0, false, false, null, showFight);
+        }
+        PanelState panel = state.get();
+        Plan plan = panel.plan();
+        List<String> enabled = new ArrayList<>();
+        for (ManagedModule module : plan.enable()) enabled.add(module.name());
+        List<PanelInput.Idle> idle = new ArrayList<>();
+        for (ActionWatch.Idle verdict : panel.idle()) {
+            List<String> names = new ArrayList<>();
+            for (ManagedModule module : verdict.modules()) names.add(module.name());
+            idle.add(new PanelInput.Idle(verdict.resource().name().toLowerCase(Locale.ROOT), names));
+        }
+        FightRecorder recorder = Modules.get().get(FightRecorder.class);
+        PanelInput.LiveFight fight = recorder == null ? null : recorder.live()
+            .map(live -> new PanelInput.LiveFight(live.seconds(), live.yourPops(), live.theirPops(), live.damageTaken()))
+            .orElse(null);
+        return new PanelInput(true, profile, modified, plan.state(), plan.posture(), panel.target(),
+            panel.targetDistance(), enabled, List.copyOf(panel.released()), PvpStatus.profileOffNames(plan.skipped()),
+            idle, panel.crystals(), panel.totems(), panel.obsidian(),
+            plan.enable().contains(ManagedModules.CRYSTAL_AURA), plan.state() == CombatState.OUT_OF_RESOURCES,
+            fight, showFight);
+    }
+
     /** I6: which combat modules you have active that the director does not control, not a fixed list. */
+
     private List<String> yourActiveModules(Set<String> owned) {
         List<String> result = new ArrayList<>();
         for (ManagedModule managed : ManagedModules.ALL) {
