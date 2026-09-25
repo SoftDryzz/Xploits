@@ -19,8 +19,6 @@ import net.minecraft.server.command.CommandOutput;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
-import net.minecraft.world.Difficulty;
-import net.minecraft.world.rule.GameRules;
 import org.apache.commons.lang3.function.FailableConsumer;
 import org.apache.commons.lang3.function.FailableFunction;
 
@@ -48,6 +46,10 @@ public final class Bench {
     private static final Pattern PLAYER_SELECTOR = Pattern.compile("@[aprs](?![a-z])");
     /** Where a command names the real player. */
     public static final String PLAYER = "{player}";
+    /** How long the client may take to see a spawned sparring (§Run timeline, Arrange). */
+    public static final int SPARRING_VISIBLE_TICKS = 100;
+    /** The wait after the client sees it, before T0. */
+    public static final int SPARRING_SETTLE_TICKS = 20;
 
     private final ClientGameTestContext ctx;
     private final TestServerContext server;
@@ -55,8 +57,11 @@ public final class Bench {
     private final List<Runnable> everyTick = new ArrayList<>();
     private final List<Runnable> despawn = new ArrayList<>();
     private final List<Runnable> screenRestore = new ArrayList<>();
+    private final Arena arena = new Arena(this);
 
     private int ticksUsed;
+    private Sparring sparring;
+    private int sparringVisibleAfter = -1;
     private int t0Tick = -1;
     private String player;
     /** The fight files there were at T0. */
@@ -205,17 +210,73 @@ public final class Bench {
 
     /**
      * The common first steps of every run (§Run timeline, Arrange): difficulty normal, no natural
-     * regeneration, the player in survival and centred on its block.
+     * regeneration, the player in survival and centred on its block, then the floor ({@link Arena#prepare}).
      */
     void prepare() {
-        // The command fails when the difficulty is already the one asked for (a new world's default).
-        if (fromServer(srv -> srv.getSaveProperties().getDifficulty()) != Difficulty.NORMAL) command("difficulty normal");
-        command("gamerule natural_health_regeneration false");
-        command("gamemode survival " + PLAYER);
-        command("execute at " + PLAYER + " align xz run tp " + PLAYER + " ~0.5 ~ ~0.5");
-        boolean set = fromServer(srv -> srv.getSaveProperties().getDifficulty() == Difficulty.NORMAL
-            && !srv.getOverworld().getGameRules().getValue(GameRules.NATURAL_HEALTH_REGENERATION));
-        if (!set) throw new BenchException("the difficulty or the regeneration rule did not change");
+        arena.prepare();
+    }
+
+    /** This run's arena: pads, floors and loadouts. */
+    public Arena arena() {
+        return arena;
+    }
+
+    // --- Sparring --------------------------------------------------------------------------------
+
+    /**
+     * Builds {@code script}'s blocks and spawns the sparring partner (a script instance serves one run),
+     * then waits until the client sees it among the world's players and in the tab list (at most
+     * {@value #SPARRING_VISIBLE_TICKS} ticks, otherwise ERROR), then {@value #SPARRING_SETTLE_TICKS}
+     * more. From its spawn it steps once per {@link #ticks tick}; its death is ERROR; the teardown
+     * despawns it.
+     */
+    public Sparring spawn(Script script) {
+        if (sparring != null) throw new BenchException("a run has one sparring partner");
+        String name = player();
+        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script));
+        sparring = spawned;
+        atDespawn(() -> onServer(srv -> spawned.despawn(srv)));
+        everyTick(() -> {
+            int now = ticksUsed;
+            int since = sinceT0();
+            boolean dead = fromServer(srv -> spawned.step(now, since, Arena.player(srv, name)));
+            if (dead) throw new BenchException("sparring died");
+        });
+        for (int i = 1; i <= SPARRING_VISIBLE_TICKS; i++) {
+            ticks(1);
+            if (fromClient(Bench::clientSeesSparring)) {
+                sparringVisibleAfter = i;
+                ticks(SPARRING_SETTLE_TICKS);
+                return spawned;
+            }
+        }
+        throw new BenchException("the client did not see the sparring partner within " + SPARRING_VISIBLE_TICKS + " ticks");
+    }
+
+    /** The sparring partner {@link #spawn} put in this run. */
+    public Sparring sparring() {
+        if (sparring == null) throw new BenchException("this run has no sparring partner");
+        return sparring;
+    }
+
+    /** The sparring's counters, read on the server thread; its first pop counts from T0. */
+    public Sparring.Stats sparringStats() {
+        Sparring s = sparring();
+        int t0 = t0Tick;
+        return fromServer(srv -> s.stats(t0));
+    }
+
+    /** Ticks the client took to see the sparring after its spawn; -1 before it did. */
+    public int sparringVisibleAfter() {
+        return sparringVisibleAfter;
+    }
+
+    /** The client has the sparring among its world's players and in its tab list. */
+    private static boolean clientSeesSparring(MinecraftClient client) {
+        if (client.world == null || client.getNetworkHandler() == null) return false;
+        boolean inWorld = client.world.getPlayers().stream()
+            .anyMatch(p -> p != client.player && Sparring.NAME.equals(p.getGameProfile().name()));
+        return inWorld && client.getNetworkHandler().getPlayerListEntry(Sparring.NAME) != null;
     }
 
     // --- Meteor and Xploits modules --------------------------------------------------------------
