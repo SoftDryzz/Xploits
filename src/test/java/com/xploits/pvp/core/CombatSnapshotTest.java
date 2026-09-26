@@ -117,7 +117,12 @@ class CombatSnapshotTest {
         // reactive(): only the three anti- modules spend only when their threat shows up.
         for (ManagedModule module : ManagedModules.ALL) {
             assertFalse(module.name().isBlank(), "the module must have a name");
-            assertTrue(module.minimum() >= 1, module.name() + ": every managed module places or mines something");
+            if (module.equals(ManagedModules.ANTI_BED)) {
+                assertEquals(0, module.minimum(),
+                    "anti-bed breaks a bed on your head with no item: string only matters for placing");
+            } else {
+                assertTrue(module.minimum() >= 1, module.name() + ": it only does anything by placing or mining");
+            }
             assertEquals(module.name().startsWith("anti-"), module.reactive(), module.name());
         }
         assertEquals(10, ManagedModules.ALL.size());

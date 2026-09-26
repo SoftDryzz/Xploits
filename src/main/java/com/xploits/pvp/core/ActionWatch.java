@@ -306,8 +306,8 @@ public final class ActionWatch {
         return idle.ticks() / TICKS_PER_SECOND;
     }
 
-    /** "a, b and c", listed the way the player's language does it. */
-    private static Object join(List<String> names) {
+    /** "a, b and c", listed the way the player's language does it. {@link PvpStatus} lists with it too. */
+    static Object join(List<String> names) {
         if (names.size() == 1) return names.getFirst();
         Object head = names.getFirst();
         for (String name : names.subList(1, names.size() - 1)) {

@@ -8,10 +8,11 @@ All notable changes to Xploits. The format is based on
 
 ### Fixed
 
-- `auto-pvp` turned on `anti-anvil`, `anti-bed` and `anti-anchor` as if they needed nothing, but they
-  place obsidian, string and a slab: without them they did nothing. Now each one only goes up while
-  you carry its material in the hotbar, and `anti-anvil` shares the obsidian with `hole-filler`,
-  `surround` and `auto-trap`.
+- `auto-pvp` turned on `anti-anvil` and `anti-anchor` as if they needed nothing, but they place
+  obsidian and a slab: without them they did nothing. Now each one only goes up while you carry its
+  material in the hotbar, and `anti-anvil` shares the obsidian with `hole-filler`, `surround` and
+  `auto-trap`. `anti-bed` still goes up without anything: it breaks a bed on your head without
+  string, and needs string to place it.
 - The "on for a while without spending anything" warning no longer fires for the three `anti-`
   modules: they only place when their threat shows up, so a stack that does not move is them waiting.
 - A managed module Meteor does not have (`anti-anchor` in Meteor 1.21.11) is no longer taken as

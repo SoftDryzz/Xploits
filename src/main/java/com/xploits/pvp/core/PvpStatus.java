@@ -53,6 +53,16 @@ public final class PvpStatus {
         return names;
     }
 
+    /**
+     * The one chat line said on turning auto-pvp on when Meteor lacks managed modules: a single message
+     * that lists them ("a, b and c"), so it reads right with one or with several.
+     *
+     * @param names the missing modules' names, never empty
+     */
+    public static Msg missingWarning(List<String> names) {
+        return Msg.of(PvpText.MODULE_MISSING, "modules", ActionWatch.join(names));
+    }
+
     /** {@code  · profile <name>} with a trailing {@code *} when the live values differ from it. */
     public static Msg profile(String name, boolean modified) {
         return Msg.of(PvpText.STATUS_PROFILE, "name", name, "modified", modified ? "*" : "");

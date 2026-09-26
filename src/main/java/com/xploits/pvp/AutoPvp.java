@@ -900,7 +900,7 @@ public class AutoPvp extends XploitsModule {
         for (ManagedModule module : ManagedModules.ALL) {
             if (missing.contains(module)) names.add(module.name());
         }
-        warning(PvpText.MODULE_MISSING, "module", String.join(", ", names));
+        warning(PvpStatus.missingWarning(names));
     }
 
     /** I1: if something it manages was already on when auto-pvp was turned on, it is the player's and that has to be said. */

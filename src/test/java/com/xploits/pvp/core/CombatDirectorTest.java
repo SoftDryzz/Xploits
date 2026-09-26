@@ -787,14 +787,15 @@ class CombatDirectorTest {
     }
 
     @Test
-    void antiBedWithoutStringIsSkippedForTheShortage() {
-        // AntiBed places string (InvUtils.findInHotbar(Items.STRING)): turned on without any it can
-        // place nothing, and saying it is on would be the silent failure §10 forbids.
+    void antiBedWithoutStringStillComesUp() {
+        // AntiBed has a half that costs nothing, like the aura's autobreak (§7): it breaks a bed already
+        // on your head with mining packets, no item needed. String only matters for placing it, so the
+        // resource filter must never take anti-bed away.
         Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.STRING, 0)));
 
         assertEquals(CombatPosture.THREATENED, plan.posture(), "precondition");
-        assertFalse(enables(plan, ManagedModules.ANTI_BED));
-        assertEquals(Msg.of(PvpText.SHORTAGE, "have", 0, "minimum", 1), reasonFor(plan, ManagedModules.ANTI_BED));
+        assertTrue(enables(plan, ManagedModules.ANTI_BED));
+        assertFalse(skips(plan, ManagedModules.ANTI_BED));
     }
 
     @Test

@@ -92,10 +92,14 @@ class PvpStatusTest {
     }
 
     @Test
-    void theMissingWarningNamesTheModule() {
-        assertEquals("anti-anchor is not in this Meteor build; auto-pvp will not use it.",
-            EN.render(Msg.of(PvpText.MODULE_MISSING, "module", "anti-anchor")));
-        assertEquals("anti-anchor no está en esta versión de Meteor; auto-pvp no lo usará.",
-            ES.render(Msg.of(PvpText.MODULE_MISSING, "module", "anti-anchor")));
+    void theMissingWarningListsTheModulesInOneLine() {
+        assertEquals("Not in this Meteor build, so auto-pvp will not use: anti-anchor.",
+            EN.render(PvpStatus.missingWarning(List.of("anti-anchor"))));
+        assertEquals("Esta versión de Meteor no trae, así que auto-pvp no usará: anti-anchor.",
+            ES.render(PvpStatus.missingWarning(List.of("anti-anchor"))));
+        assertEquals("Not in this Meteor build, so auto-pvp will not use: anti-anchor and anti-bed.",
+            EN.render(PvpStatus.missingWarning(List.of("anti-anchor", "anti-bed"))));
+        assertEquals("Esta versión de Meteor no trae, así que auto-pvp no usará: anti-anvil, anti-bed y anti-anchor.",
+            ES.render(PvpStatus.missingWarning(List.of("anti-anvil", "anti-bed", "anti-anchor"))));
     }
 }

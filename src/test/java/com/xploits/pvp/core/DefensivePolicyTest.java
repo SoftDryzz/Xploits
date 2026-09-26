@@ -138,18 +138,20 @@ class DefensivePolicyTest {
     }
 
     @Test
-    void theAntiModulesPlaceSomethingSoWithAnEmptyHotbarTheyStayOff() {
-        // The three anti- modules react by placing a block: obsidian, string or a slab. With the inventory
+    void withAnEmptyHotbarOnlyAntiBedStaysUp() {
+        // anti-anvil and anti-anchor only react by placing a block (obsidian, a slab): with the inventory
         // at zero the posture still asks for them, but the resource filter keeps them off and says why.
+        // anti-bed also breaks a bed already on your head with no item, so it still comes up.
         CombatSnapshot broke = Snapshots.of(false, 0, 0, 0, false, false, false, 0, Map.of())
             .withDefense(4, 0, false, true);
         Plan plan = new CombatDirector().tick(broke, 6);
 
         assertEquals(CombatPosture.THREATENED, plan.posture());
-        for (ManagedModule module : List.of(ManagedModules.ANTI_ANVIL, ManagedModules.ANTI_BED,
-                ManagedModules.ANTI_ANCHOR, ManagedModules.HOLE_FILLER)) {
+        for (ManagedModule module : List.of(ManagedModules.ANTI_ANVIL, ManagedModules.ANTI_ANCHOR,
+                ManagedModules.HOLE_FILLER)) {
             assertFalse(plan.enable().contains(module), module.name());
             assertTrue(plan.skipped().stream().anyMatch(s -> s.module().equals(module)), module.name());
         }
+        assertTrue(plan.enable().contains(ManagedModules.ANTI_BED));
     }
 }

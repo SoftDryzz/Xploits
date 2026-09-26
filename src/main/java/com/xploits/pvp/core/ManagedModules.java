@@ -63,8 +63,15 @@ public final class ManagedModules {
     // is already of some use, unlike auto-trap, which needs the whole trap. The three anti- ones also
     // place one block each when their threat shows up -checked in the meteor-client 1.21.11 sources,
     // all three with InvUtils.findInHotbar-: anti-anvil obsidian between you and the anvil, anti-bed
-    // string where the bed would go and anti-anchor any slab over your head. One is enough for each.
-    // Without it they place nothing, so the resource filter treats them like any other placer.
+    // string where the bed would go and anti-anchor any slab over your head. One is enough for
+    // anti-anvil and anti-anchor: without it they place nothing, so the resource filter treats them
+    // like any other placer.
+    //
+    // anti-bed is the exception, with a minimum of zero. Like the aura's autobreak (§7) it has a half
+    // that costs nothing: AntiBed.onTick breaks a bed already at your head with mining packets
+    // (sendMinePackets), no item involved, and only the placing half looks for string. Dropping it for
+    // lack of string would take away exactly the half that still saves you, so the filter must never
+    // drop it; its resource stays STRING so that the string is still counted and named.
     //
     // The three are reactive: they spend only when their threat appears, so a still stack says nothing
     // about them and ActionWatch leaves them out. hole-filler is not: it fills holes near the target
@@ -76,7 +83,7 @@ public final class ManagedModules {
     // flicker that was not the player's would not count them as released either.
     public static final ManagedModule HOLE_FILLER = new ManagedModule("hole-filler", Resource.OBSIDIAN, 1, false, false);
     public static final ManagedModule ANTI_ANVIL = new ManagedModule("anti-anvil", Resource.OBSIDIAN, 1, false, true);
-    public static final ManagedModule ANTI_BED = new ManagedModule("anti-bed", Resource.STRING, 1, false, true);
+    public static final ManagedModule ANTI_BED = new ManagedModule("anti-bed", Resource.STRING, 0, false, true);
     public static final ManagedModule ANTI_ANCHOR = new ManagedModule("anti-anchor", Resource.SLABS, 1, false, true);
 
     public static final List<ManagedModule> ALL =
