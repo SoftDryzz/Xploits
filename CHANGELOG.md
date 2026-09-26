@@ -14,7 +14,8 @@ All notable changes to Xploits. The format is based on
   `auto-trap`. `anti-bed` still goes up without anything: it breaks a bed on your head without
   string, and needs string to place it.
 - The "on for a while without spending anything" warning no longer fires for the three `anti-`
-  modules: they only place when their threat shows up, so a stack that does not move is them waiting.
+  modules, which it cannot judge: `anti-anvil` and `anti-anchor` place only when an anvil or an anchor
+  appears, and `anti-bed`'s string stays once placed, so its stack stops moving while it does its job.
 - A managed module Meteor does not have (`anti-anchor` in Meteor 1.21.11) is no longer taken as
   `auto-pvp`'s and then reported as turned off by you. It is said once when `auto-pvp` is turned on,
   skipped, and listed as "missing in Meteor" in `.xploits pvp`.

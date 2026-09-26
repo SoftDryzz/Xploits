@@ -65,9 +65,10 @@ class ActionWatchTest {
 
     @Test
     void thePickaxeUserAndTheAntiModulesAreLeftOut() {
-        // auto-city uses a pickaxe, which is not consumed; the three anti- modules are reactive: they
-        // spend only when their threat shows up, so a still stack is them working. Watching any of the
-        // four would mean warning of a failure every time they work well.
+        // auto-city uses a pickaxe, which is not consumed; the three anti- modules are reactive: anti-anvil
+        // and anti-anchor place only when the threat block appears, and anti-bed's string stays once
+        // placed, so its stack stops moving while it is doing its job. Watching any of the four would
+        // mean warning of a failure every time they work well.
         assertFalse(ActionWatch.watches(ManagedModules.AUTO_CITY), "auto-city uses a pickaxe, which does not go down");
         assertFalse(ActionWatch.watches(ManagedModules.ANTI_ANVIL));
         assertFalse(ActionWatch.watches(ManagedModules.ANTI_BED));
@@ -84,8 +85,9 @@ class ActionWatchTest {
 
     @Test
     void antiBedOnWithItsStringStillIsNotIdle() {
-        // anti-bed places string only when a bed can be put on you: with nobody trying, its string not
-        // moving for three seconds is the module waiting, not failing.
+        // anti-bed places string on every tick a slot of it is missing, and the string stays: once the
+        // slot is filled its stack stops moving for as long as it stands, and that is the module doing
+        // its job, not failing.
         ActionWatch watch = new ActionWatch();
         String antiBed = ManagedModules.ANTI_BED.name();
         CombatSnapshot snapshot = with(Map.of(Resource.STRING, 5));

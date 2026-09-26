@@ -156,8 +156,9 @@ cristales (sin ellos lo enciende igual, para romper los que te ponen), `auto-tra
 `surround` 4, `hole-filler` y `anti-anvil` 1 cada uno (los cuatro tiran de la misma pila),
 `auto-web` telarañas, `auto-anvil` yunques, `auto-city` un pico de diamante o de netherita y
 `anti-anchor` cualquier losa. `anti-bed` se enciende sin nada: te rompe una cama en la cabeza sin
-cuerda, y necesita cuerda para colocarla. Meteor 1.21.11 no trae el módulo `anti-anchor` (la
-clase está, pero no lo registra): `auto-pvp` lo dice una vez al encenderse y no lo usa.
+cuerda, y necesita cuerda para colocarla; de fábrica solo actúa mientras estás en un agujero
+(`only-in-hole`). Meteor 1.21.11 no trae el módulo `anti-anchor` (la clase está, pero no lo
+registra): `auto-pvp` lo dice una vez al encenderse y no lo usa.
 
 **Los perfiles de estilo cambian los valores propios de auto-pvp y qué módulos de los diez puede
 usar** — nunca los ajustes internos de un módulo que enciende (`crystal-aura`, `surround`...). Hay

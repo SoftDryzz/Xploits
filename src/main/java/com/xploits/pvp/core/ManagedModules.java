@@ -28,8 +28,8 @@ public final class ManagedModules {
     // because the player turns them off by hand; the other three offensive ones can turn themselves
     // off without the player touching them -not all three for the same reason, nor all by default: see
     // the table in spec §7-, and ModuleLedger needs to know so as not to mistake that shutdown for a manual one.
-    // The last one is reactive, false for all five: they act whenever there is a target, not only when
-    // a threat shows up.
+    // The last one is reactive, false for all five: they spend whenever there is a target and a
+    // position, so a stack that does not move says something about them.
     public static final ManagedModule CRYSTAL_AURA = new ManagedModule("crystal-aura", Resource.CRYSTALS, 1, false, false);
     public static final ManagedModule AUTO_TRAP = new ManagedModule("auto-trap", Resource.OBSIDIAN, 8, true, false);
     public static final ManagedModule AUTO_WEB = new ManagedModule("auto-web", Resource.WEBS, 1, false, false);
@@ -61,9 +61,9 @@ public final class ManagedModules {
     // The four of the defensive axis (redesign §5). None of them immobilizes you: they cover specific
     // ways of killing you. hole-filler places obsidian, and one is enough for it: filling a single hole
     // is already of some use, unlike auto-trap, which needs the whole trap. The three anti- ones also
-    // place one block each when their threat shows up -checked in the meteor-client 1.21.11 sources,
-    // all three with InvUtils.findInHotbar-: anti-anvil obsidian between you and the anvil, anti-bed
-    // string where the bed would go and anti-anchor any slab over your head. One is enough for
+    // place one block each -checked in the meteor-client 1.21.11 sources, all three with
+    // InvUtils.findInHotbar-: anti-anvil obsidian between you and a falling anvil, anti-bed string
+    // where the bed would go and anti-anchor any slab over your head when an anchor shows up. One is enough for
     // anti-anvil and anti-anchor: without it they place nothing, so the resource filter treats them
     // like any other placer.
     //
@@ -73,9 +73,11 @@ public final class ManagedModules {
     // lack of string would take away exactly the half that still saves you, so the filter must never
     // drop it; its resource stays STRING so that the string is still counted and named.
     //
-    // The three are reactive: they spend only when their threat appears, so a still stack says nothing
-    // about them and ActionWatch leaves them out. hole-filler is not: it fills holes near the target
-    // whenever there is one.
+    // The three are reactive: a still stack says nothing about them, so ActionWatch leaves them out.
+    // anti-anvil and anti-anchor place only when the threat block appears. anti-bed places string on
+    // every tick a slot is missing -only in a hole by default, only-in-hole- and the string stays, so its
+    // stack stops moving while it is doing its job. hole-filler is not reactive: it fills holes near
+    // the target whenever there is one.
     //
     // All four have turnsItselfOff == false: they are passive, without a "done, I turn off" like
     // auto-trap's after placing the trap nor a toggle-on-* like surround's. Since §8 the flag

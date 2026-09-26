@@ -61,10 +61,13 @@ import java.util.Set;
  *       count is of items. "The resource does not go down" means nothing there, so watching it would
  *       mean warning of a failure every time {@code auto-city} works well.</li>
  *   <li><b>The three {@code anti-} modules are {@linkplain ManagedModule#reactive() reactive}</b>: they do
- *       place a block -obsidian, string, a slab- but only when their threat shows up (redesign §5), an
- *       anvil over your head, a bed being put on you, an anchor. With none, a stack that does not move
- *       is them waiting, and "on, with material to spare and not spending" would be said of them in
- *       every fight they work well.</li>
+ *       place a block -obsidian, string, a slab- but a stack that does not move says nothing about them.
+ *       {@code anti-anvil} and {@code anti-anchor} place only when the threat block appears, an anvil
+ *       above you or a respawn anchor two blocks above. {@code anti-bed} places string on every tick a
+ *       slot of it is missing (only in a hole by default, {@code only-in-hole}) and the string stays,
+ *       so its stack stops moving exactly while it is doing its job. Either way this measurement cannot
+ *       judge them, and "on, with material to spare and not spending" would be said of them in every
+ *       fight they work well.</li>
  * </ul>
  *
  * <p>The exclusion is not a hand-written list that goes stale: it comes from what each module
