@@ -79,7 +79,7 @@ public final class PanelModel {
             return Optional.of(new PanelLine(line, Tone.DANGER));
         }
         if (in.crystalAuraEnabled() && in.crystals() == 0) {
-            return Optional.of(new PanelLine(Msg.of(PvpText.AURA_NO_CRYSTALS), Tone.DANGER));
+            return Optional.of(new PanelLine(Msg.of(PvpText.AURA_NO_CRYSTALS, "module", in.crystalModule()), Tone.DANGER));
         }
         return Optional.empty();
     }

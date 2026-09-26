@@ -66,7 +66,7 @@ public final class Texts {
     }
 
     /** For module and setting descriptions, which Meteor keeps from construction on. */
-    public static String startupText(MessageKey key) {
-        return catalog(startup).render(Msg.of(key));
+    public static String startupText(MessageKey key, Object... namesAndValues) {
+        return catalog(startup).render(Msg.of(key, namesAndValues));
     }
 }

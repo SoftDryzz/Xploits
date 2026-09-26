@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The profile parts of the status command (precise rules "Status command"). */
 class PvpStatusTest {
@@ -26,7 +28,9 @@ class PvpStatusTest {
         return new Skipped(module, Msg.of(PvpText.MODULE_MISSING_SKIP));
     }
 
-    private static final Skipped TOTEMS = new Skipped(ManagedModules.AUTO_TRAP, Msg.of(PvpText.TOTEM_FLOOR));
+    /** The totem floor as auto-pvp says it: its text names the aura it drives (crystal-aura++ spec §3.6). */
+    private static final Msg FLOOR = Msg.of(PvpText.TOTEM_FLOOR, "module", "crystal-aura");
+    private static final Skipped TOTEMS = new Skipped(ManagedModules.AUTO_TRAP, FLOOR);
 
     @Test
     void profileShowsTheNameAndAStarOnlyWhenModified() {
@@ -39,16 +43,16 @@ class PvpStatusTest {
     void profileOffSkipsAreGroupedIntoOneLineAfterTheRealOnes() {
         List<Skipped> skipped = List.of(off(ManagedModules.AUTO_CITY), TOTEMS, off(ManagedModules.AUTO_ANVIL));
         String en = EN.render(PvpStatus.skippedLines(skipped));
-        assertEquals("\n  not turned on:  auto-trap — " + EN.render(Msg.of(PvpText.TOTEM_FLOOR))
+        assertEquals("\n  not turned on:  auto-trap — " + EN.render(FLOOR)
             + "\n  off by profile: auto-city, auto-anvil", en);
         String es = ES.render(PvpStatus.skippedLines(skipped));
-        assertEquals("\n  no encendido: auto-trap — " + ES.render(Msg.of(PvpText.TOTEM_FLOOR))
+        assertEquals("\n  no encendido: auto-trap — " + ES.render(FLOOR)
             + "\n  vetados:      auto-city, auto-anvil (por el perfil)", es);
     }
 
     @Test
     void noProfileOffLineWithoutProfileOffSkips() {
-        assertEquals("\n  not turned on:  auto-trap — " + EN.render(Msg.of(PvpText.TOTEM_FLOOR)),
+        assertEquals("\n  not turned on:  auto-trap — " + EN.render(FLOOR),
             EN.render(PvpStatus.skippedLines(List.of(TOTEMS))));
     }
 
@@ -84,7 +88,7 @@ class PvpStatusTest {
         // The plan only skips a missing module while something wants it; the status names it always,
         // once, after the profile line.
         List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR), TOTEMS, off(ManagedModules.AUTO_CITY));
-        assertEquals("\n  not turned on:  auto-trap — " + EN.render(Msg.of(PvpText.TOTEM_FLOOR))
+        assertEquals("\n  not turned on:  auto-trap — " + EN.render(FLOOR)
             + "\n  off by profile: auto-city"
             + "\n  missing in Meteor: anti-anchor, anti-bed",
             EN.render(PvpStatus.skippedLines(skipped, List.of("anti-anchor", "anti-bed"))));
@@ -110,5 +114,34 @@ class PvpStatusTest {
             EN.render(PvpStatus.missingWarning(List.of("anti-anchor", "anti-bed"))));
         assertEquals("Módulos que esta versión de Meteor no trae y que auto-pvp no usará: anti-anvil, anti-bed y anti-anchor.",
             ES.render(PvpStatus.missingWarning(List.of("anti-anvil", "anti-bed", "anti-anchor"))));
+    }
+
+    // --- crystal-aura++ (spec §3.3, Q6) -------------------------------------------------------------
+
+    @Test
+    void withCrystalAuraPlusPlusTheAuraIsNamedAsTheRealModule() {
+        List<Skipped> skipped = List.of(new Skipped(ManagedModules.CRYSTAL_AURA, Msg.of(PvpText.TOTEM_FLOOR)),
+            off(ManagedModules.AUTO_CITY));
+        assertEquals("\n  not turned on:  crystal-aura++ — you carry no totems and crystal-aura++'s anti-suicide is off"
+                + "\n  off by profile: auto-city",
+            EN.render(CrystalModule.XPLOITS.name(PvpStatus.skippedLines(skipped, List.of(), CrystalModule.XPLOITS))));
+        assertEquals("\n  off by profile: crystal-aura++, auto-city", EN.render(PvpStatus.skippedLines(
+            List.of(off(ManagedModules.CRYSTAL_AURA), off(ManagedModules.AUTO_CITY)), List.of(), CrystalModule.XPLOITS)));
+        assertEquals(EN.render(PvpStatus.skippedLines(List.of(TOTEMS, off(ManagedModules.CRYSTAL_AURA)))),
+            EN.render(PvpStatus.skippedLines(List.of(TOTEMS, off(ManagedModules.CRYSTAL_AURA)), List.of(), CrystalModule.METEOR)),
+            "with Meteor's aura the lines are the ones they always were");
+    }
+
+    @Test
+    void theLateOwnCrystalsLineShowsOnlyWithCrystalAuraPlusPlus() {
+        Msg status = Msg.of(PvpText.STATUS_OFF);
+        assertSame(status, PvpStatus.withLateOwn(status, CrystalModule.METEOR, 3), "Meteor's aura: the status as it was");
+        assertEquals("auto-pvp is off.", EN.render(PvpStatus.withLateOwn(status, CrystalModule.METEOR, 3)));
+
+        assertEquals("auto-pvp is off.\n  late crystals:  3 of yours arrived after their wait ran out and were treated"
+                + " as someone else's (Meteor's rules, no budget)",
+            EN.render(PvpStatus.withLateOwn(status, CrystalModule.XPLOITS, 3)));
+        assertTrue(ES.render(PvpStatus.withLateOwn(status, CrystalModule.XPLOITS, 0)).contains("\n  tardíos:      0 cristales"),
+            "shown even at zero while crystal-aura++ is driven");
     }
 }

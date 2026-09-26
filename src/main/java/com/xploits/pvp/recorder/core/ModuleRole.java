@@ -13,7 +13,9 @@ public enum ModuleRole {
     TOTEM,
     OTHER;
 
-    private static final Set<String> CRYSTAL = Set.of("crystal-aura", "anchor-aura", "bed-aura");
+    // crystal-aura++ is crystal offense like Meteor's: without it here a fight fought with it would read
+    // as "your crystal aura was off" (crystal-aura++ spec §3.5).
+    private static final Set<String> CRYSTAL = Set.of("crystal-aura", "crystal-aura++", "anchor-aura", "bed-aura");
     private static final Set<String> MELEE = Set.of("kill-aura");
     private static final Set<String> TRAP = Set.of("auto-trap", "auto-web", "auto-anvil", "auto-city");
     // Those auto-pvp never manages (they lock you in), but that still defend you when you turn them on.

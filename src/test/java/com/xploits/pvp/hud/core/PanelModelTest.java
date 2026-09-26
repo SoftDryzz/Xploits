@@ -242,6 +242,20 @@ class PanelModelTest {
     }
 
     @Test
+    void theAuraWithoutCrystalsLineNamesTheAuraAutoPvpDrives() {
+        PanelInput in = PanelInputs.base().totems(4).outOfResources(false).idle()
+            .crystalAuraEnabled(true).crystals(0)
+            .build();
+        assertEquals("crystal-aura", in.crystalModule(), "Meteor's aura unless told otherwise");
+        PanelInput plusPlus = new PanelInput(in.autoPvpOn(), in.profileName(), in.profileModified(), in.state(),
+            in.posture(), in.target(), in.targetDistance(), in.enabled(), in.released(), in.profileOff(), in.idle(),
+            in.crystals(), in.totems(), in.obsidian(), in.crystalAuraEnabled(), in.outOfResources(), in.fight(),
+            in.showFight(), "crystal-aura++");
+        assertEquals("crystal-aura++ without crystals: it will only break the ones placed against you.",
+            EN.render(PanelModel.lines(plusPlus).getFirst().text()));
+    }
+
+    @Test
     void noDangerLineWhenNothingIsWrong() {
         PanelInput in = PanelInputs.base().totems(4).outOfResources(false).idle()
             .crystalAuraEnabled(false).crystals(0)

@@ -389,4 +389,96 @@ class ActionWatchTest {
         assertTrue(feed(watch, ActionWatch.IDLE_TICKS, withCrystals(10), Set.of(AURA), Set.of(AURA),
             Resource.CRYSTALS), "after the reset it counts from zero again");
     }
+
+    // --- crystal-aura++ holding back (crystal-aura++ spec Q3, Q6) ----------------------------------
+
+    @Test
+    void aHoldingModuleIsNotIdleEachHoldingTickResetsItsCount() {
+        // crystal-aura++ held back by its budget places nothing on purpose: that is not a wall. A holding
+        // tick resets the count, as a moved stack does.
+        ActionWatch watch = new ActionWatch();
+        CombatSnapshot snapshot = withCrystals(10);
+        Set<String> aura = Set.of(AURA);
+
+        for (int i = 0; i < 50; i++) watch.update(snapshot, aura, aura, Set.of());
+        assertEquals(50, watch.idleTicksOf(Resource.CRYSTALS));
+
+        assertEquals(List.of(), watch.update(snapshot, aura, aura, aura), "a holding tick");
+        assertEquals(0, watch.idleTicksOf(Resource.CRYSTALS), "reset, not paused");
+
+        for (int tick = 0; tick < 300; tick++) {
+            assertEquals(List.of(), watch.update(snapshot, aura, aura, aura), "holding, tick " + tick);
+        }
+        assertEquals(List.of(), watch.idle());
+
+        // Once it stops holding, the full margin is needed again: tick 59 quiet, tick 60 speaks.
+        assertFalse(feed(watch, 59, snapshot, aura, aura, Resource.CRYSTALS));
+        assertEquals(1, watch.update(snapshot, aura, aura, Set.of()).size());
+    }
+
+    @Test
+    void holdingRearmsAWarningAlreadySaid() {
+        ActionWatch watch = new ActionWatch();
+        CombatSnapshot snapshot = withCrystals(10);
+        Set<String> aura = Set.of(AURA);
+        assertTrue(feed(watch, ActionWatch.IDLE_TICKS, snapshot, aura, aura, Resource.CRYSTALS));
+        assertEquals(1, watch.idle().size());
+
+        watch.update(snapshot, aura, aura, aura);
+        assertEquals(List.of(), watch.idle(), "the verdict no longer stands");
+        assertTrue(feed(watch, ActionWatch.IDLE_TICKS, snapshot, aura, aura, Resource.CRYSTALS),
+            "a new wall is said again");
+    }
+
+    @Test
+    void holdingOnlyCountsForAModuleInAPositionToSpend() {
+        // Narrow: a holding name that is not wanted, not on, or not watched changes nothing; nor does it
+        // touch another stack's count.
+        ActionWatch watch = new ActionWatch();
+        Map<Resource, Integer> both = Map.of(Resource.CRYSTALS, 10, Resource.OBSIDIAN, 20);
+        CombatSnapshot snapshot = with(both);
+        Set<String> wanted = Set.of(AURA, TRAP);
+
+        for (int i = 0; i < 30; i++) watch.update(snapshot, wanted, wanted, Set.of());
+        watch.update(snapshot, wanted, wanted, Set.of(AURA));
+        assertEquals(0, watch.idleTicksOf(Resource.CRYSTALS));
+        assertEquals(31, watch.idleTicksOf(Resource.OBSIDIAN), "auto-trap's obsidian count runs on");
+
+        ActionWatch other = new ActionWatch();
+        for (int i = 0; i < ActionWatch.IDLE_TICKS - 1; i++) {
+            other.update(snapshot, Set.of(TRAP), Set.of(TRAP), Set.of(AURA, "auto-totem"));
+        }
+        assertEquals(1, other.update(snapshot, Set.of(TRAP), Set.of(TRAP), Set.of(AURA, "auto-totem")).size(),
+            "the aura is not wanted, so its holding says nothing about auto-trap");
+        assertEquals(0, other.idleTicksOf(Resource.CRYSTALS));
+    }
+
+    @Test
+    void theOldCallIsTheCallWithNothingHolding() {
+        ActionWatch a = new ActionWatch();
+        ActionWatch b = new ActionWatch();
+        CombatSnapshot snapshot = withCrystals(10);
+        for (int i = 0; i < ActionWatch.IDLE_TICKS + 5; i++) {
+            assertEquals(a.update(snapshot, Set.of(AURA), Set.of(AURA)),
+                b.update(snapshot, Set.of(AURA), Set.of(AURA), Set.of()), "tick " + i);
+        }
+        assertEquals(a.idle(), b.idle());
+    }
+
+    @Test
+    void crystalAuraPlusPlusHasItsOwnSuspectsAndItsRealName() {
+        ActionWatch.Idle idle = new ActionWatch.Idle(Resource.CRYSTALS, List.of(ManagedModules.CRYSTAL_AURA), 60);
+        String pp = ES.render(ActionWatch.reason(idle, CrystalModule.XPLOITS));
+        assertTrue(pp.startsWith("crystal-aura++ lleva 3 s encendido"), pp);
+        assertTrue(pp.contains("min-damage"), pp);
+        assertTrue(pp.contains("reserve"), pp);
+        assertTrue(pp.contains("max-damage"), pp);
+        assertFalse(pp.contains("support"), "crystal-aura++ has no support setting: " + pp);
+
+        assertEquals(ES.render(ActionWatch.reason(idle)), ES.render(ActionWatch.reason(idle, CrystalModule.METEOR)),
+            "with Meteor's aura the warning is the one it always was");
+        ActionWatch.Idle filler = new ActionWatch.Idle(Resource.OBSIDIAN, List.of(ManagedModules.HOLE_FILLER), 60);
+        assertEquals(ES.render(ActionWatch.reason(filler)), ES.render(ActionWatch.reason(filler, CrystalModule.XPLOITS)),
+            "the other modules keep their names and suspects");
+    }
 }
