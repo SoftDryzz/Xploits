@@ -291,7 +291,8 @@ public final class CrystalBrain {
      */
     public static int pingTicks(int latencyMs) {
         if (latencyMs < 0) return UNKNOWN_PING_TICKS;
-        return (latencyMs + TICK_MS - 1) / TICK_MS;
+        // In long: the server sends the latency, and near Integer.MAX_VALUE the int sum would wrap to a negative ping.
+        return (int) ((latencyMs + (long) TICK_MS - 1) / TICK_MS);
     }
 
     /**
