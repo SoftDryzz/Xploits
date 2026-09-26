@@ -10,12 +10,22 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The plain input and output records: copies, sums and the values they refuse. */
 class CrystalTypesTest {
+    private static final CrystalTick.Hands HANDS = new CrystalTick.Hands(true, true, false, false, false,
+        CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true);
+
     private static CrystalView crystal(Map<String, Double> damage, double self, double distance, int attempts, long attacked) {
-        return new CrystalView(1, damage, self, distance, true, true, attempts, attacked, CrystalView.NEVER);
+        return new CrystalView(1, 77, damage, self, distance, true, true, attempts, attacked, CrystalView.NEVER);
+    }
+
+    private static CrystalTick tick(List<TargetView> targets, List<CrystalView> crystals, List<Candidate> candidates) {
+        return new CrystalTick(10, 20, 0, false, false, false, false, HANDS, targets, crystals, candidates);
     }
 
     @Test
@@ -30,6 +40,72 @@ class CrystalTypesTest {
         assertEquals(6.5, c.damageTo(List.of("a", "b", "nobody")), 0.0);
         assertEquals(6.5, p.damageTo(List.of("a", "b")), 0.0);
         assertEquals(0.0, p.damageTo(List.of()), 0.0);
+    }
+
+    @Test
+    void targetDamageIsSummedInFloatLikeMeteorSoItReachesMinDamageExactlyWhenMeteorDoes() {
+        // Meteor: float damage = 0; damage += dmg (lines 1190, 1208). 3 + 2.9999998 is 5.99999976... in
+        // double, under min-damage 6; in float it rounds to 6.0, which Meteor accepts.
+        float a = 3.0f;
+        float b = Math.nextDown(3.0f);
+        Map<String, Double> damage = new LinkedHashMap<>();
+        damage.put("a", (double) a);
+        damage.put("b", (double) b);
+        CrystalView c = crystal(damage, 1, 3, 0, CrystalView.NEVER);
+        Candidate p = new Candidate(7, damage, 1, true, Set.of(), false);
+
+        assertTrue((double) a + (double) b < 6.0);
+        assertEquals(6.0f, c.damageTo(List.of("a", "b")));
+        assertEquals(6.0f, p.damageTo(List.of("a", "b")));
+        assertFalse(p.damageTo(List.of("a", "b")) < 6.0);
+    }
+
+    @Test
+    void targetDamageIsSummedInTheOrderOfTheTargetsGiven() {
+        // Float addition depends on the order; Meteor adds in its targets' order.
+        Map<String, Double> damage = Map.of("big", 16_777_216.0, "one", 1.0, "two", 1.0);
+        Candidate p = new Candidate(7, damage, 1, true, Set.of(), false);
+
+        assertEquals(16_777_216.0f, p.damageTo(List.of("big", "one", "two")));
+        assertEquals(16_777_218.0f, p.damageTo(List.of("one", "two", "big")));
+        assertNotEquals(p.damageTo(List.of("big", "one", "two")), p.damageTo(List.of("one", "two", "big")));
+    }
+
+    @Test
+    void aCrystalCarriesItsBaseBlockKeyLikeACandidate() {
+        CrystalView c = crystal(Map.of(), 1, 3, 0, CrystalView.NEVER);
+        Candidate p = new Candidate(77, Map.of(), 1, true, Set.of(), false);
+
+        assertEquals(p.pos(), c.pos());
+    }
+
+    @Test
+    void handsSayWhatMeteorChecksBeforeSwitchingAndAttacking() {
+        CrystalTick.Hands weak = new CrystalTick.Hands(true, false, true, true, true, 0, 1, false, true);
+
+        assertTrue(weak.weakened());
+        assertTrue(weak.strengthened());
+        assertEquals(0, weak.weaknessAmplifier());
+        assertEquals(1, weak.strengthAmplifier());
+        assertTrue(weak.offhandCrystals());
+        assertTrue(weak.gappleInHand());
+        assertTrue(weak.bowInHand());
+        assertFalse(HANDS.weakened());
+        assertFalse(HANDS.strengthened());
+        assertEquals(HANDS, tick(List.of(), List.of(), List.of()).hands());
+    }
+
+    @Test
+    void handsRefuseWhatCannotBe() {
+        int none = CrystalTick.Hands.NO_EFFECT;
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, -2, none, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, -2, false, false));
+        // testInHotbar tests the hands first, and findInHotbar the main hand
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, true, false, false, false, none, none, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, false, true, false, false, none, none, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, none, true, false));
+        assertThrows(NullPointerException.class,
+            () -> new CrystalTick(10, 20, 0, false, false, false, false, null, List.of(), List.of(), List.of()));
     }
 
     @Test
@@ -68,18 +144,15 @@ class CrystalTypesTest {
     void aTickRefusesDuplicatesAndTicksFromTheFuture() {
         TargetView t = new TargetView("a", 3, 20, TargetView.NO_ARMOR, false, true, false);
         Candidate p = new Candidate(7, Map.of(), 1, true, Set.of(), false);
-        CrystalView future = new CrystalView(1, Map.of(), 1, 3, true, true, 1, 11, CrystalView.NEVER);
+        CrystalView future = new CrystalView(1, 5, Map.of(), 1, 3, true, true, 1, 11, CrystalView.NEVER);
 
+        assertThrows(IllegalArgumentException.class, () -> tick(List.of(t, t), List.of(), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> tick(List.of(), List.of(), List.of(p, p)));
+        assertThrows(IllegalArgumentException.class, () -> tick(List.of(), List.of(future), List.of()));
         assertThrows(IllegalArgumentException.class,
-            () -> new CrystalTick(10, 20, 0, false, false, false, false, List.of(t, t), List.of(), List.of()));
+            () -> new CrystalTick(10, -1, 0, false, false, false, false, HANDS, List.of(), List.of(), List.of()));
         assertThrows(IllegalArgumentException.class,
-            () -> new CrystalTick(10, 20, 0, false, false, false, false, List.of(), List.of(), List.of(p, p)));
-        assertThrows(IllegalArgumentException.class,
-            () -> new CrystalTick(10, 20, 0, false, false, false, false, List.of(), List.of(future), List.of()));
-        assertThrows(IllegalArgumentException.class,
-            () -> new CrystalTick(10, -1, 0, false, false, false, false, List.of(), List.of(), List.of()));
-        assertThrows(IllegalArgumentException.class,
-            () -> new CrystalTick(10, 20, -1, false, false, false, false, List.of(), List.of(), List.of()));
+            () -> new CrystalTick(10, 20, -1, false, false, false, false, HANDS, List.of(), List.of(), List.of()));
     }
 
     @Test

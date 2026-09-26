@@ -29,12 +29,14 @@ final class Damage {
     }
 
     /**
-     * The damage summed over these targets (Meteor, lines 1198-1210: summed over all targets). A target
-     * with no entry adds nothing.
+     * The damage summed over these targets, exactly as Meteor sums it (lines 1190-1210:
+     * {@code float damage = 0; ... damage += dmg}): in {@code float}, in the order of the targets given.
+     * A {@code double} sum can land on the other side of min-damage, so ++ would place where Meteor
+     * would not. A target with no entry adds nothing.
      */
-    static double sum(Map<String, Double> damage, Collection<String> targets) {
-        double total = 0;
-        for (String name : targets) total += damage.getOrDefault(name, 0.0);
+    static float sum(Map<String, Double> damage, Collection<String> targets) {
+        float total = 0;
+        for (String name : targets) total += damage.getOrDefault(name, 0.0).floatValue();
         return total;
     }
 }

@@ -25,7 +25,7 @@ class SelfBudgetTest {
     private static final String ENEMY = "enemy";
 
     private static CrystalView crystal(int id, double self, boolean ours, int attempts, long attackedTick, long removedTick) {
-        return new CrystalView(id, Map.of(ENEMY, 8.0), self, 3.0, true, ours, attempts, attackedTick, removedTick);
+        return new CrystalView(id, 1000L + id, Map.of(ENEMY, 8.0), self, 3.0, true, ours, attempts, attackedTick, removedTick);
     }
 
     /** Standing, never attacked. */
@@ -45,7 +45,7 @@ class SelfBudgetTest {
     }
 
     private static CrystalView at(CrystalView c, double distance) {
-        return new CrystalView(c.id(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange(), c.ours(),
+        return new CrystalView(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange(), c.ours(),
             c.attempts(), c.attackedTick(), c.removedTick());
     }
 
@@ -135,6 +135,17 @@ class SelfBudgetTest {
         assertEquals(Verdict.REFUSED_RESERVE, strict.placeAllowed(0.5));
         // 9 - 0 - 5 = 4 >= 4
         assertEquals(Verdict.ALLOWED, lowReserve.placeAllowed(5));
+    }
+
+    @Test
+    void theReserveIsNeverBelowTheFloor() {
+        // A reserve under F would let a placement leave less than F, and then its own crystal could never
+        // be broken (P2): the reserve setting's minimum is 2.
+        assertThrows(IllegalArgumentException.class, () -> SelfBudget.of(NOW, 20, List.of(), List.of(), 1.75, SAFE));
+        assertThrows(IllegalArgumentException.class, () -> SelfBudget.of(NOW, 20, List.of(), List.of(), 0, SAFE));
+        SelfBudget atFloor = SelfBudget.of(NOW, 9, List.of(), List.of(), SelfBudget.FLOOR, SAFE);
+        // 9 - 0 - 7 = 2 >= 2
+        assertEquals(Verdict.ALLOWED, atFloor.placeAllowed(7));
     }
 
     @Test
@@ -291,8 +302,10 @@ class SelfBudgetTest {
     @Test
     void healthIsTheTicksHealthPlusAbsorptionAndTotemsAreNeverCounted() {
         List<CrystalView> enemy = List.of(standing(7, 4, false));
-        CrystalTick noTotems = new CrystalTick(NOW, 12, 0, false, false, false, false, List.of(), enemy, List.of());
-        CrystalTick manyTotems = new CrystalTick(NOW, 12, 8, false, false, false, false, List.of(), enemy, List.of());
+        CrystalTick.Hands hands = new CrystalTick.Hands(true, true, false, false, false,
+            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true);
+        CrystalTick noTotems = new CrystalTick(NOW, 12, 0, false, false, false, false, hands, List.of(), enemy, List.of());
+        CrystalTick manyTotems = new CrystalTick(NOW, 12, 8, false, false, false, false, hands, List.of(), enemy, List.of());
 
         for (CrystalTick t : List.of(noTotems, manyTotems)) {
             SelfBudget b = SelfBudget.of(t, List.of(), RESERVE, SAFE);

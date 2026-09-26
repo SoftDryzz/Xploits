@@ -5,13 +5,16 @@ import java.util.Map;
 
 /**
  * One end crystal as the adapter measured it this tick, or as it last was when it has just disappeared
- * (spec §1, P3). No position in it: the budget only needs the damage and the distance.
+ * (spec §1, P3). Its position is only an opaque key, never shown.
  *
  * <p>Ticks are client pre-tick numbers. An attack made between two pre-ticks (fast-break, on
  * {@code EntityAdded}) carries the number of the last pre-tick before it, so "the 5th pre-tick after
  * the attack" is always {@code attackedTick + 5}.
  *
  * @param id           the entity id
+ * @param pos          its base block (the crystal's block minus one), packed exactly like
+ *                     {@link Candidate#pos}, so a crystal that appears can be matched against a pending
+ *                     placement (Meteor matches by block, lines 734-738)
  * @param targetDamage the damage this crystal's explosion would deal to each target, by target name
  * @param selfDamage   the damage it would deal to you ({@code DamageUtils.crystalDamage}), with no totem
  *                     or invulnerability taken into account
@@ -24,8 +27,8 @@ import java.util.Map;
  * @param attackedTick the pre-tick of our last attack on it, or {@link #NEVER}
  * @param removedTick  the pre-tick at which it was first seen gone, or {@link #NEVER} while it stands
  */
-public record CrystalView(int id, Map<String, Double> targetDamage, double selfDamage, double distance,
-                          boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
+public record CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage,
+                          double distance, boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
     /** No such tick: never attacked, or still standing. */
     public static final long NEVER = -1;
 
@@ -66,8 +69,8 @@ public record CrystalView(int id, Map<String, Double> targetDamage, double selfD
         return live() && attacked() && now - attackedTick < ATTACK_WAIT_TICKS;
     }
 
-    /** The damage to these targets, summed (Meteor, lines 1198-1210). */
-    public double damageTo(Collection<String> targets) {
+    /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */
+    public float damageTo(Collection<String> targets) {
         return Damage.sum(targetDamage, targets);
     }
 }

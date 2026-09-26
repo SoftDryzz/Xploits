@@ -10,7 +10,8 @@ import java.util.Set;
  * 934-969). The adapter only reports obsidian or bedrock bases with air above; everything else Meteor
  * checks is here so the core decides it.
  *
- * @param pos              the base block, packed by the adapter; an opaque key the core never shows
+ * @param pos              the base block, packed by the adapter; an opaque key the core never shows.
+ *                         {@link CrystalView#pos} is packed the same way
  * @param targetDamage     the damage a crystal here would deal to each target, by target name
  * @param selfDamage       the damage it would deal to you, with no totem or invulnerability counted
  * @param inRange          whether the crystal position is within place range from the feet, or within
@@ -26,8 +27,8 @@ public record Candidate(long pos, Map<String, Double> targetDamage, double selfD
         crystalsInBox = Set.copyOf(Objects.requireNonNull(crystalsInBox, "crystals in box"));
     }
 
-    /** The damage to these targets, summed (Meteor, lines 1198-1210). */
-    public double damageTo(Collection<String> targets) {
+    /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */
+    public float damageTo(Collection<String> targets) {
         return Damage.sum(targetDamage, targets);
     }
 }

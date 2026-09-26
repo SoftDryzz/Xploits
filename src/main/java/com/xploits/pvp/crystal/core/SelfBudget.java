@@ -93,13 +93,16 @@ public final class SelfBudget {
      * @param health         your health plus absorption, read now
      * @param crystals       the crystals measured, standing or just gone
      * @param pending        the self damage of each placement sent whose crystal has not appeared yet
-     * @param reserve        R, the {@code reserve} setting ({@link #DEFAULT_RESERVE})
+     * @param reserve        R, the {@code reserve} setting ({@link #DEFAULT_RESERVE}); never below
+     *                       {@link #FLOOR}, because a placement could then leave less than the floor and
+     *                       its own crystal could never be broken. The setting's minimum is therefore 2
      * @param safeSelfDamage epsilon, the {@code safe-self-damage} setting ({@link #DEFAULT_SAFE_SELF_DAMAGE})
      */
     public static SelfBudget of(long now, double health, List<CrystalView> crystals, List<Double> pending,
                                 double reserve, double safeSelfDamage) {
         if (!Double.isFinite(health) || health < 0) throw new IllegalArgumentException("health " + health);
         Damage.check(reserve, "reserve");
+        if (reserve < FLOOR) throw new IllegalArgumentException("reserve " + reserve + " below the floor " + FLOOR);
         Damage.check(safeSelfDamage, "safe self damage");
         checkCrystals(now, crystals);
         double in = 0;
