@@ -151,6 +151,13 @@ enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que 
 **mete a los tuyos en tu lista de amigos de Meteor** para que ellos tampoco. Al apagarlo quita solo
 los que puso él, nunca uno que ya tuvieras. Ver [Seguridad](docs/security.md).
 
+**Solo enciende un módulo mientras llevas en la barra lo que ese módulo coloca**: `crystal-aura`
+cristales (sin ellos lo enciende igual, para romper los que te ponen), `auto-trap` 8 de obsidiana,
+`surround` 4, `hole-filler` y `anti-anvil` 1 cada uno (los cuatro tiran de la misma pila),
+`auto-web` telarañas, `auto-anvil` yunques, `auto-city` un pico de diamante o de netherita,
+`anti-bed` cuerda y `anti-anchor` cualquier losa. Meteor 1.21.11 no trae el módulo `anti-anchor` (la
+clase está, pero no lo registra): `auto-pvp` lo dice una vez al encenderse y no lo usa.
+
 **Los perfiles de estilo cambian los valores propios de auto-pvp y qué módulos de los diez puede
 usar** — nunca los ajustes internos de un módulo que enciende (`crystal-aura`, `surround`...). Hay
 tres de fábrica siempre disponibles, más hasta 20 tuyos:

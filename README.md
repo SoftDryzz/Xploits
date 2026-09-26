@@ -154,6 +154,13 @@ of you —placed crystals, people with swords—, not with a totem counter.
 your people to your Meteor friends list** so they do not either. When turned off it removes only
 the ones it added, never one you already had. See [Security](docs/security.md).
 
+**It only turns a module on while you carry, in the hotbar, what that module places**:
+`crystal-aura` crystals (without them it is turned on anyway, to break the ones placed against you),
+`auto-trap` 8 obsidian, `surround` 4, `hole-filler` and `anti-anvil` 1 each (the four draw from the
+same stack), `auto-web` cobwebs, `auto-anvil` anvils, `auto-city` a diamond or netherite pickaxe,
+`anti-bed` string and `anti-anchor` any slab. Meteor 1.21.11 ships no `anti-anchor` module (the class
+is there, but it is not registered): `auto-pvp` says so once when turned on and does not use it.
+
 **Style profiles change auto-pvp's own values and which of the ten modules it may use** — never the
 inner settings of a module it turns on (`crystal-aura`, `surround`...). Three are built in and
 always available, plus up to 20 of your own:
