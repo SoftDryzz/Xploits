@@ -12,7 +12,6 @@ import com.xploits.pvp.crystal.core.CrystalSettings.PauseMode;
 import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
-import com.xploits.pvp.crystal.core.Feet;
 import com.xploits.pvp.crystal.core.RawExplosion;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
@@ -154,8 +153,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private static final int ROTATION_PRIORITY = 50;
     /** Meteor's priority for the last-rotation hold (line 726). */
     private static final int HOLD_ROTATION_PRIORITY = -100;
-    /** How many crystal positions {@link #crystalPositions} keeps. */
-    private static final int REMEMBERED_CRYSTALS = 64;
     /** Pause-on-lag: this long since the last server tick (line 1158). */
     private static final float LAG_SECONDS = 1.0f;
 
@@ -427,16 +424,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private int lateOwnBefore;
     /** Hurt cooldown credits used by brains replaced after a refusal, since activation. */
     private int cooldownCreditsBefore;
-    /**
-     * The last position of the crystals measured recently, by id, so a damage packet read after its crystal left
-     * the world can still be measured from where we are then. Bounded: the oldest is dropped first. Never shown.
-     */
-    private final Map<Integer, Vec3d> crystalPositions = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Integer, Vec3d> eldest) {
-            return size() > REMEMBERED_CRYSTALS;
-        }
-    };
     /** Damage packets from the Netty thread, read on the game thread. */
     private final ConcurrentLinkedQueue<EntityDamageS2CPacket> hits = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
@@ -461,7 +448,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         lateOwnBefore = 0;
         cooldownCreditsBefore = 0;
         hits.clear();
-        crystalPositions.clear();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -472,7 +458,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @Override
     public void onDeactivate() {
         hits.clear();
-        crystalPositions.clear();
         forgetTick();
         lastRotationPos = null;
         refusal.update(false);
@@ -531,8 +516,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
 
         CrystalTick measured = new CrystalTick(tick, health.getAsDouble(), totems(), usingItem(), mc.interactionManager.isBreakingBlock(),
-            TickRate.INSTANCE.getTimeSinceLastTick() >= LAG_SECONDS, pauseModuleActive(), hands(first), seen, standing, List.of(),
-            feet());
+            TickRate.INSTANCE.getTimeSinceLastTick() >= LAG_SECONDS, pauseModuleActive(), hands(first), seen, standing, List.of());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
         b.breakPhase(settings, measured).ifPresent(a -> execute(a, crystals::get));
@@ -561,7 +545,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             if (target != null) previous.add(target);
         }
         CrystalSeen seen = measure(crystal, previous);
-        brain.crystalAdded(seen, health.getAsDouble(), hands(crystal), feet()).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        brain.crystalAdded(seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
@@ -579,18 +563,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /**
      * The damage packets for us, oldest first, to the brain (spec Round 2 (a), condition 1). One of our crystals'
      * explosions is {@code player_explosion} with us as the cause; the brain then checks that the direct source
-     * is a crystal we placed. Its raw damage is measured again from where we are now, at the crystal's last
-     * position, so R_last is never more than what the server can have compared. Every other damage packet for us
-     * cancels the credit.
+     * is a crystal we placed. Every other damage packet for us cancels the credit.
      */
     private void readHits() {
         int me = mc.player.getId();
         for (EntityDamageS2CPacket hit; (hit = hits.poll()) != null; ) {
             if (hit.entityId() != me) continue;
             if (hit.sourceType().matchesKey(DamageTypes.PLAYER_EXPLOSION) && hit.sourceCauseId() == me) {
-                Vec3d at = crystalPositions.get(hit.sourceDirectId());
-                double packetRaw = at == null ? RawExplosion.UNKNOWN : rawSelfDamage(at);
-                brain.hurtByOwnCrystal(hit.sourceDirectId(), pingTicks(), packetRaw, feet());
+                brain.hurtByOwnCrystal(hit.sourceDirectId(), pingTicks());
             } else {
                 brain.hurtByOther();
             }
@@ -707,7 +687,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         Vec3d pos = crystal.getEntityPos();
         BlockPos base = crystal.getBlockPos().down();
         ClientPlayerEntity p = mc.player;
-        crystalPositions.put(crystal.getId(), pos);
         double self = ServerValues.crystalSelfDamage(DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base));
         double distance = ServerValues.crystalDistance(PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z));
         return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self, distance,
@@ -743,11 +722,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         double range = placing ? (behindWall ? placeWallsRange.get() : placeRange.get())
             : (behindWall ? breakWallsRange.get() : breakRange.get());
         return !PlayerUtils.isWithin(pos, range);
-    }
-
-    /** Where our feet are (our entity position), for the hurt cooldown's movement guard; unknown if odd. */
-    private Feet feet() {
-        return ServerValues.feet(mc.player.getX(), mc.player.getY(), mc.player.getZ());
     }
 
     /** Our health plus absorption, or nothing if the server made it an odd number. */

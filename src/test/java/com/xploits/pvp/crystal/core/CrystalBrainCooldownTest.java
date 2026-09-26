@@ -76,7 +76,7 @@ class CrystalBrainCooldownTest {
             only(b.preTick(DEFAULTS, tick(t).crystals(standing).build())).decision());
         b.attackSent();
         b.crystalRemoved(A.id());
-        if (hit) b.hurtByOwnCrystal(A.id(), rtt, A.rawSelfDamage(), Crystals.FEET);
+        if (hit) b.hurtByOwnCrystal(A.id(), rtt);
         return new Fight(b, t + 1);
     }
 
@@ -132,7 +132,7 @@ class CrystalBrainCooldownTest {
     @Test
     void aHitByACrystalWeDidNotPlaceOpensNoWindowAndCancelsTheOpenOne() {
         Fight f = afterOurHit(0);
-        f.brain.hurtByOwnCrystal(99, 0, 12, Crystals.FEET);
+        f.brain.hurtByOwnCrystal(99, 0);
         assertNothing(f.brain.preTick(DEFAULTS, tick(f.next).health(9).candidates(spot(SPOT, 8, 5, 10)).build()));
     }
 
@@ -146,14 +146,14 @@ class CrystalBrainCooldownTest {
             only(b.preTick(DEFAULTS, tick(1).crystals(theirs).build())).decision());
         b.attackSent();
         b.crystalRemoved(3);
-        b.hurtByOwnCrystal(3, 0, 12, Crystals.FEET);
+        b.hurtByOwnCrystal(3, 0);
         assertNothing(b.preTick(DEFAULTS, tick(2).health(9).candidates(spot(SPOT, 8, 5, 10)).build()));
     }
 
     @Test
     void aHitBeforeTheFirstPreTickOpensNothing() {
         CrystalBrain b = new CrystalBrain();
-        b.hurtByOwnCrystal(1, 0, 12, Crystals.FEET);
+        b.hurtByOwnCrystal(1, 0);
         b.hurtByOther();
         assertNothing(b.preTick(DEFAULTS, tick(1).health(9).candidates(spot(SPOT, 8, 5, 10)).build()));
     }
@@ -202,7 +202,7 @@ class CrystalBrainCooldownTest {
             early.brain.preTick(NO_ROTATE, tick(t).health(6).candidates(spot(SPOT, 8, 5, 10)).build()));
         early.brain.placed(SPOT, 1);
         assertEquals(Decision.breakCrystal(7, Reason.HURT_COOLDOWN),
-            early.brain.crystalAdded(fresh, 6, HANDS, Crystals.FEET).orElseThrow().decision());
+            early.brain.crystalAdded(fresh, 6, HANDS).orElseThrow().decision());
 
         Fight late = afterOurHit(1);
         long u = late.idleUntil(8, 6);
@@ -210,7 +210,7 @@ class CrystalBrainCooldownTest {
         assertDecision(Decision.place(SPOT, Reason.HURT_COOLDOWN),
             late.brain.preTick(NO_ROTATE, tick(u).health(6).candidates(spot(SPOT, 8, 5, 10)).build()));
         late.brain.placed(SPOT, 1);
-        assertTrue(late.brain.crystalAdded(fresh, 6, HANDS, Crystals.FEET).isEmpty());
+        assertTrue(late.brain.crystalAdded(fresh, 6, HANDS).isEmpty());
     }
 
     // Condition 3: no shield
@@ -225,48 +225,13 @@ class CrystalBrainCooldownTest {
     // Condition 4: a whole raw point below, unrounded
 
     @Test
-    void aNewRawNotTwoWholePointsBelowTheLastIsNotCredited() {
+    void aNewRawNotAWholePointBelowTheLastIsNotCredited() {
         Fight in = afterOurHit(0);
         assertDecision(Decision.place(SPOT, Reason.HURT_COOLDOWN),
-            in.brain.preTick(DEFAULTS, tick(in.next).health(9).candidates(spot(SPOT, 8, 5, 10)).build()));
+            in.brain.preTick(DEFAULTS, tick(in.next).health(9).candidates(spot(SPOT, 8, 5, 11)).build()));
 
         Fight out = afterOurHit(0);
-        assertNothing(out.brain.preTick(DEFAULTS, tick(out.next).health(9).candidates(spot(SPOT, 8, 5, 10.0625)).build()));
-    }
-
-    @Test
-    void theLastRawIsTheLowerOneWhenThePacketIsRead() {
-        // A was predicted at 12 while standing; when the packet is read we are farther: 11. 10 + 1 > 11 - 1.
-        Fight f = afterOurHit(0, false);
-        f.brain.hurtByOwnCrystal(A.id(), 0, 11, Crystals.FEET);
-        assertNothing(f.brain.preTick(DEFAULTS, tick(f.next).health(9).candidates(spot(SPOT, 8, 5, 10)).build()));
-        assertEquals(Decision.none(Reason.OVER_RESERVE), f.brain.lastDecision());
-    }
-
-    // The movement guard
-
-    @Test
-    void movingMoreThanTheLimitSinceThePacketCancelsTheCredit() {
-        Feet near = new Feet(Crystals.FEET.x() + 0.3, Crystals.FEET.y(), Crystals.FEET.z());
-        Fight in = afterOurHit(0);
-        assertDecision(Decision.place(SPOT, Reason.HURT_COOLDOWN),
-            in.brain.preTick(DEFAULTS, tick(in.next).health(9).feet(near).candidates(spot(SPOT, 8, 5, 10)).build()));
-
-        Feet far = new Feet(Crystals.FEET.x() + 0.3125, Crystals.FEET.y(), Crystals.FEET.z());
-        Fight out = afterOurHit(0);
-        assertNothing(out.brain.preTick(DEFAULTS, tick(out.next).health(9).feet(far).candidates(spot(SPOT, 8, 5, 10)).build()));
-    }
-
-    @Test
-    void aFastBreakAfterMovingIsNotCredited() {
-        // As in aFastBreakBetweenPreTicksIsJudgedAtTheNextPreTick's early case, but we moved before the crystal appeared.
-        CrystalSeen fresh = crystal(7, SPOT, 8, 5, 10);
-        Fight f = afterOurHit(1);
-        long t = f.idleUntil(7, 6);
-        assertDecision(Decision.place(SPOT, Reason.HURT_COOLDOWN),
-            f.brain.preTick(NO_ROTATE, tick(t).health(6).candidates(spot(SPOT, 8, 5, 10)).build()));
-        f.brain.placed(SPOT, 1);
-        assertTrue(f.brain.crystalAdded(fresh, 6, HANDS, new Feet(0, Crystals.FEET.y() + 1, 0)).isEmpty());
+        assertNothing(out.brain.preTick(DEFAULTS, tick(out.next).health(9).candidates(spot(SPOT, 8, 5, 11.0625)).build()));
     }
 
     @Test

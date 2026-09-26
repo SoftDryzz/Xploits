@@ -26,18 +26,15 @@ import java.util.Set;
  * @param candidates        the places a crystal could go, in {@code BlockIterator} order (ties go to the
  *                          first found); empty for {@link CrystalBrain#breakPhase}, which is measured
  *                          before the scan
- * @param feet              where your feet are (your entity position), for the hurt cooldown's movement guard
- *                          ({@link HurtWindow}); never shown, and Meteor does not read it
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,
                           boolean lagging, boolean pauseModuleActive, Hands hands, List<TargetView> targets,
-                          List<CrystalSeen> crystals, List<Candidate> candidates, Feet feet) {
+                          List<CrystalSeen> crystals, List<Candidate> candidates) {
     public CrystalTick {
         if (tick < 0) throw new IllegalArgumentException("tick " + tick);
         if (!Double.isFinite(health) || health < 0) throw new IllegalArgumentException("health " + health);
         if (totems < 0) throw new IllegalArgumentException("totems " + totems);
         Objects.requireNonNull(hands, "hands");
-        Objects.requireNonNull(feet, "feet");
         targets = List.copyOf(targets);
         crystals = List.copyOf(crystals);
         candidates = List.copyOf(candidates);
@@ -53,14 +50,6 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
         for (Candidate c : candidates) {
             if (!spots.add(c.pos())) throw new IllegalArgumentException("candidate twice");
         }
-    }
-
-    /** A tick with your feet not read: the hurt cooldown is then never credited. */
-    public CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining, boolean lagging,
-                       boolean pauseModuleActive, Hands hands, List<TargetView> targets, List<CrystalSeen> crystals,
-                       List<Candidate> candidates) {
-        this(tick, health, totems, usingItem, mining, lagging, pauseModuleActive, hands, targets, crystals, candidates,
-            Feet.UNKNOWN);
     }
 
     /**

@@ -1,7 +1,5 @@
 package com.xploits.pvp.crystal.core;
 
-import java.util.Objects;
-
 /**
  * Our own hurt cooldown, credited conservatively (spec, Round 2 (a)).
  *
@@ -18,14 +16,9 @@ import java.util.Objects;
  *   <li>{@code 20 - k > 10 + RTT + 2}, with {@code k} the pre-ticks since the pre-tick at or before the packet
  *   and the full round trip in ticks, so we are surely still inside the server's window when it lands;</li>
  *   <li>we are not blocking with a shield;</li>
- *   <li>{@code R_new + 1 <= R_last - 1}, both unrounded ({@link RawExplosion}). R_last is what the server can
- *   have compared: the lower of the raw damage we predicted while the crystal stood and the raw damage from
- *   where we are when the packet is read (our position moves between the two, the crystal's does not);</li>
+ *   <li>{@code R_new + 0.5 <= R_last - 0.5}, both unrounded ({@link RawExplosion});</li>
  *   <li>nothing hit us again since: another damage packet ({@link #otherHit}), or a health drop the hit cannot
- *   explain ({@link #health});</li>
- *   <li>our feet have not moved more than {@link #MOVEMENT_LIMIT} since the packet, horizontally or vertically
- *   ({@link #feet}): the round-trip margin covers when the next hit lands, this covers where we are then, and so
- *   how far off both raw values can be.</li>
+ *   explain ({@link #health}).</li>
  * </ol>
  *
  * <p>The credit relaxes only the budget; Meteor's checks keep the full damage, so every action is still one
@@ -39,14 +32,8 @@ public final class HurtWindow {
     public static final int COOLDOWN_ABOVE = 10;
     /** Ticks kept in hand on top of the round trip. */
     public static final int MARGIN_TICKS = 2;
-    /**
-     * epsilon_r: the raw damage margin, taken off both sides, so the new hit must be two raw points below the last
-     * one. Near a crystal the raw damage changes by up to about 10 per block; with {@link #MOVEMENT_LIMIT} that is
-     * at most about 3, and both values are measured from positions within the limit.
-     */
-    public static final double RAW_MARGIN = 1.0;
-    /** How far our feet may move from where they were when the packet was read, horizontally or vertically. */
-    public static final double MOVEMENT_LIMIT = 0.3;
+    /** epsilon_r: the raw damage margin, taken off both sides. */
+    public static final double RAW_MARGIN = 0.5;
     /** The round trip in ticks when it is not known ({@link CrystalBrain#UNKNOWN_PING_TICKS}). */
     public static final int UNKNOWN_RTT_TICKS = 5;
     /**
@@ -64,9 +51,6 @@ public final class HurtWindow {
 
     private long hitTick = NONE;
     private double lastRaw = RawExplosion.UNKNOWN;
-    /** The higher of the two raw values: the most the hit can have dealt, for the health drops it explains. */
-    private double highestRaw = RawExplosion.UNKNOWN;
-    private Feet hitFeet = Feet.UNKNOWN;
     private int rttTicks = UNKNOWN_RTT_TICKS;
     private boolean cancelled;
     /** The last health seen, before or after the hit; NaN before any. */
@@ -100,34 +84,20 @@ public final class HurtWindow {
 
     /**
      * Our own crystal hit us in full (condition 1 already checked): a new window, stamped with the pre-tick at or
-     * before the packet, replacing any earlier one. R_last is the lower of the two raw values; if either is
-     * unknown, or no health was seen before it (a drop could not be told apart), or our feet are unknown, it
-     * credits nothing.
+     * before the packet, replacing any earlier one. With no health seen before it, a drop could not be told
+     * apart, so it credits nothing.
      *
-     * @param predictedRaw the raw damage we measured for that crystal while it stood, or {@link RawExplosion#UNKNOWN}
-     * @param packetRaw    its raw damage from where we are when the packet is read, or {@link RawExplosion#UNKNOWN}
-     * @param rttTicks     the round trip in ticks now, rounded up ({@link #UNKNOWN_RTT_TICKS} when unknown)
-     * @param feet         where our feet are when the packet is read
+     * @param raw      R_last, or {@link RawExplosion#UNKNOWN}
+     * @param rttTicks the round trip in ticks now, rounded up ({@link #UNKNOWN_RTT_TICKS} when unknown)
      */
-    public void ownHit(long tick, double predictedRaw, double packetRaw, int rttTicks, Feet feet) {
+    public void ownHit(long tick, double raw, int rttTicks) {
         if (tick < 0) throw new IllegalArgumentException("tick " + tick);
         if (rttTicks < 0) throw new IllegalArgumentException("round trip " + rttTicks);
-        RawExplosion.check(predictedRaw, "predicted raw damage");
-        RawExplosion.check(packetRaw, "raw damage when the packet is read");
-        boolean known = RawExplosion.known(predictedRaw) && RawExplosion.known(packetRaw);
         hitTick = tick;
-        lastRaw = known ? Math.min(predictedRaw, packetRaw) : RawExplosion.UNKNOWN;
-        highestRaw = known ? Math.max(predictedRaw, packetRaw) : RawExplosion.UNKNOWN;
-        hitFeet = Objects.requireNonNull(feet, "feet");
+        lastRaw = RawExplosion.check(raw, "raw damage");
         this.rttTicks = rttTicks;
         dropped = 0;
-        cancelled = Double.isNaN(lastHealth) || !known || !feet.known();
-    }
-
-    /** Where our feet are now: moving more than {@link #MOVEMENT_LIMIT} since the packet cancels the credit, for good. */
-    public void feet(Feet now) {
-        Objects.requireNonNull(now, "feet");
-        if (hitTick != NONE && !cancelled && hitFeet.movedMoreThan(now, MOVEMENT_LIMIT)) cancelled = true;
+        cancelled = Double.isNaN(lastHealth) || !RawExplosion.known(raw);
     }
 
     /** Any other damage packet for us: no credit until our own crystal opens a new window. */
@@ -138,13 +108,13 @@ public final class HurtWindow {
     /**
      * Our health (with absorption) as seen at this pre-tick. A drop cancels the credit unless the hit explains
      * it: seen within {@link #SETTLE_TICKS} of the packet, and all the drops together no more than the hit can
-     * deal ({@link #HARDEST_SCALING} times the higher raw value plus the margin).
+     * deal ({@link #HARDEST_SCALING} times R_last plus the margin).
      */
     public void health(long tick, double health) {
         Damage.check(health, "health");
         if (hitTick != NONE && !cancelled && health < lastHealth) {
             dropped += lastHealth - health;
-            if (tick > hitTick + SETTLE_TICKS || dropped > HARDEST_SCALING * (highestRaw + RAW_MARGIN)) cancelled = true;
+            if (tick > hitTick + SETTLE_TICKS || dropped > HARDEST_SCALING * (lastRaw + RAW_MARGIN)) cancelled = true;
         }
         lastHealth = health;
     }

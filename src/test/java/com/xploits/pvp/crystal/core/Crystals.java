@@ -16,8 +16,6 @@ final class Crystals {
     private Crystals() {}
 
     static final String ENEMY = "enemy";
-    /** Where our feet are in every tick unless a test moves them. */
-    static final Feet FEET = new Feet(0, 64, 0);
     /** Meteor's defaults and the Safety group's: the budget on. */
     static final CrystalSettings DEFAULTS = CrystalSettings.defaults();
     /** Meteor's defaults with the budget off: Meteor's rules only. */
@@ -131,7 +129,6 @@ final class Crystals {
         private boolean lagging;
         private boolean pauseModule;
         private CrystalTick.Hands hands = HANDS;
-        private Feet feet = FEET;
         private List<TargetView> targets = List.of(enemy());
         private final List<CrystalSeen> crystals = new ArrayList<>();
         private final List<Candidate> candidates = new ArrayList<>();
@@ -147,7 +144,6 @@ final class Crystals {
         Tick lagging() { lagging = true; return this; }
         Tick pauseModule() { pauseModule = true; return this; }
         Tick hands(CrystalTick.Hands v) { hands = v; return this; }
-        Tick feet(Feet v) { feet = v; return this; }
         Tick targets(TargetView... v) { targets = List.of(v); return this; }
         Tick crystals(CrystalSeen... v) { crystals.addAll(List.of(v)); return this; }
         Tick crystals(List<CrystalSeen> v) { crystals.addAll(v); return this; }
@@ -155,7 +151,7 @@ final class Crystals {
 
         CrystalTick build() {
             return new CrystalTick(n, health, totems, usingItem, mining, lagging, pauseModule, hands, targets,
-                crystals, candidates, feet);
+                crystals, candidates);
         }
     }
 }
