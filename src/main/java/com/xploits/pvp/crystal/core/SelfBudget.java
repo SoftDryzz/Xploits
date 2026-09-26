@@ -122,11 +122,6 @@ public final class SelfBudget {
         return new SelfBudget(health, reserve, safeSelfDamage, in, stand, Map.copyOf(byId));
     }
 
-    /** The budget of a tick: its health (plus absorption), its crystals; its totems are not read. */
-    public static SelfBudget of(CrystalTick tick, List<Double> pending, double reserve, double safeSelfDamage) {
-        return of(tick.tick(), tick.health(), tick.crystals(), pending, reserve, safeSelfDamage);
-    }
-
     /** Where this crystal counts at pre-tick {@code now}. */
     public static Share shareOf(CrystalView crystal, long now) {
         if (crystal.distance() > HAZARD_RADIUS) return Share.NOT_COUNTED;

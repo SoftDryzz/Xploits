@@ -300,22 +300,6 @@ class SelfBudgetTest {
     }
 
     @Test
-    void healthIsTheTicksHealthPlusAbsorptionAndTotemsAreNeverCounted() {
-        List<CrystalView> enemy = List.of(standing(7, 4, false));
-        CrystalTick.Hands hands = new CrystalTick.Hands(true, true, false, false, false,
-            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true);
-        CrystalTick noTotems = new CrystalTick(NOW, 12, 0, false, false, false, false, hands, List.of(), enemy, List.of());
-        CrystalTick manyTotems = new CrystalTick(NOW, 12, 8, false, false, false, false, hands, List.of(), enemy, List.of());
-
-        for (CrystalTick t : List.of(noTotems, manyTotems)) {
-            SelfBudget b = SelfBudget.of(t, List.of(), RESERVE, SAFE);
-            assertEquals(12.0, b.health(), 0.0);
-            assertEquals(Verdict.REFUSED_RESERVE, b.placeAllowed(5));
-            assertEquals(Verdict.ALLOWED, b.placeAllowed(1));
-        }
-    }
-
-    @Test
     void itRejectsWhatCannotBe() {
         List<CrystalView> none = List.of();
         assertThrows(IllegalArgumentException.class, () -> SelfBudget.of(NOW, -1, none, List.of(), RESERVE, SAFE));

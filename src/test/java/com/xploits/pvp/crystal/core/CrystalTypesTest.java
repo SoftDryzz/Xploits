@@ -24,7 +24,7 @@ class CrystalTypesTest {
         return new CrystalView(1, 77, damage, self, distance, true, true, attempts, attacked, CrystalView.NEVER);
     }
 
-    private static CrystalTick tick(List<TargetView> targets, List<CrystalView> crystals, List<Candidate> candidates) {
+    private static CrystalTick tick(List<TargetView> targets, List<CrystalSeen> crystals, List<Candidate> candidates) {
         return new CrystalTick(10, 20, 0, false, false, false, false, HANDS, targets, crystals, candidates);
     }
 
@@ -36,8 +36,10 @@ class CrystalTypesTest {
         damage.put("c", 100.0);
         CrystalView c = crystal(damage, 1, 3, 0, CrystalView.NEVER);
         Candidate p = new Candidate(7, damage, 1, true, Set.of(), false);
+        CrystalSeen seen = new CrystalSeen(1, 77, damage, 1, 3, true);
 
         assertEquals(6.5, c.damageTo(List.of("a", "b", "nobody")), 0.0);
+        assertEquals(6.5, seen.damageTo(List.of("b", "a")), 0.0);
         assertEquals(6.5, p.damageTo(List.of("a", "b")), 0.0);
         assertEquals(0.0, p.damageTo(List.of()), 0.0);
     }
@@ -114,12 +116,14 @@ class CrystalTypesTest {
         Set<Integer> box = new HashSet<>(Set.of(3));
         CrystalView c = crystal(damage, 1, 3, 0, CrystalView.NEVER);
         Candidate p = new Candidate(7, damage, 1, true, box, false);
+        CrystalSeen seen = new CrystalSeen(1, 77, damage, 1, 3, true);
 
         damage.put("a", 99.0);
         box.add(4);
 
         assertEquals(4.0, c.targetDamage().get("a"), 0.0);
         assertEquals(4.0, p.targetDamage().get("a"), 0.0);
+        assertEquals(4.0, seen.targetDamage().get("a"), 0.0);
         assertEquals(Set.of(3), p.crystalsInBox());
         assertThrows(UnsupportedOperationException.class, () -> c.targetDamage().put("b", 1.0));
     }
@@ -135,20 +139,23 @@ class CrystalTypesTest {
         assertThrows(IllegalArgumentException.class, () -> crystal(ok, 1, 3, 0, 5));
         assertThrows(IllegalArgumentException.class, () -> crystal(ok, 1, 3, 1, -2));
         assertThrows(IllegalArgumentException.class, () -> new Candidate(1, ok, Double.POSITIVE_INFINITY, true, Set.of(), false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, -1, 3, true));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, 1, Double.NaN, true));
         assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 3, -1, 50, false, true, false));
         assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 3, 20, Double.NaN, false, true, false));
         new TargetView("a", 3, 20, TargetView.NO_ARMOR, false, true, false);
     }
 
     @Test
-    void aTickRefusesDuplicatesAndTicksFromTheFuture() {
+    void aTickRefusesDuplicatesAndImpossibleValues() {
         TargetView t = new TargetView("a", 3, 20, TargetView.NO_ARMOR, false, true, false);
         Candidate p = new Candidate(7, Map.of(), 1, true, Set.of(), false);
-        CrystalView future = new CrystalView(1, 5, Map.of(), 1, 3, true, true, 1, 11, CrystalView.NEVER);
+        CrystalSeen one = new CrystalSeen(1, 5, Map.of(), 1, 3, true);
+        CrystalSeen sameId = new CrystalSeen(1, 6, Map.of(), 2, 3, true);
 
         assertThrows(IllegalArgumentException.class, () -> tick(List.of(t, t), List.of(), List.of()));
         assertThrows(IllegalArgumentException.class, () -> tick(List.of(), List.of(), List.of(p, p)));
-        assertThrows(IllegalArgumentException.class, () -> tick(List.of(), List.of(future), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> tick(List.of(), List.of(one, sameId), List.of()));
         assertThrows(IllegalArgumentException.class,
             () -> new CrystalTick(10, -1, 0, false, false, false, false, HANDS, List.of(), List.of(), List.of()));
         assertThrows(IllegalArgumentException.class,
@@ -163,5 +170,9 @@ class CrystalTypesTest {
         assertThrows(IllegalArgumentException.class, () -> new Decision(Decision.Kind.NONE, 3, Reason.NOTHING_TO_DO));
         assertThrows(IllegalArgumentException.class, () -> new Decision(Decision.Kind.BREAK, 1L << 40, Reason.WITHIN_BUDGET));
         assertThrows(NullPointerException.class, () -> Decision.none(null));
+        assertEquals(Decision.Kind.SWAP_WEAPON, Decision.swapWeapon(42).kind());
+        assertEquals(42, Decision.swapWeapon(42).ref());
+        assertEquals(Reason.ANTI_WEAKNESS, Decision.swapWeapon(42).reason());
+        assertThrows(IllegalArgumentException.class, () -> new Decision(Decision.Kind.SWAP_WEAPON, 1L << 40, Reason.ANTI_WEAKNESS));
     }
 }

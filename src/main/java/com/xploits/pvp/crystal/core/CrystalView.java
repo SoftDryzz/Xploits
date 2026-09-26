@@ -4,8 +4,9 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * One end crystal as the adapter measured it this tick, or as it last was when it has just disappeared
- * (spec §1, P3). Its position is only an opaque key, never shown.
+ * One end crystal as {@link CrystalBrain} knows it: the adapter's latest measurement ({@link CrystalSeen})
+ * plus what we did to it, or as it last was when it has just disappeared (spec §1, P3). Its position is
+ * only an opaque key, never shown.
  *
  * <p>Ticks are client pre-tick numbers. An attack made between two pre-ticks (fast-break, on
  * {@code EntityAdded}) carries the number of the last pre-tick before it, so "the 5th pre-tick after

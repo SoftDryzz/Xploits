@@ -18,14 +18,17 @@ import java.util.Set;
  * @param lagging           at least 1 s since the last server tick (pause-on-lag, line 1158)
  * @param pauseModuleActive one of the pause-modules is on (line 1159)
  * @param hands             what you hold and carry, and your effects, as Meteor reads them
- * @param targets           the players seen, other than you
- * @param crystals          the crystals standing within reach, plus those that have just disappeared
+ * @param targets           the players seen, other than you, in the world's entity order (Meteor sums
+ *                          the damage in that order, in {@code float})
+ * @param crystals          every end crystal standing in the world, in the world's entity order (Meteor's
+ *                          break choice keeps the first of equal ones); {@link CrystalBrain} keeps what
+ *                          we did to each and remembers the ones that have just disappeared
  * @param candidates        the places a crystal could go, in {@code BlockIterator} order (ties go to the
  *                          first found)
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,
                           boolean lagging, boolean pauseModuleActive, Hands hands, List<TargetView> targets,
-                          List<CrystalView> crystals, List<Candidate> candidates) {
+                          List<CrystalSeen> crystals, List<Candidate> candidates) {
     public CrystalTick {
         if (tick < 0) throw new IllegalArgumentException("tick " + tick);
         if (!Double.isFinite(health) || health < 0) throw new IllegalArgumentException("health " + health);
@@ -38,7 +41,10 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
         for (TargetView t : targets) {
             if (!names.add(t.name())) throw new IllegalArgumentException("target twice: " + t.name());
         }
-        SelfBudget.checkCrystals(tick, crystals);
+        Set<Integer> ids = new HashSet<>();
+        for (CrystalSeen c : crystals) {
+            if (!ids.add(c.id())) throw new IllegalArgumentException("crystal twice: " + c.id());
+        }
         Set<Long> spots = new HashSet<>();
         for (Candidate c : candidates) {
             if (!spots.add(c.pos())) throw new IllegalArgumentException("candidate twice");
