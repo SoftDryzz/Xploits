@@ -495,6 +495,22 @@ class CrystalBrainParityTest {
             .candidates(spot(9, 8, 1))));
     }
 
+    @Test
+    void antiWeaknessAlsoGuardsFastBreak() {
+        // Fast-break goes through the same doBreak(crystal) (line 742): swap, no attack, nothing recorded.
+        CrystalBrain b = new CrystalBrain();
+        b.preTick(METEOR, tick(1).build());
+        CrystalSeen c = crystal(1, 8, 1);
+
+        Action swap = b.crystalAdded(c, 20, weakened(0, NO, false, true)).orElseThrow();
+        assertEquals(Decision.swapWeapon(1), swap.decision());
+        assertEquals(swap.decision(), b.lastDecision());
+        // A swap is no rotation: the next crystal can still be fast-broken, now with the weapon in hand.
+        assertTrue(b.crystalAdded(crystal(2, 8, 1), 20, weakened(0, NO, true, true)).isPresent());
+        // Crystal 1 was not attacked: not waiting, so the next pre-tick breaks it (2 is waiting).
+        assertBreaks(1, b.preTick(METEOR, tick(2).hands(weakened(0, NO, true, true)).crystals(c, crystal(2, 8, 1)).build()));
+    }
+
     // P1: Swing
 
     @Test
@@ -600,6 +616,61 @@ class CrystalBrainParityTest {
         assertBreaks(1, once(NO_ROTATE, tick(1).hands(hands(false, false, false)).crystals(crystal(1, 8, 1))
             .candidates(spot(9, 8, 1))));
         assertNothing(once(NO_ROTATE, tick(1).hands(hands(false, false, false)).candidates(spot(9, 8, 1))));
+    }
+
+    // Phases: Meteor decides the break and the placing gate at HIGH, and the spot from the scan
+
+    @Test
+    void aBreakAtHighClosesThePlacingGateWithRotateOn() {
+        CrystalBrain b = new CrystalBrain();
+
+        assertEquals(Kind.BREAK, b.breakPhase(METEOR, tick(1).crystals(crystal(1, 8, 1)).build()).orElseThrow().decision().kind());
+        assertFalse(b.wantsPlacement());
+        assertTrue(b.placePhase(20, List.of(spot(9, 8, 1))).isEmpty());
+    }
+
+    @Test
+    void thePlacingGateReadsWhatWasMeasuredAtHigh() {
+        // Hands (lines 693-694, 912-919), pause-health (line 1161 via doPlace at HIGH) and one at a time.
+        CrystalBrain gapple = new CrystalBrain();
+        gapple.breakPhase(METEOR, tick(1).hands(with(hands(true, false, false), true, false)).build());
+        assertFalse(gapple.wantsPlacement());
+        assertTrue(gapple.placePhase(20, List.of(spot(9, 8, 1))).isEmpty());
+
+        CrystalBrain paused = new CrystalBrain();
+        paused.breakPhase(METEOR, tick(1).health(5).build());
+        assertFalse(paused.wantsPlacement());
+        assertTrue(paused.placePhase(20, List.of(spot(9, 8, 1))).isEmpty());
+
+        CrystalBrain open = new CrystalBrain();
+        open.breakPhase(METEOR, tick(1).build());
+        assertTrue(open.wantsPlacement());
+        assertPlaces(9, List.of(open.placePhase(20, List.of(spot(9, 8, 1))).orElseThrow()));
+        assertFalse(open.wantsPlacement());
+    }
+
+    @Test
+    void theSpotsAreCheckedWithTheHealthReadDuringTheScan() {
+        // Line 953 reads health inside the scan: at 6, self 6 fails anti-suicide and self 5.75 passes.
+        CrystalBrain b = new CrystalBrain();
+        b.breakPhase(METEOR, tick(1).health(20).build());
+
+        assertPlaces(2, List.of(b.placePhase(6, List.of(spot(1, 20, 6), spot(2, 10, 5.75))).orElseThrow()));
+    }
+
+    @Test
+    void thePhasesGoInOrderOncePerPreTick() {
+        CrystalBrain b = new CrystalBrain();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> b.placePhase(20, List.of()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> b.breakPhase(METEOR, tick(1).candidates(spot(9, 8, 1)).build()));
+
+        b.breakPhase(METEOR, tick(1).build());
+        b.placePhase(20, List.of());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> b.placePhase(20, List.of()));
+        // The next pre-tick opens a new place phase.
+        b.breakPhase(METEOR, tick(2).build());
+        assertTrue(b.placePhase(20, List.of()).isEmpty());
     }
 
     // Order of calls

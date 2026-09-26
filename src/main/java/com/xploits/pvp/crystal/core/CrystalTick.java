@@ -24,7 +24,8 @@ import java.util.Set;
  *                          break choice keeps the first of equal ones); {@link CrystalBrain} keeps what
  *                          we did to each and remembers the ones that have just disappeared
  * @param candidates        the places a crystal could go, in {@code BlockIterator} order (ties go to the
- *                          first found)
+ *                          first found); empty for {@link CrystalBrain#breakPhase}, which is measured
+ *                          before the scan
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,
                           boolean lagging, boolean pauseModuleActive, Hands hands, List<TargetView> targets,

@@ -290,6 +290,75 @@ class CrystalBrainBudgetTest {
         assertPlaces(8, lost.preTick(DEFAULTS, tick(6).health(12).candidates(spot(8, 8, 5)).build()));
     }
 
+    /** Places on base 9 (self 5) at pre-ticks 1 and 2 at health 15, as Meteor does until the crystal arrives. */
+    private static CrystalBrain placedTwice() {
+        CrystalBrain b = new CrystalBrain();
+        assertPlaces(9, b.preTick(DEFAULTS, tick(1).health(15).candidates(spot(9, 8, 5)).build()));
+        b.placed(9, 0);
+        // 15 - 0 - 5 = 10: the placement pending there does not count against the same spot
+        assertPlaces(9, b.preTick(DEFAULTS, tick(2).health(15).candidates(spot(9, 8, 5)).build()));
+        b.placed(9, 0);
+        return b;
+    }
+
+    @Test
+    void aCrystalPlacedTwiceAtOneSpotCountsOnce() {
+        // The crystal appears (dealing nothing, so it stops no placement). Only it counts in S:
+        // 15 - 5 - 5 = 5 >= 5, as after a single placement. Two pending entries would leave one behind:
+        // 15 - 10 - 5 = 0.
+        CrystalSeen appeared = crystal(1, 9, 0, 5);
+
+        CrystalBrain twice = placedTwice();
+        assertTrue(twice.crystalAdded(appeared, 15, HANDS).isEmpty());
+        assertPlaces(8, twice.preTick(DEFAULTS, tick(3).health(15).crystals(appeared).candidates(spot(8, 8, 5)).build()));
+
+        CrystalBrain once = new CrystalBrain();
+        assertPlaces(9, once.preTick(DEFAULTS, tick(1).health(15).candidates(spot(9, 8, 5)).build()));
+        once.placed(9, 0);
+        assertNothing(once.preTick(DEFAULTS, tick(2).health(15).build()));
+        assertTrue(once.crystalAdded(appeared, 15, HANDS).isEmpty());
+        assertPlaces(8, once.preTick(DEFAULTS, tick(3).health(15).crystals(appeared).candidates(spot(8, 8, 5)).build()));
+    }
+
+    @Test
+    void aSpotPlacedTwiceLeavesNothingToCountAsLateOnceItsCrystalCame() {
+        // Our crystal arrives after pre-tick 2, stands until 8 and goes; someone else's lands there after 9.
+        // Had the first placement stayed pending, it would have expired into a late spot and been counted.
+        CrystalSeen ours = crystal(1, 9, 0, 5);
+        CrystalBrain b = placedTwice();
+        assertTrue(b.crystalAdded(ours, 15, HANDS).isEmpty());
+        for (long t = 3; t <= 8; t++) b.preTick(DEFAULTS, tick(t).health(15).crystals(ours).build());
+        b.preTick(DEFAULTS, tick(9).health(15).build());
+
+        assertTrue(b.crystalAdded(crystal(2, 9, 8, 5), 15, HANDS).isPresent());
+        assertEquals(0, b.lateOwnCrystals());
+    }
+
+    @Test
+    void aSpotStillPendingIsNotCountedAgainstItself() {
+        // Health 12 with self 5 pending on 9: spot 8 (the best) would leave 12 - 5 - 5 = 2 < 5; placing on 9
+        // again replaces the pending one, 12 - 0 - 5 = 7.
+        CrystalBrain b = new CrystalBrain();
+        assertPlaces(9, b.preTick(DEFAULTS, tick(1).health(12).candidates(spot(9, 8, 5)).build()));
+        b.placed(9, 0);
+
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(DEFAULTS, tick(2).health(12).candidates(spot(8, 10, 5), spot(9, 8, 5)).build()));
+    }
+
+    @Test
+    void holdingCountsThePlacePhaseToo() {
+        CrystalBrain b = new CrystalBrain();
+        assertTrue(b.breakPhase(DEFAULTS, tick(1).health(9).build()).isEmpty());
+        assertFalse(b.holding());
+        assertTrue(b.wantsPlacement());
+
+        // 9 - 0 - 5 = 4 < 5
+        assertTrue(b.placePhase(9, List.of(spot(1, 10, 5))).isEmpty());
+        assertTrue(b.holding());
+        assertEquals(Decision.none(Reason.OVER_RESERVE), b.lastDecision());
+    }
+
     @Test
     void aPlacementThatWasNotSentIsNotPending() {
         // The adapter found no crystals to place with by the time it acted, so it never called placed().

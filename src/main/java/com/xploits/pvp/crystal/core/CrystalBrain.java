@@ -24,15 +24,22 @@ import java.util.Set;
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
  * <ol>
- *   <li>{@link #preTick} once per pre-tick, numbered consecutively, with everything it measured (build it
- *   in {@code BlockIterator.after}, when the candidates are known), then does the actions returned, in
- *   order;</li>
+ *   <li>{@link #breakPhase} in {@code TickEvent.Pre} at priority HIGH, once per pre-tick, numbered
+ *   consecutively, with what it measures there, as Meteor does (lines 660-719): health, pauses, hands,
+ *   targets and every crystal, and no candidates. It decides the break, and Meteor's gate for placing
+ *   (lines 903-924: the place setting, the pause, crystals in the hotbar, the switch rules and one at a
+ *   time), all with these facts;</li>
+ *   <li>only if {@link #wantsPlacement()}: registers the {@code BlockIterator} scan and, in
+ *   {@code BlockIterator.after} of the same pre-tick, calls {@link #placePhase} with the candidates and
+ *   the health read during the scan (Meteor's candidate checks read health there, line 953);</li>
+ *   <li>does each action returned, in order;</li>
  *   <li>{@link #attackSent()} each time an attack packet goes out, which with {@code rotate} on is in the
  *   {@code Rotations} callback (Q1: the counter goes up there, line 891);</li>
- *   <li>{@link #placed(long, int)} when a placement packet goes out;</li>
+ *   <li>{@link #placed(long, int)} when a placement packet goes out, in the same client tick;</li>
  *   <li>{@link #crystalAdded} on {@code EntityAddedEvent} for an end crystal (ownership, then fast-break),
  *   and {@link #crystalRemoved} on {@code EntityRemovedEvent}.</li>
  * </ol>
+ * {@link #preTick} does both phases on one set of facts.
  */
 public final class CrystalBrain {
     /** Meteor's attack window: {@code ticksPassed} counts to this, and the next pre-tick resets the attacks (lines 674-678). */
@@ -78,19 +85,75 @@ public final class CrystalBrain {
     /** The placement decided this tick, until the adapter says it was sent. */
     private Placement decided;
 
+    /** The hands read at HIGH: Meteor's switch rules and the placing hand use them (lines 693-694). */
+    private CrystalTick.Hands hands;
+    private Action breakAction;
+    private Action placeAction;
+    /** Meteor's doPlace passed its checks up to the scan this pre-tick (lines 903-924). */
+    private boolean placeGate;
+    private boolean placeDone = true;
+
     /** This pre-tick's budget questions, for {@link #holding()}. */
     private int asked;
     private int allowed;
     private Reason firstRefusal;
 
     /**
-     * One pre-tick: update the state as Meteor does at the start of its pre-tick (lines 663-708), find the
-     * targets, then break (lines 770-875) and place (lines 903-1008), each within the budget.
+     * One pre-tick with both phases on the same facts: {@link #breakPhase} with the tick, then
+     * {@link #placePhase} with its health and candidates.
      *
      * @return what to do now, in order: nothing, or one action with {@code rotate} on (lines 717-718), or
      *         up to a break and a placement with it off
      */
     public List<Action> preTick(CrystalSettings settings, CrystalTick tick) {
+        List<Action> actions = new ArrayList<>(2);
+        begin(settings, tick).ifPresent(actions::add);
+        placePhase(tick.health(), tick.candidates()).ifPresent(actions::add);
+        return List.copyOf(actions);
+    }
+
+    /**
+     * The start of a pre-tick, at HIGH: update the state as Meteor does at the start of its pre-tick (lines
+     * 663-708), find the targets, break (lines 770-875) within the budget, and decide Meteor's gate for
+     * placing (lines 716-718, 903-924) with these same facts.
+     *
+     * @param tick what was measured at HIGH, with no candidates: {@link #placePhase} takes them
+     * @return the break, the anti-weakness swap, or nothing
+     */
+    public Optional<Action> breakPhase(CrystalSettings settings, CrystalTick tick) {
+        Objects.requireNonNull(tick, "tick");
+        if (!tick.candidates().isEmpty()) throw new IllegalArgumentException("candidates go to the place phase");
+        return begin(settings, tick);
+    }
+
+    /** Whether this pre-tick's placing gate is open, so Meteor would scan for a spot now (lines 931-932). */
+    public boolean wantsPlacement() {
+        return placeGate && !placeDone;
+    }
+
+    /**
+     * This pre-tick's placement, from the {@code BlockIterator} scan (lines 931-1008): the best candidate
+     * that passes Meteor's checks and then the budget. At most once per pre-tick, after
+     * {@link #breakPhase}; nothing when the gate is closed.
+     *
+     * @param health     your health plus absorption, read during the scan
+     * @param candidates the scan's spots, in its order
+     */
+    public Optional<Action> placePhase(double health, List<Candidate> candidates) {
+        Damage.check(health, "health");
+        List<Candidate> spots = List.copyOf(candidates);
+        Set<Long> seen = new HashSet<>();
+        for (Candidate c : spots) {
+            if (!seen.add(c.pos())) throw new IllegalArgumentException("candidate twice");
+        }
+        if (now == NO_TICK || placeDone) throw new IllegalStateException("the place phase follows the break phase, once");
+        placeDone = true;
+        if (placeGate) placeAction = placeBest(health, spots).orElse(null);
+        conclude();
+        return Optional.ofNullable(placeAction);
+    }
+
+    private Optional<Action> begin(CrystalSettings settings, CrystalTick tick) {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(tick, "tick");
         if (now != NO_TICK && tick.tick() <= now) {
@@ -130,23 +193,29 @@ public final class CrystalBrain {
         if (switchTimer > 0) switchTimer--;
 
         findTargets(tick.targets());
+        hands = tick.hands();
         asked = 0;
         allowed = 0;
         firstRefusal = null;
-        if (targets.isEmpty()) {
-            holding = false;
-            lastDecision = Decision.none(Reason.NO_TARGETS);
-            return List.of();
+        breakAction = null;
+        placeAction = null;
+        placeGate = false;
+        placeDone = false;
+        if (!targets.isEmpty()) {
+            if (!rotated) breakAction = breakBest(tick).orElse(null);
+            placeGate = !rotated && placeGateOpen(tick);
         }
+        conclude();
+        return Optional.ofNullable(breakAction);
+    }
 
-        List<Action> actions = new ArrayList<>(2);
-        if (!rotated) breakBest(tick).ifPresent(actions::add);
-        if (!rotated) placeBest(tick).ifPresent(actions::add);
-
+    /** {@link #holding()} and {@link #lastDecision()} from what this pre-tick has decided so far. */
+    private void conclude() {
         holding = settings.selfBudget() && asked > 0 && allowed == 0;
-        if (actions.isEmpty()) lastDecision = Decision.none(holding ? firstRefusal : Reason.NOTHING_TO_DO);
-        else lastDecision = actions.get(actions.size() - 1).decision();
-        return List.copyOf(actions);
+        if (placeAction != null) lastDecision = placeAction.decision();
+        else if (breakAction != null) lastDecision = breakAction.decision();
+        else if (targets.isEmpty()) lastDecision = Decision.none(Reason.NO_TARGETS);
+        else lastDecision = Decision.none(holding ? firstRefusal : Reason.NOTHING_TO_DO);
     }
 
     /**
@@ -194,13 +263,18 @@ public final class CrystalBrain {
 
     /**
      * The placement decided this tick went out (lines 1049-1057). It stays pending until a crystal appears
-     * at its spot or for max(5, ping + 2) ticks, whichever comes first (Q2).
+     * at its spot or for max(5, ping + 2) ticks, whichever comes first (Q2). It replaces whatever was pending,
+     * or remembered as late, at that spot, as Meteor overwrites its placing spot and timer (lines 1054-1057):
+     * Meteor places on the same base every tick until the crystal arrives, and only one crystal can come of
+     * it.
      *
      * @param pingTicks your ping in ticks, rounded up; {@link #UNKNOWN_PING_TICKS} when unknown
      */
     public void placed(long pos, int pingTicks) {
         if (decided == null || decided.pos != pos) throw new IllegalStateException("that placement was not decided this tick");
         if (pingTicks < 0) throw new IllegalArgumentException("ping " + pingTicks);
+        pending.removeIf(p -> p.pos == pos);
+        late.removeIf(l -> l.pos == pos);
         pending.add(new Pending(pos, decided.selfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN)));
         decided = null;
     }
@@ -333,29 +407,32 @@ public final class CrystalBrain {
 
     // Place
 
-    /** Lines 903-1008, then the next best spot while the budget refuses (§1). */
-    private Optional<Action> placeBest(CrystalTick tick) {
-        if (!settings.place()) return Optional.empty();
-        if (paused(tick, PauseMode.PLACE)) return Optional.empty();
-        CrystalTick.Hands hands = tick.hands();
-        if (!hands.crystalsInHotbar()) return Optional.empty();
+    /** Meteor's doPlace up to the scan (lines 903-924), at HIGH. */
+    private boolean placeGateOpen(CrystalTick tick) {
+        if (!settings.place()) return false;
+        if (paused(tick, PauseMode.PLACE)) return false;
+        if (!hands.crystalsInHotbar()) return false;
         if (settings.autoSwitch() != AutoSwitch.NONE) {
             if (settings.noGapSwitch() && settings.autoSwitch() == AutoSwitch.NORMAL && !hands.offhandCrystals()
-                && hands.gappleInHand()) return Optional.empty();
-            if (settings.noBowSwitch() && hands.bowInHand()) return Optional.empty();
-        } else if (!hands.mainHandCrystals() && !hands.offhandCrystals()) return Optional.empty();
+                && hands.gappleInHand()) return false;
+            if (settings.noBowSwitch() && hands.bowInHand()) return false;
+        } else if (!hands.mainHandCrystals() && !hands.offhandCrystals()) return false;
 
         // One at a time, by Meteor's rules and not the budget's (lines 921-924): a crystal the budget will not
         // let us break still stops us adding another.
         for (CrystalSeen c : tick.crystals()) {
             Known k = known.get(c.id());
-            if (k != null && k.live() && breakDamage(k, tick.health()) > 0) return Optional.empty();
+            if (k != null && k.live() && breakDamage(k, tick.health()) > 0) return false;
         }
+        return true;
+    }
 
+    /** The scan (lines 931-1008), then the next best spot while the budget refuses (§1). */
+    private Optional<Action> placeBest(double health, List<Candidate> candidates) {
         List<Scored<Candidate>> able = new ArrayList<>();
         double minimum = minimumDamage();
-        for (Candidate c : tick.candidates()) {
-            if (!c.inRange() || tooHurtful(c.selfDamage(), tick.health())) continue;
+        for (Candidate c : candidates) {
+            if (!c.inRange() || tooHurtful(c.selfDamage(), health)) continue;
             float damage = c.damageTo(targets);
             if (damage < minimum || boxTaken(c)) continue;
             // Meteor keeps a spot only if it beats the best so far, which starts at 0 (lines 927, 972, 982).
@@ -363,11 +440,16 @@ public final class CrystalBrain {
         }
         able.sort(BY_DAMAGE);
 
-        SelfBudget budget = null;
+        SelfBudget shared = null;
         for (Scored<Candidate> s : able) {
             Reason reason = Reason.BUDGET_OFF;
             if (settings.selfBudget()) {
-                if (budget == null) budget = budget(tick.health());
+                long pos = s.item.pos();
+                SelfBudget budget;
+                // Placing again where we are still waiting for a crystal replaces that placement (see
+                // placed): only one crystal can come of the two, so the pending one does not count here.
+                if (pendingAt(pos)) budget = budget(health, pos);
+                else budget = shared != null ? shared : (shared = budget(health, null));
                 Verdict v = budget.placeAllowed(s.item.selfDamage());
                 if (!answered(v)) continue;
                 reason = v.reason();
@@ -378,6 +460,13 @@ public final class CrystalBrain {
             return Optional.of(new Action(Decision.place(s.item.pos(), reason), crystalHand(hands), swap));
         }
         return Optional.empty();
+    }
+
+    private boolean pendingAt(long pos) {
+        for (Pending p : pending) {
+            if (p.pos == pos) return true;
+        }
+        return false;
     }
 
     /**
@@ -397,10 +486,17 @@ public final class CrystalBrain {
 
     /** The budget now: every crystal known (standing, or gone within the window) and our pending placements. */
     private SelfBudget budget(double health) {
+        return budget(health, null);
+    }
+
+    /** The same, leaving out the placement pending at {@code replacedSpot}, if any. */
+    private SelfBudget budget(double health, Long replacedSpot) {
         List<CrystalView> views = new ArrayList<>(known.size());
         for (Known k : known.values()) views.add(k.view(now));
         List<Double> selfDamages = new ArrayList<>(pending.size());
-        for (Pending p : pending) selfDamages.add(p.selfDamage);
+        for (Pending p : pending) {
+            if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.selfDamage);
+        }
         return SelfBudget.of(now, health, views, selfDamages, settings.reserve(), settings.safeSelfDamage());
     }
 
