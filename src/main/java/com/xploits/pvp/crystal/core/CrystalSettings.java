@@ -22,16 +22,50 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
                               int attackFrequency, boolean fastBreak, PauseMode pauseOnUse, PauseMode pauseOnMine,
                               boolean pauseOnLag, double pauseHealth, boolean selfBudget, double reserve,
                               double safeSelfDamage) {
-    /** Meteor's {@code auto-switch}, without Silent (Q6). */
-    public enum AutoSwitch { NONE, NORMAL }
+    /**
+     * Meteor's {@code auto-switch}, without Silent (Q6). The display names are Meteor's, which it saves and a
+     * player types: never change them.
+     */
+    public enum AutoSwitch {
+        NONE("None"),
+        NORMAL("Normal");
 
-    /** Meteor's {@code PauseMode}: which process a pause applies to (lines 1371-1380). */
+        private final String display;
+
+        AutoSwitch(String display) {
+            this.display = display;
+        }
+
+        @Override
+        public String toString() {
+            return display;
+        }
+    }
+
+    /**
+     * Meteor's {@code PauseMode}: which process a pause applies to (lines 1371-1380). The display names are
+     * Meteor's, which it saves and a player types: never change them.
+     */
     public enum PauseMode {
-        BOTH, PLACE, BREAK, NONE;
+        BOTH("Both"),
+        PLACE("Place"),
+        BREAK("Break"),
+        NONE("None");
+
+        private final String display;
+
+        PauseMode(String display) {
+            this.display = display;
+        }
 
         /** Meteor's {@code PauseMode.equals(process)}: this very process, or both. */
         public boolean pauses(PauseMode process) {
             return this == process || this == BOTH;
+        }
+
+        @Override
+        public String toString() {
+            return display;
         }
     }
 

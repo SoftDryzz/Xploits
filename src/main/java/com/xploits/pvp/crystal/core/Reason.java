@@ -19,5 +19,7 @@ public enum Reason {
     /** No player is a target this tick (Meteor does nothing then, lines 716-719). */
     NO_TARGETS,
     /** Weakness would stop the attack: swap to an item that hurts the crystal first (lines 826-838). */
-    ANTI_WEAKNESS
+    ANTI_WEAKNESS,
+    /** Meteor's crystal-aura is on, so crystal-aura++ does nothing (spec §2, Q3); the adapter says this. */
+    METEOR_AURA_ON
 }

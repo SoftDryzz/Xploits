@@ -52,6 +52,10 @@ public final class CrystalBrain {
     public static final int PENDING_PING_MARGIN = 2;
     /** The ping in ticks when the adapter does not know it (Q6). */
     public static final int UNKNOWN_PING_TICKS = 5;
+    /** A latency the adapter could not read, for {@link #pingTicks}. */
+    public static final int UNKNOWN_LATENCY = -1;
+    /** Milliseconds in a tick. */
+    private static final int TICK_MS = 50;
     /**
      * After a pending placement expires, a crystal appearing at its spot within this many ticks is counted
      * as a late own crystal (Q2); after that the spot is forgotten, so a crystal someone else puts there
@@ -277,6 +281,17 @@ public final class CrystalBrain {
         late.removeIf(l -> l.pos == pos);
         pending.add(new Pending(pos, decided.selfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN)));
         decided = null;
+    }
+
+    /**
+     * The ping {@link #placed} takes (Q6): your latency in the player list, in ticks of 50 ms rounded up, or
+     * {@link #UNKNOWN_PING_TICKS} when it could not be read.
+     *
+     * @param latencyMs your latency in milliseconds, or any negative value ({@link #UNKNOWN_LATENCY}) when unknown
+     */
+    public static int pingTicks(int latencyMs) {
+        if (latencyMs < 0) return UNKNOWN_PING_TICKS;
+        return (latencyMs + TICK_MS - 1) / TICK_MS;
     }
 
     /**

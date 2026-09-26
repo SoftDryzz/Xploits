@@ -7,6 +7,7 @@ import com.xploits.console.ConsoleModule;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.pvp.AutoPvp;
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.hud.AutoPvpHud;
 import com.xploits.pvp.hud.PvpStarscript;
 import com.xploits.pvp.recorder.FightRecorder;
@@ -38,6 +39,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new StashKeeper());
         Modules.get().add(new ElytraReplace());
         Modules.get().add(new AutoPvp());
+        Modules.get().add(new CrystalAuraPlusPlus());
         Modules.get().add(new FightRecorder());
         Modules.get().add(new AutoTravel());
         Modules.get().add(new NetherSweep());
