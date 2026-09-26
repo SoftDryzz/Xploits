@@ -57,7 +57,7 @@ public class BenchTest implements FabricClientGameTest {
         List<Scenario> selected = select(Scenarios.all(), config.only());
         Baseline baseline = loadBaseline(config.baseline());
         BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline,
-            config.only());
+            config.only(), Scenarios.judged());
         LOG.info("[bench] {} scenario(s) selected; the baseline has {} scenario(s)", selected.size(), baseline.size());
         // Every planned scenario is in the report from the start, PENDING: a client that stops mid-bench
         // leaves a report that says so, and the Gradle side (benchVerify) fails on it.
@@ -80,6 +80,7 @@ public class BenchTest implements FabricClientGameTest {
         hygiene(report, config);
 
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
+        report.recommendation().ifPresent(r -> LOG.info("[bench] {}", r.line()));
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
     }
 
@@ -186,7 +187,7 @@ public class BenchTest implements FabricClientGameTest {
             Bench bench = new Bench(ctx, world.getServer(), scenario.budgetTicks(), out);
             try {
                 phase = "prepare";
-                bench.prepare();
+                bench.prepare(scenario.naturalRegeneration());
                 phase = "arrange";
                 scenario.arrange(bench);
                 phase = "act";

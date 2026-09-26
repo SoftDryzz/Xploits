@@ -36,7 +36,8 @@ import java.util.function.DoubleBinaryOperator;
  *
  * <p>Before the rules: our player dying in a ++ run is a REJECT (Q5), whatever else. Otherwise either
  * side not DONE, not run in this invocation, without exactly {@value #RUNS} runs, or with a run that lacks
- * a metric the rules read, is INCOMPLETE, never ACCEPT (P6).
+ * a metric the judgement reads, is INCOMPLETE, never ACCEPT (P6). Then a pair where neither side placed a
+ * crystal in any run is NOT_APPLICABLE (round 2): its rules would all pass on nothing.
  */
 public final class Acceptance {
     /** The runs each side needs. */
@@ -52,9 +53,13 @@ public final class Acceptance {
     public static final String SELF_DAMAGE = "self_damage";
     public static final String SELF_POPS = "self_pops";
     public static final String MIN_HEALTH = "min_health";
-    /** Every metric the rules read; {@link #FIRST_POP_S} is only in a run that popped. */
-    public static final List<String> METRICS =
-        List.of(DAMAGE_DEALT, SPARRING_POPS, FIRST_POP_S, NO_POP_RUNS, SELF_DAMAGE, SELF_POPS, MIN_HEALTH);
+    public static final String PLACEMENTS_PER_S = "placements_per_s";
+    /**
+     * Every metric the judgement reads; {@link #FIRST_POP_S} is only in a run that popped, and
+     * {@link #PLACEMENTS_PER_S} only decides whether the pair applies at all.
+     */
+    public static final List<String> METRICS = List.of(DAMAGE_DEALT, SPARRING_POPS, FIRST_POP_S, NO_POP_RUNS,
+        SELF_DAMAGE, SELF_POPS, MIN_HEALTH, PLACEMENTS_PER_S);
 
     /** S2: no ++ run's min health below the budget's floor F less half a point. */
     public static final double LOWEST_MIN_HEALTH = SelfBudget.FLOOR - 0.5;
@@ -71,7 +76,11 @@ public final class Acceptance {
     /** The share of Meteor's value a margin grows to when it is larger than the floor. */
     public static final int SHARE_PERCENT = 15;
 
-    public enum Verdict { ACCEPT, REJECT, INCOMPLETE }
+    /**
+     * NOT_APPLICABLE: neither side placed a crystal in any run, so the arena measured nothing about either
+     * aura; it is not evidence, and the recommendation ({@link Recommendation}) leaves it out.
+     */
+    public enum Verdict { ACCEPT, REJECT, INCOMPLETE, NOT_APPLICABLE }
 
     public enum Kind { SAFETY, OFFENSE }
 
@@ -120,6 +129,10 @@ public final class Acceptance {
             String gap = gap(side);
             if (gap != null) return new Outcome(Verdict.INCOMPLETE, gap, List.of());
         }
+        if (neverPlaced(capp) && neverPlaced(meteor)) {
+            return new Outcome(Verdict.NOT_APPLICABLE,
+                "neither " + capp.scenario() + " nor " + meteor.scenario() + " placed a crystal in any run", List.of());
+        }
         List<Rule> rules = List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor), o1(capp, meteor),
             o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
@@ -140,6 +153,11 @@ public final class Acceptance {
             }
         }
         return null;
+    }
+
+    /** No crystal placed in any of the side's runs. */
+    private static boolean neverPlaced(Side side) {
+        return side.runs().stream().allMatch(run -> run.get(PLACEMENTS_PER_S) == 0);
     }
 
     // --- The rules ------------------------------------------------------------------------------------

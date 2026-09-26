@@ -88,7 +88,7 @@ shipped jar does not change), and `./gradlew build` never opens a window or runs
   a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
   for whoever reads the report.
 
-`./gradlew runClientGameTest` opens a Minecraft window and takes about 10 minutes for the full bench. It
+`./gradlew runClientGameTest` opens a Minecraft window and takes about 18 minutes for the full bench. It
 wipes `build/bench` first, so every report in there is from that run alone; copy a report out of
 `build/bench` if you want to keep it, because the next run erases it.
 
@@ -115,6 +115,15 @@ process by hand — the same PENDING result follows.
 
 Regressions against the baseline are counted in the summary line but do not fail the build by themselves:
 show them to whoever is about to release, before tagging.
+
+**crystal-aura++ against Meteor's crystal-aura.** Each `capp-X` MEASURE is judged against its `ca-X` twin
+from the same run (ACCEPT, REJECT, INCOMPLETE, or NOT_APPLICABLE when neither aura placed a crystal in any
+run, as against the defender). Still and circler also run as `-regen` pairs, with natural health
+regeneration on, closer to a real fight; every other scenario runs without it. `benchVerify` prints the
+verdicts as a second `bench: capp: …` line and the strict recommendation as a third, `bench: capp
+recommendation: YES/NO (n of m applicable pairs ACCEPT; k not applicable)`: YES only when every applicable
+pair is ACCEPT. A pair that did not run counts as INCOMPLETE, so only a full run can say YES. Neither line
+ever fails the build.
 
 `./gradlew benchVerify` alone re-checks an existing `build/bench` report without opening a window, for
 example right after a run that already finished.

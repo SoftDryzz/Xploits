@@ -14,7 +14,9 @@ import java.util.function.Supplier;
  * off, against a scripted sparring for 30 s, from the standard loadout (AutoTotem Strict) with the
  * recorder on. And {@code capp-still}, {@code capp-circler} and {@code capp-defender} (crystal-aura++
  * spec §4, P6): crystal-aura++ the same way, on the same arenas and scripts, each judged against its
- * {@code ca-} twin ({@link #compareWith}).
+ * {@code ca-} twin ({@link #compareWith}). Each of them also has a healing twin, {@code <name>-regen}
+ * ({@link #healing}), on the same arena and script with natural regeneration on (crystal-aura++ spec,
+ * Round 2 (b)); those that run in the full bench are judged against each other too.
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *
@@ -28,25 +30,40 @@ final class CrystalAuraMeasure implements Scenario {
     private final Class<? extends Module> other;
     private final String compareWith;
     private final Supplier<Script> script;
+    private final boolean regeneration;
     private MeasureRun run;
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
-                               String compareWith, Supplier<Script> script) {
+                               String compareWith, Supplier<Script> script, boolean regeneration) {
         this.name = name;
         this.aura = aura;
         this.other = other;
         this.compareWith = compareWith;
         this.script = script;
+        this.regeneration = regeneration;
     }
 
     /** Meteor's CrystalAura. */
     static CrystalAuraMeasure meteor(String name, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script);
+        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false);
     }
 
     /** crystal-aura++, judged against the Meteor scenario {@code compareWith} on the same arena and script. */
     static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script);
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false);
+    }
+
+    /** The suffix of a healing twin's name. */
+    static final String HEALING = "-regen";
+
+    /**
+     * This scenario's healing twin: {@code <name>-regen}, the same aura, arena, script, loadout and timing,
+     * with natural regeneration on; a crystal-aura++ one is judged against {@code <compareWith>-regen}.
+     */
+    CrystalAuraMeasure healing() {
+        if (regeneration) throw new IllegalStateException(name + " already heals");
+        return new CrystalAuraMeasure(name + HEALING, aura, other, compareWith == null ? null : compareWith + HEALING,
+            script, true);
     }
 
     @Override
@@ -62,6 +79,11 @@ final class CrystalAuraMeasure implements Scenario {
     @Override
     public int seconds() {
         return 30;
+    }
+
+    @Override
+    public boolean naturalRegeneration() {
+        return regeneration;
     }
 
     @Override

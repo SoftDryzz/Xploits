@@ -9,6 +9,7 @@ import com.xploits.bench.Metrics.Definition;
 import com.xploits.bench.core.Acceptance;
 import com.xploits.bench.core.Acceptance.Outcome;
 import com.xploits.bench.core.Acceptance.Verdict;
+import com.xploits.bench.core.Recommendation;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,8 +28,9 @@ import java.util.Optional;
  * still leaves what ran. For a MEASURE it gives the median, min and max of every metric over its DONE
  * runs, how many runs popped the sparring, the metrics whose runs spread too far (noisy), and the ones
  * worse than the baseline (regressions). A MEASURE judged against another ({@link Scenario#compareWith})
- * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts; a verdict never makes
- * the report fail (crystal-aura++ spec §4, Q5: only a run's ERROR does).
+ * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts. One more line gives the
+ * strict recommendation over every pair the full bench judges ({@link Recommendation}). Neither a verdict
+ * nor the recommendation makes the report fail (crystal-aura++ spec §4, Q5: only a run's ERROR does).
  *
  * <p>Numbers, names, statuses and bench-written messages only: never a position. No line of either file
  * holds three numbers in a row separated by spaces or commas (the hygiene scan would take it for a
@@ -95,6 +97,8 @@ public final class BenchReport {
     /** {@code -Pbench.only}'s names, comma-joined, or null for a full run: so a partial run stays visible
      * in the report and not only in the console line that started it. */
     private final String only;
+    /** Every scenario the full bench judges against another, whether it runs in this invocation or not. */
+    private final List<String> judged;
     /** The planned scenarios, then any other that ran, in order. */
     private final Map<String, Entry> scenarios = new LinkedHashMap<>();
     /**
@@ -154,12 +158,15 @@ public final class BenchReport {
         }
     }
 
-    public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only) {
+    /** {@code judged}: the names of every scenario the full bench judges ({@link Scenarios#judged}). */
+    public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only,
+                       List<String> judged) {
         this.addon = addon;
         this.meteor = meteor;
         this.folder = folder;
         this.baseline = baseline;
         this.only = only.isEmpty() ? null : String.join(",", only);
+        this.judged = List.copyOf(judged);
     }
 
     /** Lists the scenarios about to run, PENDING, so a report cut short shows what never ran. */
@@ -198,8 +205,8 @@ public final class BenchReport {
     }
 
     /**
-     * The verdicts counted, {@code capp: n ACCEPT / m REJECT / k INCOMPLETE}; empty when no scenario that
-     * ran is judged against another.
+     * The verdicts counted, {@code capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE}; empty when
+     * no scenario that ran is judged against another.
      */
     public Optional<String> compareSummary() {
         Map<Verdict, Integer> counts = new LinkedHashMap<>();
@@ -215,6 +222,22 @@ public final class BenchReport {
         List<String> parts = new ArrayList<>();
         counts.forEach((verdict, n) -> parts.add(n + " " + verdict.name()));
         return Optional.of(COMPARE_LABEL + ": " + String.join(" / ", parts));
+    }
+
+    /**
+     * Whether crystal-aura++ is recommended (crystal-aura++ spec, Round 2, strict criterion), over every
+     * pair the full bench judges: a pair that did not run in this invocation is INCOMPLETE, so only a full
+     * run can say YES. Empty when no scenario that ran is judged against another.
+     */
+    public Optional<Recommendation> recommendation() {
+        if (compareSummary().isEmpty()) return Optional.empty();
+        List<Verdict> verdicts = new ArrayList<>();
+        for (String name : judged) {
+            Entry e = scenarios.get(name);
+            Optional<Outcome> outcome = e == null ? Optional.empty() : e.compare();
+            verdicts.add(outcome.map(Outcome::verdict).orElse(Verdict.INCOMPLETE));
+        }
+        return Optional.of(Recommendation.of(verdicts));
     }
 
     /**
@@ -355,6 +378,7 @@ public final class BenchReport {
         }
         root.add("scenarios", list);
         compareSummary().ifPresent(summary -> root.addProperty("compare", summary));
+        recommendation().ifPresent(r -> root.addProperty("recommendation", r.line()));
         // Absent until the scan ran: the Gradle-side check (benchVerify) wants it, and wants it clean.
         if (hygieneHits()) {
             JsonArray lines = new JsonArray();
@@ -402,6 +426,7 @@ public final class BenchReport {
         md.append("# Bench report ").append(addon).append("\n\n");
         md.append("Xploits ").append(addon).append(", Meteor ").append(meteor).append(", difficulty normal. ")
             .append(summary()).append(".\n\n");
+        recommendation().ifPresent(r -> md.append(r.line()).append(".\n\n"));
         md.append(baseline.size() == 0 ? "No baseline to compare with.\n\n"
             : "Compared with the baseline in bench/baseline.json.\n\n");
         md.append("| Scenario | Kind | Runs | Status | Error |\n");
@@ -478,7 +503,10 @@ public final class BenchReport {
             if (!header) {
                 md.append("\n## crystal-aura++ against crystal-aura\n\n")
                     .append("A verdict never fails the bench; a crystal-aura++ run in which our player died is ERROR")
-                    .append(" and makes the verdict REJECT.\n");
+                    .append(" and makes the verdict REJECT. A pair where neither aura placed a crystal in any run is")
+                    .append(" NOT_APPLICABLE: it is not evidence either way. crystal-aura++ is recommended only when")
+                    .append(" every applicable pair of the full bench, the -regen ones with healing included, is ACCEPT;")
+                    .append(" a pair that did not run in this invocation counts as INCOMPLETE.\n");
                 header = true;
             }
             md.append("\n### ").append(e.scenario.name()).append(" against ").append(e.scenario.compareWith().orElseThrow())

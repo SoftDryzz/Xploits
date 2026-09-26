@@ -46,6 +46,14 @@ public interface Scenario {
         return Optional.empty();
     }
 
+    /**
+     * Whether the run's world keeps natural health regeneration on: only the healing MEASUREs do
+     * (crystal-aura++ spec, Round 2 (b)); every other scenario runs without it ({@link Bench#prepare}).
+     */
+    default boolean naturalRegeneration() {
+        return false;
+    }
+
     /** Builds the scene after the common preparation ({@link Bench#prepare}); everything before T0. */
     void arrange(Bench bench);
 

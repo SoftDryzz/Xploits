@@ -42,6 +42,7 @@ class AcceptanceTest {
         m.put(Acceptance.SELF_DAMAGE, selfDamage);
         m.put(Acceptance.SELF_POPS, selfPops);
         m.put(Acceptance.MIN_HEALTH, minHealth);
+        m.put(Acceptance.PLACEMENTS_PER_S, 0.5);
         return m;
     }
 
@@ -372,6 +373,45 @@ class AcceptanceTest {
         assertEquals(Verdict.REJECT, Acceptance.judge(died, new Side(CA, "ERROR", List.of(), true)).verdict());
     }
 
+    // --- NOT_APPLICABLE: a pair where no crystal was ever placed (round 2) -------------------------------
+
+    @Test
+    void aPairWhereNeitherSidePlacedACrystalIsNotApplicable() {
+        Outcome outcome = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0));
+        assertEquals(Verdict.NOT_APPLICABLE, outcome.verdict());
+        assertEquals("neither capp-still nor ca-still placed a crystal in any run", outcome.reason());
+        // Not evidence either way: no rule is shown as passed.
+        assertEquals(List.of(), outcome.rules());
+    }
+
+    @Test
+    void oneCrystalOnEitherSideInAnyRunMakesThePairApplicable() {
+        // Meteor placed in one run only, ++ never: judged by the rules (the numbers here pass them all).
+        Outcome meteorOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0.5, 0));
+        assertEquals(Verdict.ACCEPT, meteorOnce.verdict());
+        assertEquals(7, meteorOnce.rules().size());
+        // ++ placed in one run only, Meteor never: judged too.
+        Outcome cappOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 1.0 / 30), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0));
+        assertEquals(Verdict.ACCEPT, cappOnce.verdict());
+        assertEquals(7, cappOnce.rules().size());
+    }
+
+    @Test
+    void aDeathIsARejectEvenWhereNoCrystalWasPlaced() {
+        Side died = new Side(CAPP, "ERROR", good(Acceptance.PLACEMENTS_PER_S, 0, 0), true);
+        Outcome outcome = Acceptance.judge(died, meteor(meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0)));
+        assertEquals(Verdict.REJECT, outcome.verdict());
+    }
+
+    @Test
+    void aMissingPlacementCountIsIncompleteNotNotApplicable() {
+        List<Map<String, Double>> runs = good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0);
+        runs.get(2).remove(Acceptance.PLACEMENTS_PER_S);
+        Outcome outcome = judge(runs, meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0));
+        assertEquals(Verdict.INCOMPLETE, outcome.verdict());
+        assertEquals("a run of capp-still has no placements_per_s", outcome.reason());
+    }
+
     @Test
     void aDeathInMeteorsRunIsIncompleteNotAReject() {
         Outcome outcome = Acceptance.judge(capp(three(goodRun())), new Side(CA, "ERROR", List.of(meteorRun(), meteorRun()), true));
@@ -409,6 +449,7 @@ class AcceptanceTest {
                 outcome.rules().forEach(r -> texts.add(r.detail()));
             }
         }
+        texts.add(judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0)).reason());
         for (String text : texts) assertFalse(PositionLike.in(text), text);
         assertTrue(PositionLike.in("12 64 -3"), "the pattern itself");
     }
@@ -421,6 +462,6 @@ class AcceptanceTest {
         for (String name : Acceptance.METRICS) {
             assertTrue(metrics.contains("= \"" + name + "\";"), "Metrics has no " + name);
         }
-        assertEquals(7, Acceptance.METRICS.size());
+        assertEquals(8, Acceptance.METRICS.size());
     }
 }
