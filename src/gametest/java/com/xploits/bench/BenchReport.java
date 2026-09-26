@@ -549,8 +549,9 @@ public final class BenchReport {
                     .append(" NOT_APPLICABLE: it is not evidence either way. Each risk level gets its own recommendation:")
                     .append(" crystal-aura++ is recommended at a level only when every applicable pair of the full bench")
                     .append(" at that level, the -regen ones with healing included, is ACCEPT; a pair that did not run in")
-                    .append(" this invocation counts as INCOMPLETE. The capp-X pairs run at Safe, the default; the")
-                    .append(" capp-balanced-X and capp-aggressive-X pairs at those levels.\n");
+                    .append(" this invocation counts as INCOMPLETE. The capp-X pairs run at Safe (R2-5's original")
+                    .append(" level; the risk setting's own default is Balanced since R3-8); the capp-balanced-X and")
+                    .append(" capp-aggressive-X pairs at those levels.\n");
                 header = true;
             }
             md.append("\n### ").append(e.scenario.name()).append(" against ").append(e.scenario.compareWith().orElseThrow())
@@ -574,7 +575,8 @@ public final class BenchReport {
         if (lines.isEmpty()) return;
         md.append("\n## crystal-aura++ risk levels\n\n")
             .append("Medians over each scenario's DONE runs: Meteor's crystal-aura, then crystal-aura++ at each level")
-            .append(" (Safe is the default); a dash is a side that did not run.\n\n");
+            .append(" (Safe is the level these capp-X columns keep; the risk setting's own default is Balanced")
+            .append(" since R3-8); a dash is a side that did not run.\n\n");
         for (String line : lines) md.append(line).append('\n');
     }
 

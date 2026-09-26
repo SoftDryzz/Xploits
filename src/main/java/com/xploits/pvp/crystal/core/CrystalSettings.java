@@ -158,7 +158,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         private PauseMode pauseOnMine = PauseMode.NONE;
         private boolean pauseOnLag = true;
         private double pauseHealth = 5;
-        private RiskLevel risk = RiskLevel.SAFE;
+        private RiskLevel risk = RiskLevel.BALANCED;
         private boolean selfBudget = true;
         private double reserve = SelfBudget.DEFAULT_RESERVE;
         private double safeSelfDamage = SelfBudget.DEFAULT_SAFE_SELF_DAMAGE;

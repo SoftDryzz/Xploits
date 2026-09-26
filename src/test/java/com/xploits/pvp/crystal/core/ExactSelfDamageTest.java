@@ -14,6 +14,7 @@ import static com.xploits.pvp.crystal.core.Crystals.DEFAULTS;
 import static com.xploits.pvp.crystal.core.Crystals.ENEMY;
 import static com.xploits.pvp.crystal.core.Crystals.HANDS;
 import static com.xploits.pvp.crystal.core.Crystals.METEOR;
+import static com.xploits.pvp.crystal.core.Crystals.SAFE_DEFAULTS;
 import static com.xploits.pvp.crystal.core.Crystals.crystal;
 import static com.xploits.pvp.crystal.core.Crystals.dealing;
 import static com.xploits.pvp.crystal.core.Crystals.spot;
@@ -138,12 +139,12 @@ class ExactSelfDamageTest {
 
     @Test
     void aPendingPlacementCountsItsExactSelfDamage() {
-        // Placed with Meteor 4 / exact 4.5, still pending. Next spot 2: 11.25 - 4.5 - 2 = 4.75 < 5; with Meteor's
-        // 4 it would be 5.25.
+        // Placed with Meteor 4 / exact 4.5, still pending. Next spot 2: 11.25 - 4.5 - 2 = 4.75 < Safe's reserve 5;
+        // with Meteor's 4 it would be 5.25.
         CrystalBrain b = new CrystalBrain();
-        assertPlaces(100, b.preTick(DEFAULTS, tick(1).candidates(withBudget(spot(100, 8, 4), 4.5)).build()));
+        assertPlaces(100, b.preTick(SAFE_DEFAULTS, tick(1).candidates(withBudget(spot(100, 8, 4), 4.5)).build()));
         b.placed(100, 0);
-        assertNothing(b.preTick(DEFAULTS, tick(2).health(11.25).candidates(spot(200, 8, 2)).build()));
+        assertNothing(b.preTick(SAFE_DEFAULTS, tick(2).health(11.25).candidates(spot(200, 8, 2)).build()));
         assertEquals(Decision.none(Reason.OVER_RESERVE), b.lastDecision());
 
         CrystalBrain m = new CrystalBrain();
@@ -182,9 +183,9 @@ class ExactSelfDamageTest {
         // Meteor 5.9 <= max-damage 6, exact 6.1 > 6: Meteor would place it, so it is not filtered.
         Candidate s = withBudget(spot(9, 8, 5.9), 6.1);
         assertPlaces(9, new CrystalBrain().preTick(DEFAULTS, tick(1).candidates(s).build()));
-        // At 11 the budget refuses it on the exact value: 11 - 6.1 = 4.9 < 5 (Meteor's would leave 5.1).
+        // At 11 the budget refuses it on the exact value: 11 - 6.1 = 4.9 < Safe's reserve 5 (Meteor's would leave 5.1).
         CrystalBrain b = new CrystalBrain();
-        assertNothing(b.preTick(DEFAULTS, tick(1).health(11).candidates(s).build()));
+        assertNothing(b.preTick(SAFE_DEFAULTS, tick(1).health(11).candidates(s).build()));
         assertTrue(b.holding(), "it passed Meteor's checks: the budget refused it");
         assertEquals(Decision.none(Reason.OVER_RESERVE), b.lastDecision());
     }

@@ -16,8 +16,9 @@ import java.util.function.Supplier;
  * twins of still and circler (crystal-aura++ spec, Round 2 (b)); the defender has none, since neither
  * aura places a crystal against it.
  *
- * <p>The {@code capp-X} scenarios run crystal-aura++ at its default {@code risk} level, Safe. Each other level
- * the bench measures, Balanced and Aggressive (R2-5), runs as {@code capp-<level>-X} for X in still, circler,
+ * <p>The {@code capp-X} scenarios run crystal-aura++ at Safe (R2-5's original level for the bench; the
+ * {@code risk} setting's own default is Balanced since R3-8). Each other level the bench measures, Balanced and
+ * Aggressive (R2-5), runs as {@code capp-<level>-X} for X in still, circler,
  * still-regen and circler-regen, judged against the same {@code ca-X}, after all the Safe ones.
  *
  * <p>The fight situations (R3-5) come last, after everything above, in the same order: {@code ca-<s>-regen},
@@ -29,7 +30,7 @@ public final class Scenarios {
     private Scenarios() {
     }
 
-    /** The levels measured besides the default, Safe, each on the still and circler pairs with and without healing. */
+    /** The levels measured besides Safe, each on the still and circler pairs with and without healing. */
     static final List<RiskLevel> OTHER_LEVELS = List.of(RiskLevel.BALANCED, RiskLevel.AGGRESSIVE);
 
     /** A fight situation (R3-5): its name, {@code <s>} in the scenarios' names, and its script. */

@@ -41,8 +41,9 @@ import java.util.function.Supplier;
  * ({@link #healing}), on the same arena and script with natural regeneration on (crystal-aura++ spec,
  * Round 2 (b)); those that run in the full bench are judged against each other too. crystal-aura++ runs at
  * the {@code risk} level its scenario names ({@link #plusPlus(String, String, Supplier, RiskLevel)}): the
- * {@code capp-X} ones at Safe, the default, and {@code capp-balanced-X} and {@code capp-aggressive-X} at those
- * levels (R2-5), each set and read back before T0. The fight situations (R3-5: above, below, approach,
+ * {@code capp-X} ones at Safe (R2-5's original level; the {@code risk} setting's own default is Balanced since
+ * R3-8), and {@code capp-balanced-X} and {@code capp-aggressive-X} at those levels (R2-5), each set and read
+ * back before T0. The fight situations (R3-5: above, below, approach,
  * strafe) run the same way, only as healing twins ({@link Scenarios}).
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
@@ -110,8 +111,9 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     /**
-     * crystal-aura++ at its default level, Safe, judged against the Meteor scenario {@code compareWith} on the
-     * same arena and script.
+     * crystal-aura++ at Safe (R2-5's original level; the {@code risk} setting's own default is Balanced since
+     * R3-8, but these {@code capp-*} scenarios' numbers were tuned to Safe and must keep running at it),
+     * judged against the Meteor scenario {@code compareWith} on the same arena and script.
      */
     static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script) {
         return plusPlus(name, compareWith, script, RiskLevel.SAFE);
@@ -125,8 +127,8 @@ final class CrystalAuraMeasure implements Scenario {
 
     /**
      * crystal-aura++ with {@code self-budget} off: Meteor's offense and nothing else, for the CHECK
-     * {@code capp-budget-off-parity} ({@link CappBudgetOffParity}), which does the judging. Its level is the
-     * default; with the budget off no level changes anything.
+     * {@code capp-budget-off-parity} ({@link CappBudgetOffParity}), which does the judging. Its level is Safe
+     * (kept explicit, not the {@code risk} setting's default); with the budget off no level changes anything.
      */
     static CrystalAuraMeasure plusPlusWithoutBudget(String name, Supplier<Script> script) {
         return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, null, script, false, false,

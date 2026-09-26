@@ -20,6 +20,11 @@ final class Crystals {
     static final CrystalSettings DEFAULTS = CrystalSettings.defaults();
     /** Meteor's defaults with the budget off: Meteor's rules only. */
     static final CrystalSettings METEOR = DEFAULTS.toBuilder().selfBudget(false).build();
+    /**
+     * {@link #DEFAULTS} with risk pinned to Safe (R = 5): what a number of budget fixtures were tuned to before
+     * Balanced (R = 3.5) became the {@code risk} setting's default (R3-8).
+     */
+    static final CrystalSettings SAFE_DEFAULTS = DEFAULTS.toBuilder().risk(RiskLevel.SAFE).build();
 
     /** End crystals in the main hand, a weapon elsewhere in the hotbar, no effects. */
     static final CrystalTick.Hands HANDS = hands(true, true, false);

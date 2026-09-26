@@ -32,8 +32,9 @@ import java.util.Set;
  */
 public final class SelfBudget {
     /**
-     * R: what a placement must leave, at the default {@code risk} level Safe (the same as Meteor's pause-health),
-     * and the {@code reserve} setting's default, which the level Custom reads ({@link RiskLevel}).
+     * R = 5, the same as Meteor's pause-health: the {@code reserve} setting's own default, which only the level
+     * Custom reads ({@link RiskLevel}). The {@code risk} setting's default is Balanced
+     * ({@link RiskLevel#BALANCED}, R = 3.5), not this value.
      */
     public static final double DEFAULT_RESERVE = 5.0;
     /** F: what nothing we cause may go below. Fixed. */

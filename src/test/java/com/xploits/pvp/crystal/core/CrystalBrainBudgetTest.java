@@ -13,6 +13,7 @@ import static com.xploits.pvp.crystal.core.CrystalBrainParityTest.only;
 import static com.xploits.pvp.crystal.core.Crystals.DEFAULTS;
 import static com.xploits.pvp.crystal.core.Crystals.HANDS;
 import static com.xploits.pvp.crystal.core.Crystals.METEOR;
+import static com.xploits.pvp.crystal.core.Crystals.SAFE_DEFAULTS;
 import static com.xploits.pvp.crystal.core.Crystals.at;
 import static com.xploits.pvp.crystal.core.Crystals.crystal;
 import static com.xploits.pvp.crystal.core.Crystals.dealing;
@@ -349,11 +350,11 @@ class CrystalBrainBudgetTest {
     @Test
     void holdingCountsThePlacePhaseToo() {
         CrystalBrain b = new CrystalBrain();
-        assertTrue(b.breakPhase(DEFAULTS, tick(1).health(9).build()).isEmpty());
+        assertTrue(b.breakPhase(SAFE_DEFAULTS, tick(1).health(9).build()).isEmpty());
         assertFalse(b.holding());
         assertTrue(b.wantsPlacement());
 
-        // 9 - 0 - 5 = 4 < 5
+        // 9 - 0 - 5 = 4 < 5 (Safe's reserve)
         assertTrue(b.placePhase(9, List.of(spot(1, 10, 5))).isEmpty());
         assertTrue(b.holding());
         assertEquals(Decision.none(Reason.OVER_RESERVE), b.lastDecision());
@@ -374,8 +375,8 @@ class CrystalBrainBudgetTest {
 
     @Test
     void whenTheBestSpotFailsTheBudgetTheNextOneThatPassesIsPlaced() {
-        // Health 9: 10 (self 5) leaves 4 < 5; 8 (self 4) leaves 5; 7 (self 1) would too, but deals less.
-        assertDecision(Decision.place(2, Reason.WITHIN_BUDGET), new CrystalBrain().preTick(DEFAULTS,
+        // Health 9, Safe's reserve 5: 10 (self 5) leaves 4 < 5; 8 (self 4) leaves 5; 7 (self 1) would too, but deals less.
+        assertDecision(Decision.place(2, Reason.WITHIN_BUDGET), new CrystalBrain().preTick(SAFE_DEFAULTS,
             tick(1).health(9).candidates(spot(1, 10, 5), spot(3, 7, 1), spot(2, 8, 4)).build()));
         assertDecision(Decision.place(1, Reason.BUDGET_OFF), new CrystalBrain().preTick(METEOR,
             tick(1).health(9).candidates(spot(1, 10, 5), spot(3, 7, 1), spot(2, 8, 4)).build()));
@@ -409,27 +410,27 @@ class CrystalBrainBudgetTest {
 
     @Test
     void holdingOnlyWhileEverythingMeteorWouldDoTheBudgetRefuses() {
-        // The only spot Meteor accepts leaves 9 - 5 = 4 < 5.
+        // The only spot Meteor accepts leaves 9 - 5 = 4 < Safe's reserve 5.
         CrystalBrain refused = new CrystalBrain();
-        assertNothing(refused.preTick(DEFAULTS, tick(1).health(9).candidates(spot(1, 10, 5)).build()));
+        assertNothing(refused.preTick(SAFE_DEFAULTS, tick(1).health(9).candidates(spot(1, 10, 5)).build()));
         assertTrue(refused.holding());
         assertEquals(Decision.none(Reason.OVER_RESERVE), refused.lastDecision());
         // The next tick another spot passes (9 - 1 = 8): not holding any more.
-        assertPlaces(2, refused.preTick(DEFAULTS, tick(2).health(9).candidates(spot(1, 10, 5), spot(2, 7, 1)).build()));
+        assertPlaces(2, refused.preTick(SAFE_DEFAULTS, tick(2).health(9).candidates(spot(1, 10, 5), spot(2, 7, 1)).build()));
         assertFalse(refused.holding());
 
         // Nothing passes Meteor's checks (5.75 < min-damage 6): a real misconfiguration still looks idle.
         CrystalBrain idle = new CrystalBrain();
-        assertNothing(idle.preTick(DEFAULTS, tick(1).health(9).candidates(spot(1, 5.75, 5)).build()));
+        assertNothing(idle.preTick(SAFE_DEFAULTS, tick(1).health(9).candidates(spot(1, 5.75, 5)).build()));
         assertFalse(idle.holding());
         assertEquals(Decision.none(Reason.NOTHING_TO_DO), idle.lastDecision());
 
         // No target, paused, or the budget off: not holding.
         CrystalBrain noTarget = new CrystalBrain();
-        noTarget.preTick(DEFAULTS, tick(1).health(9).targets().candidates(spot(1, 10, 5)).build());
+        noTarget.preTick(SAFE_DEFAULTS, tick(1).health(9).targets().candidates(spot(1, 10, 5)).build());
         assertFalse(noTarget.holding());
         CrystalBrain paused = new CrystalBrain();
-        paused.preTick(DEFAULTS, tick(1).health(5).candidates(spot(1, 10, 1)).build());
+        paused.preTick(SAFE_DEFAULTS, tick(1).health(5).candidates(spot(1, 10, 1)).build());
         assertFalse(paused.holding());
         CrystalBrain off = new CrystalBrain();
         assertDecision(Decision.place(1, Reason.BUDGET_OFF), off.preTick(METEOR, tick(1).health(9).candidates(spot(1, 10, 5)).build()));
@@ -438,20 +439,21 @@ class CrystalBrainBudgetTest {
 
     @Test
     void holdingIsTakenAgainEachPreTick() {
+        // 9 - 5 = 4 < Safe's reserve 5, so it holds.
         CrystalBrain b = new CrystalBrain();
-        b.preTick(DEFAULTS, tick(1).health(9).candidates(spot(1, 10, 5)).build());
+        b.preTick(SAFE_DEFAULTS, tick(1).health(9).candidates(spot(1, 10, 5)).build());
         assertTrue(b.holding());
 
-        b.preTick(DEFAULTS, tick(2).health(9).build());
+        b.preTick(SAFE_DEFAULTS, tick(2).health(9).build());
         assertFalse(b.holding());
     }
 
     @Test
     void totemsNeverChangeADecision() {
-        // §1: totems are never counted. 9 - 5 = 4 < 5 with or without them.
+        // §1: totems are never counted. 9 - 5 = 4 < Safe's reserve 5 with or without them.
         for (int totems : new int[] {0, 8}) {
             CrystalBrain b = new CrystalBrain();
-            assertDecision(Decision.place(2, Reason.WITHIN_BUDGET), b.preTick(DEFAULTS,
+            assertDecision(Decision.place(2, Reason.WITHIN_BUDGET), b.preTick(SAFE_DEFAULTS,
                 tick(1).health(9).totems(totems).candidates(spot(1, 10, 5), spot(2, 7, 1)).build()));
         }
     }

@@ -631,10 +631,10 @@ class CrystalSettingsCoverageTest {
     @Test
     @Covers(SELF_BUDGET)
     void selfBudgetOffPlacesWhatTheBudgetRefuses() {
-        // Health 9, self 5: 9 - 5 = 4 < reserve 5. Meteor's rules alone (max-damage 6, anti-suicide) allow it.
+        // Health 9, self 5: 9 - 5 = 4 < Safe's reserve 5. Meteor's rules alone (max-damage 6, anti-suicide) allow it.
         Crystals.Tick t = tick(1).health(9).candidates(spot(1, 6, 5));
         CrystalBrain on = new CrystalBrain();
-        assertNothing(on.preTick(DEFAULTS, t.build()));
+        assertNothing(on.preTick(level(RiskLevel.SAFE), t.build()));
         assertTrue(on.holding());
         assertEquals(Reason.OVER_RESERVE, on.lastDecision().reason());
         CrystalBrain off = new CrystalBrain();
@@ -668,8 +668,8 @@ class CrystalSettingsCoverageTest {
     @Test
     @Covers(RISK)
     void eachLevelKeepsItsOwnReserve() {
-        assertEquals(RiskLevel.SAFE, DEFAULTS.risk());
-        assertEquals(5.0, DEFAULTS.budgetReserve(), 0.0);
+        assertEquals(RiskLevel.BALANCED, DEFAULTS.risk());
+        assertEquals(3.5, DEFAULTS.budgetReserve(), 0.0);
         assertEquals(5.0, level(RiskLevel.SAFE).budgetReserve(), 0.0);
         assertEquals(3.5, level(RiskLevel.BALANCED).budgetReserve(), 0.0);
         assertEquals(SelfBudget.FLOOR, level(RiskLevel.AGGRESSIVE).budgetReserve(), 0.0);
@@ -681,7 +681,8 @@ class CrystalSettingsCoverageTest {
             assertEquals(5.0, RiskLevel.SAFE.reserve(custom), 0.0);
             assertEquals(3.5, RiskLevel.BALANCED.reserve(custom), 0.0);
             assertEquals(2.0, RiskLevel.AGGRESSIVE.reserve(custom), 0.0);
-            assertEquals(5.0, DEFAULTS.toBuilder().reserve(custom).build().budgetReserve(), 0.0);
+            assertEquals(3.5, DEFAULTS.toBuilder().reserve(custom).build().budgetReserve(), 0.0,
+                "the default level is Balanced; only Custom reads the reserve setting");
         }
         assertThrows(NullPointerException.class, () -> DEFAULTS.toBuilder().risk(null).build());
     }
@@ -822,9 +823,9 @@ class CrystalSettingsCoverageTest {
     @Test
     @Covers(SAFE_SELF_DAMAGE)
     void safeSelfDamageZeroAllowsOnlyHarmlessSpotsUnderTheReserve() {
-        // Health 6.5 with a crystal of self 2 standing (C = 2): a spot of self 0 leaves 4.5, under the reserve
+        // Health 6.5 with a crystal of self 2 standing (C = 2): a spot of self 0 leaves 4.5, under Safe's reserve
         // 5, so only safe mode can allow it; with safe-self-damage 0 it allows self 0 and not 0.25.
-        CrystalSettings zero = DEFAULTS.toBuilder().safeSelfDamage(0).build();
+        CrystalSettings zero = level(RiskLevel.SAFE).toBuilder().safeSelfDamage(0).build();
         CrystalSeen standing = crystal(1, 1, 2);
         assertPlaces(2, once(zero, tick(1).health(6.5).crystals(standing).candidates(spot(2, 6, 0))));
         assertNothing(once(zero, tick(1).health(6.5).crystals(standing).candidates(spot(2, 6, 0.25))));
@@ -834,12 +835,12 @@ class CrystalSettingsCoverageTest {
     @Test
     @Covers(SAFE_SELF_DAMAGE)
     void safeSelfDamageTwoAllowsUpToTwoWhileTheFloorHolds() {
-        // Health 8, a standing crystal of self 2 (C = 2): a spot of self 2 leaves 4 < reserve 5 but >= F 2.
-        CrystalSettings two = DEFAULTS.toBuilder().safeSelfDamage(2).build();
+        // Health 8, a standing crystal of self 2 (C = 2): a spot of self 2 leaves 4 < Safe's reserve 5 but >= F 2.
+        CrystalSettings two = level(RiskLevel.SAFE).toBuilder().safeSelfDamage(2).build();
         CrystalSeen standing = crystal(1, 1, 2);
         assertPlaces(2, once(two, tick(1).health(8).crystals(standing).candidates(spot(2, 6, 2))));
         assertNothing(once(two, tick(1).health(8).crystals(standing).candidates(spot(2, 6, 2.25))));
-        assertNothing(once(DEFAULTS, tick(1).health(8).crystals(standing).candidates(spot(2, 6, 2))));
+        assertNothing(once(level(RiskLevel.SAFE), tick(1).health(8).crystals(standing).candidates(spot(2, 6, 2))));
         // Health 6: 6 - 2 - 2 = 2, the floor exactly; 5.75 leaves 1.75 below it.
         assertPlaces(2, once(two, tick(1).health(6).crystals(standing).candidates(spot(2, 6, 2))));
         assertNothing(once(two, tick(1).health(5.75).crystals(standing).candidates(spot(2, 6, 2))));

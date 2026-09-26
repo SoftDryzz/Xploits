@@ -7,10 +7,11 @@ package com.xploits.pvp.crystal.core;
  * crystal-aura would also do. The display names are what Meteor saves and a player types: never change them.
  */
 public enum RiskLevel {
-    /** R = 5, the same as Meteor's pause-health: the default. */
+    /** R = 5, the same as Meteor's pause-health. Experimental. */
     SAFE("Safe", 5.0),
+    /** R = 3.5: the default, and recommended. */
     BALANCED("Balanced", 3.5),
-    /** R = F: a placement may leave exactly the floor, and its own crystal can still be broken. */
+    /** R = F: a placement may leave exactly the floor, and its own crystal can still be broken. Experimental. */
     AGGRESSIVE("Aggressive", SelfBudget.FLOOR),
     /** R = the {@code reserve} setting. */
     CUSTOM("Custom", Double.NaN);
