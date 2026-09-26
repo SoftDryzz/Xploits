@@ -1,27 +1,46 @@
 package com.xploits.bench.core;
 
 import com.xploits.bench.core.Acceptance.Verdict;
+import com.xploits.pvp.crystal.core.RiskLevel;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * Whether the bench recommends crystal-aura++ (crystal-aura++ spec, Round 2, acceptance criterion: strict,
- * "premium"): YES only when every applicable pair is ACCEPT, the no-regeneration pairs and the healing
- * pairs alike. A NOT_APPLICABLE pair (no crystal placed on either side) counts neither way; any REJECT or
- * INCOMPLETE, a pair that did not run included, is NO; and so is no applicable pair at all, since nothing
- * was then shown. Pure; the recommendation never fails the bench.
+ * Whether the bench recommends crystal-aura++ at one risk level (crystal-aura++ spec, Round 2, acceptance
+ * criterion: strict, "premium"; R2-5: one recommendation per level): YES only when every applicable pair of
+ * that level is ACCEPT, the no-regeneration pairs and the healing pairs alike. A NOT_APPLICABLE pair (no
+ * crystal placed on either side) counts neither way; any REJECT or INCOMPLETE, a pair that did not run
+ * included, is NO; and so is no applicable pair at all, since nothing was then shown. Each level is judged
+ * over its own pairs only. Pure; a recommendation never fails the bench.
  *
- * @param yes           recommended
+ * @param level         the risk level crystal-aura++ ran at in these pairs
+ * @param yes           recommended at that level
  * @param accepted      applicable pairs that are ACCEPT
  * @param applicable    pairs that are not NOT_APPLICABLE
  * @param notApplicable pairs that are NOT_APPLICABLE
  */
-public record Recommendation(boolean yes, int accepted, int applicable, int notApplicable) {
-    /** What the line starts with: every comparison is crystal-aura++ against crystal-aura. */
-    public static final String LABEL = "capp recommendation";
+public record Recommendation(RiskLevel level, boolean yes, int accepted, int applicable, int notApplicable) {
+    /** What every line starts with: every comparison is crystal-aura++ against crystal-aura. */
+    public static final String LABEL = "capp";
 
-    /** The verdict of every pair the full bench judges, in any order. */
-    public static Recommendation of(List<Verdict> verdicts) {
+    public Recommendation {
+        Objects.requireNonNull(level, "level");
+    }
+
+    /** One pair of the full bench: the level crystal-aura++ ran at, and the pair's verdict. */
+    public record Judged(RiskLevel level, Verdict verdict) {
+        public Judged {
+            Objects.requireNonNull(level, "level");
+            Objects.requireNonNull(verdict, "verdict");
+        }
+    }
+
+    /** The verdicts of every pair the full bench judges at {@code level}, in any order. */
+    public static Recommendation of(RiskLevel level, List<Verdict> verdicts) {
         int accepted = 0;
         int applicable = 0;
         int notApplicable = 0;
@@ -33,12 +52,27 @@ public record Recommendation(boolean yes, int accepted, int applicable, int notA
             applicable++;
             if (verdict == Verdict.ACCEPT) accepted++;
         }
-        return new Recommendation(applicable > 0 && accepted == applicable, accepted, applicable, notApplicable);
+        return new Recommendation(level, applicable > 0 && accepted == applicable, accepted, applicable, notApplicable);
     }
 
-    /** {@code capp recommendation: YES (n of m applicable pairs ACCEPT; k not applicable)}, or NO. */
+    /**
+     * One recommendation per level that has pairs, each over its own pairs only, in {@link RiskLevel}'s order
+     * whatever the order of {@code pairs}.
+     */
+    public static List<Recommendation> byLevel(List<Judged> pairs) {
+        Map<RiskLevel, List<Verdict>> verdicts = new EnumMap<>(RiskLevel.class);
+        for (Judged pair : pairs) verdicts.computeIfAbsent(pair.level(), level -> new ArrayList<>()).add(pair.verdict());
+        List<Recommendation> recommendations = new ArrayList<>();
+        verdicts.forEach((level, list) -> recommendations.add(of(level, list)));
+        return recommendations;
+    }
+
+    /**
+     * {@code capp Safe: YES (n of m applicable)}, or NO; {@code ; k not applicable} is added when a pair of
+     * the level was not applicable.
+     */
     public String line() {
-        return LABEL + ": " + (yes ? "YES" : "NO") + " (" + accepted + " of " + applicable
-            + " applicable pairs ACCEPT; " + notApplicable + " not applicable)";
+        return LABEL + " " + level + ": " + (yes ? "YES" : "NO") + " (" + accepted + " of " + applicable + " applicable"
+            + (notApplicable > 0 ? "; " + notApplicable + " not applicable" : "") + ")";
     }
 }

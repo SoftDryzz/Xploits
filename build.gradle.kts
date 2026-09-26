@@ -117,11 +117,11 @@ tasks.register("benchVerify") {
             counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
         logger.lifecycle("bench: $summary")
         // The crystal-aura++ verdicts ("capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE") and the
-        // strict recommendation over every pair of the full bench ("capp recommendation: YES/NO (...)"), when
-        // any scenario was judged: shown, never a reason to fail (a death in a crystal-aura++ run fails as an
-        // ERROR above).
+        // strict recommendation at each risk level over its pairs of the full bench ("capp Safe: YES/NO (n of m
+        // applicable)", then Balanced and Aggressive), when any scenario was judged: shown, never a reason to
+        // fail (a death in a crystal-aura++ run fails as an ERROR above).
         root["compare"]?.let { logger.lifecycle("bench: $it") }
-        root["recommendation"]?.let { logger.lifecycle("bench: $it") }
+        (root["recommendation"] as? List<*>)?.forEach { logger.lifecycle("bench: $it") }
         if (scenarios.isEmpty()) throw GradleException("bench: the report lists no scenario")
         if (blocking.isNotEmpty() || hygiene != "clean") {
             val reasons = blocking + (if (hygiene != "clean") listOf(hygieneText) else emptyList())

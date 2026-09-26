@@ -1,5 +1,7 @@
 package com.xploits.bench;
 
+import com.xploits.pvp.crystal.core.RiskLevel;
+
 import java.util.Optional;
 
 /**
@@ -43,6 +45,14 @@ public interface Scenario {
      * against {@code ca-X}), or empty. The verdict goes to the report and never fails the bench by itself.
      */
     default Optional<String> compareWith() {
+        return Optional.empty();
+    }
+
+    /**
+     * The {@code risk} level crystal-aura++ runs at in this scenario (R2-5), or empty when it is not
+     * crystal-aura++'s. Each level gets its own recommendation line.
+     */
+    default Optional<RiskLevel> risk() {
         return Optional.empty();
     }
 

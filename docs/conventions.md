@@ -88,7 +88,7 @@ shipped jar does not change), and `./gradlew build` never opens a window or runs
   a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
   for whoever reads the report.
 
-`./gradlew runClientGameTest` opens a Minecraft window and takes about 22 minutes for the full bench. It
+`./gradlew runClientGameTest` opens a Minecraft window and takes about 36 minutes for the full bench. It
 wipes `build/bench` first, so every report in there is from that run alone; copy a report out of
 `build/bench` if you want to keep it, because the next run erases it.
 
@@ -119,11 +119,16 @@ show them to whoever is about to release, before tagging.
 **crystal-aura++ against Meteor's crystal-aura.** Each `capp-X` MEASURE is judged against its `ca-X` twin
 from the same run (ACCEPT, REJECT, INCOMPLETE, or NOT_APPLICABLE when neither aura placed a crystal in any
 run, as against the defender). Still and circler also run as `-regen` pairs, with natural health
-regeneration on, closer to a real fight; every other scenario runs without it. `benchVerify` prints the
-verdicts as a second `bench: capp: …` line and the strict recommendation as a third, `bench: capp
-recommendation: YES/NO (n of m applicable pairs ACCEPT; k not applicable)`: YES only when every applicable
-pair is ACCEPT. A pair that did not run counts as INCOMPLETE, so only a full run can say YES. Neither line
-ever fails the build.
+regeneration on, closer to a real fight; every other scenario runs without it. The `capp-X` scenarios run
+crystal-aura++ at its default `risk` level, Safe; `capp-balanced-X` and `capp-aggressive-X`, for X in
+still, circler, still-regen and circler-regen, run it at Balanced and Aggressive against the same `ca-X`.
+`benchVerify` prints the verdicts as a second `bench: capp: …` line, then one strict recommendation per
+level: `bench: capp Safe: YES/NO (n of m applicable)`, then the same for Balanced and Aggressive (with
+`; k not applicable` when a pair of that level was not applicable, as the defender pair at Safe). A level
+says YES only when every applicable pair of that level is ACCEPT; each level counts only its own pairs. A
+pair that did not run counts as INCOMPLETE, so only a full run can say YES. None of these lines ever fails
+the build. The report's markdown also has a risk table: for each `ca-X`, the median damage dealt and min
+health of Meteor's aura and of crystal-aura++ at each level, side by side.
 
 The CHECK `capp-budget-off-parity` is different: it does block a release. It runs Meteor's crystal-aura and
 crystal-aura++ with `self-budget` off in turns on the still arena, 3 runs each, and fails when a median of

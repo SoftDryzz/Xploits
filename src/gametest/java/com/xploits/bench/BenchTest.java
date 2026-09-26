@@ -80,7 +80,7 @@ public class BenchTest implements FabricClientGameTest {
         hygiene(report, config);
 
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
-        report.recommendation().ifPresent(r -> LOG.info("[bench] {}", r.line()));
+        report.recommendations().forEach(r -> LOG.info("[bench] {}", r.line()));
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
     }
 

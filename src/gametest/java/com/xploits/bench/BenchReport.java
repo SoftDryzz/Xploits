@@ -10,13 +10,17 @@ import com.xploits.bench.core.Acceptance;
 import com.xploits.bench.core.Acceptance.Outcome;
 import com.xploits.bench.core.Acceptance.Verdict;
 import com.xploits.bench.core.Recommendation;
+import com.xploits.bench.core.RiskTable;
+import com.xploits.pvp.crystal.core.RiskLevel;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,9 +32,11 @@ import java.util.Optional;
  * still leaves what ran. For a MEASURE it gives the median, min and max of every metric over its DONE
  * runs, how many runs popped the sparring, the metrics whose runs spread too far (noisy), and the ones
  * worse than the baseline (regressions). A MEASURE judged against another ({@link Scenario#compareWith})
- * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts. One more line gives the
- * strict recommendation over every pair the full bench judges ({@link Recommendation}). Neither a verdict
- * nor the recommendation makes the report fail (crystal-aura++ spec §4, Q5: only a run's ERROR does).
+ * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts. One more line per
+ * crystal-aura++ risk level gives the strict recommendation over every pair the full bench judges at that
+ * level ({@link Recommendation}), and a risk table sets each level's damage dealt and min health beside
+ * Meteor's ({@link RiskTable}). Neither a verdict nor a recommendation makes the report fail (crystal-aura++
+ * spec §4, Q5: only a run's ERROR does).
  *
  * <p>Numbers, names, statuses and bench-written messages only: never a position. No line of either file
  * holds three numbers in a row separated by spaces or commas (the hygiene scan would take it for a
@@ -97,8 +103,11 @@ public final class BenchReport {
     /** {@code -Pbench.only}'s names, comma-joined, or null for a full run: so a partial run stays visible
      * in the report and not only in the console line that started it. */
     private final String only;
-    /** Every scenario the full bench judges against another, whether it runs in this invocation or not. */
-    private final List<String> judged;
+    /**
+     * Every scenario the full bench judges against another, whether it runs in this invocation or not, with
+     * the risk level crystal-aura++ runs at in it.
+     */
+    private final Map<String, RiskLevel> judged;
     /** The planned scenarios, then any other that ran, in order. */
     private final Map<String, Entry> scenarios = new LinkedHashMap<>();
     /**
@@ -158,15 +167,15 @@ public final class BenchReport {
         }
     }
 
-    /** {@code judged}: the names of every scenario the full bench judges ({@link Scenarios#judged}). */
+    /** {@code judged}: every scenario the full bench judges, with its level ({@link Scenarios#judged}). */
     public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only,
-                       List<String> judged) {
+                       Map<String, RiskLevel> judged) {
         this.addon = addon;
         this.meteor = meteor;
         this.folder = folder;
         this.baseline = baseline;
         this.only = only.isEmpty() ? null : String.join(",", only);
-        this.judged = List.copyOf(judged);
+        this.judged = new LinkedHashMap<>(judged);
     }
 
     /** Lists the scenarios about to run, PENDING, so a report cut short shows what never ran. */
@@ -225,19 +234,46 @@ public final class BenchReport {
     }
 
     /**
-     * Whether crystal-aura++ is recommended (crystal-aura++ spec, Round 2, strict criterion), over every
-     * pair the full bench judges: a pair that did not run in this invocation is INCOMPLETE, so only a full
-     * run can say YES. Empty when no scenario that ran is judged against another.
+     * Whether crystal-aura++ is recommended at each risk level (crystal-aura++ spec, Round 2, strict
+     * criterion; R2-5), each over every pair the full bench judges at that level: a pair that did not run in
+     * this invocation is INCOMPLETE, so only a full run can say YES. Empty when no scenario that ran is judged
+     * against another.
      */
-    public Optional<Recommendation> recommendation() {
-        if (compareSummary().isEmpty()) return Optional.empty();
-        List<Verdict> verdicts = new ArrayList<>();
-        for (String name : judged) {
+    public List<Recommendation> recommendations() {
+        if (compareSummary().isEmpty()) return List.of();
+        List<Recommendation.Judged> pairs = new ArrayList<>();
+        judged.forEach((name, level) -> {
             Entry e = scenarios.get(name);
             Optional<Outcome> outcome = e == null ? Optional.empty() : e.compare();
-            verdicts.add(outcome.map(Outcome::verdict).orElse(Verdict.INCOMPLETE));
+            pairs.add(new Recommendation.Judged(level, outcome.map(Outcome::verdict).orElse(Verdict.INCOMPLETE)));
+        });
+        return Recommendation.byLevel(pairs);
+    }
+
+    /**
+     * The risk table's rows: each Meteor scenario a crystal-aura++ scenario of this report is judged against,
+     * in the report's order, with the medians of Meteor's side and of each level's.
+     */
+    private List<RiskTable.Row> riskRows() {
+        Map<String, Map<RiskLevel, Map<String, Double>>> byMeteor = new LinkedHashMap<>();
+        for (Entry e : scenarios.values()) {
+            Optional<String> with = e.scenario.compareWith();
+            Optional<RiskLevel> level = e.scenario.risk();
+            if (with.isEmpty() || level.isEmpty()) continue;
+            byMeteor.computeIfAbsent(with.get(), name -> new EnumMap<>(RiskLevel.class)).put(level.get(), e.aggregate().median());
         }
-        return Optional.of(Recommendation.of(verdicts));
+        // Meteor's scenarios in the report's order, then any that is not in this report.
+        LinkedHashSet<String> order = new LinkedHashSet<>();
+        for (String name : scenarios.keySet()) {
+            if (byMeteor.containsKey(name)) order.add(name);
+        }
+        order.addAll(byMeteor.keySet());
+        List<RiskTable.Row> rows = new ArrayList<>();
+        for (String name : order) {
+            Entry meteorSide = scenarios.get(name);
+            rows.add(new RiskTable.Row(name, meteorSide == null ? Map.of() : meteorSide.aggregate().median(), byMeteor.get(name)));
+        }
+        return rows;
     }
 
     /**
@@ -378,7 +414,12 @@ public final class BenchReport {
         }
         root.add("scenarios", list);
         compareSummary().ifPresent(summary -> root.addProperty("compare", summary));
-        recommendation().ifPresent(r -> root.addProperty("recommendation", r.line()));
+        List<Recommendation> recommendations = recommendations();
+        if (!recommendations.isEmpty()) {
+            JsonArray lines = new JsonArray();
+            recommendations.forEach(r -> lines.add(r.line()));
+            root.add("recommendation", lines);
+        }
         // Absent until the scan ran: the Gradle-side check (benchVerify) wants it, and wants it clean.
         if (hygieneHits()) {
             JsonArray lines = new JsonArray();
@@ -426,7 +467,7 @@ public final class BenchReport {
         md.append("# Bench report ").append(addon).append("\n\n");
         md.append("Xploits ").append(addon).append(", Meteor ").append(meteor).append(", difficulty normal. ")
             .append(summary()).append(".\n\n");
-        recommendation().ifPresent(r -> md.append(r.line()).append(".\n\n"));
+        for (Recommendation r : recommendations()) md.append(r.line()).append(".\n\n");
         md.append(baseline.size() == 0 ? "No baseline to compare with.\n\n"
             : "Compared with the baseline in bench/baseline.json.\n\n");
         md.append("| Scenario | Kind | Runs | Status | Error |\n");
@@ -446,6 +487,7 @@ public final class BenchReport {
             if (e.scenario.kind() == Scenario.Kind.MEASURE && !e.runs.isEmpty()) measure(md, e);
         }
         comparisons(md);
+        riskTable(md);
         if (hygieneHits()) {
             md.append("\n## Hygiene\n\nThese lines look like a position:\n\n");
             for (String hit : hygiene) md.append("- ").append(hit).append('\n');
@@ -504,9 +546,11 @@ public final class BenchReport {
                 md.append("\n## crystal-aura++ against crystal-aura\n\n")
                     .append("A verdict never fails the bench; a crystal-aura++ run in which our player died is ERROR")
                     .append(" and makes the verdict REJECT. A pair where neither aura placed a crystal in any run is")
-                    .append(" NOT_APPLICABLE: it is not evidence either way. crystal-aura++ is recommended only when")
-                    .append(" every applicable pair of the full bench, the -regen ones with healing included, is ACCEPT;")
-                    .append(" a pair that did not run in this invocation counts as INCOMPLETE.\n");
+                    .append(" NOT_APPLICABLE: it is not evidence either way. Each risk level gets its own recommendation:")
+                    .append(" crystal-aura++ is recommended at a level only when every applicable pair of the full bench")
+                    .append(" at that level, the -regen ones with healing included, is ACCEPT; a pair that did not run in")
+                    .append(" this invocation counts as INCOMPLETE. The capp-X pairs run at Safe, the default; the")
+                    .append(" capp-balanced-X and capp-aggressive-X pairs at those levels.\n");
                 header = true;
             }
             md.append("\n### ").append(e.scenario.name()).append(" against ").append(e.scenario.compareWith().orElseThrow())
@@ -522,6 +566,16 @@ public final class BenchReport {
                     .append(" |\n");
             }
         }
+    }
+
+    /** The risk table: damage dealt and min health, Meteor's and each level's, per Meteor scenario. */
+    private void riskTable(StringBuilder md) {
+        List<String> lines = RiskTable.lines(riskRows());
+        if (lines.isEmpty()) return;
+        md.append("\n## crystal-aura++ risk levels\n\n")
+            .append("Medians over each scenario's DONE runs: Meteor's crystal-aura, then crystal-aura++ at each level")
+            .append(" (Safe is the default); a dash is a side that did not run.\n\n");
+        for (String line : lines) md.append(line).append('\n');
     }
 
     private static String number(Double value) {

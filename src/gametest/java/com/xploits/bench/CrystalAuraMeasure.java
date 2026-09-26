@@ -2,10 +2,12 @@ package com.xploits.bench;
 
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.CrystalSetting;
+import com.xploits.pvp.crystal.core.RiskLevel;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -17,7 +19,10 @@ import java.util.function.Supplier;
  * spec §4, P6): crystal-aura++ the same way, on the same arenas and scripts, each judged against its
  * {@code ca-} twin ({@link #compareWith}). Each of them also has a healing twin, {@code <name>-regen}
  * ({@link #healing}), on the same arena and script with natural regeneration on (crystal-aura++ spec,
- * Round 2 (b)); those that run in the full bench are judged against each other too.
+ * Round 2 (b)); those that run in the full bench are judged against each other too. crystal-aura++ runs at
+ * the {@code risk} level its scenario names ({@link #plusPlus(String, String, Supplier, RiskLevel)}): the
+ * {@code capp-X} ones at Safe, the default, and {@code capp-balanced-X} and {@code capp-aggressive-X} at those
+ * levels (R2-5), each set and read back before T0.
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *
@@ -34,10 +39,13 @@ final class CrystalAuraMeasure implements Scenario {
     private final boolean regeneration;
     /** crystal-aura++'s {@code self-budget}; always on but for the CHECK {@code capp-budget-off-parity}. */
     private final boolean selfBudget;
+    /** crystal-aura++'s {@code risk} level; null for Meteor's aura. */
+    private final RiskLevel risk;
     private MeasureRun run;
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
-                               String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget) {
+                               String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget,
+                               RiskLevel risk) {
         this.name = name;
         this.aura = aura;
         this.other = other;
@@ -45,24 +53,36 @@ final class CrystalAuraMeasure implements Scenario {
         this.script = script;
         this.regeneration = regeneration;
         this.selfBudget = selfBudget;
+        this.risk = risk;
     }
 
     /** Meteor's CrystalAura. */
     static CrystalAuraMeasure meteor(String name, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false, true);
+        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false, true, null);
     }
 
-    /** crystal-aura++, judged against the Meteor scenario {@code compareWith} on the same arena and script. */
+    /**
+     * crystal-aura++ at its default level, Safe, judged against the Meteor scenario {@code compareWith} on the
+     * same arena and script.
+     */
     static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false, true);
+        return plusPlus(name, compareWith, script, RiskLevel.SAFE);
+    }
+
+    /** crystal-aura++ at the level {@code risk}, judged against the Meteor scenario {@code compareWith}. */
+    static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script, RiskLevel risk) {
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false, true,
+            Objects.requireNonNull(risk, "risk"));
     }
 
     /**
      * crystal-aura++ with {@code self-budget} off: Meteor's offense and nothing else, for the CHECK
-     * {@code capp-budget-off-parity} ({@link CappBudgetOffParity}), which does the judging.
+     * {@code capp-budget-off-parity} ({@link CappBudgetOffParity}), which does the judging. Its level is the
+     * default; with the budget off no level changes anything.
      */
     static CrystalAuraMeasure plusPlusWithoutBudget(String name, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, null, script, false, false);
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, null, script, false, false,
+            RiskLevel.SAFE);
     }
 
     /** The suffix of a healing twin's name. */
@@ -75,7 +95,7 @@ final class CrystalAuraMeasure implements Scenario {
     CrystalAuraMeasure healing() {
         if (regeneration) throw new IllegalStateException(name + " already heals");
         return new CrystalAuraMeasure(name + HEALING, aura, other, compareWith == null ? null : compareWith + HEALING,
-            script, true, selfBudget);
+            script, true, selfBudget, risk);
     }
 
     @Override
@@ -94,6 +114,11 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     @Override
+    public Optional<RiskLevel> risk() {
+        return Optional.ofNullable(risk);
+    }
+
+    @Override
     public boolean naturalRegeneration() {
         return regeneration;
     }
@@ -109,6 +134,10 @@ final class CrystalAuraMeasure implements Scenario {
             MeasureRun.crystalAura(bench);
         } else {
             CrystalAuraPlusPlus plusPlus = MeasureRun.crystalAuraPlusPlus(bench);
+            CrystalSetting level = CrystalSetting.RISK;
+            bench.setting(plusPlus, level.group().title(), level.id(), risk);
+            Object took = bench.fromClient(client -> plusPlus.settings.getGroup(level.group().title()).get(level.id()).get());
+            if (took != risk) throw new BenchException("crystal-aura++ runs at the risk level " + took + ", not " + risk);
             if (!selfBudget) {
                 CrystalSetting budget = CrystalSetting.SELF_BUDGET;
                 bench.setting(plusPlus, budget.group().title(), budget.id(), false);
