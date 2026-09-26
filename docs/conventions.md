@@ -102,9 +102,10 @@ wipes `build/bench` first, so every report in there is from that run alone; copy
 **The verdict is `runClientGameTest`'s Gradle result, not the client's exit code.** A client that stops
 mid-bench (a closed window, a crash) can still exit 0, so the report is what settles it: `benchVerify`
 (which always follows `runClientGameTest`) reads it and prints a `bench: …` summary line. `BUILD
-SUCCESSFUL` plus that line means the release gate passed. `benchVerify` fails the build on:
+SUCCESSFUL` plus a `bench:` line that says `full run` means the release gate passed (a line that says
+`only …` is a partial run). `benchVerify` fails the build on:
 
-- a missing report;
+- a missing report, or a report that lists no scenario;
 - any scenario that is PENDING, FAIL or ERROR;
 - hygiene not clean (a report line looked like a position).
 
