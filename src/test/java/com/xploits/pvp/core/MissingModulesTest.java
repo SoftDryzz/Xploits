@@ -57,4 +57,20 @@ class MissingModulesTest {
 
         assertTrue(MissingModules.measure(name -> !name.equals("anti-anchor")).warning(true).isPresent());
     }
+
+    @Test
+    void measuringAgainKeepsWhatWasSaidUnlessTheMissingSetChanged() {
+        // After crystal-module moves mid-run: the same missing modules are not said again; a different
+        // set is a new measure and is said once.
+        MissingModules missing = MissingModules.measure(name -> !name.equals("anti-anchor"));
+        assertTrue(missing.warning(true).isPresent());
+
+        MissingModules same = missing.remeasure(name -> !name.equals("anti-anchor"));
+        assertTrue(same == missing, "same set: the same measure");
+        assertEquals(Optional.empty(), same.warning(true));
+
+        MissingModules other = missing.remeasure(name -> !name.equals("anti-anchor") && !name.equals("crystal-aura"));
+        assertEquals(List.of("crystal-aura", "anti-anchor"), other.names());
+        assertTrue(other.warning(true).isPresent(), "a new set is said");
+    }
 }

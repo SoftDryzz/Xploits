@@ -186,19 +186,21 @@ public class AutoPvp extends XploitsModule {
     );
 
     /** The crystal aura driven this activation (crystal-aura++ spec P5). Before its setting: it is the setting's state. */
-    private final CrystalLatch crystalLatch = new CrystalLatch();
+    private final CrystalLatch crystalLatch = new CrystalLatch(this::isActive, this::releaseAll, this::crystalModuleMoved);
 
     /**
      * Which crystal aura to drive (crystal-aura++ spec §3.2). Read once, first thing in
-     * {@link #onActivate}. Its {@code onChanged} acts only while auto-pvp is on and the value differs from
-     * the latch -which also makes Meteor's loads, that fire it too, no change- and then releases
-     * everything with the old aura still latched before the latch moves. Not in the style profiles.
+     * {@link #onActivate}. Its {@code onChanged} only notes the value: the change is applied first thing
+     * on the next tick, while auto-pvp is on and if the value differs from the latch, releasing
+     * everything with the old aura still latched before the latch moves. A Meteor load -a reset to the
+     * default and then the saved value, in one go- that ends on the latched value is no change. Not in
+     * the style profiles.
      */
     private final Setting<CrystalModule> crystalModule = sgGeneral.add(new EnumSetting.Builder<CrystalModule>()
         .name("crystal-module")
         .description(Texts.startupText(PvpText.SETTING_CRYSTAL_MODULE))
         .defaultValue(CrystalModule.METEOR)
-        .onChanged(value -> crystalLatch.change(isActive(), value, this::releaseAll))
+        .onChanged(crystalLatch::requested)
         .build()
     );
 
@@ -367,6 +369,8 @@ public class AutoPvp extends XploitsModule {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        // Before anything else: a crystal-module change noted since the last tick is applied now.
+        crystalLatch.settle();
         // Whatever notify says: without it the player would see a module in the use-* list that never
         // comes up and would not know why.
         missing.warning(mc.player != null && mc.world != null).ifPresent(this::warning);
@@ -402,6 +406,17 @@ public class AutoPvp extends XploitsModule {
         reportSkippedAlly();
         lastReported = plan.state();
         lastPosture = plan.posture();
+    }
+
+    /**
+     * After the latch moved mid-run (crystal-aura++ spec P5): the catalog's {@code crystal-aura} is now
+     * another module, so what Meteor lacks is measured again, and if the newly latched aura is already on
+     * it is the player's, as at activation, and that is said.
+     */
+    private void crystalModuleMoved(CrystalModule now) {
+        missing = missing.remeasure(name -> byName(name) != null);
+        Module aura = byName(CrystalModule.LOGICAL);
+        crystalLatch.alreadyOn(aura != null && aura.isActive()).ifPresent(this::warning);
     }
 
     /**
@@ -968,7 +983,7 @@ public class AutoPvp extends XploitsModule {
             if (module == null || !module.isActive()) continue;
 
             if (managed.equals(ManagedModules.CRYSTAL_AURA)) {
-                warning(PvpText.CRYSTAL_AURA_ALREADY_ON, "module", crystalLatch.resolve(managed.name()));
+                crystalLatch.alreadyOn(true).ifPresent(this::warning);
             } else {
                 warning(PvpText.ALREADY_ON, "module", managed.name());
             }
