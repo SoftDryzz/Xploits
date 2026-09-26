@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Everything the adapter measured for one pre-tick (spec §1, P1, P3). No position leaves the core:
@@ -50,6 +51,20 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
         for (Candidate c : candidates) {
             if (!spots.add(c.pos())) throw new IllegalArgumentException("candidate twice");
         }
+    }
+
+    /**
+     * Meteor's {@code pause-modules} check (line 1159): whether any of the selected modules is on, which is
+     * {@link #pauseModuleActive}. With none selected it never pauses.
+     *
+     * @param selected the modules in the setting
+     * @param on       whether one of them is on
+     */
+    public static <M> boolean anyOn(Iterable<M> selected, Predicate<? super M> on) {
+        for (M module : selected) {
+            if (on.test(module)) return true;
+        }
+        return false;
     }
 
     /**

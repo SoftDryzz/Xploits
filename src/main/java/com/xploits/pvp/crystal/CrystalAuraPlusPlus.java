@@ -6,6 +6,7 @@ import com.xploits.pvp.crystal.core.Action;
 import com.xploits.pvp.crystal.core.Candidate;
 import com.xploits.pvp.crystal.core.CrystalBrain;
 import com.xploits.pvp.crystal.core.CrystalSeen;
+import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.crystal.core.CrystalSettings;
 import com.xploits.pvp.crystal.core.CrystalSettings.AutoSwitch;
 import com.xploits.pvp.crystal.core.CrystalSettings.PauseMode;
@@ -146,17 +147,19 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Pause-on-lag: this long since the last server tick (line 1158). */
     private static final float LAG_SECONDS = 1.0f;
 
+    // Every setting's name and group come from CrystalSetting, the list the core's coverage test holds the
+    // module to; the bench checks that the module shows exactly that list.
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
-    private final SettingGroup sgPlace = settings.createGroup("Place");
-    private final SettingGroup sgBreak = settings.createGroup("Break");
-    private final SettingGroup sgPause = settings.createGroup("Pause");
-    private final SettingGroup sgSafety = settings.createGroup("Safety");
+    private final SettingGroup sgPlace = settings.createGroup(CrystalSetting.Group.PLACE.title());
+    private final SettingGroup sgBreak = settings.createGroup(CrystalSetting.Group.BREAK.title());
+    private final SettingGroup sgPause = settings.createGroup(CrystalSetting.Group.PAUSE.title());
+    private final SettingGroup sgSafety = settings.createGroup(CrystalSetting.Group.SAFETY.title());
 
     // General
 
     private final Setting<Double> targetRange = sgGeneral.add(new DoubleSetting.Builder()
-        .name("target-range")
-        .description(Texts.startupText(CrystalText.SETTING_TARGET_RANGE))
+        .name(CrystalSetting.TARGET_RANGE.id())
+        .description(Texts.startupText(CrystalSetting.TARGET_RANGE.text()))
         .defaultValue(10)
         .min(0)
         .sliderMax(16)
@@ -164,16 +167,16 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Double> minDamage = sgGeneral.add(new DoubleSetting.Builder()
-        .name("min-damage")
-        .description(Texts.startupText(CrystalText.SETTING_MIN_DAMAGE))
+        .name(CrystalSetting.MIN_DAMAGE.id())
+        .description(Texts.startupText(CrystalSetting.MIN_DAMAGE.text()))
         .defaultValue(6)
         .min(0)
         .build()
     );
 
     private final Setting<Double> maxDamage = sgGeneral.add(new DoubleSetting.Builder()
-        .name("max-damage")
-        .description(Texts.startupText(CrystalText.SETTING_MAX_DAMAGE))
+        .name(CrystalSetting.MAX_DAMAGE.id())
+        .description(Texts.startupText(CrystalSetting.MAX_DAMAGE.text()))
         .defaultValue(6)
         .range(0, 36)
         .sliderMax(36)
@@ -181,51 +184,51 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Boolean> antiSuicide = sgGeneral.add(new BoolSetting.Builder()
-        .name("anti-suicide")
-        .description(Texts.startupText(CrystalText.SETTING_ANTI_SUICIDE))
+        .name(CrystalSetting.ANTI_SUICIDE.id())
+        .description(Texts.startupText(CrystalSetting.ANTI_SUICIDE.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> rotate = sgGeneral.add(new BoolSetting.Builder()
-        .name("rotate")
-        .description(Texts.startupText(CrystalText.SETTING_ROTATE))
+        .name(CrystalSetting.ROTATE.id())
+        .description(Texts.startupText(CrystalSetting.ROTATE.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<AutoSwitch> autoSwitch = sgGeneral.add(new EnumSetting.Builder<AutoSwitch>()
-        .name("auto-switch")
-        .description(Texts.startupText(CrystalText.SETTING_AUTO_SWITCH))
+        .name(CrystalSetting.AUTO_SWITCH.id())
+        .description(Texts.startupText(CrystalSetting.AUTO_SWITCH.text()))
         .defaultValue(AutoSwitch.NORMAL)
         .build()
     );
 
     private final Setting<Boolean> noGapSwitch = sgGeneral.add(new BoolSetting.Builder()
-        .name("no-gap-switch")
-        .description(Texts.startupText(CrystalText.SETTING_NO_GAP_SWITCH))
+        .name(CrystalSetting.NO_GAP_SWITCH.id())
+        .description(Texts.startupText(CrystalSetting.NO_GAP_SWITCH.text()))
         .defaultValue(true)
         .visible(() -> autoSwitch.get() == AutoSwitch.NORMAL)
         .build()
     );
 
     private final Setting<Boolean> noBowSwitch = sgGeneral.add(new BoolSetting.Builder()
-        .name("no-bow-switch")
-        .description(Texts.startupText(CrystalText.SETTING_NO_BOW_SWITCH))
+        .name(CrystalSetting.NO_BOW_SWITCH.id())
+        .description(Texts.startupText(CrystalSetting.NO_BOW_SWITCH.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Boolean> antiWeakness = sgGeneral.add(new BoolSetting.Builder()
-        .name("anti-weakness")
-        .description(Texts.startupText(CrystalText.SETTING_ANTI_WEAKNESS))
+        .name(CrystalSetting.ANTI_WEAKNESS.id())
+        .description(Texts.startupText(CrystalSetting.ANTI_WEAKNESS.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<SwingMode> swingMode = sgGeneral.add(new EnumSetting.Builder<SwingMode>()
-        .name("swing-mode")
-        .description(Texts.startupText(CrystalText.SETTING_SWING_MODE))
+        .name(CrystalSetting.SWING_MODE.id())
+        .description(Texts.startupText(CrystalSetting.SWING_MODE.text()))
         .defaultValue(SwingMode.BOTH)
         .build()
     );
@@ -233,15 +236,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     // Place
 
     private final Setting<Boolean> place = sgPlace.add(new BoolSetting.Builder()
-        .name("place")
-        .description(Texts.startupText(CrystalText.SETTING_PLACE))
+        .name(CrystalSetting.PLACE.id())
+        .description(Texts.startupText(CrystalSetting.PLACE.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> placeRange = sgPlace.add(new DoubleSetting.Builder()
-        .name("place-range")
-        .description(Texts.startupText(CrystalText.SETTING_PLACE_RANGE))
+        .name(CrystalSetting.PLACE_RANGE.id())
+        .description(Texts.startupText(CrystalSetting.PLACE_RANGE.text()))
         .defaultValue(4.5)
         .min(0)
         .sliderMax(6)
@@ -249,8 +252,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Double> placeWallsRange = sgPlace.add(new DoubleSetting.Builder()
-        .name("place-walls-range")
-        .description(Texts.startupText(CrystalText.SETTING_PLACE_WALLS_RANGE))
+        .name(CrystalSetting.PLACE_WALLS_RANGE.id())
+        .description(Texts.startupText(CrystalSetting.PLACE_WALLS_RANGE.text()))
         .defaultValue(4.5)
         .min(0)
         .sliderMax(6)
@@ -258,15 +261,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Boolean> facePlace = sgPlace.add(new BoolSetting.Builder()
-        .name("face-place")
-        .description(Texts.startupText(CrystalText.SETTING_FACE_PLACE))
+        .name(CrystalSetting.FACE_PLACE.id())
+        .description(Texts.startupText(CrystalSetting.FACE_PLACE.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> facePlaceHealth = sgPlace.add(new DoubleSetting.Builder()
-        .name("face-place-health")
-        .description(Texts.startupText(CrystalText.SETTING_FACE_PLACE_HEALTH))
+        .name(CrystalSetting.FACE_PLACE_HEALTH.id())
+        .description(Texts.startupText(CrystalSetting.FACE_PLACE_HEALTH.text()))
         .defaultValue(8)
         .min(1)
         .sliderMin(1)
@@ -276,8 +279,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Double> facePlaceDurability = sgPlace.add(new DoubleSetting.Builder()
-        .name("face-place-durability")
-        .description(Texts.startupText(CrystalText.SETTING_FACE_PLACE_DURABILITY))
+        .name(CrystalSetting.FACE_PLACE_DURABILITY.id())
+        .description(Texts.startupText(CrystalSetting.FACE_PLACE_DURABILITY.text()))
         .defaultValue(2)
         .min(1)
         .sliderMin(1)
@@ -289,15 +292,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     // Break
 
     private final Setting<Boolean> breakCrystals = sgBreak.add(new BoolSetting.Builder()
-        .name("break")
-        .description(Texts.startupText(CrystalText.SETTING_BREAK))
+        .name(CrystalSetting.BREAK.id())
+        .description(Texts.startupText(CrystalSetting.BREAK.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> breakRange = sgBreak.add(new DoubleSetting.Builder()
-        .name("break-range")
-        .description(Texts.startupText(CrystalText.SETTING_BREAK_RANGE))
+        .name(CrystalSetting.BREAK_RANGE.id())
+        .description(Texts.startupText(CrystalSetting.BREAK_RANGE.text()))
         .defaultValue(4.5)
         .min(0)
         .sliderMax(6)
@@ -305,8 +308,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Double> breakWallsRange = sgBreak.add(new DoubleSetting.Builder()
-        .name("break-walls-range")
-        .description(Texts.startupText(CrystalText.SETTING_BREAK_WALLS_RANGE))
+        .name(CrystalSetting.BREAK_WALLS_RANGE.id())
+        .description(Texts.startupText(CrystalSetting.BREAK_WALLS_RANGE.text()))
         .defaultValue(4.5)
         .min(0)
         .sliderMax(6)
@@ -314,8 +317,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Integer> breakAttempts = sgBreak.add(new IntSetting.Builder()
-        .name("break-attempts")
-        .description(Texts.startupText(CrystalText.SETTING_BREAK_ATTEMPTS))
+        .name(CrystalSetting.BREAK_ATTEMPTS.id())
+        .description(Texts.startupText(CrystalSetting.BREAK_ATTEMPTS.text()))
         .defaultValue(2)
         .min(0)
         .sliderMin(1)
@@ -324,8 +327,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Integer> attackFrequency = sgBreak.add(new IntSetting.Builder()
-        .name("attack-frequency")
-        .description(Texts.startupText(CrystalText.SETTING_ATTACK_FREQUENCY))
+        .name(CrystalSetting.ATTACK_FREQUENCY.id())
+        .description(Texts.startupText(CrystalSetting.ATTACK_FREQUENCY.text()))
         .defaultValue(25)
         .min(1)
         .sliderRange(1, 30)
@@ -333,8 +336,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Boolean> fastBreak = sgBreak.add(new BoolSetting.Builder()
-        .name("fast-break")
-        .description(Texts.startupText(CrystalText.SETTING_FAST_BREAK))
+        .name(CrystalSetting.FAST_BREAK.id())
+        .description(Texts.startupText(CrystalSetting.FAST_BREAK.text()))
         .defaultValue(true)
         .build()
     );
@@ -342,37 +345,37 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     // Pause
 
     private final Setting<PauseMode> pauseOnUse = sgPause.add(new EnumSetting.Builder<PauseMode>()
-        .name("pause-on-use")
-        .description(Texts.startupText(CrystalText.SETTING_PAUSE_ON_USE))
+        .name(CrystalSetting.PAUSE_ON_USE.id())
+        .description(Texts.startupText(CrystalSetting.PAUSE_ON_USE.text()))
         .defaultValue(PauseMode.PLACE)
         .build()
     );
 
     private final Setting<PauseMode> pauseOnMine = sgPause.add(new EnumSetting.Builder<PauseMode>()
-        .name("pause-on-mine")
-        .description(Texts.startupText(CrystalText.SETTING_PAUSE_ON_MINE))
+        .name(CrystalSetting.PAUSE_ON_MINE.id())
+        .description(Texts.startupText(CrystalSetting.PAUSE_ON_MINE.text()))
         .defaultValue(PauseMode.NONE)
         .build()
     );
 
     private final Setting<Boolean> pauseOnLag = sgPause.add(new BoolSetting.Builder()
-        .name("pause-on-lag")
-        .description(Texts.startupText(CrystalText.SETTING_PAUSE_ON_LAG))
+        .name(CrystalSetting.PAUSE_ON_LAG.id())
+        .description(Texts.startupText(CrystalSetting.PAUSE_ON_LAG.text()))
         .defaultValue(true)
         .build()
     );
 
     @SuppressWarnings("unchecked")
     private final Setting<List<Module>> pauseModules = sgPause.add(new ModuleListSetting.Builder()
-        .name("pause-modules")
-        .description(Texts.startupText(CrystalText.SETTING_PAUSE_MODULES))
+        .name(CrystalSetting.PAUSE_MODULES.id())
+        .description(Texts.startupText(CrystalSetting.PAUSE_MODULES.text()))
         .defaultValue(BedAura.class)
         .build()
     );
 
     private final Setting<Double> pauseHealth = sgPause.add(new DoubleSetting.Builder()
-        .name("pause-health")
-        .description(Texts.startupText(CrystalText.SETTING_PAUSE_HEALTH))
+        .name(CrystalSetting.PAUSE_HEALTH.id())
+        .description(Texts.startupText(CrystalSetting.PAUSE_HEALTH.text()))
         .defaultValue(5)
         .range(0, 36)
         .sliderRange(0, 36)
@@ -382,15 +385,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     // Safety
 
     private final Setting<Boolean> selfBudget = sgSafety.add(new BoolSetting.Builder()
-        .name("self-budget")
-        .description(Texts.startupText(CrystalText.SETTING_SELF_BUDGET))
+        .name(CrystalSetting.SELF_BUDGET.id())
+        .description(Texts.startupText(CrystalSetting.SELF_BUDGET.text()))
         .defaultValue(true)
         .build()
     );
 
     private final Setting<Double> reserve = sgSafety.add(new DoubleSetting.Builder()
-        .name("reserve")
-        .description(Texts.startupText(CrystalText.SETTING_RESERVE))
+        .name(CrystalSetting.RESERVE.id())
+        .description(Texts.startupText(CrystalSetting.RESERVE.text()))
         .defaultValue(CrystalSettings.defaults().reserve())
         .min(2)
         .sliderRange(2, 20)
@@ -399,8 +402,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     );
 
     private final Setting<Double> safeSelfDamage = sgSafety.add(new DoubleSetting.Builder()
-        .name("safe-self-damage")
-        .description(Texts.startupText(CrystalText.SETTING_SAFE_SELF_DAMAGE))
+        .name(CrystalSetting.SAFE_SELF_DAMAGE.id())
+        .description(Texts.startupText(CrystalSetting.SAFE_SELF_DAMAGE.text()))
         .defaultValue(CrystalSettings.defaults().safeSelfDamage())
         .min(0)
         .sliderMax(2)
@@ -675,11 +678,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return mc.player.isUsingItem() || mc.options.useKey.isPressed();
     }
 
+    /** Pause-modules (line 1159). */
     private boolean pauseModuleActive() {
-        for (Module module : pauseModules.get()) {
-            if (module.isActive()) return true;
-        }
-        return false;
+        return CrystalTick.anyOn(pauseModules.get(), Module::isActive);
     }
 
     /**
