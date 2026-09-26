@@ -36,14 +36,21 @@ public final class BenchReport {
     static final double REGRESSION_SHARE = 0.15;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
+    /**
+     * A scenario's or a run's status. PENDING is a scenario's only: planned, with runs still missing. It
+     * is what a report left by a client that stopped mid-bench shows, and it blocks the release.
+     */
     public enum Status {
-        PASS, FAIL, ERROR, SKIPPED, DONE;
+        PASS, FAIL, ERROR, SKIPPED, DONE, PENDING;
 
         /** Whether it blocks the release. */
         public boolean fails() {
-            return this == FAIL || this == ERROR;
+            return this == FAIL || this == ERROR || this == PENDING;
         }
     }
+
+    /** The value of the report's {@code hygiene} field once the scan found nothing. */
+    public static final String HYGIENE_CLEAN = "clean";
 
     /** One run: its status, the bench-written error when it did not pass, and its numbers. */
     public record Run(Status status, String error, Map<String, Double> metrics) {
@@ -69,10 +76,13 @@ public final class BenchReport {
     private final String meteor;
     private final Path folder;
     private final Baseline baseline;
-    /** The scenarios with at least one run, in the order they ran. */
+    /** The planned scenarios, then any other that ran, in order. */
     private final Map<String, Entry> scenarios = new LinkedHashMap<>();
-    /** Lines of the report files the hygiene scan took for a position; empty until a scan finds one. */
-    private final List<String> hygiene = new ArrayList<>();
+    /**
+     * Lines of the report files the hygiene scan took for a position: null until the scan ran, empty when
+     * it found none. The report's {@code hygiene} field is absent, {@value #HYGIENE_CLEAN}, or these lines.
+     */
+    private List<String> hygiene;
 
     private final class Entry {
         final Scenario scenario;
@@ -83,14 +93,14 @@ public final class BenchReport {
         }
 
         /**
-         * A CHECK: its run's status. A MEASURE: DONE once all its runs are DONE; ERROR if any run is, or
-         * while runs are missing (a crash leaves it so).
+         * FAIL or ERROR as soon as a run is; otherwise PENDING while runs are missing (a client that stops
+         * mid-bench leaves it so); then a CHECK's run status, or DONE for a MEASURE whose runs all are.
          */
         Status status() {
             for (Run run : runs) {
                 if (run.status().fails()) return run.status();
             }
-            if (runs.size() < scenario.runs()) return Status.ERROR;
+            if (runs.size() < scenario.runs()) return Status.PENDING;
             return runs.getFirst().status();
         }
 
@@ -98,7 +108,9 @@ public final class BenchReport {
             for (Run run : runs) {
                 if (run.status().fails()) return run.error();
             }
-            if (runs.size() < scenario.runs()) return "incomplete: " + runs.size() + " of " + scenario.runs() + " runs";
+            if (!runs.isEmpty() && runs.size() < scenario.runs()) {
+                return "incomplete: " + runs.size() + " of " + scenario.runs() + " runs";
+            }
             return null;
         }
 
@@ -117,13 +129,22 @@ public final class BenchReport {
         this.baseline = baseline;
     }
 
+    /** Lists the scenarios about to run, PENDING, so a report cut short shows what never ran. */
+    public void plan(List<Scenario> planned) {
+        for (Scenario scenario : planned) scenarios.computeIfAbsent(scenario.name(), name -> new Entry(scenario));
+    }
+
     public void add(Scenario scenario, Run run) {
         scenarios.computeIfAbsent(scenario.name(), name -> new Entry(scenario)).runs.add(run);
     }
 
-    /** Whether any scenario is FAIL or ERROR, or the hygiene scan found a line. */
+    /** Whether any scenario is FAIL, ERROR or PENDING, or the hygiene scan found a line. */
     public boolean failed() {
-        return !hygiene.isEmpty() || scenarios.values().stream().anyMatch(e -> e.status().fails());
+        return hygieneHits() || scenarios.values().stream().anyMatch(e -> e.status().fails());
+    }
+
+    private boolean hygieneHits() {
+        return hygiene != null && !hygiene.isEmpty();
     }
 
     /** One line for the console and the final assertion: counts per status. */
@@ -137,13 +158,17 @@ public final class BenchReport {
         });
         int regressions = scenarios.values().stream().mapToInt(e -> e.aggregate().regressions().size()).sum();
         if (regressions > 0) parts.add(regressions + " regression(s)");
-        if (!hygiene.isEmpty()) parts.add("hygiene ERROR");
+        if (hygieneHits()) parts.add("hygiene ERROR");
+        else if (hygiene != null) parts.add("hygiene " + HYGIENE_CLEAN);
         return parts.isEmpty() ? "no scenario ran" : String.join(", ", parts);
     }
 
-    /** The lines the hygiene scan found ({@code <file> line <n>}); they make the bench fail. */
+    /**
+     * The hygiene scan's result: the lines it found ({@code <file> line <n>}), which make the bench fail,
+     * or none, which the report then states as {@value #HYGIENE_CLEAN}.
+     */
     public void hygiene(List<String> hits) {
-        hygiene.addAll(hits);
+        hygiene = List.copyOf(hits);
     }
 
     /**
@@ -273,10 +298,13 @@ public final class BenchReport {
             list.add(s);
         }
         root.add("scenarios", list);
-        if (!hygiene.isEmpty()) {
+        // Absent until the scan ran: the Gradle-side check (benchVerify) wants it, and wants it clean.
+        if (hygieneHits()) {
             JsonArray lines = new JsonArray();
             hygiene.forEach(lines::add);
             root.add("hygiene", lines);
+        } else if (hygiene != null) {
+            root.addProperty("hygiene", HYGIENE_CLEAN);
         }
         return root;
     }
@@ -314,7 +342,7 @@ public final class BenchReport {
         for (Entry e : scenarios.values()) {
             if (e.scenario.kind() == Scenario.Kind.MEASURE) measure(md, e);
         }
-        if (!hygiene.isEmpty()) {
+        if (hygieneHits()) {
             md.append("\n## Hygiene\n\nThese lines look like a position:\n\n");
             for (String hit : hygiene) md.append("- ").append(hit).append('\n');
         }

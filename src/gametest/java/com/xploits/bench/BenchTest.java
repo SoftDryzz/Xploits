@@ -57,6 +57,10 @@ public class BenchTest implements FabricClientGameTest {
         Baseline baseline = loadBaseline(config.baseline());
         BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline);
         LOG.info("[bench] {} scenario(s) selected; the baseline has {} scenario(s)", selected.size(), baseline.size());
+        // Every planned scenario is in the report from the start, PENDING: a client that stops mid-bench
+        // leaves a report that says so, and the Gradle side (benchVerify) fails on it.
+        report.plan(selected);
+        write(report);
 
         for (Scenario scenario : selected) {
             for (int i = 1; i <= scenario.runs(); i++) {
@@ -101,26 +105,38 @@ public class BenchTest implements FabricClientGameTest {
 
     /**
      * The hygiene scan, after the last write (§Proving the bench works): a report line that looks like a
-     * position is ERROR. The report is written once more to say so, and the bench fails. The committed
-     * baseline, when there is one, is scanned too.
+     * position is ERROR. The committed baseline, when there is one, is scanned too. The result is written
+     * into the report, {@code "hygiene": "clean"} or the lines found, which the Gradle side requires; a
+     * clean result is scanned once more after that write, so the marker cannot hide a line it added.
      */
     private static void hygiene(BenchReport report, Config config) {
-        List<String> hits;
-        try {
-            hits = new ArrayList<>(Hygiene.scan(config.out()));
-            if (config.baseline() != null && Files.isRegularFile(config.baseline())) {
-                hits.addAll(Hygiene.scanFile(config.baseline(), "baseline.json"));
+        List<String> hits = scan(config);
+        report.hygiene(hits);
+        write(report);
+        if (hits.isEmpty()) {
+            hits = scan(config);
+            if (!hits.isEmpty()) {
+                report.hygiene(hits);
+                write(report);
             }
-        } catch (IOException e) {
-            throw new AssertionError("the bench report could not be scanned (" + e.getClass().getSimpleName() + ")");
         }
         if (hits.isEmpty()) {
             LOG.info("[bench] hygiene: no line looks like a position");
-            return;
+        } else {
+            for (String hit : hits) LOG.error("[bench] hygiene: {} looks like a position", hit);
         }
-        for (String hit : hits) LOG.error("[bench] hygiene: {} looks like a position", hit);
-        report.hygiene(hits);
-        write(report);
+    }
+
+    private static List<String> scan(Config config) {
+        try {
+            List<String> hits = new ArrayList<>(Hygiene.scan(config.out()));
+            if (config.baseline() != null && Files.isRegularFile(config.baseline())) {
+                hits.addAll(Hygiene.scanFile(config.baseline(), "baseline.json"));
+            }
+            return hits;
+        } catch (IOException e) {
+            throw new AssertionError("the bench report could not be scanned (" + e.getClass().getSimpleName() + ")");
+        }
     }
 
     /** All the scenarios, or those named in {@code only}; a name that matches nothing is an error. */

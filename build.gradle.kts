@@ -58,6 +58,58 @@ loom.runs.named("clientGameTest") {
     if (project.hasProperty("bench.updateBaseline")) property("xploits.bench.update-baseline", "true")
 }
 
+// The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that
+// stops mid-bench (a closed window, a crash) can exit 0. Each run starts from an empty build/bench, and
+// benchVerify, which always follows runClientGameTest, fails unless the report is there, every scenario
+// in it is PASS, DONE or SKIPPED, and the bench's final hygiene scan wrote "clean" into it.
+val benchOut = layout.buildDirectory.dir("bench")
+val benchReport = benchOut.map { it.file("report-${project.version}.json") }
+
+tasks.named("runClientGameTest") {
+    doFirst { delete(benchOut) }
+    finalizedBy("benchVerify")
+}
+
+tasks.register("benchVerify") {
+    group = "verification"
+    description = "Fails unless the in-game bench report says every scenario passed (run by runClientGameTest)."
+    doLast {
+        val file = benchReport.get().asFile
+        if (!file.isFile) {
+            throw GradleException("bench: no report (build/bench/${file.name}): the client stopped before the bench wrote it")
+        }
+        @Suppress("UNCHECKED_CAST")
+        val root = groovy.json.JsonSlurper().parse(file) as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val scenarios = (root["scenarios"] as? List<Map<String, Any?>>).orEmpty()
+        val counts = linkedMapOf<String, Int>()
+        var regressions = 0
+        val blocking = mutableListOf<String>()
+        for (scenario in scenarios) {
+            val status = scenario["status"]?.toString() ?: "MISSING"
+            counts.merge(status, 1, Int::plus)
+            regressions += (scenario["regressions"] as? List<*>)?.size ?: 0
+            if (status !in setOf("PASS", "DONE", "SKIPPED")) {
+                val error = scenario["error"]?.let { " ($it)" } ?: ""
+                blocking += "${scenario["name"]} $status$error"
+            }
+        }
+        val hygiene = root["hygiene"]
+        val hygieneText = when (hygiene) {
+            "clean" -> "hygiene clean"
+            null -> "hygiene not scanned"
+            else -> "hygiene ERROR"
+        }
+        val summary = (counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
+        logger.lifecycle("bench: $summary")
+        if (scenarios.isEmpty()) throw GradleException("bench: the report lists no scenario")
+        if (blocking.isNotEmpty() || hygiene != "clean") {
+            val reasons = blocking + (if (hygiene != "clean") listOf(hygieneText) else emptyList())
+            throw GradleException("bench failed: " + reasons.joinToString("; "))
+        }
+    }
+}
+
 // ./gradlew build compiles the bench, so a break shows up there; it never runs it (no window).
 tasks.named("check") { dependsOn("gametestClasses") }
 
