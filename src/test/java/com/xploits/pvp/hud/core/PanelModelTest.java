@@ -143,6 +143,9 @@ class PanelModelTest {
         assertEquals(Tone.NORMAL, obsidianLine(all).tone());
         PanelInput allShort = PanelInputs.base().enabled("auto-trap", "surround", "hole-filler").obsidian(7).build();
         assertEquals(Tone.WARN, obsidianLine(allShort).tone());
+        // anti-anvil places obsidian too: alone and with none in the hotbar, the line warns.
+        assertEquals(Tone.WARN, obsidianLine(PanelInputs.base().enabled("anti-anvil").obsidian(0).build()).tone());
+        assertEquals(Tone.NORMAL, obsidianLine(PanelInputs.base().enabled("anti-anvil").obsidian(1).build()).tone());
         // none of the obsidian consumers enabled: nothing needed.
         assertEquals(Tone.NORMAL, obsidianLine(PanelInputs.base().enabled("crystal-aura").obsidian(0).build()).tone());
     }

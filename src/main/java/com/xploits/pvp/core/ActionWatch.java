@@ -60,12 +60,17 @@ import java.util.Set;
  *       Mining takes durability from it, it does not take it out of the inventory, and the snapshot
  *       count is of items. "The resource does not go down" means nothing there, so watching it would
  *       mean warning of a failure every time {@code auto-city} works well.</li>
- *   <li><b>The three {@code anti-} modules declare {@link Resource#NONE}</b>: they place nothing, they
- *       only listen and react (redesign §5). There is nothing that can go down, so there is nothing to
- *       measure either.</li>
+ *   <li><b>The three {@code anti-} modules are {@linkplain ManagedModule#reactive() reactive}</b>: they do
+ *       place a block -obsidian, string, a slab- but a stack that does not move says nothing about them.
+ *       {@code anti-anvil} and {@code anti-anchor} place only when the threat block appears, an anvil
+ *       above you or a respawn anchor two blocks above. {@code anti-bed} places string on every tick a
+ *       slot of it is missing (only in a hole by default, {@code only-in-hole}) and the string stays,
+ *       so its stack stops moving exactly while it is doing its job. Either way this measurement cannot
+ *       judge them, and "on, with material to spare and not spending" would be said of them in every
+ *       fight they work well.</li>
  * </ul>
  *
- * <p>The exclusion is not a hand-written list that goes stale: it comes from the resource each module
+ * <p>The exclusion is not a hand-written list that goes stale: it comes from what each module
  * declares in {@link ManagedModules} ({@link #watches}), so a new module gets in or stays out on its
  * own.
  *
@@ -109,15 +114,21 @@ public final class ActionWatch {
     public static final int IDLE_TICKS = 60;
 
     /**
-     * Whether a managed module can be watched this way. The question is whether its resource <b>is
-     * spent when used</b>: {@link Resource#PICKAXE} is not -mining spends durability, not items- and
-     * {@link Resource#NONE} does not exist.
+     * Whether a managed module can be watched this way. Two questions: whether its resource <b>is
+     * spent when used</b> -{@link Resource#PICKAXE} is not: mining spends durability, not items- and
+     * whether it is used <b>whenever there is a target</b>: a {@link ManagedModule#reactive() reactive}
+     * one waits for its threat, and not spending until then is its normal state.
      */
     public static boolean watches(ManagedModule module) {
-        return module.needs() != Resource.PICKAXE && module.needs() != Resource.NONE;
+        return module.needs() != Resource.PICKAXE && !module.reactive();
     }
 
-    /** The six watched modules, derived from the catalog by {@link #watches} and in the same order. */
+    /**
+     * The watched modules, derived from the catalog by {@link #watches} and in the same order: six of
+     * the ten, the ones that spend whenever there is a target. {@code anti-anvil} draws from the same
+     * obsidian and is not among them -it is reactive-; when it does place, the stack moves and the
+     * obsidian count starts again, which can only delay a warning, never invent one.
+     */
     public static final List<ManagedModule> WATCHED =
         ManagedModules.ALL.stream().filter(ActionWatch::watches).toList();
 
@@ -298,8 +309,8 @@ public final class ActionWatch {
         return idle.ticks() / TICKS_PER_SECOND;
     }
 
-    /** "a, b and c", listed the way the player's language does it. */
-    private static Object join(List<String> names) {
+    /** "a, b and c", listed the way the player's language does it. {@link PvpStatus} lists with it too. */
+    static Object join(List<String> names) {
         if (names.size() == 1) return names.getFirst();
         Object head = names.getFirst();
         for (String name : names.subList(1, names.size() - 1)) {
@@ -345,12 +356,6 @@ public final class ActionWatch {
 
     /** What the material in that stack is called, for the warning. */
     private static PvpText material(Resource resource) {
-        return switch (resource) {
-            case CRYSTALS -> PvpText.MATERIAL_CRYSTALS;
-            case OBSIDIAN -> PvpText.MATERIAL_OBSIDIAN;
-            case WEBS -> PvpText.MATERIAL_WEBS;
-            case ANVILS -> PvpText.MATERIAL_ANVILS;
-            default -> PvpText.MATERIAL_OTHER;
-        };
+        return PvpText.of(resource);
     }
 }

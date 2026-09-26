@@ -18,7 +18,8 @@ class CombatDirectorTest {
 
     private static final Map<Resource, Integer> FULL = Map.of(
         Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64,
-        Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
+        Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1,
+        Resource.STRING, 8, Resource.SLABS, 8);
 
     /** A whole surround: the four horizontal neighbours of the target are mineable (M1). */
     private static final int SURROUNDED_SIDES = 4;
@@ -721,16 +722,17 @@ class CombatDirectorTest {
     }
 
     @Test
-    void withEightObsidianTheThreePlacersDoNotAllGetApproved() {
+    void withEightObsidianTheFourPlacersDoNotAllGetApproved() {
         // I3, the situation: in a hole, threatened and with the enemy on top of you, these come up at once:
-        // auto-trap (minimum 8), surround (4) and hole-filler (1). With eight obsidian they ask for thirteen
-        // between them, all three swap to the same stack on the same tick and none completes its
-        // job. The share-out is defensive before offensive and cheap before expensive.
+        // auto-trap (minimum 8), surround (4), hole-filler (1) and anti-anvil (1). With eight obsidian they
+        // ask for fourteen between them, all four swap to the same stack on the same tick and none
+        // completes its job. The share-out is defensive before offensive and cheap before expensive.
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(8));
 
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "the cheapest and the most defensive");
         assertTrue(enables(plan, ManagedModules.SURROUND), "1 + 4 fit in 8");
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "3 are left and it needs 8");
+        assertTrue(enables(plan, ManagedModules.ANTI_ANVIL), "1 + 4 + 1 fit in 8");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "2 are left and it needs 8");
     }
 
     @Test
@@ -743,18 +745,21 @@ class CombatDirectorTest {
             .filter(skipped -> skipped.module().equals(ManagedModules.AUTO_TRAP))
             .map(Skipped::reason).findFirst().orElse(null);
         assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 8,
-                "others", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
-                "left", 3, "minimum", 8), reason,
+                "others", Msg.of(PvpText.JOIN_AND,
+                    "first", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
+                    "second", "anti-anvil"),
+                "left", 2, "minimum", 8), reason,
             "the reason has to name who took the obsidian");
     }
 
     @Test
-    void withEnoughObsidianForTheThreeOfThemTheThreeGoUp() {
-        Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(13));
+    void withEnoughObsidianForTheFourOfThemTheFourGoUp() {
+        Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(14));
 
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
         assertTrue(enables(plan, ManagedModules.SURROUND));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "13 is exactly 1 + 4 + 8");
+        assertTrue(enables(plan, ManagedModules.ANTI_ANVIL));
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "14 is exactly 1 + 4 + 1 + 8");
     }
 
     @Test
@@ -764,6 +769,63 @@ class CombatDirectorTest {
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "filling the hole costs one");
         assertFalse(enables(plan, ManagedModules.SURROUND), "3 are left and it needs 4");
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+    }
+
+    // --- the anti- modules place something too, and the filter now sees it ---
+
+    /** Threatened out of a hole with the enemy close, carrying exactly this. */
+    private static CombatSnapshot threatenedWith(Map<Resource, Integer> resources) {
+        return Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, resources)
+            .withTargetId("enemy")
+            .withDefense(14.0, 6.0, false, true);
+    }
+
+    private static Msg reasonFor(Plan plan, ManagedModule module) {
+        return plan.skipped().stream()
+            .filter(skipped -> skipped.module().equals(module))
+            .map(Skipped::reason).findFirst().orElse(null);
+    }
+
+    @Test
+    void antiBedWithoutStringStillComesUp() {
+        // AntiBed has a half that costs nothing, like the aura's autobreak (§7): it breaks a bed already
+        // on your head with mining packets, no item needed. String only matters for placing it, so the
+        // resource filter must never take anti-bed away.
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.STRING, 0)));
+
+        assertEquals(CombatPosture.THREATENED, plan.posture(), "precondition");
+        assertTrue(enables(plan, ManagedModules.ANTI_BED));
+        assertFalse(skips(plan, ManagedModules.ANTI_BED));
+    }
+
+    @Test
+    void antiBedWithOneStringComesUp() {
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.STRING, 1)));
+
+        assertTrue(enables(plan, ManagedModules.ANTI_BED));
+        assertFalse(skips(plan, ManagedModules.ANTI_BED));
+    }
+
+    @Test
+    void antiAnvilSharesTheObsidianAndHoleFillerGoesFirst() {
+        // AntiAnvil places obsidian between you and the anvil: it draws from the same stack as
+        // hole-filler, and with one block only one of them can have it. hole-filler is first in the
+        // share-out order.
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.OBSIDIAN, 1)));
+
+        assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
+        assertFalse(enables(plan, ManagedModules.ANTI_ANVIL));
+        assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 1, "others", "hole-filler", "left", 0, "minimum", 1),
+            reasonFor(plan, ManagedModules.ANTI_ANVIL));
+    }
+
+    @Test
+    void antiAnchorNeedsASlab() {
+        Plan without = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12)));
+        assertFalse(enables(without, ManagedModules.ANTI_ANCHOR));
+
+        Plan with = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.SLABS, 1)));
+        assertTrue(enables(with, ManagedModules.ANTI_ANCHOR));
     }
 
     // --- I4: the defensive axis's resource memory does not freeze in NO_COMBAT ---
@@ -1392,6 +1454,61 @@ class CombatDirectorTest {
         assertFalse(skips(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP));
+    }
+
+    // --- managed modules this Meteor build does not have ---
+
+    private static Plan settle(CombatDirector director, CombatSnapshot snapshot, Set<ManagedModule> allowed,
+                               Set<ManagedModule> missing) {
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.GLIDE_EXIT_HOLD_TICKS + 5; i++) {
+            plan = director.tick(snapshot, APPROACH, DefensivePolicy.THREAT_MARGIN, allowed, missing);
+        }
+        return plan;
+    }
+
+    @Test
+    void aMissingModuleIsSkippedAsMissingAndNeverEnabled() {
+        // Meteor 1.21.11 has the AntiAnchor class but does not register it: asking for it by name gives
+        // null. Wanting it anyway made the ledger own a module nobody turned on, and then say the player
+        // had turned it off.
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            Set.copyOf(ManagedModules.ALL), Set.of(ManagedModules.ANTI_ANCHOR));
+
+        assertEquals(CombatPosture.THREATENED, plan.posture(), "precondition: the posture asks for it");
+        assertFalse(enables(plan, ManagedModules.ANTI_ANCHOR));
+        assertEquals(Msg.of(PvpText.MODULE_MISSING_SKIP), reasonFor(plan, ManagedModules.ANTI_ANCHOR));
+        assertTrue(enables(plan, ManagedModules.ANTI_BED), "the ones Meteor does have still come up");
+    }
+
+    @Test
+    void beingMissingIsSaidBeforeBeingOffByProfile() {
+        // Missing is checked first: whatever the profile says, the module is not there to turn on.
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            allExcept(ManagedModules.ANTI_ANCHOR), Set.of(ManagedModules.ANTI_ANCHOR));
+
+        assertEquals(Msg.of(PvpText.MODULE_MISSING_SKIP), reasonFor(plan, ManagedModules.ANTI_ANCHOR));
+    }
+
+    @Test
+    void aMissingOffensiveModuleDoesNotCountForOutOfResources() {
+        // SURFACE asks for crystal-aura and auto-trap. With both missing there was never anything that
+        // could go up, which is not being out of resources: the loud alarm would sound in every fight.
+        Plan plan = settle(new CombatDirector(), surface(), Set.copyOf(ManagedModules.ALL),
+            Set.of(ManagedModules.CRYSTAL_AURA, ManagedModules.AUTO_TRAP));
+
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+    }
+
+    @Test
+    void theOverloadsWithoutTheMissingSetMissNothing() {
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            Set.copyOf(ManagedModules.ALL));
+
+        assertTrue(plan.skipped().stream().noneMatch(PvpStatus::isMissing));
+        assertTrue(enables(plan, ManagedModules.ANTI_ANCHOR));
     }
 
     // --- reset ---

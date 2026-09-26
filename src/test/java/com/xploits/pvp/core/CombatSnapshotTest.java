@@ -92,9 +92,11 @@ class CombatSnapshotTest {
         assertEquals(Resource.ANVILS, ManagedModules.AUTO_ANVIL.needs());
         assertEquals(Resource.PICKAXE, ManagedModules.AUTO_CITY.needs());
         assertEquals(Resource.OBSIDIAN, ManagedModules.HOLE_FILLER.needs());
-        assertEquals(Resource.NONE, ManagedModules.ANTI_ANVIL.needs());
-        assertEquals(Resource.NONE, ManagedModules.ANTI_BED.needs());
-        assertEquals(Resource.NONE, ManagedModules.ANTI_ANCHOR.needs());
+        // The three anti- modules do place something, checked in the meteor-client 1.21.11 sources:
+        // AntiAnvil obsidian, AntiBed string and AntiAnchor any slab, all from the hotbar.
+        assertEquals(Resource.OBSIDIAN, ManagedModules.ANTI_ANVIL.needs());
+        assertEquals(Resource.STRING, ManagedModules.ANTI_BED.needs());
+        assertEquals(Resource.SLABS, ManagedModules.ANTI_ANCHOR.needs());
 
         // The turnsItselfOff() flag (spec §7): crystal-aura, auto-web and the five defensive ones
         // -surround included since C2- only turn off because the player turns them off; the other three
@@ -112,11 +114,16 @@ class CombatSnapshotTest {
         assertFalse(ManagedModules.ANTI_BED.turnsItselfOff());
         assertFalse(ManagedModules.ANTI_ANCHOR.turnsItselfOff());
 
+        // reactive(): only the three anti- modules spend only when their threat shows up.
         for (ManagedModule module : ManagedModules.ALL) {
             assertFalse(module.name().isBlank(), "the module must have a name");
-            boolean free = module.needs() == Resource.NONE;
-            assertEquals(free, module.minimum() == 0,
-                module.name() + ": only those that spend nothing can ask for zero");
+            if (module.equals(ManagedModules.ANTI_BED)) {
+                assertEquals(0, module.minimum(),
+                    "anti-bed breaks a bed on your head with no item: string only matters for placing");
+            } else {
+                assertTrue(module.minimum() >= 1, module.name() + ": it only does anything by placing or mining");
+            }
+            assertEquals(module.name().startsWith("anti-"), module.reactive(), module.name());
         }
         assertEquals(10, ManagedModules.ALL.size());
     }

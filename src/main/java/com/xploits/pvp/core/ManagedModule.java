@@ -23,5 +23,14 @@ package com.xploits.pvp.core;
  *                       Its only self-shutdown with the default settings is {@code toggle-on-y-change},
  *                       and that case is excluded upstream, in the posture, which does not ask for it
  *                       while your Y is changing.
+ * @param reactive       whether a still stack says nothing about it — the three {@code anti-} ones,
+ *                       checked in the {@code meteor-client:1.21.11-SNAPSHOT} sources.
+ *                       {@code anti-anvil} and {@code anti-anchor} place only when the threat block
+ *                       appears (an anvil above you, a respawn anchor two blocks above).
+ *                       {@code anti-bed} places string on every tick a slot of it is missing (only in
+ *                       a hole by default, {@code only-in-hole}), and once placed the string stays: its
+ *                       stack stops moving exactly while it is doing its job. Either way "on, with
+ *                       material to spare and not spending" cannot tell working from failing, and
+ *                       {@link ActionWatch} leaves them out for that reason.
  */
-public record ManagedModule(String name, Resource needs, int minimum, boolean turnsItselfOff) {}
+public record ManagedModule(String name, Resource needs, int minimum, boolean turnsItselfOff, boolean reactive) {}

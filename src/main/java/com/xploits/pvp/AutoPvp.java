@@ -13,6 +13,7 @@ import com.xploits.pvp.core.DefensivePolicy;
 import com.xploits.pvp.core.FriendLedger;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
+import com.xploits.pvp.core.MissingModules;
 import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.core.PvpStatus;
@@ -53,6 +54,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.SlabBlock;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -92,8 +94,8 @@ public class AutoPvp extends XploitsModule {
      * testInHotbar} see, and also the only range that counts for {@code PICKAXE} — {@code AutoCity}
      * looks for the pickaxe with {@code InvUtils.find} over the whole inventory, but rejects the result
      * if {@code !isHotbar()} and turns itself off with an error (spec §6). Counting the backpack for the
-     * pickaxe overestimated exactly the same silent failure this range fixes for the other
-     * five.
+     * pickaxe overestimated exactly the same silent failure this range fixes for the
+     * others.
      */
     private static final int HOTBAR_LAST_SLOT = 8;
     /** Last slot of the whole inventory: how far the single scan of {@link #inventory()} goes. */
@@ -233,6 +235,14 @@ public class AutoPvp extends XploitsModule {
     private final ModuleLedger ledger = new ModuleLedger();
 
     /**
+     * The managed modules this Meteor build does not register, measured on each activation: asked for
+     * by name they give {@code null} (Meteor 1.21.11 has the {@code AntiAnchor} class but does not add
+     * it). The director skips them before anything else, so they never reach the ledger; the status
+     * always lists them, and chat hears it once, on the first tick with a world.
+     */
+    private MissingModules missing = MissingModules.measure(name -> true);
+
+    /**
      * The "I have it on and it does nothing" watch ({@link ActionWatch}). It lives here and not in
      * the director because it needs a piece of data the director does not see: which modules are
      * <b>really</b> on right now. The adapter measures -what the plan asks for, what is on and what
@@ -301,6 +311,9 @@ public class AutoPvp extends XploitsModule {
         // writes nothing to the player's disk.
         friendLedger.reset();
         lastSynced = null;
+        // Measured here, said on the first tick with a world: restored active at game start, this runs
+        // before there is one, and a chat line said now would be lost.
+        missing = MissingModules.measure(name -> byName(name) != null);
         warnAlreadyActiveManagedModules();
     }
 
@@ -315,6 +328,9 @@ public class AutoPvp extends XploitsModule {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        // Whatever notify says: without it the player would see a module in the use-* list that never
+        // comes up and would not know why.
+        missing.warning(mc.player != null && mc.world != null).ifPresent(this::warning);
         if (mc.player == null || mc.world == null || !mc.player.isAlive()) {
             releaseAll();
             return;
@@ -332,7 +348,7 @@ public class AutoPvp extends XploitsModule {
         CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
         lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed());
+        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules());
         lastPlan = plan;
 
         apply(plan);
@@ -546,7 +562,8 @@ public class AutoPvp extends XploitsModule {
         Map<Object, Msg> notes = new LinkedHashMap<>();
         for (Msg warning : plan.warnings()) notes.put(warning, warning);
         // PROFILE_OFF is never said in chat (design §1): the player chose it, and the panel shows it.
-        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
+        // Nor is MODULE_MISSING_SKIP: it was said once when auto-pvp was turned on, and .xploits pvp shows it.
+        for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
             notes.put(skipped.module().name(),
                 Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
         }
@@ -786,8 +803,8 @@ public class AutoPvp extends XploitsModule {
             if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
             if (resource == null) continue;
-            // CRITICAL (spec §6): no resource counts outside the hotbar. The five modules that
-            // search with InvUtils.findInHotbar/testInHotbar already require it because they look no further;
+            // CRITICAL (spec §6): no resource counts outside the hotbar. The modules that search
+            // with InvUtils.findInHotbar/testInHotbar -the three anti- ones among them- already require it because they look no further;
             // auto-city looks for the pickaxe with InvUtils.find over the whole inventory, but rejects the
             // result if it is not in the hotbar (FindItemResult.isHotbar()) and turns itself off with an
             // error. Counting the backpack for the pickaxe would say "taken" of a module that turns itself off
@@ -798,12 +815,21 @@ public class AutoPvp extends XploitsModule {
         return new Inventory(counts, totems);
     }
 
+    /**
+     * Which resource the stack counts as. String and slabs are what {@code anti-bed} and
+     * {@code anti-anchor} place, and they are recognised exactly as those modules look for them in the
+     * {@code meteor-client:1.21.11-SNAPSHOT} sources: {@code Items.STRING}, and any item whose
+     * {@code Block.getBlockFromItem} is a {@code SlabBlock} -names checked with {@code javap} on the
+     * yarn 1.21.11+build.3 jar-.
+     */
     private static Resource resourceOf(ItemStack stack) {
         if (stack.getItem() == Items.END_CRYSTAL) return Resource.CRYSTALS;
         if (stack.getItem() == Items.OBSIDIAN) return Resource.OBSIDIAN;
         if (stack.getItem() == Items.COBWEB) return Resource.WEBS;
         if (stack.getItem() == Items.ANVIL) return Resource.ANVILS;
+        if (stack.getItem() == Items.STRING) return Resource.STRING;
         if (stack.getItem() == Items.NETHERITE_PICKAXE || stack.getItem() == Items.DIAMOND_PICKAXE) return Resource.PICKAXE;
+        if (Block.getBlockFromItem(stack.getItem()) instanceof SlabBlock) return Resource.SLABS;
         return null;
     }
 
@@ -914,7 +940,7 @@ public class AutoPvp extends XploitsModule {
 
     private static Msg outOfResourcesMessage(Plan plan) {
         Object reasons = null;
-        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
+        for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
             Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", skipped.module().name(), "reason", skipped.reason());
             reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
         }
@@ -970,7 +996,7 @@ public class AutoPvp extends XploitsModule {
             "friends", syncedFriendsLine(),
             "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),
             "idle", idleLine(),
-            "skipped", PvpStatus.skippedLines(lastPlan.skipped()),
+            "skipped", PvpStatus.skippedLines(lastPlan.skipped(), missing.names()),
             "warnings", warningLines == null ? Msg.of(PvpText.NOTHING) : warningLines,
             "yours", yours.isEmpty() ? PvpText.NONE : String.join(", ", yours));
     }

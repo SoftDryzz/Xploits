@@ -22,6 +22,10 @@ class PvpStatusTest {
         return new Skipped(module, Msg.of(PvpText.PROFILE_OFF));
     }
 
+    private static Skipped missing(ManagedModule module) {
+        return new Skipped(module, Msg.of(PvpText.MODULE_MISSING_SKIP));
+    }
+
     private static final Skipped TOTEMS = new Skipped(ManagedModules.AUTO_TRAP, Msg.of(PvpText.TOTEM_FLOOR));
 
     @Test
@@ -62,7 +66,49 @@ class PvpStatusTest {
     @Test
     void filtersSplitProfileOffFromTheRest() {
         List<Skipped> skipped = List.of(off(ManagedModules.AUTO_CITY), TOTEMS);
-        assertEquals(List.of(TOTEMS), PvpStatus.withoutProfileOff(skipped));
+        assertEquals(List.of(TOTEMS), PvpStatus.realSkips(skipped));
         assertEquals(List.of("auto-city"), PvpStatus.profileOffNames(skipped));
+    }
+
+    @Test
+    void missingModulesAreNotRealSkipsEither() {
+        // Neither a profile choice nor a module this Meteor build does not have is something to say in
+        // chat each fight, nor a reason in the loud OUT OF RESOURCES warning.
+        List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR), TOTEMS, off(ManagedModules.AUTO_CITY));
+        assertEquals(List.of(TOTEMS), PvpStatus.realSkips(skipped));
+        assertEquals(List.of("auto-city"), PvpStatus.profileOffNames(skipped));
+    }
+
+    @Test
+    void theMissingLineComesFromTheMeasuredListNotFromThePlan() {
+        // The plan only skips a missing module while something wants it; the status names it always,
+        // once, after the profile line.
+        List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR), TOTEMS, off(ManagedModules.AUTO_CITY));
+        assertEquals("\n  not turned on:  auto-trap — " + EN.render(Msg.of(PvpText.TOTEM_FLOOR))
+            + "\n  off by profile: auto-city"
+            + "\n  missing in Meteor: anti-anchor, anti-bed",
+            EN.render(PvpStatus.skippedLines(skipped, List.of("anti-anchor", "anti-bed"))));
+        assertEquals("\n  faltan en Meteor: anti-anchor", ES.render(PvpStatus.skippedLines(List.of(),
+            List.of("anti-anchor"))));
+    }
+
+    @Test
+    void aMissingSkipInThePlanIsNotListedTwiceNorWithoutTheMeasuredList() {
+        List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR));
+        assertEquals("", EN.render(PvpStatus.skippedLines(skipped, List.of())));
+        assertEquals("\n  missing in Meteor: anti-anchor",
+            EN.render(PvpStatus.skippedLines(skipped, List.of("anti-anchor"))));
+    }
+
+    @Test
+    void theMissingWarningListsTheModulesInOneLine() {
+        assertEquals("Not in this Meteor build, so auto-pvp will not use: anti-anchor.",
+            EN.render(PvpStatus.missingWarning(List.of("anti-anchor"))));
+        assertEquals("Módulos que esta versión de Meteor no trae y que auto-pvp no usará: anti-anchor.",
+            ES.render(PvpStatus.missingWarning(List.of("anti-anchor"))));
+        assertEquals("Not in this Meteor build, so auto-pvp will not use: anti-anchor and anti-bed.",
+            EN.render(PvpStatus.missingWarning(List.of("anti-anchor", "anti-bed"))));
+        assertEquals("Módulos que esta versión de Meteor no trae y que auto-pvp no usará: anti-anvil, anti-bed y anti-anchor.",
+            ES.render(PvpStatus.missingWarning(List.of("anti-anvil", "anti-bed", "anti-anchor"))));
     }
 }

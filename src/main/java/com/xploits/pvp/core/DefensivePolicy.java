@@ -31,8 +31,11 @@ public final class DefensivePolicy {
      * which a {@code hole-filler} or an {@code anti-anvil} decides whether you die-.
      *
      * <p>A generous threshold is deliberate and cheap: the four {@code THREATENED} modules
-     * neither immobilize you nor spend anything except the loose obsidian of {@code hole-filler}, so
-     * overshooting costs much less than falling short.
+     * neither immobilize you nor spend more than a loose block at a time -the obsidian of
+     * {@code hole-filler} and {@code anti-anvil}, the string of {@code anti-bed} (which breaks a bed on
+     * your head without any, and acts only in a hole by default), the slab of {@code anti-anchor}; the
+     * anvil and anchor ones only when that block appears-, so overshooting costs much less than
+     * falling short.
      */
     public static final double THREAT_MARGIN = 12.0;
 
