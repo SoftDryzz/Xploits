@@ -3,15 +3,18 @@ package com.xploits.bench;
 import com.xploits.bench.core.Settle;
 import com.xploits.bench.core.SettleVerification;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.crystal.core.CrystalBrain;
 import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.crystal.core.RiskLevel;
 import com.xploits.pvp.recorder.core.FightRecord;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
+import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.decoration.EndCrystalEntity;
+import net.minecraft.world.rule.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +40,8 @@ import java.util.function.Supplier;
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *
- * <p>A run lasts 30 s, unless it settles first (R3-6, {@link Settle}): natural regeneration off, a static script
+ * <p>A run lasts 30 s, unless it settles first (R3-6, {@link Settle}): natural regeneration off (the scenario's
+ * and the world's rule, read at T0, which must agree), a static script
  * ({@link Script#isStatic}), and {@value Settle#SETTLE_TICKS} ticks in a row with no end crystal in the world
  * (the server's or the client's), no block or entity interaction sent (so no placement and no attack), and
  * neither our health plus absorption nor the sparring's nor its pops changing. Nothing can happen after that, so the run ends there
@@ -232,16 +236,24 @@ final class CrystalAuraMeasure implements Scenario {
      */
     private SettleVerification waitOut(Bench bench) {
         int nominal = seconds() * 20;
-        Settle settle = new Settle(regeneration, bench.sparring().script().isStatic());
+        boolean worldRegeneration = bench.fromServer(srv ->
+            srv.getOverworld().getGameRules().getValue(GameRules.NATURAL_HEALTH_REGENERATION));
+        Settle settle;
+        try {
+            settle = new Settle(regeneration, worldRegeneration, bench.sparring().script().isStatic());
+        } catch (IllegalStateException e) {
+            throw new BenchException(name + ": " + e.getMessage());
+        }
         if (!settle.possible()) {
             bench.ticks(nominal);
             return null;
         }
         SettleVerification verification = Boolean.getBoolean(VERIFY_SETTLE) ? new SettleVerification() : null;
-        settle.observe(observe(bench));
+        boolean plusPlus = aura == CrystalAuraPlusPlus.class;
+        settle.observe(observe(bench, plusPlus));
         for (int tick = 1; tick <= nominal; tick++) {
             bench.ticks(1);
-            boolean settled = settle.observe(observe(bench));
+            boolean settled = settle.observe(observe(bench, plusPlus));
             if (verification == null) {
                 if (settled && tick < nominal) {
                     LOG.info("[bench] {} run {}: settled after {} s, the remaining {} s could not change anything", name,
@@ -287,28 +299,45 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     /**
-     * What {@link Settle} looks at, now: the end crystals the server and the client have, the block and entity
-     * interaction packets sent so far (every placement and every attack, and more), our health plus absorption on
-     * the client, and the sparring's health plus absorption and its pops on the server.
+     * What {@link Settle} looks at, now, in one client call and one server call: the end crystals the client and
+     * the server have, the block and entity interaction packets sent so far (every placement and every attack,
+     * and more), our health plus absorption and, for crystal-aura++, its longest timer from our ping on the client;
+     * the sparring's health plus absorption and its pops on the server. Meteor's timers are fixed at their short
+     * defaults ({@link Settle}), so its timer is 0.
      */
-    private static Settle.Observation observe(Bench bench) {
+    private static Settle.Observation observe(Bench bench, boolean plusPlus) {
         ClientSide client = bench.fromClient(mc -> {
-            if (mc.player == null || mc.world == null) throw new BenchException("the client has no player");
+            if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) {
+                throw new BenchException("the client has no player");
+            }
             int crystals = 0;
             for (Entity entity : mc.world.getEntities()) {
                 if (entity instanceof EndCrystalEntity) crystals++;
             }
+            int timer = 0;
+            if (plusPlus) {
+                // The ping crystal-aura++ itself takes (CrystalAuraPlusPlus.pingTicks): our latency in the player list.
+                PlayerListEntry entry = mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid());
+                int latency = entry == null ? CrystalBrain.UNKNOWN_LATENCY : entry.getLatency();
+                timer = Settle.plusPlusLongestTimer(CrystalBrain.pingTicks(latency));
+            }
             return new ClientSide(crystals, PlacementCounter.get().blockInteractionsSent(),
                 PlacementCounter.get().entityInteractionsSent(),
-                (double) mc.player.getHealth() + mc.player.getAbsorptionAmount());
+                (double) mc.player.getHealth() + mc.player.getAbsorptionAmount(), timer);
         });
-        int serverCrystals = bench.fromServer(srv -> srv.getOverworld().getEntitiesByType(EntityType.END_CRYSTAL, e -> true).size());
-        Sparring.Stats sparring = bench.sparringStats();
-        return new Settle.Observation(client.crystals() + serverCrystals, client.blockInteractions(), client.entityInteractions(),
-            client.health(), (double) sparring.health() + sparring.absorption(), sparring.pops());
+        Sparring sparring = bench.sparring();
+        ServerSide server = bench.fromServer(srv -> new ServerSide(
+            srv.getOverworld().getEntitiesByType(EntityType.END_CRYSTAL, e -> true).size(),
+            (double) sparring.getHealth() + sparring.getAbsorptionAmount(), sparring.stats(-1).pops()));
+        return new Settle.Observation(client.crystals() + server.crystals(), client.blockInteractions(),
+            client.entityInteractions(), client.health(), server.sparringHealth(), server.sparringPops(), client.timer());
     }
 
     /** What {@link #observe} reads on the client, in one call. */
-    private record ClientSide(int crystals, int blockInteractions, int entityInteractions, double health) {
+    private record ClientSide(int crystals, int blockInteractions, int entityInteractions, double health, int timer) {
+    }
+
+    /** What {@link #observe} reads on the server, in one call. */
+    private record ServerSide(int crystals, double sparringHealth, int sparringPops) {
     }
 }
