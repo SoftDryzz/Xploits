@@ -88,7 +88,9 @@ public class BenchTest implements FabricClientGameTest {
      * With its default {@code inactivityFpsLimit} (AFK), Minecraft drops to 10 frames per second once there
      * has been no input for 10 minutes ({@code InactivityFpsLimiter}, LONG_AFK), and a gametest tick waits
      * for a frame: a bench longer than that would run at half speed from then on, and the next world load
-     * times out. Nobody types during the bench, so only a minimized window may limit the frame rate. The
+     * times out. It also lifts the 30 fps cap of SHORT_AFK, which starts after one minute without input:
+     * every scenario but those of the first minute would otherwise run capped, so all of them now run
+     * uncapped. Nobody types during the bench, so only a minimized window may limit the frame rate. The
      * option belongs to the gametest's own run folder, not to the player's game.
      */
     private static void keepFullFrameRate(ClientGameTestContext ctx) {
@@ -177,11 +179,13 @@ public class BenchTest implements FabricClientGameTest {
     /**
      * One run in a fresh world (§Run timeline). The teardown runs even when the scenario threw; a
      * teardown step that fails, or a module it leaves on, turns a passing run into ERROR, and is added to
-     * the error of a run that already failed.
+     * the error of a run that already failed. So is a world that could not be closed, or a teardown that
+     * threw: a run that had already failed keeps its status and whether our player died, so a death is
+     * never lost (it makes a crystal-aura++ verdict REJECT, not INCOMPLETE).
      */
     private static Run runOnce(ClientGameTestContext ctx, Scenario scenario, Path out) {
         String phase = "world";
-        Run run;
+        Run run = null;
         try (TestSingleplayerContext world = ctx.worldBuilder().adjustSettings(BenchTest::superflat).create()) {
             world.getClientWorld().waitForChunksRender();
             Bench bench = new Bench(ctx, world.getServer(), scenario.budgetTicks(), out);
@@ -209,8 +213,11 @@ public class BenchTest implements FabricClientGameTest {
             }
             phase = "world close";
         } catch (RuntimeException | AssertionError e) {
-            // The world could not be created or closed.
-            run = failure(scenario, phase, e);
+            // The world could not be created or closed, or the teardown threw.
+            Run failed = failure(scenario, phase, e);
+            run = run != null && run.status().fails()
+                ? new Run(run.status(), run.error() + "; " + failed.error(), run.metrics(), run.died())
+                : failed;
         }
         return run;
     }

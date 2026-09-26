@@ -14,9 +14,11 @@ import java.util.function.Predicate;
  *   <li>{@value #RUN_TICKS} ticks on {@code xploits++}: some tick has auto-pvp engaged on the sparring,
  *   its plan enabling the logical crystal-aura and crystal-aura++ on; Meteor's crystal-aura is off on
  *   every tick.</li>
- *   <li>Switched to {@code meteor} while crystal-aura++ is on: crystal-aura++ is off within
+ *   <li>Switched to {@code meteor} while crystal-aura++ is on and auto-pvp is in combat (Meteor's
+ *   crystal-aura still off on every tick of that wait): crystal-aura++ is off within
  *   {@value #OFF_WITHIN} ticks and stays off, Meteor's crystal-aura is on within {@value #ON_WITHIN}.</li>
- *   <li>Switched back to {@code xploits++} while Meteor's is on: the same, the other way round.</li>
+ *   <li>Switched back to {@code xploits++} while Meteor's is on and auto-pvp is in combat: the same, the
+ *   other way round.</li>
  *   <li>Auto-pvp turned off, one tick: both auras are off.</li>
  * </ol>
  *
@@ -85,11 +87,11 @@ final class AutoPvpEngagesCapp implements Scenario {
         Bench.check(all > 0, "no tick had auto-pvp engaged on the sparring with crystal-aura planned and crystal-aura++ on"
             + " (ticks: engaged " + engaged + ", planned " + planned + ", crystal-aura++ on " + plusPlusOn + ")");
 
-        waitOn(bench, AutoPvpScene.Look::plusPlusOn, "crystal-aura++");
+        waitOn(bench, AutoPvpScene.Look::plusPlusOn, "crystal-aura++", AutoPvpScene.Look::auraOn, "Meteor's crystal-aura");
         Switch toMeteor = switchTo(bench, CrystalModule.METEOR);
         toMeteor.check("crystal-aura++", "Meteor's crystal-aura", "meteor");
 
-        waitOn(bench, AutoPvpScene.Look::auraOn, "Meteor's crystal-aura");
+        waitOn(bench, AutoPvpScene.Look::auraOn, "Meteor's crystal-aura", AutoPvpScene.Look::plusPlusOn, "crystal-aura++");
         Switch back = switchTo(bench, CrystalModule.XPLOITS);
         back.check("Meteor's crystal-aura", "crystal-aura++", "xploits++");
 
@@ -103,14 +105,25 @@ final class AutoPvpEngagesCapp implements Scenario {
         return Metrics.none();
     }
 
-    /** Waits, at most {@value #WAIT_ON} ticks, until the aura auto-pvp drives is on: a switch must find it on. */
-    private void waitOn(Bench bench, Predicate<AutoPvpScene.Look> on, String aura) {
-        if (on.test(scene.look(bench))) return;
-        for (int i = 1; i <= WAIT_ON; i++) {
+    /**
+     * Waits, at most {@value #WAIT_ON} ticks, until the aura auto-pvp drives is on: a switch must find it on,
+     * mid-fight. The other aura must stay off on every tick of the wait, and auto-pvp must be in combat
+     * when the wait ends, so the switch that follows is one made during a fight.
+     */
+    private void waitOn(Bench bench, Predicate<AutoPvpScene.Look> on, String aura, Predicate<AutoPvpScene.Look> other,
+                        String otherAura) {
+        AutoPvpScene.Look look = scene.look(bench);
+        int otherOn = other.test(look) ? 1 : 0;
+        for (int i = 1; i <= WAIT_ON && !on.test(look); i++) {
             bench.ticks(1);
-            if (on.test(scene.look(bench))) return;
+            look = scene.look(bench);
+            if (other.test(look)) otherOn++;
         }
-        Bench.check(false, aura + " was not on to switch away from (waited " + WAIT_ON + " ticks)");
+        Bench.check(on.test(look), aura + " was not on to switch away from (waited " + WAIT_ON + " ticks)");
+        Bench.check(otherOn == 0, otherAura + " was on for " + otherOn + " ticks while waiting for " + aura);
+        Bench.check(look.state() != null && look.state() != CombatState.NO_COMBAT,
+            "auto-pvp was not in combat when switching away from " + aura
+                + " (" + (look.state() == null ? "no plan" : look.state().name()) + ")");
     }
 
     /**
