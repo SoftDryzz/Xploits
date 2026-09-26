@@ -22,6 +22,10 @@ class PvpStatusTest {
         return new Skipped(module, Msg.of(PvpText.PROFILE_OFF));
     }
 
+    private static Skipped missing(ManagedModule module) {
+        return new Skipped(module, Msg.of(PvpText.MODULE_MISSING_SKIP));
+    }
+
     private static final Skipped TOTEMS = new Skipped(ManagedModules.AUTO_TRAP, Msg.of(PvpText.TOTEM_FLOOR));
 
     @Test
@@ -62,7 +66,36 @@ class PvpStatusTest {
     @Test
     void filtersSplitProfileOffFromTheRest() {
         List<Skipped> skipped = List.of(off(ManagedModules.AUTO_CITY), TOTEMS);
-        assertEquals(List.of(TOTEMS), PvpStatus.withoutProfileOff(skipped));
+        assertEquals(List.of(TOTEMS), PvpStatus.realSkips(skipped));
         assertEquals(List.of("auto-city"), PvpStatus.profileOffNames(skipped));
+    }
+
+    @Test
+    void missingModulesAreNotRealSkipsEither() {
+        // Neither a profile choice nor a module this Meteor build does not have is something to say in
+        // chat each fight, nor a reason in the loud OUT OF RESOURCES warning.
+        List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR), TOTEMS, off(ManagedModules.AUTO_CITY));
+        assertEquals(List.of(TOTEMS), PvpStatus.realSkips(skipped));
+        assertEquals(List.of("anti-anchor"), PvpStatus.missingNames(skipped));
+        assertEquals(List.of("auto-city"), PvpStatus.profileOffNames(skipped));
+    }
+
+    @Test
+    void missingModulesAreGroupedIntoOneLineAfterTheProfileOffOne() {
+        List<Skipped> skipped = List.of(missing(ManagedModules.ANTI_ANCHOR), TOTEMS, off(ManagedModules.AUTO_CITY),
+            missing(ManagedModules.ANTI_BED));
+        assertEquals("\n  not turned on:  auto-trap — " + EN.render(Msg.of(PvpText.TOTEM_FLOOR))
+            + "\n  off by profile: auto-city"
+            + "\n  missing in Meteor: anti-anchor, anti-bed", EN.render(PvpStatus.skippedLines(skipped)));
+        assertEquals("\n  faltan en Meteor: anti-anchor", ES.render(PvpStatus.skippedLines(
+            List.of(missing(ManagedModules.ANTI_ANCHOR)))));
+    }
+
+    @Test
+    void theMissingWarningNamesTheModule() {
+        assertEquals("anti-anchor is not in this Meteor build; auto-pvp will not use it.",
+            EN.render(Msg.of(PvpText.MODULE_MISSING, "module", "anti-anchor")));
+        assertEquals("anti-anchor no está en esta versión de Meteor; auto-pvp no lo usará.",
+            ES.render(Msg.of(PvpText.MODULE_MISSING, "module", "anti-anchor")));
     }
 }

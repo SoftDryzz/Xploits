@@ -357,7 +357,7 @@ public final class CombatDirector {
     }
 
     /**
-     * The full signature, with the allowed set a profile restricts the director to (design §1).
+     * With the allowed set a profile restricts the director to (design §1), and no module missing.
      * The other two overloads are the short ones: they pass the default margin and/or every
      * managed module as allowed, which is today's behaviour and what a corrupt or missing profile
      * falls back to.
@@ -374,6 +374,24 @@ public final class CombatDirector {
      *                is "no restriction", what the three-, two- and one-argument overloads pass
      */
     public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed) {
+        return tick(snapshot, approachDistance, threatMargin, allowed, Set.of());
+    }
+
+    /**
+     * The full signature, with the managed modules this Meteor build does not have. The shorter
+     * overloads pass none missing.
+     *
+     * <p>Meteor 1.21.11 ships the {@code AntiAnchor} class but does not register it, so asking for it
+     * by name returns nothing. Wanted anyway, the adapter's enable fell into the void while the
+     * {@link ModuleLedger} took it as its own, and a moment later announced that the player had turned
+     * it off. A missing module is filtered in {@link #planFor} before anything else -before the profile,
+     * the totem floor and any share of a resource- and reported with {@link PvpText#MODULE_MISSING_SKIP},
+     * so it never reaches {@code enable()} and the ledger never owns it.
+     *
+     * @param missing the managed modules the adapter could not find in Meteor
+     */
+    public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed,
+                     Set<ManagedModule> missing) {
         CombatSnapshot effective = rememberTarget(snapshot);
 
         CombatState candidate = classify(effective, approachDistance, state);
@@ -388,7 +406,7 @@ public final class CombatDirector {
 
         ticksInState++;
         boolean retreating = retreat.update(effective);
-        Plan plan = planFor(state, effective, retreating, threatMargin, allowed);
+        Plan plan = planFor(state, effective, retreating, threatMargin, allowed, missing);
         previouslyEnabled = rememberEnabled(plan);
         return plan;
     }
@@ -593,7 +611,7 @@ public final class CombatDirector {
     }
 
     private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, double threatMargin,
-                         Set<ManagedModule> allowed) {
+                         Set<ManagedModule> allowed, Set<ManagedModule> missing) {
         List<ManagedModule> offensive = offensiveModules(state, snapshot, retreating);
 
         Set<ManagedModule> wanted = new LinkedHashSet<>(offensive);
@@ -622,6 +640,12 @@ public final class CombatDirector {
         Map<Resource, List<String>> claimedBy = new HashMap<>();
 
         for (ManagedModule module : inSharePriorityOrder(wanted)) {
+            // A module Meteor does not have goes first of all: there is nothing to turn on, and
+            // enabling it would only make the ledger own a module nobody can see.
+            if (missing.contains(module)) {
+                skipped.add(new Skipped(module, Msg.of(PvpText.MODULE_MISSING_SKIP)));
+                continue;
+            }
             // Design §1: a module the active profile does not allow is out before anything else can
             // happen to it -before the totem floor and before hasEnough can reserve any of a shared
             // resource for it- so a disallowed auto-trap never sets aside obsidian that surround or
@@ -669,8 +693,10 @@ public final class CombatDirector {
         // phase asked for -unfiltered, so offensiveModules() does not need to know about profiles at
         // all-; offensiveAllowed narrows it to what could possibly go up. Without this a defensive
         // profile that disallows every offensive module would raise the loud OUT_OF_RESOURCES alarm on
-        // every single fight, for modules it was never going to enable in the first place.
-        List<ManagedModule> offensiveAllowed = offensive.stream().filter(allowed::contains).toList();
+        // every single fight, for modules it was never going to enable in the first place. A module
+        // Meteor does not have is left out for the same reason: it could never go up either.
+        List<ManagedModule> offensiveAllowed = offensive.stream()
+            .filter(module -> allowed.contains(module) && !missing.contains(module)).toList();
         boolean offensiveAllowedUp = enable.stream().anyMatch(offensiveAllowed::contains);
         CombatState reported = !offensiveAllowed.isEmpty() && !offensiveAllowedUp
             ? CombatState.OUT_OF_RESOURCES : state;

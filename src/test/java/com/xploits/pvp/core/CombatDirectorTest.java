@@ -1455,6 +1455,61 @@ class CombatDirectorTest {
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP));
     }
 
+    // --- managed modules this Meteor build does not have ---
+
+    private static Plan settle(CombatDirector director, CombatSnapshot snapshot, Set<ManagedModule> allowed,
+                               Set<ManagedModule> missing) {
+        Plan plan = null;
+        for (int i = 0; i < CombatDirector.GLIDE_EXIT_HOLD_TICKS + 5; i++) {
+            plan = director.tick(snapshot, APPROACH, DefensivePolicy.THREAT_MARGIN, allowed, missing);
+        }
+        return plan;
+    }
+
+    @Test
+    void aMissingModuleIsSkippedAsMissingAndNeverEnabled() {
+        // Meteor 1.21.11 has the AntiAnchor class but does not register it: asking for it by name gives
+        // null. Wanting it anyway made the ledger own a module nobody turned on, and then say the player
+        // had turned it off.
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            Set.copyOf(ManagedModules.ALL), Set.of(ManagedModules.ANTI_ANCHOR));
+
+        assertEquals(CombatPosture.THREATENED, plan.posture(), "precondition: the posture asks for it");
+        assertFalse(enables(plan, ManagedModules.ANTI_ANCHOR));
+        assertEquals(Msg.of(PvpText.MODULE_MISSING_SKIP), reasonFor(plan, ManagedModules.ANTI_ANCHOR));
+        assertTrue(enables(plan, ManagedModules.ANTI_BED), "the ones Meteor does have still come up");
+    }
+
+    @Test
+    void beingMissingIsSaidBeforeBeingOffByProfile() {
+        // Missing is checked first: whatever the profile says, the module is not there to turn on.
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            allExcept(ManagedModules.ANTI_ANCHOR), Set.of(ManagedModules.ANTI_ANCHOR));
+
+        assertEquals(Msg.of(PvpText.MODULE_MISSING_SKIP), reasonFor(plan, ManagedModules.ANTI_ANCHOR));
+    }
+
+    @Test
+    void aMissingOffensiveModuleDoesNotCountForOutOfResources() {
+        // SURFACE asks for crystal-aura and auto-trap. With both missing there was never anything that
+        // could go up, which is not being out of resources: the loud alarm would sound in every fight.
+        Plan plan = settle(new CombatDirector(), surface(), Set.copyOf(ManagedModules.ALL),
+            Set.of(ManagedModules.CRYSTAL_AURA, ManagedModules.AUTO_TRAP));
+
+        assertEquals(CombatState.SURFACE, plan.state());
+        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+    }
+
+    @Test
+    void theOverloadsWithoutTheMissingSetMissNothing() {
+        Plan plan = settle(new CombatDirector(), surface().withDefense(14.0, 6.0, false, true),
+            Set.copyOf(ManagedModules.ALL));
+
+        assertTrue(plan.skipped().stream().noneMatch(PvpStatus::isMissing));
+        assertTrue(enables(plan, ManagedModules.ANTI_ANCHOR));
+    }
+
     // --- reset ---
 
     @Test

@@ -234,6 +234,13 @@ public class AutoPvp extends XploitsModule {
     private final ModuleLedger ledger = new ModuleLedger();
 
     /**
+     * The managed modules this Meteor build does not register, measured on each activation: asked for
+     * by name they give {@code null} (Meteor 1.21.11 has the {@code AntiAnchor} class but does not add
+     * it). The director skips them before anything else, so they never reach the ledger.
+     */
+    private Set<ManagedModule> missing = Set.of();
+
+    /**
      * The "I have it on and it does nothing" watch ({@link ActionWatch}). It lives here and not in
      * the director because it needs a piece of data the director does not see: which modules are
      * <b>really</b> on right now. The adapter measures -what the plan asks for, what is on and what
@@ -302,6 +309,8 @@ public class AutoPvp extends XploitsModule {
         // writes nothing to the player's disk.
         friendLedger.reset();
         lastSynced = null;
+        missing = missingManagedModules();
+        warnMissingManagedModules();
         warnAlreadyActiveManagedModules();
     }
 
@@ -333,7 +342,7 @@ public class AutoPvp extends XploitsModule {
         CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
         lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed());
+        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing);
         lastPlan = plan;
 
         apply(plan);
@@ -547,7 +556,8 @@ public class AutoPvp extends XploitsModule {
         Map<Object, Msg> notes = new LinkedHashMap<>();
         for (Msg warning : plan.warnings()) notes.put(warning, warning);
         // PROFILE_OFF is never said in chat (design §1): the player chose it, and the panel shows it.
-        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
+        // Nor is MODULE_MISSING_SKIP: it was said once when auto-pvp was turned on, and .xploits pvp shows it.
+        for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
             notes.put(skipped.module().name(),
                 Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
         }
@@ -871,6 +881,28 @@ public class AutoPvp extends XploitsModule {
         for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle));
     }
 
+    /** The managed modules Meteor does not find by name, in catalog order. */
+    private static Set<ManagedModule> missingManagedModules() {
+        Set<ManagedModule> result = new LinkedHashSet<>();
+        for (ManagedModule module : ManagedModules.ALL) {
+            if (byName(module.name()) == null) result.add(module);
+        }
+        return Set.copyOf(result);
+    }
+
+    /**
+     * Once per activation, and whatever {@code notify} says: without it the player would see a module
+     * in the {@code use-*} list that never comes up and would not know why.
+     */
+    private void warnMissingManagedModules() {
+        if (missing.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        for (ManagedModule module : ManagedModules.ALL) {
+            if (missing.contains(module)) names.add(module.name());
+        }
+        warning(PvpText.MODULE_MISSING, "module", String.join(", ", names));
+    }
+
     /** I1: if something it manages was already on when auto-pvp was turned on, it is the player's and that has to be said. */
     private void warnAlreadyActiveManagedModules() {
         for (ManagedModule managed : ManagedModules.ALL) {
@@ -924,7 +956,7 @@ public class AutoPvp extends XploitsModule {
 
     private static Msg outOfResourcesMessage(Plan plan) {
         Object reasons = null;
-        for (Skipped skipped : PvpStatus.withoutProfileOff(plan.skipped())) {
+        for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
             Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", skipped.module().name(), "reason", skipped.reason());
             reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
         }
