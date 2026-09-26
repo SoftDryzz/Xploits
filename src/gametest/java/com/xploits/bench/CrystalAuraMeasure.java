@@ -1,14 +1,19 @@
 package com.xploits.bench;
 
+import com.xploits.bench.core.Settle;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.crystal.core.RiskLevel;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.decoration.EndCrystalEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -29,9 +34,16 @@ import java.util.function.Supplier;
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *
+ * <p>A run lasts 30 s, unless it settles first (R3-6, {@link Settle}): natural regeneration off, a static script
+ * ({@link Script#isStatic}), and {@value Settle#SETTLE_TICKS} ticks in a row with no end crystal in the world
+ * (the server's or the client's), no block or entity interaction sent (so no placement and no attack), and
+ * neither our health plus absorption nor the sparring's nor its pops changing. Nothing can happen after that, so the run ends there
+ * with the numbers it would have had at 30 s, and says so in one log line.
+ *
  * <p>Metrics: {@code damage_dealt}, {@code sparring_pops}, {@code first_pop_s} (only in a run that
  * popped), {@code no_pop_runs} (1 for a run without a pop), {@code self_damage}, {@code self_pops},
- * {@code min_health} and {@code placements_per_s}. A crystal-aura++ run also logs how many placements it held
+ * {@code min_health} and {@code placements_per_s}, the placements over the nominal 30 s even when the run
+ * settled earlier. A crystal-aura++ run also logs how many placements it held
  * back for the sparring's hurt window (R3-3); that count is not a metric.
  */
 final class CrystalAuraMeasure implements Scenario {
@@ -48,6 +60,8 @@ final class CrystalAuraMeasure implements Scenario {
     /** crystal-aura++'s {@code risk} level; null for Meteor's aura. */
     private final RiskLevel risk;
     private MeasureRun run;
+    /** Runs arranged so far, the one in progress included: the {@code n} of the settle line. */
+    private int runs;
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
                                String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget,
@@ -136,6 +150,7 @@ final class CrystalAuraMeasure implements Scenario {
 
     @Override
     public void arrange(Bench bench) {
+        runs++;
         if (aura == CrystalAura.class) {
             MeasureRun.crystalAura(bench);
         } else {
@@ -168,7 +183,7 @@ final class CrystalAuraMeasure implements Scenario {
             throw new BenchException(other.getSimpleName() + " was on before T0");
         }
         run.start();
-        bench.ticks(seconds() * 20);
+        waitOut(bench);
         if (aura == CrystalAuraPlusPlus.class) {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
@@ -191,5 +206,54 @@ final class CrystalAuraMeasure implements Scenario {
             .put(Metrics.SELF_POPS, run.selfPops())
             .put(Metrics.MIN_HEALTH, run.minHealth())
             .put(Metrics.PLACEMENTS_PER_S, (double) run.crystalsPlaced() / seconds());
+    }
+
+    /**
+     * The run's {@link #seconds()}, tick by tick, or less once it has settled ({@link Settle}); a run that cannot
+     * settle waits them in one go, as before.
+     */
+    private void waitOut(Bench bench) {
+        int nominal = seconds() * 20;
+        Settle settle = new Settle(regeneration, bench.sparring().script().isStatic());
+        if (!settle.possible()) {
+            bench.ticks(nominal);
+            return;
+        }
+        settle.observe(observe(bench));
+        for (int tick = 1; tick <= nominal; tick++) {
+            bench.ticks(1);
+            if (settle.observe(observe(bench)) && tick < nominal) {
+                LOG.info("[bench] {} run {}: settled after {} s, the remaining {} s could not change anything", name, runs,
+                    String.format(Locale.ROOT, "%.2f", tick / 20.0),
+                    String.format(Locale.ROOT, "%.2f", (nominal - tick) / 20.0));
+                return;
+            }
+        }
+    }
+
+    /**
+     * What {@link Settle} looks at, now: the end crystals the server and the client have, the block and entity
+     * interaction packets sent so far (every placement and every attack, and more), our health plus absorption on
+     * the client, and the sparring's health plus absorption and its pops on the server.
+     */
+    private static Settle.Observation observe(Bench bench) {
+        ClientSide client = bench.fromClient(mc -> {
+            if (mc.player == null || mc.world == null) throw new BenchException("the client has no player");
+            int crystals = 0;
+            for (Entity entity : mc.world.getEntities()) {
+                if (entity instanceof EndCrystalEntity) crystals++;
+            }
+            return new ClientSide(crystals, PlacementCounter.get().blockInteractionsSent(),
+                PlacementCounter.get().entityInteractionsSent(),
+                (double) mc.player.getHealth() + mc.player.getAbsorptionAmount());
+        });
+        int serverCrystals = bench.fromServer(srv -> srv.getOverworld().getEntitiesByType(EntityType.END_CRYSTAL, e -> true).size());
+        Sparring.Stats sparring = bench.sparringStats();
+        return new Settle.Observation(client.crystals() + serverCrystals, client.blockInteractions(), client.entityInteractions(),
+            client.health(), (double) sparring.health() + sparring.absorption(), sparring.pops());
+    }
+
+    /** What {@link #observe} reads on the client, in one call. */
+    private record ClientSide(int crystals, int blockInteractions, int entityInteractions, double health) {
     }
 }

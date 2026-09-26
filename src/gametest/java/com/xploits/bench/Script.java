@@ -29,6 +29,15 @@ public interface Script {
     void tick(Sparring sparring, Tick tick);
 
     /**
+     * Whether the script never moves the sparring (crystal-aura++ R3-6): only then may a measured run end once
+     * nothing can happen any more ({@link com.xploits.bench.core.Settle}). False unless a script says so
+     * itself; it is never inferred.
+     */
+    default boolean isStatic() {
+        return false;
+    }
+
+    /**
      * The state a script sees each tick. {@code sinceT0} is -1 before T0, then 1 on the first tick after
      * it; a script waits for T0 before it moves or attacks.
      */
