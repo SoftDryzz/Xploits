@@ -68,13 +68,10 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
      *                               ({@code DamageUtils.getAttackDamage > 0}, lines 833, 877-879)
      * @param hotbarBreaksWeakened   some item in the hands or hotbar does ({@code InvUtils.findInHotbar},
      *                               line 835)
-     * @param shielding              you are using an item that blocks attacks (a raised shield), even before
-     *                               it blocks: our hurt cooldown is then never credited ({@link HurtWindow});
-     *                               Meteor does not read it
      */
     public record Hands(boolean crystalsInHotbar, boolean mainHandCrystals, boolean offhandCrystals,
                         boolean gappleInHand, boolean bowInHand, int weaknessAmplifier, int strengthAmplifier,
-                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened, boolean shielding) {
+                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened) {
         /** The effect is not active. */
         public static final int NO_EFFECT = -1;
 
@@ -87,14 +84,6 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
             if (mainHandBreaksWeakened && !hotbarBreaksWeakened) {
                 throw new IllegalArgumentException("the main hand breaks but the hotbar does not");
             }
-        }
-
-        /** Hands with no shield raised. */
-        public Hands(boolean crystalsInHotbar, boolean mainHandCrystals, boolean offhandCrystals, boolean gappleInHand,
-                     boolean bowInHand, int weaknessAmplifier, int strengthAmplifier, boolean mainHandBreaksWeakened,
-                     boolean hotbarBreaksWeakened) {
-            this(crystalsInHotbar, mainHandCrystals, offhandCrystals, gappleInHand, bowInHand, weaknessAmplifier,
-                strengthAmplifier, mainHandBreaksWeakened, hotbarBreaksWeakened, false);
         }
 
         /** Whether Weakness is active. */

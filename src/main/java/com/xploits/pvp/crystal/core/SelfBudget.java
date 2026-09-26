@@ -26,11 +26,6 @@ import java.util.Set;
  * <p>These rules only add checks on top of Meteor's; they never allow what Meteor would refuse.
  * Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
  * {@link Verdict#FOREIGN} for it without reading health, so no caller can get that wrong.
- *
- * <p>Our own hurt cooldown (spec, Round 2 (a)): when {@link HurtWindow} says an action's crystal will hit us
- * inside the server's window with no more than the last hit, the rule asked about that action counts its self
- * damage as 0. Nothing else changes: I and S keep every crystal's full damage, and Meteor's checks, which the
- * caller runs before asking, keep it too.
  */
 public final class SelfBudget {
     /** R: what a placement must leave (setting {@code reserve}, the same as Meteor's pause-health). */
@@ -53,8 +48,6 @@ public final class SelfBudget {
         ALLOWED_SAFE(true, Reason.SAFE_SELF_DAMAGE),
         REFUSED_RESERVE(false, Reason.OVER_RESERVE),
         REFUSED_FLOOR(false, Reason.BELOW_FLOOR),
-        /** Allowed only because our hurt cooldown was credited: with its full self damage it would be refused. */
-        ALLOWED_COOLDOWN(true, Reason.HURT_COOLDOWN),
         /** Not ours: Meteor's rules only, the budget was not read. */
         FOREIGN(true, Reason.FOREIGN_CRYSTAL);
 
@@ -184,37 +177,15 @@ public final class SelfBudget {
     }
 
     /**
-     * {@link #placeAllowed(double)}, where {@code credited} (our hurt cooldown, {@link HurtWindow}) counts the
-     * self damage as 0. The answer is the usual one unless only the credit allows it:
-     * {@link Verdict#ALLOWED_COOLDOWN}.
-     */
-    public Verdict placeAllowed(double selfDamage, boolean credited) {
-        Verdict full = placeAllowed(selfDamage);
-        if (!credited || full.allowed()) return full;
-        return placeAllowed(0).allowed() ? Verdict.ALLOWED_COOLDOWN : full;
-    }
-
-    /**
      * Breaking this crystal, once it passed Meteor's checks (P2). Ours: allowed if
      * {@code health - I - self >= F}, where I leaves this crystal out so it is never counted twice; the
      * crystal may be one this budget has not seen (fast-break, P4). Not ours: {@link Verdict#FOREIGN},
      * always, without reading health: Meteor's rules only.
      */
     public Verdict breakAllowed(CrystalView crystal) {
-        return breakAllowed(crystal, false);
-    }
-
-    /**
-     * {@link #breakAllowed(CrystalView)}, where {@code credited} (our hurt cooldown, {@link HurtWindow}) counts
-     * this crystal's self damage as 0; what else is in flight still counts. The answer is the usual one unless only
-     * the credit allows it: {@link Verdict#ALLOWED_COOLDOWN}. A crystal not ours is {@link Verdict#FOREIGN}, credit
-     * or not.
-     */
-    public Verdict breakAllowed(CrystalView crystal, boolean credited) {
         if (!crystal.live()) throw new IllegalArgumentException("crystal already gone: " + crystal.id());
         if (!crystal.ours()) return Verdict.FOREIGN;
         double others = inFlight - inFlightById.getOrDefault(crystal.id(), 0.0);
-        if (health - others - crystal.selfDamage() >= FLOOR) return Verdict.ALLOWED;
-        return credited && health - others >= FLOOR ? Verdict.ALLOWED_COOLDOWN : Verdict.REFUSED_FLOOR;
+        return health - others - crystal.selfDamage() >= FLOOR ? Verdict.ALLOWED : Verdict.REFUSED_FLOOR;
     }
 }

@@ -27,11 +27,9 @@ import java.util.Map;
  * @param attempts     how many times we attacked it
  * @param attackedTick the pre-tick of our last attack on it, or {@link #NEVER}
  * @param removedTick  the pre-tick at which it was first seen gone, or {@link #NEVER} while it stands
- * @param rawSelfDamage its raw damage to you ({@link CrystalSeen#rawSelfDamage}), or {@link RawExplosion#UNKNOWN}
  */
 public record CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage,
-                          double distance, boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick,
-                          double rawSelfDamage) {
+                          double distance, boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
     /** No such tick: never attacked, or still standing. */
     public static final long NEVER = -1;
 
@@ -52,14 +50,6 @@ public record CrystalView(int id, long pos, Map<String, Double> targetDamage, do
         if (attackedTick != NEVER && attempts == 0) {
             throw new IllegalArgumentException("attacked with no attempts");
         }
-        RawExplosion.check(rawSelfDamage, "raw self damage");
-    }
-
-    /** One whose raw damage to you was not measured: never credited. */
-    public CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
-                       boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
-        this(id, pos, targetDamage, selfDamage, distance, inBreakRange, ours, attempts, attackedTick, removedTick,
-            RawExplosion.UNKNOWN);
     }
 
     /** Whether it is still standing. */

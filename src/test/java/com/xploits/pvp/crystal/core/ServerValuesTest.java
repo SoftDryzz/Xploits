@@ -91,26 +91,6 @@ class ServerValuesTest {
     }
 
     @Test
-    void aRawSelfDamageThatCannotBeMeasuredIsUnknownSoItIsNeverCredited() {
-        assertEquals(14.125, ServerValues.rawSelfDamage(9, 1));
-        assertEquals(0, ServerValues.rawSelfDamage(13, 1), "beyond the reach: no hit");
-        for (double distance : new double[] {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, -1}) {
-            assertEquals(RawExplosion.UNKNOWN, ServerValues.rawSelfDamage(distance, 1), "distance " + distance);
-        }
-        for (double exposure : new double[] {Double.NaN, Double.POSITIVE_INFINITY, -0.25, 1.25}) {
-            assertEquals(RawExplosion.UNKNOWN, ServerValues.rawSelfDamage(3, exposure), "exposure " + exposure);
-        }
-        for (double v : ODD) {
-            for (double w : ODD) {
-                double raw = assertDoesNotThrow(() -> ServerValues.rawSelfDamage(v, w));
-                assertTrue(raw == RawExplosion.UNKNOWN || (Double.isFinite(raw) && raw >= 0), v + ", " + w);
-                assertDoesNotThrow(() -> new CrystalSeen(1, 1, Map.of(), 1, 3, true, raw));
-                assertDoesNotThrow(() -> new Candidate(1, Map.of(), 1, true, Set.of(), false, raw));
-            }
-        }
-    }
-
-    @Test
     void armourPiecesWithNoOrOddDurability() {
         assertEquals(50, ServerValues.armorPercent(100, 50).getAsDouble());
         assertFalse(ServerValues.armorPercent(0, 0).isPresent(), "no durability never counts, as in Meteor (NaN)");

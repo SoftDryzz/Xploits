@@ -12,7 +12,6 @@ import com.xploits.pvp.crystal.core.CrystalSettings.PauseMode;
 import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
-import com.xploits.pvp.crystal.core.RawExplosion;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
 import com.xploits.pvp.crystal.core.ServerValues;
@@ -22,7 +21,6 @@ import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.events.entity.EntityAddedEvent;
 import meteordevelopment.meteorclient.events.entity.EntityRemovedEvent;
-import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -51,12 +49,10 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -67,7 +63,6 @@ import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -76,7 +71,6 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
-import net.minecraft.world.explosion.ExplosionImpl;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -87,7 +81,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * crystal-aura++ (spec §2): Meteor's CrystalAura with its default settings, measured with Meteor's own public
@@ -104,11 +97,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
  *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
  *   in-flight ledger;</li>
- *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727);</li>
- *   <li>{@code PacketEvent.Receive}, on the Netty thread: damage packets are only queued there, and read on the
- *   game thread at the start of the next pre-tick or {@code EntityAddedEvent}, before anything is measured
- *   (our hurt cooldown, spec Round 2 (a)). The server sends the damage packet before our new health, so every
- *   health the brain reads comes after the packet that explains it.</li>
+ *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
  * <p>While Meteor's crystal-aura is on it does nothing, warns once each time that starts and never turns
@@ -422,10 +411,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private CrystalBrain brain = new CrystalBrain();
     /** Late own crystals counted by brains replaced after a refusal, since activation. */
     private int lateOwnBefore;
-    /** Hurt cooldown credits used by brains replaced after a refusal, since activation. */
-    private int cooldownCreditsBefore;
-    /** Damage packets from the Netty thread, read on the game thread. */
-    private final ConcurrentLinkedQueue<EntityDamageS2CPacket> hits = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -446,8 +431,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onActivate() {
         brain = new CrystalBrain();
         lateOwnBefore = 0;
-        cooldownCreditsBefore = 0;
-        hits.clear();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -457,7 +440,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
 
     @Override
     public void onDeactivate() {
-        hits.clear();
         forgetTick();
         lastRotationPos = null;
         refusal.update(false);
@@ -478,11 +460,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return lateOwnBefore + brain.lateOwnCrystals();
     }
 
-    /** Actions only our hurt cooldown allowed ({@link Reason#HURT_COOLDOWN}), since activation. */
-    public int cooldownCredits() {
-        return cooldownCreditsBefore + brain.cooldownCredits();
-    }
-
     /** The last thing decided, or why nothing was. */
     public Decision lastDecision() {
         return refusal.refusing() ? Decision.none(Reason.METEOR_AURA_ON) : brain.lastDecision();
@@ -493,11 +470,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGH)
     private void onPreTick(TickEvent.Pre event) {
         if (mc.player == null || mc.world == null) return;
-        if (refusingNow()) {
-            hits.clear();
-            return;
-        }
-        readHits();
+        if (refusingNow()) return;
         // Our health not a valid number (a broken or spoofing server): do nothing this tick.
         OptionalDouble health = health();
         if (health.isEmpty()) return;
@@ -535,7 +508,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private void onEntityAdded(EntityAddedEvent event) {
         if (!(event.entity instanceof EndCrystalEntity crystal) || mc.player == null || mc.world == null) return;
         if (refusingNow()) return;
-        readHits();
         OptionalDouble health = health();
         if (health.isEmpty()) return;
         // Fast-break measures against the previous pre-tick's targets (lines 740-743).
@@ -554,29 +526,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         brain.crystalRemoved(crystal.getId());
     }
 
-    /** Netty thread: queue only; the world and the brain are not touched here. */
-    @EventHandler
-    private void onReceive(PacketEvent.Receive event) {
-        if (event.packet instanceof EntityDamageS2CPacket hit) hits.add(hit);
-    }
-
-    /**
-     * The damage packets for us, oldest first, to the brain (spec Round 2 (a), condition 1). One of our crystals'
-     * explosions is {@code player_explosion} with us as the cause; the brain then checks that the direct source
-     * is a crystal we placed. Every other damage packet for us cancels the credit.
-     */
-    private void readHits() {
-        int me = mc.player.getId();
-        for (EntityDamageS2CPacket hit; (hit = hits.poll()) != null; ) {
-            if (hit.entityId() != me) continue;
-            if (hit.sourceType().matchesKey(DamageTypes.PLAYER_EXPLOSION) && hit.sourceCauseId() == me) {
-                brain.hurtByOwnCrystal(hit.sourceDirectId(), pingTicks());
-            } else {
-                brain.hurtByOther();
-            }
-        }
-    }
-
     // Refusal
 
     /**
@@ -588,8 +537,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             case STARTED -> warning(CrystalText.METEOR_AURA_ON);
             case ENDED -> {
                 lateOwnBefore += brain.lateOwnCrystals();
-                cooldownCreditsBefore += brain.cooldownCredits();
-                hits.clear();
                 brain = new CrystalBrain();
                 forgetTick();
                 lastRotationPos = null;
@@ -690,20 +637,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         double self = ServerValues.crystalSelfDamage(DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base));
         double distance = ServerValues.crystalDistance(PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z));
         return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self, distance,
-            !outOfRange(pos, crystal.getBlockPos(), false), rawSelfDamage(pos));
-    }
-
-    /**
-     * The raw damage to us of a crystal exploding here (spec Round 2 (a)), as the server computes it: vanilla's
-     * {@code ExplosionImpl.calculateReceivedDamage} (public, static; it raycasts on the entity's own world, the
-     * client world here, and only reads blocks) with the distance from our position, unrounded
-     * ({@link RawExplosion}). Only the budget reads it, so it is not measured with the budget off.
-     */
-    private double rawSelfDamage(Vec3d explosion) {
-        if (!selfBudget.get()) return RawExplosion.UNKNOWN;
-        ClientPlayerEntity p = mc.player;
-        return ServerValues.rawSelfDamage(Math.sqrt(p.squaredDistanceTo(explosion)),
-            ExplosionImpl.calculateReceivedDamage(explosion, p));
+            !outOfRange(pos, crystal.getBlockPos(), false));
     }
 
     private static Map<String, Double> damageTo(Iterable<PlayerEntity> against, Vec3d pos, BlockPos base) {
@@ -770,17 +704,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             main == Items.BOW || off == Items.BOW,
             ServerValues.amplifier(weakness != null, weakness == null ? 0 : weakness.getAmplifier()),
             ServerValues.amplifier(strength != null, strength == null ? 0 : strength.getAmplifier()),
-            mainBreaks, hotbarBreaks || mainBreaks, shielding());
-    }
-
-    /**
-     * Whether we are using an item that blocks attacks: a raised shield, even before its block delay has passed
-     * ({@code LivingEntity.getBlockingItem} waits for it; the server's count may differ from ours). Our hurt
-     * cooldown is then never credited.
-     */
-    private boolean shielding() {
-        ClientPlayerEntity p = mc.player;
-        return p.isUsingItem() && p.getActiveItem().get(DataComponentTypes.BLOCKS_ATTACKS) != null;
+            mainBreaks, hotbarBreaks || mainBreaks);
     }
 
     /** Meteor's {@code isValidWeaknessItem} (lines 877-879). */
@@ -843,8 +767,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             }
             return !entity.isSpectator();
         });
-        return Optional.of(new Candidate(base.asLong(), damage, self.getAsDouble(), true, crystalsInBox, other,
-            rawSelfDamage(pos)));
+        return Optional.of(new Candidate(base.asLong(), damage, self.getAsDouble(), true, crystalsInBox, other));
     }
 
     // Acting

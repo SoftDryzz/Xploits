@@ -31,15 +31,7 @@ final class Crystals {
 
     static CrystalTick.Hands with(CrystalTick.Hands h, boolean gapple, boolean bow) {
         return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), gapple, bow,
-            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened(),
-            h.shielding());
-    }
-
-    /** The same hands, blocking with a shield. */
-    static CrystalTick.Hands shielding(CrystalTick.Hands h) {
-        return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), h.gappleInHand(),
-            h.bowInHand(), h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(),
-            h.hotbarBreaksWeakened(), true);
+            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened());
     }
 
     static CrystalTick.Hands weakened(int weakness, int strength, boolean mainHandBreaks, boolean hotbarBreaks) {
@@ -67,28 +59,17 @@ final class Crystals {
         return new CrystalSeen(id, pos, damage, self, 3, true);
     }
 
-    /** As {@link #crystal(int, double, double)}, with the raw damage to you ({@link RawExplosion}). */
-    static CrystalSeen crystalRaw(int id, double damage, double self, double raw) {
-        return crystal(id, 1000L + id, damage, self, raw);
-    }
-
-    static CrystalSeen crystal(int id, long pos, double damage, double self, double raw) {
-        return new CrystalSeen(id, pos, Map.of(ENEMY, damage), self, 3, true, raw);
-    }
-
     /** The same crystal measured again, now dealing this damage to the enemy. */
     static CrystalSeen dealing(CrystalSeen c, double damage) {
-        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.selfDamage(), c.distance(), c.inBreakRange(),
-            c.rawSelfDamage());
+        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.selfDamage(), c.distance(), c.inBreakRange());
     }
 
     static CrystalSeen outOfBreakRange(CrystalSeen c) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.distance(), false, c.rawSelfDamage());
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.distance(), false);
     }
 
     static CrystalSeen at(CrystalSeen c, double distance) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange(),
-            c.rawSelfDamage());
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange());
     }
 
     /** A spot in range with nothing in its box, dealing {@code damage} to the enemy. */
@@ -96,23 +77,16 @@ final class Crystals {
         return new Candidate(pos, Map.of(ENEMY, damage), self, true, Set.of(), false);
     }
 
-    /** As {@link #spot(long, double, double)}, with the raw damage to you ({@link RawExplosion}). */
-    static Candidate spot(long pos, double damage, double self, double raw) {
-        return new Candidate(pos, Map.of(ENEMY, damage), self, true, Set.of(), false, raw);
-    }
-
     static Candidate spot(long pos, Map<String, Double> damage, double self) {
         return new Candidate(pos, damage, self, true, Set.of(), false);
     }
 
     static Candidate boxed(Candidate c, Set<Integer> crystals, boolean otherEntity) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.inRange(), crystals, otherEntity,
-            c.rawSelfDamage());
+        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.inRange(), crystals, otherEntity);
     }
 
     static Candidate outOfRange(Candidate c) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), false, c.crystalsInBox(), c.otherEntityInBox(),
-            c.rawSelfDamage());
+        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), false, c.crystalsInBox(), c.otherEntityInBox());
     }
 
     static Tick tick(long n) {

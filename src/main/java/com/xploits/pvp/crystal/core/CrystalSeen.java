@@ -18,23 +18,13 @@ import java.util.Map;
  * @param distance     the distance from your feet to the crystal, as {@code DamageUtils} measures it
  * @param inBreakRange whether it is within break range (break-range, or break-walls-range when the eye
  *                     raycast hits a wall, lines 1164-1171)
- * @param rawSelfDamage its raw damage to you, unrounded, before difficulty, shield and armour
- *                     ({@link RawExplosion}), or {@link RawExplosion#UNKNOWN}: what our hurt cooldown compares
- *                     ({@link HurtWindow}); Meteor's checks never read it
  */
 public record CrystalSeen(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
-                          boolean inBreakRange, double rawSelfDamage) {
+                          boolean inBreakRange) {
     public CrystalSeen {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
         Damage.check(selfDamage, "self damage");
         if (!Double.isFinite(distance) || distance < 0) throw new IllegalArgumentException("distance " + distance);
-        RawExplosion.check(rawSelfDamage, "raw self damage");
-    }
-
-    /** One whose raw damage to you was not measured: never credited. */
-    public CrystalSeen(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
-                       boolean inBreakRange) {
-        this(id, pos, targetDamage, selfDamage, distance, inBreakRange, RawExplosion.UNKNOWN);
     }
 
     /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */
