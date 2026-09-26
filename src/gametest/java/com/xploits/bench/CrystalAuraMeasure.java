@@ -1,9 +1,11 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.Settle;
+import com.xploits.bench.core.SettleVerification;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.crystal.core.RiskLevel;
+import com.xploits.pvp.recorder.core.FightRecord;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
@@ -13,6 +15,7 @@ import net.minecraft.entity.decoration.EndCrystalEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -40,6 +43,11 @@ import java.util.function.Supplier;
  * neither our health plus absorption nor the sparring's nor its pops changing. Nothing can happen after that, so the run ends there
  * with the numbers it would have had at 30 s, and says so in one log line.
  *
+ * <p>With {@code -Pbench.verifySettle} (the system property {@value #VERIFY_SETTLE}) a run that settles does not
+ * end: its metrics are snapshotted at the first settled tick, it runs on to 30 s, and its final metrics must equal
+ * the snapshot and it must stay settled to the end ({@link SettleVerification}); anything else is ERROR, naming
+ * what changed.
+ *
  * <p>Metrics: {@code damage_dealt}, {@code sparring_pops}, {@code first_pop_s} (only in a run that
  * popped), {@code no_pop_runs} (1 for a run without a pop), {@code self_damage}, {@code self_pops},
  * {@code min_health} and {@code placements_per_s}, the placements over the nominal 30 s even when the run
@@ -48,6 +56,8 @@ import java.util.function.Supplier;
  */
 final class CrystalAuraMeasure implements Scenario {
     private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
+    /** The system property {@code -Pbench.verifySettle} sets (build.gradle.kts). */
+    static final String VERIFY_SETTLE = "xploits.bench.verify-settle";
 
     private final String name;
     private final Class<? extends Module> aura;
@@ -183,7 +193,7 @@ final class CrystalAuraMeasure implements Scenario {
             throw new BenchException(other.getSimpleName() + " was on before T0");
         }
         run.start();
-        waitOut(bench);
+        SettleVerification verification = waitOut(bench);
         if (aura == CrystalAuraPlusPlus.class) {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
@@ -196,39 +206,84 @@ final class CrystalAuraMeasure implements Scenario {
         if (sparring.damageTaken() > sparring.rawDamage() + 1e-3) {
             throw new BenchException("the sparring lost more health than it was dealt");
         }
+        Metrics metrics = metrics(sparring, run.selfDamage(), run.selfPops(), run.minHealth(), run.crystalsPlaced());
+        if (verification != null) verify(verification, metrics);
+        return metrics;
+    }
+
+    /** The run's metrics from their parts; the same for the close and for a settle's snapshot. */
+    private Metrics metrics(Sparring.Stats sparring, double selfDamage, int selfPops, double minHealth, int crystalsPlaced) {
         Metrics metrics = new Metrics()
             .put(Metrics.DAMAGE_DEALT, sparring.damageTaken())
             .put(Metrics.SPARRING_POPS, sparring.pops());
         if (sparring.firstPopTick() >= 0) metrics.put(Metrics.FIRST_POP_S, sparring.firstPopTick() / 20.0);
         return metrics
             .put(Metrics.NO_POP_RUNS, sparring.pops() == 0 ? 1 : 0)
-            .put(Metrics.SELF_DAMAGE, run.selfDamage())
-            .put(Metrics.SELF_POPS, run.selfPops())
-            .put(Metrics.MIN_HEALTH, run.minHealth())
-            .put(Metrics.PLACEMENTS_PER_S, (double) run.crystalsPlaced() / seconds());
+            .put(Metrics.SELF_DAMAGE, selfDamage)
+            .put(Metrics.SELF_POPS, selfPops)
+            .put(Metrics.MIN_HEALTH, minHealth)
+            .put(Metrics.PLACEMENTS_PER_S, SettleVerification.perNominalSecond(crystalsPlaced, seconds()));
     }
 
     /**
      * The run's {@link #seconds()}, tick by tick, or less once it has settled ({@link Settle}); a run that cannot
-     * settle waits them in one go, as before.
+     * settle waits them in one go, as before. With {@value #VERIFY_SETTLE} set, a settled run runs on to the end
+     * and the verification is returned for the close; otherwise null.
      */
-    private void waitOut(Bench bench) {
+    private SettleVerification waitOut(Bench bench) {
         int nominal = seconds() * 20;
         Settle settle = new Settle(regeneration, bench.sparring().script().isStatic());
         if (!settle.possible()) {
             bench.ticks(nominal);
-            return;
+            return null;
         }
+        SettleVerification verification = Boolean.getBoolean(VERIFY_SETTLE) ? new SettleVerification() : null;
         settle.observe(observe(bench));
         for (int tick = 1; tick <= nominal; tick++) {
             bench.ticks(1);
-            if (settle.observe(observe(bench)) && tick < nominal) {
-                LOG.info("[bench] {} run {}: settled after {} s, the remaining {} s could not change anything", name, runs,
-                    String.format(Locale.ROOT, "%.2f", tick / 20.0),
-                    String.format(Locale.ROOT, "%.2f", (nominal - tick) / 20.0));
-                return;
+            boolean settled = settle.observe(observe(bench));
+            if (verification == null) {
+                if (settled && tick < nominal) {
+                    LOG.info("[bench] {} run {}: settled after {} s, the remaining {} s could not change anything", name,
+                        runs, seconds(tick), seconds(nominal - tick));
+                    return null;
+                }
+            } else if (tick < nominal || verification.settledAt() >= 0) {
+                // A settle on the last tick would cut nothing, so it arms nothing either.
+                if (verification.tick(tick, settled)) verification.snapshot(snapshot(bench).values());
             }
         }
+        return verification;
+    }
+
+    /**
+     * The metrics as the close would give them now, without ending the run: the sparring's counters, our lowest
+     * health so far, and the records so far ({@link MeasureRun#recordsSoFar}).
+     */
+    private Metrics snapshot(Bench bench) {
+        Sparring.Stats sparring = bench.sparringStats();
+        List<FightRecord> records = run.recordsSoFar();
+        return metrics(sparring, MeasureRun.selfDamage(records), MeasureRun.selfPops(records), run.minHealth(),
+            MeasureRun.crystalsPlaced(records));
+    }
+
+    /** A settled run's final metrics against its snapshot: the verified line, or ERROR naming what changed. */
+    private void verify(SettleVerification verification, Metrics atEnd) {
+        int at = verification.settledAt();
+        if (at < 0) return;
+        int nominal = seconds() * 20;
+        List<String> problems = verification.problems(atEnd.values());
+        if (!problems.isEmpty()) {
+            throw new BenchException(name + " run " + runs + " settled at " + seconds(at) + " s but "
+                + String.join("; ", problems));
+        }
+        LOG.info("[bench] {} run {}: settle verified at {} s, nothing changed in the remaining {} s", name, runs,
+            seconds(at), seconds(nominal - at));
+    }
+
+    /** Ticks as seconds, with two decimals. */
+    private static String seconds(int ticks) {
+        return String.format(Locale.ROOT, "%.2f", ticks / 20.0);
     }
 
     /**

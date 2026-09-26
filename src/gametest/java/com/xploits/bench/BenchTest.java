@@ -59,6 +59,9 @@ public class BenchTest implements FabricClientGameTest {
         BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline,
             config.only(), Scenarios.judged());
         LOG.info("[bench] {} scenario(s) selected; the baseline has {} scenario(s)", selected.size(), baseline.size());
+        if (Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE)) {
+            LOG.info("[bench] settle verification on: a settled crystal-aura run runs on to its full length and is checked");
+        }
         // Every planned scenario is in the report from the start, PENDING: a client that stops mid-bench
         // leaves a report that says so, and the Gradle side (benchVerify) fails on it.
         report.plan(selected);

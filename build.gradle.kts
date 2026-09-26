@@ -65,6 +65,8 @@ loom.runs.named("clientGameTest") {
     property("xploits.bench.out", layout.buildDirectory.dir("bench").get().asFile.absolutePath)
     project.findProperty("bench.only")?.let { property("xploits.bench.only", it.toString()) }
     if (project.hasProperty("bench.updateBaseline")) property("xploits.bench.update-baseline", "true")
+    // R3-6: a settled crystal-aura run runs on to 30 s and must end with the metrics it had when it settled.
+    if (project.hasProperty("bench.verifySettle")) property("xploits.bench.verify-settle", "true")
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that

@@ -117,6 +117,21 @@ final class MeasureRun {
         return records;
     }
 
+    /**
+     * The fights recorded since T0 as the close would read them now, without closing the run
+     * ({@code -Pbench.verifySettle}, R3-6): the recorder is turned off, which saves the fight in progress as the
+     * close does, the new fights are read, and the recorder is turned back on, with no tick in between. The
+     * totals are summed over all the records, so the extra split changes none of them. Our health is still
+     * sampled.
+     */
+    List<FightRecord> recordsSoFar() {
+        if (!sampling) throw new BenchException("the records so far were read outside the run");
+        bench.recorder(false);
+        List<FightRecord> soFar = bench.newFights();
+        bench.recorder(true);
+        return soFar;
+    }
+
     /** Crystal placement packets sent from T0 to the close. */
     int placementsSent() {
         return placementsAtClose - placementsAtT0;
@@ -131,12 +146,11 @@ final class MeasureRun {
 
     /** Health lost to our own crystals: {@code before - after} of every damage event by SELF. */
     double selfDamage() {
-        return records().stream().flatMap(r -> r.damage().stream())
-            .filter(d -> d.by() == AttackerKind.SELF).mapToDouble(d -> d.before() - d.after()).sum();
+        return selfDamage(records());
     }
 
     int selfPops() {
-        return records().stream().mapToInt(r -> r.self().pops()).sum();
+        return selfPops(records());
     }
 
     double damageTaken() {
@@ -145,7 +159,23 @@ final class MeasureRun {
 
     /** Crystal placement packets the records counted. */
     int crystalsPlaced() {
-        return records().stream().mapToInt(r -> r.self().crystalsPlaced()).sum();
+        return crystalsPlaced(records());
+    }
+
+    /** {@link #selfDamage()} over {@code records}. */
+    static double selfDamage(List<FightRecord> records) {
+        return records.stream().flatMap(r -> r.damage().stream())
+            .filter(d -> d.by() == AttackerKind.SELF).mapToDouble(d -> d.before() - d.after()).sum();
+    }
+
+    /** {@link #selfPops()} over {@code records}. */
+    static int selfPops(List<FightRecord> records) {
+        return records.stream().mapToInt(r -> r.self().pops()).sum();
+    }
+
+    /** {@link #crystalsPlaced()} over {@code records}. */
+    static int crystalsPlaced(List<FightRecord> records) {
+        return records.stream().mapToInt(r -> r.self().crystalsPlaced()).sum();
     }
 
     private List<FightRecord> records() {
