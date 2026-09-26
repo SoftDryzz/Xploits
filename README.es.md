@@ -218,7 +218,7 @@ Luego `.xploits find <ítem>` te dice dónde estaba.
 
 ### `console` — ver lo que hace el addon en una ventana aparte
 
-Abre una ventana de terminal con el logo XTO2002 arriba, el estado del juego debajo y el registro de
+Abre una ventana de terminal con el logo de Xploits arriba, el estado del juego debajo y el registro de
 todo lo que dicen los módulos de Xploits. Para tenerla en la otra pantalla mientras juegas, o para
 leer después qué pasó.
 

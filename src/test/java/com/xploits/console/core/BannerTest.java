@@ -12,19 +12,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BannerTest {
-    private static final List<String> ART = Collections.nCopies(13, "X".repeat(99) + Ansi.RESET);
+    private static final List<String> ART = Collections.nCopies(12, "X".repeat(99) + Ansi.RESET);
 
     @Test
     void theRealResourceIsValidAndIsTheLogo() throws IOException {
         List<String> art = Banner.load();
-        assertEquals(13, art.size());
+        assertEquals(12, art.size());
         int widest = art.stream().mapToInt(Banner::visibleWidth).max().orElse(0);
         assertTrue(widest >= 90 && widest <= 100, "logo width: " + widest);
     }
 
     @Test
     void validateRejectsWhatIsUnusable() {
-        assertThrows(IllegalArgumentException.class, () -> Banner.validate(ART.subList(0, 12)));
+        assertThrows(IllegalArgumentException.class, () -> Banner.validate(ART.subList(0, 11)));
         List<String> withClear = new ArrayList<>(ART);
         withClear.set(3, "\u001b[2J" + Ansi.RESET);
         assertThrows(IllegalArgumentException.class, () -> Banner.validate(withClear));
@@ -43,7 +43,7 @@ class BannerTest {
 
     @Test
     void withoutRoomTheNameGoesOnOneRow() {
-        List<String> text = List.of(Ansi.color(Ansi.CYAN) + "XTO2002" + Ansi.RESET);
+        List<String> text = List.of(Ansi.color(Ansi.PURPLE) + "Xploits" + Ansi.RESET);
         assertEquals(text, Banner.choose(ART, 99, 40));
         assertEquals(text, Banner.choose(ART, 100, 39));
     }

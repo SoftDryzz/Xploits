@@ -18,7 +18,7 @@ class ScreenFrameTest {
     private static final Catalog EN = Catalog.load(Language.EN, p -> {
         throw new AssertionError(p);
     });
-    private static final List<String> ART = Collections.nCopies(13, "X".repeat(99) + Ansi.RESET);
+    private static final List<String> ART = Collections.nCopies(12, "X".repeat(99) + Ansi.RESET);
     private static final GameSnapshot SNAPSHOT = new GameSnapshot("minecraft:overworld", 2, 1, 64, 90, null, null,
         20.0, 20, 64, 12, 4, 1, List.of(new GameSnapshot.ModuleStatus("auto-pvp", true, "SUPERFICIE")), Language.ES);
     private static final Heartbeat.GameState ALIVE = new Heartbeat.GameState.Alive();
@@ -48,11 +48,11 @@ class ScreenFrameTest {
         List<String> f = paint(110, 46);
         assertEquals(45, f.size());
         assertEquals("X".repeat(99), f.get(0));
-        assertEquals("X".repeat(99), f.get(12));
-        assertEquals("─".repeat(110), f.get(13));
-        assertEquals("dimensión overworld · jugadores cargados 2 · nuestros 1", f.get(14));
-        assertEquals("● auto-pvp SUPERFICIE", f.get(17));
-        assertEquals("─".repeat(110), f.get(18));
+        assertEquals("X".repeat(99), f.get(11));
+        assertEquals("─".repeat(110), f.get(12));
+        assertEquals("dimensión overworld · jugadores cargados 2 · nuestros 1", f.get(13));
+        assertEquals("● auto-pvp SUPERFICIE", f.get(16));
+        assertEquals("─".repeat(110), f.get(17));
         assertEquals("", f.get(41));
         assertEquals("─".repeat(110), f.get(42));
         assertEquals(Menu.line(ES), f.get(43));
@@ -73,7 +73,7 @@ class ScreenFrameTest {
     void withoutRoomForTheLogoTheNameIsShownAndSaid() {
         List<String> f = paint(99, 46);
         assertEquals(45, f.size());
-        assertEquals("XTO2002", f.get(0));
+        assertEquals("Xploits", f.get(0));
         assertEquals("filtro: todo · juego conectado · ocultas: logo", f.get(44));
     }
 
@@ -90,7 +90,7 @@ class ScreenFrameTest {
     void atTheMinimumNoDataIsLeft() {
         List<String> f = paint(80, 12);
         assertEquals(11, f.size());
-        assertEquals("XTO2002", f.get(0));
+        assertEquals("Xploits", f.get(0));
         assertEquals("─".repeat(80), f.get(1));
         assertEquals("─".repeat(80), f.get(8));
         assertEquals(Menu.line(ES), f.get(9));
@@ -109,15 +109,15 @@ class ScreenFrameTest {
     void anUnknownValueIsAQuestionMarkNeverZero() {
         List<String> f = stripColor(ScreenFrame.compose(input(110, 46, GameSnapshot.withoutPlayer(List.of(), Language.ES), ALIVE,
             List.of(), LogFilter.ALL, false, 0)));
-        assertEquals("dimensión ? · jugadores cargados ? · nuestros ?", f.get(14));
-        assertEquals("vida ? · armadura ? · en barra: obsidiana ? · cristales ? · telarañas ? · yunques ?", f.get(16));
+        assertEquals("dimensión ? · jugadores cargados ? · nuestros ?", f.get(13));
+        assertEquals("vida ? · armadura ? · en barra: obsidiana ? · cristales ? · telarañas ? · yunques ?", f.get(15));
     }
 
     @Test
     void withNoSnapshotFromTheGame() {
         List<String> f = stripColor(ScreenFrame.compose(input(110, 46, null, new Heartbeat.GameState.NoData(), List.of(),
             LogFilter.ALL, false, 0)));
-        assertEquals("sin datos del juego todavía", f.get(14));
+        assertEquals("sin datos del juego todavía", f.get(13));
         assertEquals("filtro: todo · esperando al juego", f.get(44));
     }
 

@@ -20,6 +20,7 @@ public final class Ansi {
 
     public static final int CYAN = 45;
     public static final int MAGENTA = 199;
+    public static final int PURPLE = 129;
     public static final int WHITE = 231;
     public static final int YELLOW = 220;
     public static final int RED = 196;
