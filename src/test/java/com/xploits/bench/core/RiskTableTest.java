@@ -52,6 +52,21 @@ class RiskTableTest {
     }
 
     @Test
+    void theFightSituationsGetARowEachAfterTheOthers() {
+        // R3-5: each ca-<s>-regen the new pairs are judged against is a row of its own, in the bench's order.
+        List<String> names = List.of("ca-still", "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen");
+        List<Row> rows = names.stream().map(n -> new Row(n, medians(12.5, 18),
+            Map.of(SAFE, medians(10, 19), BALANCED, medians(11, 18.5), AGGRESSIVE, medians(12, 18)))).toList();
+        List<String> lines = RiskTable.lines(rows);
+        assertEquals(2 + names.size(), lines.size());
+        for (int i = 0; i < names.size(); i++) {
+            assertEquals("| " + names.get(i) + " | 12.50 | 10.00 | 11.00 | 12.00 | 18.00 | 19.00 | 18.50 | 18.00 |",
+                lines.get(2 + i));
+            assertFalse(PositionLike.in(lines.get(2 + i)), lines.get(2 + i));
+        }
+    }
+
+    @Test
     void noRowNoTable() {
         assertEquals(List.of(), RiskTable.lines(List.of()));
     }

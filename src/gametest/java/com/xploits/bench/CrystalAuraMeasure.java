@@ -24,7 +24,8 @@ import java.util.function.Supplier;
  * Round 2 (b)); those that run in the full bench are judged against each other too. crystal-aura++ runs at
  * the {@code risk} level its scenario names ({@link #plusPlus(String, String, Supplier, RiskLevel)}): the
  * {@code capp-X} ones at Safe, the default, and {@code capp-balanced-X} and {@code capp-aggressive-X} at those
- * levels (R2-5), each set and read back before T0.
+ * levels (R2-5), each set and read back before T0. The fight situations (R3-5: above, below, approach,
+ * strafe) run the same way, only as healing twins ({@link Scenarios}).
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *

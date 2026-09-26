@@ -94,6 +94,25 @@ class RecommendationTest {
     }
 
     @Test
+    void theFightSituationsJoinEachLevelsPairs() {
+        // R3-5: above, below, approach and strafe add a healing pair at each level. Safe then judges 9 pairs (the
+        // defender's not applicable), Balanced and Aggressive 8 each; one REJECT among the new pairs is a NO.
+        List<Judged> pairs = new ArrayList<>();
+        for (int i = 0; i < 4; i++) pairs.add(new Judged(SAFE, A));
+        pairs.add(new Judged(SAFE, N));
+        for (int i = 0; i < 4; i++) pairs.add(new Judged(BALANCED, A));
+        for (int i = 0; i < 4; i++) pairs.add(new Judged(AGGRESSIVE, A));
+        for (RiskLevel level : List.of(SAFE, BALANCED, AGGRESSIVE)) {
+            for (int s = 0; s < 4; s++) pairs.add(new Judged(level, level == BALANCED && s == 3 ? R : A));
+        }
+        assertEquals(List.of(
+                "capp Safe: YES (8 of 8 applicable; 1 not applicable)",
+                "capp Balanced: NO (7 of 8 applicable)",
+                "capp Aggressive: YES (8 of 8 applicable)"),
+            Recommendation.byLevel(pairs).stream().map(Recommendation::line).toList());
+    }
+
+    @Test
     void theLinesFollowTheLevelsOrderWhateverThePairsOrder() {
         List<Judged> pairs = List.of(new Judged(AGGRESSIVE, A), new Judged(SAFE, A), new Judged(BALANCED, R),
             new Judged(SAFE, A), new Judged(AGGRESSIVE, A), new Judged(BALANCED, A));

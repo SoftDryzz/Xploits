@@ -122,6 +122,10 @@ run, as against the defender). Still and circler also run as `-regen` pairs, wit
 regeneration on, closer to a real fight; every other scenario runs without it. The `capp-X` scenarios run
 crystal-aura++ at its default `risk` level, Safe; `capp-balanced-X` and `capp-aggressive-X`, for X in
 still, circler, still-regen and circler-regen, run it at Balanced and Aggressive against the same `ca-X`.
+Four fight situations run last, only with healing on, at every level: `above` (the enemy walks on a
+platform 3 blocks above our feet), `below` (in a pit 3 blocks below), `approach` (it walks at us from 8
+blocks to 3 and back, with fixed irregular pauses) and `strafe` (it zig-zags 3 blocks to each side, 5 blocks
+out); each as `ca-<s>-regen`, `capp-<s>-regen`, `capp-balanced-<s>-regen` and `capp-aggressive-<s>-regen`.
 `benchVerify` prints the verdicts as a second `bench: capp: …` line, then one strict recommendation per
 level: `bench: capp Safe: YES/NO (n of m applicable)`, then the same for Balanced and Aggressive (with
 `; k not applicable` when a pair of that level was not applicable, as the defender pair at Safe). A level
