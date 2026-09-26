@@ -451,6 +451,41 @@ pvp.state-out-of-resources=OUT OF RESOURCES
 pvp.posture-calm=CALM
 pvp.posture-threatened=THREATENED
 
+# crystal
+crystal.module-desc=Meteor's crystal-aura with its default settings, plus a self-damage budget: before placing or breaking one of your own crystals it adds up every crystal that can still hurt you, so it does not chain them into you. Does nothing while Meteor's crystal-aura is on.
+crystal.setting-target-range=Players within this many blocks are targets. Only players: Meteor's default also targets wardens and withers.
+crystal.setting-min-damage=Least damage a crystal must deal to the targets, added up over all of them, to be placed or broken. Face-placing lowers it to 1.5; fast-break always needs more than this.
+crystal.setting-max-damage=Most damage one crystal may deal to you, as in Meteor. The self-budget also counts the crystals already standing or on their way.
+crystal.setting-anti-suicide=Never places or breaks a crystal that would deal you as much as your health plus absorption, or more.
+crystal.setting-rotate=Faces the crystal server-side before hitting or placing it. Then it does one thing per tick: a break or a placement.
+crystal.setting-auto-switch=Normal: swaps to the crystals in your hotbar to place, and does not swap back. None: only places with crystals already in a hand. Meteor's Silent is left out.
+crystal.setting-no-gap-switch=With auto-switch Normal, does not place while you hold a golden apple, unless the offhand already holds crystals.
+crystal.setting-no-bow-switch=With auto-switch Normal, does not place while you hold a bow.
+crystal.setting-anti-weakness=With Weakness, first swaps to a hotbar item that can break a crystal; that time it does not hit.
+crystal.setting-swing-mode=How to swing when hitting or placing: Both, Packet (only the server sees it), Client (only you see it) or None.
+crystal.setting-place=Whether to place crystals.
+crystal.setting-place-range=How far from your feet a crystal may be placed, with nothing between your eyes and it.
+crystal.setting-place-walls-range=How far from your feet a crystal may be placed when a block is between your eyes and it. Meteor's walls-range in its Place group, renamed so it is not confused with the one for breaking.
+crystal.setting-face-place=Lowers min-damage to 1.5 while a target has face-place-health or less, or wears a piece at face-place-durability or less.
+crystal.setting-face-place-health=Health plus absorption of a target at or below which it face-places.
+crystal.setting-face-place-durability=Durability left, in percent, of a worn piece at or below which it face-places.
+crystal.setting-break=Whether to break crystals, yours and anyone else's.
+crystal.setting-break-range=How far from your feet a crystal may be hit, with nothing between your eyes and it.
+crystal.setting-break-walls-range=How far from your feet a crystal may be hit when a block is between your eyes and it. Meteor's walls-range in its Break group, renamed so it is not confused with the one for placing.
+crystal.setting-break-attempts=How many times a crystal is hit again before it is given up: with 2 it gets 3 hits, as in Meteor.
+crystal.setting-attack-frequency=Most hits in each window of 21 ticks (about a second).
+crystal.setting-fast-break=Hits a crystal the moment it appears, without waiting for the next tick, if it deals more than min-damage.
+crystal.setting-pause-on-use=What to pause while you use an item (eating, a bow) or hold the use key: Place, Break, Both or None.
+crystal.setting-pause-on-mine=What to pause while you break a block: Place, Break, Both or None.
+crystal.setting-pause-on-lag=Pauses placing and breaking while the server has not ticked for a second.
+crystal.setting-pause-modules=Pauses placing and breaking while any of these modules is on.
+crystal.setting-pause-health=Pauses placing and breaking at or below this much health plus absorption. Fast-break still runs, as in Meteor.
+crystal.setting-self-budget=Before placing a crystal, or breaking one of yours, adds up the damage of every crystal that can still hurt you: standing, just hit or about to appear. Off: Meteor's rules only. Someone else's crystals are always broken by Meteor's rules only.
+crystal.setting-reserve=Health plus absorption that must be left after every crystal that can still hurt you, to place another. Breaking one of yours only has to leave 2. Totems are never counted. At least 2.
+crystal.setting-safe-self-damage=Below the reserve, a placement that deals you this much or less is still allowed, as long as 2 health is left.
+crystal.meteor-aura-on=crystal-aura++ is doing nothing: Meteor's crystal-aura is on, and two auras would fight over the same crystals. Turn one of them off; this one stays on and starts by itself when Meteor's is off.
+crystal.status-late-own=\n  late crystals:  {count} of yours arrived after their wait ran out and were treated as someone else's (Meteor's rules, no budget)
+
 # profile
 profile.profile-unknown=No profile named {name}. Known: {list}.
 profile.profile-bad-name={name} is not a valid profile name: lowercase letters, digits and hyphens, 1 to 16 characters.
