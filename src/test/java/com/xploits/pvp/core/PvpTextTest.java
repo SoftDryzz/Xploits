@@ -65,6 +65,19 @@ class PvpTextTest {
     }
 
     @Test
+    void everyResourceIsNamedAndTheTwoNewOnesReadAsTheItems() {
+        for (Resource resource : Resource.values()) {
+            ES.render(Msg.of(PvpText.of(resource)));
+            EN.render(Msg.of(PvpText.of(resource)));
+        }
+        assertEquals("string", EN.render(Msg.of(PvpText.of(Resource.STRING))));
+        assertEquals("cuerda", ES.render(Msg.of(PvpText.of(Resource.STRING))));
+        assertEquals("slabs", EN.render(Msg.of(PvpText.of(Resource.SLABS))));
+        assertEquals("losas", ES.render(Msg.of(PvpText.of(Resource.SLABS))));
+        assertEquals(PvpText.MATERIAL_OTHER, PvpText.of(Resource.PICKAXE), "a pickaxe is not material that runs out");
+    }
+
+    @Test
     void everyStateAndPostureHasAKeyInBothCatalogs() {
         for (CombatState state : CombatState.values()) {
             ES.render(Msg.of(PvpText.of(state)));

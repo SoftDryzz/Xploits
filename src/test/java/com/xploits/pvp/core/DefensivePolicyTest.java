@@ -138,16 +138,18 @@ class DefensivePolicyTest {
     }
 
     @Test
-    void theAntiModulesCostNothingSoNoShortageCanRemoveThem() {
-        // The three anti- modules do not place: they listen and react. With the inventory at zero they still come up.
+    void theAntiModulesPlaceSomethingSoWithAnEmptyHotbarTheyStayOff() {
+        // The three anti- modules react by placing a block: obsidian, string or a slab. With the inventory
+        // at zero the posture still asks for them, but the resource filter keeps them off and says why.
         CombatSnapshot broke = Snapshots.of(false, 0, 0, 0, false, false, false, 0, Map.of())
             .withDefense(4, 0, false, true);
         Plan plan = new CombatDirector().tick(broke, 6);
 
         assertEquals(CombatPosture.THREATENED, plan.posture());
-        assertTrue(plan.enable().contains(ManagedModules.ANTI_ANVIL));
-        assertTrue(plan.enable().contains(ManagedModules.ANTI_BED));
-        assertTrue(plan.enable().contains(ManagedModules.ANTI_ANCHOR));
-        assertFalse(plan.enable().contains(ManagedModules.HOLE_FILLER), "the hole-filler does place blocks");
+        for (ManagedModule module : List.of(ManagedModules.ANTI_ANVIL, ManagedModules.ANTI_BED,
+                ManagedModules.ANTI_ANCHOR, ManagedModules.HOLE_FILLER)) {
+            assertFalse(plan.enable().contains(module), module.name());
+            assertTrue(plan.skipped().stream().anyMatch(s -> s.module().equals(module)), module.name());
+        }
     }
 }

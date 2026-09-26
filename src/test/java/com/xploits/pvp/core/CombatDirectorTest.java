@@ -18,7 +18,8 @@ class CombatDirectorTest {
 
     private static final Map<Resource, Integer> FULL = Map.of(
         Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64,
-        Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1);
+        Resource.WEBS, 5, Resource.ANVILS, 3, Resource.PICKAXE, 1,
+        Resource.STRING, 8, Resource.SLABS, 8);
 
     /** A whole surround: the four horizontal neighbours of the target are mineable (M1). */
     private static final int SURROUNDED_SIDES = 4;
@@ -721,16 +722,17 @@ class CombatDirectorTest {
     }
 
     @Test
-    void withEightObsidianTheThreePlacersDoNotAllGetApproved() {
+    void withEightObsidianTheFourPlacersDoNotAllGetApproved() {
         // I3, the situation: in a hole, threatened and with the enemy on top of you, these come up at once:
-        // auto-trap (minimum 8), surround (4) and hole-filler (1). With eight obsidian they ask for thirteen
-        // between them, all three swap to the same stack on the same tick and none completes its
-        // job. The share-out is defensive before offensive and cheap before expensive.
+        // auto-trap (minimum 8), surround (4), hole-filler (1) and anti-anvil (1). With eight obsidian they
+        // ask for fourteen between them, all four swap to the same stack on the same tick and none
+        // completes its job. The share-out is defensive before offensive and cheap before expensive.
         Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(8));
 
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "the cheapest and the most defensive");
         assertTrue(enables(plan, ManagedModules.SURROUND), "1 + 4 fit in 8");
-        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "3 are left and it needs 8");
+        assertTrue(enables(plan, ManagedModules.ANTI_ANVIL), "1 + 4 + 1 fit in 8");
+        assertFalse(enables(plan, ManagedModules.AUTO_TRAP), "2 are left and it needs 8");
     }
 
     @Test
@@ -743,18 +745,21 @@ class CombatDirectorTest {
             .filter(skipped -> skipped.module().equals(ManagedModules.AUTO_TRAP))
             .map(Skipped::reason).findFirst().orElse(null);
         assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 8,
-                "others", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
-                "left", 3, "minimum", 8), reason,
+                "others", Msg.of(PvpText.JOIN_AND,
+                    "first", Msg.of(PvpText.JOIN_AND, "first", "hole-filler", "second", "surround"),
+                    "second", "anti-anvil"),
+                "left", 2, "minimum", 8), reason,
             "the reason has to name who took the obsidian");
     }
 
     @Test
-    void withEnoughObsidianForTheThreeOfThemTheThreeGoUp() {
-        Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(13));
+    void withEnoughObsidianForTheFourOfThemTheFourGoUp() {
+        Plan plan = settle(new CombatDirector(), inAHoleWithObsidian(14));
 
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
         assertTrue(enables(plan, ManagedModules.SURROUND));
-        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "13 is exactly 1 + 4 + 8");
+        assertTrue(enables(plan, ManagedModules.ANTI_ANVIL));
+        assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "14 is exactly 1 + 4 + 1 + 8");
     }
 
     @Test
@@ -764,6 +769,62 @@ class CombatDirectorTest {
         assertTrue(enables(plan, ManagedModules.HOLE_FILLER), "filling the hole costs one");
         assertFalse(enables(plan, ManagedModules.SURROUND), "3 are left and it needs 4");
         assertFalse(enables(plan, ManagedModules.AUTO_TRAP));
+    }
+
+    // --- the anti- modules place something too, and the filter now sees it ---
+
+    /** Threatened out of a hole with the enemy close, carrying exactly this. */
+    private static CombatSnapshot threatenedWith(Map<Resource, Integer> resources) {
+        return Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, resources)
+            .withTargetId("enemy")
+            .withDefense(14.0, 6.0, false, true);
+    }
+
+    private static Msg reasonFor(Plan plan, ManagedModule module) {
+        return plan.skipped().stream()
+            .filter(skipped -> skipped.module().equals(module))
+            .map(Skipped::reason).findFirst().orElse(null);
+    }
+
+    @Test
+    void antiBedWithoutStringIsSkippedForTheShortage() {
+        // AntiBed places string (InvUtils.findInHotbar(Items.STRING)): turned on without any it can
+        // place nothing, and saying it is on would be the silent failure §10 forbids.
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.STRING, 0)));
+
+        assertEquals(CombatPosture.THREATENED, plan.posture(), "precondition");
+        assertFalse(enables(plan, ManagedModules.ANTI_BED));
+        assertEquals(Msg.of(PvpText.SHORTAGE, "have", 0, "minimum", 1), reasonFor(plan, ManagedModules.ANTI_BED));
+    }
+
+    @Test
+    void antiBedWithOneStringComesUp() {
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.STRING, 1)));
+
+        assertTrue(enables(plan, ManagedModules.ANTI_BED));
+        assertFalse(skips(plan, ManagedModules.ANTI_BED));
+    }
+
+    @Test
+    void antiAnvilSharesTheObsidianAndHoleFillerGoesFirst() {
+        // AntiAnvil places obsidian between you and the anvil: it draws from the same stack as
+        // hole-filler, and with one block only one of them can have it. hole-filler is first in the
+        // share-out order.
+        Plan plan = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.OBSIDIAN, 1)));
+
+        assertTrue(enables(plan, ManagedModules.HOLE_FILLER));
+        assertFalse(enables(plan, ManagedModules.ANTI_ANVIL));
+        assertEquals(Msg.of(PvpText.SHORTAGE_SHARED, "have", 1, "others", "hole-filler", "left", 0, "minimum", 1),
+            reasonFor(plan, ManagedModules.ANTI_ANVIL));
+    }
+
+    @Test
+    void antiAnchorNeedsASlab() {
+        Plan without = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12)));
+        assertFalse(enables(without, ManagedModules.ANTI_ANCHOR));
+
+        Plan with = settle(new CombatDirector(), threatenedWith(Map.of(Resource.CRYSTALS, 12, Resource.SLABS, 1)));
+        assertTrue(enables(with, ManagedModules.ANTI_ANCHOR));
     }
 
     // --- I4: the defensive axis's resource memory does not freeze in NO_COMBAT ---

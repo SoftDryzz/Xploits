@@ -53,6 +53,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.SlabBlock;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -92,8 +93,8 @@ public class AutoPvp extends XploitsModule {
      * testInHotbar} see, and also the only range that counts for {@code PICKAXE} — {@code AutoCity}
      * looks for the pickaxe with {@code InvUtils.find} over the whole inventory, but rejects the result
      * if {@code !isHotbar()} and turns itself off with an error (spec §6). Counting the backpack for the
-     * pickaxe overestimated exactly the same silent failure this range fixes for the other
-     * five.
+     * pickaxe overestimated exactly the same silent failure this range fixes for the
+     * others.
      */
     private static final int HOTBAR_LAST_SLOT = 8;
     /** Last slot of the whole inventory: how far the single scan of {@link #inventory()} goes. */
@@ -786,8 +787,8 @@ public class AutoPvp extends XploitsModule {
             if (stack.getItem() == Items.TOTEM_OF_UNDYING) { totems++; continue; }
             Resource resource = resourceOf(stack);
             if (resource == null) continue;
-            // CRITICAL (spec §6): no resource counts outside the hotbar. The five modules that
-            // search with InvUtils.findInHotbar/testInHotbar already require it because they look no further;
+            // CRITICAL (spec §6): no resource counts outside the hotbar. The modules that search
+            // with InvUtils.findInHotbar/testInHotbar -the three anti- ones among them- already require it because they look no further;
             // auto-city looks for the pickaxe with InvUtils.find over the whole inventory, but rejects the
             // result if it is not in the hotbar (FindItemResult.isHotbar()) and turns itself off with an
             // error. Counting the backpack for the pickaxe would say "taken" of a module that turns itself off
@@ -798,12 +799,21 @@ public class AutoPvp extends XploitsModule {
         return new Inventory(counts, totems);
     }
 
+    /**
+     * Which resource the stack counts as. String and slabs are what {@code anti-bed} and
+     * {@code anti-anchor} place, and they are recognised exactly as those modules look for them in the
+     * {@code meteor-client:1.21.11-SNAPSHOT} sources: {@code Items.STRING}, and any item whose
+     * {@code Block.getBlockFromItem} is a {@code SlabBlock} -names checked with {@code javap} on the
+     * yarn 1.21.11+build.3 jar-.
+     */
     private static Resource resourceOf(ItemStack stack) {
         if (stack.getItem() == Items.END_CRYSTAL) return Resource.CRYSTALS;
         if (stack.getItem() == Items.OBSIDIAN) return Resource.OBSIDIAN;
         if (stack.getItem() == Items.COBWEB) return Resource.WEBS;
         if (stack.getItem() == Items.ANVIL) return Resource.ANVILS;
+        if (stack.getItem() == Items.STRING) return Resource.STRING;
         if (stack.getItem() == Items.NETHERITE_PICKAXE || stack.getItem() == Items.DIAMOND_PICKAXE) return Resource.PICKAXE;
+        if (Block.getBlockFromItem(stack.getItem()) instanceof SlabBlock) return Resource.SLABS;
         return null;
     }
 

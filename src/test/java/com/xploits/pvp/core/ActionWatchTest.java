@@ -65,8 +65,9 @@ class ActionWatchTest {
 
     @Test
     void thePickaxeUserAndTheAntiModulesAreLeftOut() {
-        // auto-city uses a pickaxe, which is not consumed; the three anti- modules place nothing. Watching
-        // any of the four would mean warning of a failure every time they work well.
+        // auto-city uses a pickaxe, which is not consumed; the three anti- modules are reactive: they
+        // spend only when their threat shows up, so a still stack is them working. Watching any of the
+        // four would mean warning of a failure every time they work well.
         assertFalse(ActionWatch.watches(ManagedModules.AUTO_CITY), "auto-city uses a pickaxe, which does not go down");
         assertFalse(ActionWatch.watches(ManagedModules.ANTI_ANVIL));
         assertFalse(ActionWatch.watches(ManagedModules.ANTI_BED));
@@ -79,6 +80,20 @@ class ActionWatchTest {
             "six of the ten: the four offensive ones that spend and the two obsidian ones");
         assertEquals(List.of(Resource.CRYSTALS, Resource.OBSIDIAN, Resource.WEBS, Resource.ANVILS),
             ActionWatch.WATCHED_RESOURCES, "four stacks, and obsidian only once for the three");
+    }
+
+    @Test
+    void antiBedOnWithItsStringStillIsNotIdle() {
+        // anti-bed places string only when a bed can be put on you: with nobody trying, its string not
+        // moving for three seconds is the module waiting, not failing.
+        ActionWatch watch = new ActionWatch();
+        String antiBed = ManagedModules.ANTI_BED.name();
+        CombatSnapshot snapshot = with(Map.of(Resource.STRING, 5));
+
+        for (int tick = 0; tick < ActionWatch.IDLE_TICKS + 5; tick++) {
+            assertEquals(List.of(), watch.update(snapshot, Set.of(antiBed), Set.of(antiBed)), "tick " + tick);
+        }
+        assertEquals(List.of(), watch.idle());
     }
 
     @Test

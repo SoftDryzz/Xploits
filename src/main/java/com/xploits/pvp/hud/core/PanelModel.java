@@ -5,6 +5,7 @@ import com.xploits.pvp.core.CombatState;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.PvpText;
+import com.xploits.pvp.core.Resource;
 import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
@@ -138,10 +139,14 @@ public final class PanelModel {
             in.obsidian() < obsidianNeed ? Tone.WARN : Tone.NORMAL));
     }
 
-    /** The obsidian minimum of the enabled module that needs the most of it, or 0 if none is enabled. */
+    /**
+     * The obsidian minimum of the enabled module that needs the most of it, or 0 if none is enabled.
+     * The consumers come from the catalog, so {@code anti-anvil} counts as the fourth one.
+     */
     private static int obsidianNeed(List<String> enabled) {
         int need = 0;
-        for (ManagedModule module : List.of(ManagedModules.AUTO_TRAP, ManagedModules.SURROUND, ManagedModules.HOLE_FILLER)) {
+        for (ManagedModule module : ManagedModules.ALL) {
+            if (module.needs() != Resource.OBSIDIAN) continue;
             if (enabled.contains(module.name())) need = Math.max(need, module.minimum());
         }
         return need;
@@ -166,6 +171,8 @@ public final class PanelModel {
             case "obsidian" -> PvpText.MATERIAL_OBSIDIAN;
             case "webs" -> PvpText.MATERIAL_WEBS;
             case "anvils" -> PvpText.MATERIAL_ANVILS;
+            case "string" -> PvpText.MATERIAL_STRING;
+            case "slabs" -> PvpText.MATERIAL_SLABS;
             default -> PvpText.MATERIAL_OTHER;
         };
     }

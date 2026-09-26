@@ -24,15 +24,17 @@ import java.util.List;
  * were winning.
  */
 public final class ManagedModules {
-    // The last parameter is turnsItselfOff (spec §7): crystal-aura and auto-web only turn off
+    // The fourth parameter is turnsItselfOff (spec §7): crystal-aura and auto-web only turn off
     // because the player turns them off by hand; the other three offensive ones can turn themselves
     // off without the player touching them -not all three for the same reason, nor all by default: see
     // the table in spec §7-, and ModuleLedger needs to know so as not to mistake that shutdown for a manual one.
-    public static final ManagedModule CRYSTAL_AURA = new ManagedModule("crystal-aura", Resource.CRYSTALS, 1, false);
-    public static final ManagedModule AUTO_TRAP = new ManagedModule("auto-trap", Resource.OBSIDIAN, 8, true);
-    public static final ManagedModule AUTO_WEB = new ManagedModule("auto-web", Resource.WEBS, 1, false);
-    public static final ManagedModule AUTO_ANVIL = new ManagedModule("auto-anvil", Resource.ANVILS, 1, true);
-    public static final ManagedModule AUTO_CITY = new ManagedModule("auto-city", Resource.PICKAXE, 1, true);
+    // The last one is reactive, false for all five: they act whenever there is a target, not only when
+    // a threat shows up.
+    public static final ManagedModule CRYSTAL_AURA = new ManagedModule("crystal-aura", Resource.CRYSTALS, 1, false, false);
+    public static final ManagedModule AUTO_TRAP = new ManagedModule("auto-trap", Resource.OBSIDIAN, 8, true, false);
+    public static final ManagedModule AUTO_WEB = new ManagedModule("auto-web", Resource.WEBS, 1, false, false);
+    public static final ManagedModule AUTO_ANVIL = new ManagedModule("auto-anvil", Resource.ANVILS, 1, true, false);
+    public static final ManagedModule AUTO_CITY = new ManagedModule("auto-city", Resource.PICKAXE, 1, true, false);
 
     /**
      * {@code surround} has had {@code turnsItselfOff == false} since critical C2, and that is what
@@ -54,22 +56,28 @@ public final class ManagedModules {
      * tick-. With {@code selfYChanged} in front, that tick is excluded and an observed shutdown can only
      * be yours. {@code toggle-on-death} does not count: dying turns off {@code auto-pvp} and releases everything.
      */
-    public static final ManagedModule SURROUND = new ManagedModule("surround", Resource.OBSIDIAN, 4, false);
+    public static final ManagedModule SURROUND = new ManagedModule("surround", Resource.OBSIDIAN, 4, false, false);
 
     // The four of the defensive axis (redesign §5). None of them immobilizes you: they cover specific
-    // ways of killing you. hole-filler is the only one that spends -it places blocks-, and one obsidian
-    // is enough for it: filling a single hole is already of some use, unlike auto-trap, which needs the
-    // whole trap. The three anti- ones place nothing, they only listen and react, so their resource is
-    // NONE with a minimum of zero and the resource filter can never take them away from you.
+    // ways of killing you. hole-filler places obsidian, and one is enough for it: filling a single hole
+    // is already of some use, unlike auto-trap, which needs the whole trap. The three anti- ones also
+    // place one block each when their threat shows up -checked in the meteor-client 1.21.11 sources,
+    // all three with InvUtils.findInHotbar-: anti-anvil obsidian between you and the anvil, anti-bed
+    // string where the bed would go and anti-anchor any slab over your head. One is enough for each.
+    // Without it they place nothing, so the resource filter treats them like any other placer.
+    //
+    // The three are reactive: they spend only when their threat appears, so a still stack says nothing
+    // about them and ActionWatch leaves them out. hole-filler is not: it fills holes near the target
+    // whenever there is one.
     //
     // All four have turnsItselfOff == false: they are passive, without a "done, I turn off" like
     // auto-trap's after placing the trap nor a toggle-on-* like surround's. Since §8 the flag
     // matters little: the ModuleLedger debounce already absorbs a single shutdown, so a
     // flicker that was not the player's would not count them as released either.
-    public static final ManagedModule HOLE_FILLER = new ManagedModule("hole-filler", Resource.OBSIDIAN, 1, false);
-    public static final ManagedModule ANTI_ANVIL = new ManagedModule("anti-anvil", Resource.NONE, 0, false);
-    public static final ManagedModule ANTI_BED = new ManagedModule("anti-bed", Resource.NONE, 0, false);
-    public static final ManagedModule ANTI_ANCHOR = new ManagedModule("anti-anchor", Resource.NONE, 0, false);
+    public static final ManagedModule HOLE_FILLER = new ManagedModule("hole-filler", Resource.OBSIDIAN, 1, false, false);
+    public static final ManagedModule ANTI_ANVIL = new ManagedModule("anti-anvil", Resource.OBSIDIAN, 1, false, true);
+    public static final ManagedModule ANTI_BED = new ManagedModule("anti-bed", Resource.STRING, 1, false, true);
+    public static final ManagedModule ANTI_ANCHOR = new ManagedModule("anti-anchor", Resource.SLABS, 1, false, true);
 
     public static final List<ManagedModule> ALL =
         List.of(CRYSTAL_AURA, AUTO_TRAP, AUTO_WEB, SURROUND, AUTO_ANVIL, AUTO_CITY,
@@ -89,10 +97,10 @@ public final class ManagedModules {
     /**
      * The order in which the modules share out a shared resource (important I3).
      *
-     * <p>Three placers live off the same obsidian stack -{@code hole-filler} (1),
-     * {@code surround} (4) and {@code auto-trap} (8)- and the resource filter compared them one by one
-     * against the total. In a hole, threatened and with the enemy on top of you, all three come up at
-     * once: with eight obsidian they ask for thirteen between them, all three swap to the same stack on
+     * <p>Four placers live off the same obsidian stack -{@code hole-filler} (1), {@code surround} (4),
+     * {@code anti-anvil} (1) and {@code auto-trap} (8)- and the resource filter compared them one by one
+     * against the total. In a hole, threatened and with the enemy on top of you, all four come up at
+     * once: with eight obsidian they ask for fourteen between them, all four swap to the same stack on
      * the same tick and <b>none completes its job</b>, without {@code skipped} saying anything.
      *
      * <p>The order is <b>defensive before offensive and cheap before expensive</b>, and the two rules
@@ -100,12 +108,15 @@ public final class ManagedModules {
      * which you are going to be crystalled (1) and locking in your feet (4) keep you alive and there
      * are still three to spare; spending them on the other one's trap (8) leaves you without both
      * things. And ordering by price is what gets the most complete jobs out of the same stack.
+     * {@code anti-anvil} goes after {@code surround} and before {@code auto-trap}: it is defensive and
+     * needs one of those three, but it only spends when an anvil is falling on you, while the hole and your feet are
+     * how you get crystalled every cycle.
      *
-     * <p>Those not listed here share with nobody -each one is the only consumer of its resource, and
-     * the three {@code anti-} ones consume nothing- so the order does not affect them.
+     * <p>Those not listed here share with nobody -each one is the only consumer of its resource:
+     * {@code anti-bed} the string, {@code anti-anchor} the slabs- so the order does not affect them.
      */
     public static final List<ManagedModule> SHARED_RESOURCE_PRIORITY =
-        List.of(HOLE_FILLER, SURROUND, AUTO_TRAP);
+        List.of(HOLE_FILLER, SURROUND, ANTI_ANVIL, AUTO_TRAP);
 
     /** Whether the module belongs to the defensive axis (§5), that is whether the posture asks for it and not the phase. */
     public static boolean isDefensive(ManagedModule module) {

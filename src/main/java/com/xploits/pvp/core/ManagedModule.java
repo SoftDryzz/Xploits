@@ -23,5 +23,9 @@ package com.xploits.pvp.core;
  *                       Its only self-shutdown with the default settings is {@code toggle-on-y-change},
  *                       and that case is excluded upstream, in the posture, which does not ask for it
  *                       while your Y is changing.
+ * @param reactive       whether it spends only when its threat appears — the three {@code anti-} ones:
+ *                       {@code anti-bed} places string only when a bed could go on you. On, with the
+ *                       material to spare and with the stack not moving is then them waiting, not
+ *                       failing, and {@link ActionWatch} leaves them out for that reason.
  */
-public record ManagedModule(String name, Resource needs, int minimum, boolean turnsItselfOff) {}
+public record ManagedModule(String name, Resource needs, int minimum, boolean turnsItselfOff, boolean reactive) {}

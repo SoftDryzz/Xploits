@@ -32,6 +32,8 @@ public enum PvpText implements MessageKey {
     MATERIAL_OBSIDIAN,
     MATERIAL_WEBS,
     MATERIAL_ANVILS,
+    MATERIAL_STRING,
+    MATERIAL_SLABS,
     MATERIAL_OTHER,
     IDLE_ALONE,
     IDLE_TOGETHER,
@@ -103,6 +105,19 @@ public enum PvpText implements MessageKey {
     /** How a defensive posture is named to the player. */
     public static PvpText of(CombatPosture posture) {
         return valueOf("POSTURE_" + posture.name());
+    }
+
+    /** How the material of a stack is named to the player; the pickaxe is not material that runs out. */
+    public static PvpText of(Resource resource) {
+        return switch (resource) {
+            case CRYSTALS -> MATERIAL_CRYSTALS;
+            case OBSIDIAN -> MATERIAL_OBSIDIAN;
+            case WEBS -> MATERIAL_WEBS;
+            case ANVILS -> MATERIAL_ANVILS;
+            case STRING -> MATERIAL_STRING;
+            case SLABS -> MATERIAL_SLABS;
+            case PICKAXE -> MATERIAL_OTHER;
+        };
     }
 
     @Override
