@@ -20,6 +20,11 @@ public enum Reason {
     NO_TARGETS,
     /** Weakness would stop the attack: swap to an item that hurts the crystal first (lines 826-838). */
     ANTI_WEAKNESS,
+    /**
+     * Allowed only because our own hurt cooldown makes this crystal's hit do nothing, so the budget counted no
+     * self damage for it (spec, Round 2 (a)); Meteor's checks still counted it in full.
+     */
+    HURT_COOLDOWN,
     /** Meteor's crystal-aura is on, so crystal-aura++ does nothing (spec §2, Q3); the adapter says this. */
     METEOR_AURA_ON
 }

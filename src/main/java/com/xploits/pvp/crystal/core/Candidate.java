@@ -18,13 +18,23 @@ import java.util.Set;
  *                         place-walls-range when the eye raycast hits a wall (lines 947-949, 1164-1171)
  * @param crystalsInBox    ids of the crystals intersecting the 1x2x1 box above the base
  * @param otherEntityInBox whether any other entity that is not a spectator intersects that box
+ * @param rawSelfDamage    the raw damage to you of a crystal here, unrounded, before difficulty, shield and
+ *                         armour ({@link RawExplosion}), or {@link RawExplosion#UNKNOWN}: what our hurt cooldown
+ *                         compares ({@link HurtWindow}); Meteor's checks never read it
  */
 public record Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, boolean inRange,
-                        Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+                        Set<Integer> crystalsInBox, boolean otherEntityInBox, double rawSelfDamage) {
     public Candidate {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
         Damage.check(selfDamage, "self damage");
         crystalsInBox = Set.copyOf(Objects.requireNonNull(crystalsInBox, "crystals in box"));
+        RawExplosion.check(rawSelfDamage, "raw self damage");
+    }
+
+    /** One whose raw damage to you was not measured: never credited. */
+    public Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, boolean inRange,
+                     Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+        this(pos, targetDamage, selfDamage, inRange, crystalsInBox, otherEntityInBox, RawExplosion.UNKNOWN);
     }
 
     /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */

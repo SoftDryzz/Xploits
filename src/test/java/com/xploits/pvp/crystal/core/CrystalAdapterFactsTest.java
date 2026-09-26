@@ -27,6 +27,13 @@ class CrystalAdapterFactsTest {
     }
 
     @Test
+    void aHugeLatencyFromTheServerDoesNotWrapAroundToANegativePing() {
+        // The server sends the player list latency; a negative ping would make placed() and the hurt cooldown throw.
+        assertEquals(42_949_673, CrystalBrain.pingTicks(Integer.MAX_VALUE));
+        assertTrue(CrystalBrain.pingTicks(Integer.MAX_VALUE - 10) >= 0);
+    }
+
+    @Test
     void aRefusalWarnsOnceWhenItStartsAndEndsWhenMeteorsAuraIsOff() {
         Refusal r = new Refusal();
         assertEquals(Change.NONE, r.update(false));

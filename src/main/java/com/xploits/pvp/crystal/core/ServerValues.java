@@ -17,7 +17,8 @@ import java.util.OptionalDouble;
  *   never ours to break (Meteor's max-damage and anti-suicide refuse it) and it fills the budget while it
  *   stands within reach, so nothing is added next to it;</li>
  *   <li>a crystal at no measurable distance is taken as next to us, so it counts;</li>
- *   <li>a negative effect amplifier counts as 0.</li>
+ *   <li>a negative effect amplifier counts as 0;</li>
+ *   <li>a raw damage to us that cannot be measured is unknown, and is never credited ({@link HurtWindow}).</li>
  * </ul>
  * Each of these makes ++ do less than it would otherwise, never more, so every action is still one Meteor
  * allows.
@@ -62,6 +63,19 @@ public final class ServerValues {
     /** Damage a standing crystal would deal to us; {@link #UNKNOWN_SELF_DAMAGE} if it is odd. */
     public static double crystalSelfDamage(double damage) {
         return valid(damage) ? damage : UNKNOWN_SELF_DAMAGE;
+    }
+
+    /**
+     * The raw damage to us of a crystal at this distance with this exposure ({@link RawExplosion#crystal}), or
+     * {@link RawExplosion#UNKNOWN} if either is odd: an unknown raw damage is never credited.
+     *
+     * @param distance from our position to the crystal
+     * @param exposure vanilla's {@code ExplosionImpl.calculateReceivedDamage}, from 0 to 1
+     */
+    public static double rawSelfDamage(double distance, double exposure) {
+        if (!valid(distance) || !(exposure >= 0 && exposure <= 1)) return RawExplosion.UNKNOWN;
+        double raw = RawExplosion.crystal(distance, exposure);
+        return valid(raw) ? raw : RawExplosion.UNKNOWN;
     }
 
     /** Our distance to a standing crystal; 0 if it is odd, so the crystal counts in the budget. */

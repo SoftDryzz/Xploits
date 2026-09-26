@@ -147,6 +147,30 @@ class CrystalTypesTest {
     }
 
     @Test
+    void aRawSelfDamageIsKnownAndValidOrUnknown() {
+        Map<String, Double> ok = Map.of("a", 1.0);
+        assertEquals(RawExplosion.UNKNOWN, new CrystalSeen(1, 1, ok, 1, 3, true).rawSelfDamage(), 0.0);
+        assertEquals(RawExplosion.UNKNOWN, new Candidate(1, ok, 1, true, Set.of(), false).rawSelfDamage(), 0.0);
+        assertEquals(RawExplosion.UNKNOWN, crystal(ok, 1, 3, 0, CrystalView.NEVER).rawSelfDamage(), 0.0);
+        assertEquals(12.5, new CrystalSeen(1, 1, ok, 1, 3, true, 12.5).rawSelfDamage(), 0.0);
+        assertEquals(12.5, new Candidate(1, ok, 1, true, Set.of(), false, 12.5).rawSelfDamage(), 0.0);
+        for (double odd : new double[] {Double.NaN, Double.POSITIVE_INFINITY, -0.5, -2}) {
+            assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, 1, 3, true, odd));
+            assertThrows(IllegalArgumentException.class, () -> new Candidate(1, ok, 1, true, Set.of(), false, odd));
+            assertThrows(IllegalArgumentException.class, () -> new CrystalView(1, 1, ok, 1, 3, true, true, 0,
+                CrystalView.NEVER, CrystalView.NEVER, odd));
+        }
+    }
+
+    @Test
+    void handsSayWhetherAShieldIsRaised() {
+        assertFalse(new CrystalTick.Hands(true, true, false, false, false, CrystalTick.Hands.NO_EFFECT,
+            CrystalTick.Hands.NO_EFFECT, false, false).shielding());
+        assertTrue(new CrystalTick.Hands(true, true, false, false, false, CrystalTick.Hands.NO_EFFECT,
+            CrystalTick.Hands.NO_EFFECT, false, false, true).shielding());
+    }
+
+    @Test
     void aTickRefusesDuplicatesAndImpossibleValues() {
         TargetView t = new TargetView("a", 3, 20, TargetView.NO_ARMOR, false, true, false);
         Candidate p = new Candidate(7, Map.of(), 1, true, Set.of(), false);

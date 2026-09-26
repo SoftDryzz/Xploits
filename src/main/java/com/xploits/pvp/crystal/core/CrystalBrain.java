@@ -19,7 +19,8 @@ import java.util.Set;
  * What crystal-aura++ does, tick by tick: Meteor's CrystalAura with its default settings (spec P1, Q1,
  * line numbers from the 1.21.11 sources), plus the self-damage budget (§1, P2-P4) and nothing else. Every
  * action it returns is one Meteor would also allow in the same state; the budget only refuses, and never
- * for breaking a crystal we did not place.
+ * for breaking a crystal we did not place. Our own hurt cooldown ({@link HurtWindow}, spec Round 2 (a)) only
+ * lets the budget count an action's self damage as 0; Meteor's checks always count it in full.
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -37,7 +38,10 @@ import java.util.Set;
  *   {@code Rotations} callback (Q1: the counter goes up there, line 891);</li>
  *   <li>{@link #placed(long, int)} when a placement packet goes out, in the same client tick;</li>
  *   <li>{@link #crystalAdded} on {@code EntityAddedEvent} for an end crystal (ownership, then fast-break),
- *   and {@link #crystalRemoved} on {@code EntityRemovedEvent}.</li>
+ *   and {@link #crystalRemoved} on {@code EntityRemovedEvent};</li>
+ *   <li>{@link #hurtByOwnCrystal} or {@link #hurtByOther} for each damage packet for us, read on the game
+ *   thread before anything else is measured: at the start of the pre-tick, before {@link #breakPhase}, and
+ *   before {@link #crystalAdded}. It is stamped with the last pre-tick, the one at or before it.</li>
  * </ol>
  * {@link #preTick} does both phases on one set of facts.
  */
@@ -76,6 +80,9 @@ public final class CrystalBrain {
     private final List<Late> late = new ArrayList<>();
 
     private long now = NO_TICK;
+    /** Our own hurt cooldown: the last hit by one of our crystals, and what cancelled it since. */
+    private final HurtWindow hurt = new HurtWindow();
+    private int cooldownCredits;
     private int ticksPassed;
     private int attacks;
     private int switchTimer;
@@ -152,6 +159,7 @@ public final class CrystalBrain {
         }
         if (now == NO_TICK || placeDone) throw new IllegalStateException("the place phase follows the break phase, once");
         placeDone = true;
+        hurt.health(now, health);
         if (placeGate) placeAction = placeBest(health, spots).orElse(null);
         conclude();
         return Optional.ofNullable(placeAction);
@@ -167,6 +175,7 @@ public final class CrystalBrain {
         long previous = now;
         now = tick.tick();
         decided = null;
+        hurt.health(now, tick.health());
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -237,7 +246,9 @@ public final class CrystalBrain {
         Objects.requireNonNull(hands, "hands");
         Damage.check(health, "health");
         // Before the first pre-tick Meteor has no targets and nothing pending; the crystal is seen then.
-        if (now == NO_TICK || known.containsKey(crystal.id())) return Optional.empty();
+        if (now == NO_TICK) return Optional.empty();
+        hurt.health(now, health);
+        if (known.containsKey(crystal.id())) return Optional.empty();
         Known k = appeared(crystal, now);
 
         if (!settings.fastBreak() || rotated || attacks >= settings.attackFrequency()) return Optional.empty();
@@ -245,13 +256,43 @@ public final class CrystalBrain {
         if (!(damage > settings.minDamage())) return Optional.empty();
         Reason reason = Reason.BUDGET_OFF;
         if (settings.selfBudget()) {
-            Verdict v = budget(health).breakAllowed(k.view(now));
+            // Sent before the next pre-tick: our hurt cooldown is judged there.
+            Verdict v = budget(health).breakAllowed(k.view(now), credited(now + 1, hands, k.seen.rawSelfDamage()));
             if (!v.allowed()) return Optional.empty();
             reason = v.reason();
         }
         Optional<Action> action = attack(k, hands, reason);
         action.ifPresent(a -> lastDecision = a.decision());
         return action;
+    }
+
+    /**
+     * A damage packet for us from an explosion caused by us ({@code player_explosion}; the adapter checked the
+     * type and the cause) whose direct source is this entity. If it is one of our crystals, known with its raw
+     * damage, it opens our hurt cooldown window ({@link HurtWindow}), stamped with the last pre-tick; anything
+     * else (a crystal we did not place, one no longer known) cancels the credit, as any other hit does.
+     *
+     * @param rttTicks your round trip in ticks, rounded up ({@link #pingTicks}); {@link #UNKNOWN_PING_TICKS} when
+     *                 unknown
+     */
+    public void hurtByOwnCrystal(int crystalId, int rttTicks) {
+        if (rttTicks < 0) throw new IllegalArgumentException("round trip " + rttTicks);
+        Known k = known.get(crystalId);
+        if (now == NO_TICK || k == null || !k.ours) {
+            hurt.otherHit();
+            return;
+        }
+        hurt.ownHit(now, k.seen.rawSelfDamage(), rttTicks);
+    }
+
+    /** Any other damage packet for us: no credit until one of our crystals hits us in full again. */
+    public void hurtByOther() {
+        hurt.otherHit();
+    }
+
+    /** How many actions only our hurt cooldown allowed ({@link Reason#HURT_COOLDOWN}), for this brain. */
+    public int cooldownCredits() {
+        return cooldownCredits;
     }
 
     /** An end crystal left the world (lines 747-752). */
@@ -291,7 +332,8 @@ public final class CrystalBrain {
      */
     public static int pingTicks(int latencyMs) {
         if (latencyMs < 0) return UNKNOWN_PING_TICKS;
-        return (latencyMs + TICK_MS - 1) / TICK_MS;
+        // In long: the server sends the latency, and near Integer.MAX_VALUE the int sum would wrap to a negative ping.
+        return (int) ((latencyMs + (long) TICK_MS - 1) / TICK_MS);
     }
 
     /**
@@ -396,7 +438,7 @@ public final class CrystalBrain {
             Reason reason = Reason.BUDGET_OFF;
             if (settings.selfBudget()) {
                 if (budget == null) budget = budget(tick.health());
-                Verdict v = budget.breakAllowed(s.item.view(now));
+                Verdict v = budget.breakAllowed(s.item.view(now), credited(now, tick.hands(), s.item.seen.rawSelfDamage()));
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
@@ -417,6 +459,7 @@ public final class CrystalBrain {
         rotateNow();
         k.attempts++;
         k.attackedTick = now;
+        if (reason == Reason.HURT_COOLDOWN) cooldownCredits++;
         return Optional.of(new Action(Decision.breakCrystal(k.seen.id(), reason), crystalHand(hands), false));
     }
 
@@ -465,10 +508,11 @@ public final class CrystalBrain {
                 // placed): only one crystal can come of the two, so the pending one does not count here.
                 if (pendingAt(pos)) budget = budget(health, pos);
                 else budget = shared != null ? shared : (shared = budget(health, null));
-                Verdict v = budget.placeAllowed(s.item.selfDamage());
+                Verdict v = budget.placeAllowed(s.item.selfDamage(), credited(now, hands, s.item.rawSelfDamage()));
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
+            if (reason == Reason.HURT_COOLDOWN) cooldownCredits++;
             rotateNow();
             decided = new Placement(s.item.pos(), s.item.selfDamage());
             boolean swap = settings.autoSwitch() == AutoSwitch.NORMAL && !hands.offhandCrystals() && !hands.mainHandCrystals();
@@ -513,6 +557,14 @@ public final class CrystalBrain {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.selfDamage);
         }
         return SelfBudget.of(now, health, views, selfDamages, settings.reserve(), settings.safeSelfDamage());
+    }
+
+    /**
+     * Whether our hurt cooldown lets the budget count this crystal's self damage as 0 for an action judged at
+     * pre-tick {@code at} ({@link HurtWindow}). Only the budget reads it; Meteor's checks never do.
+     */
+    private boolean credited(long at, CrystalTick.Hands hands, double rawSelfDamage) {
+        return hurt.credits(at, hands.shielding(), rawSelfDamage);
     }
 
     /** Records a budget answer for {@link #holding()}; true if allowed. */
@@ -617,7 +669,7 @@ public final class CrystalBrain {
         CrystalView view(long now) {
             long removed = removedTick != CrystalView.NEVER ? removedTick : reportedGone ? now : CrystalView.NEVER;
             return new CrystalView(seen.id(), seen.pos(), seen.targetDamage(), seen.selfDamage(), seen.distance(),
-                seen.inBreakRange(), ours, attempts, attackedTick, removed);
+                seen.inBreakRange(), ours, attempts, attackedTick, removed, seen.rawSelfDamage());
         }
     }
 }
