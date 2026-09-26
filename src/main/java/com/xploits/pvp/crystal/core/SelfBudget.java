@@ -28,7 +28,10 @@ import java.util.Set;
  * {@link Verdict#FOREIGN} for it without reading health, so no caller can get that wrong.
  */
 public final class SelfBudget {
-    /** R: what a placement must leave (setting {@code reserve}, the same as Meteor's pause-health). */
+    /**
+     * R: what a placement must leave, at the default {@code risk} level Safe (the same as Meteor's pause-health),
+     * and the {@code reserve} setting's default, which the level Custom reads ({@link RiskLevel}).
+     */
     public static final double DEFAULT_RESERVE = 5.0;
     /** F: what nothing we cause may go below. Fixed. */
     public static final double FLOOR = 2.0;
@@ -93,9 +96,10 @@ public final class SelfBudget {
      * @param health         your health plus absorption, read now
      * @param crystals       the crystals measured, standing or just gone
      * @param pending        the self damage of each placement sent whose crystal has not appeared yet
-     * @param reserve        R, the {@code reserve} setting ({@link #DEFAULT_RESERVE}); never below
-     *                       {@link #FLOOR}, because a placement could then leave less than the floor and
-     *                       its own crystal could never be broken. The setting's minimum is therefore 2
+     * @param reserve        R, from the {@code risk} level ({@link CrystalSettings#budgetReserve()}); never
+     *                       below {@link #FLOOR}, because a placement could then leave less than the floor
+     *                       and its own crystal could never be broken. So the lowest level keeps exactly F,
+     *                       and the {@code reserve} setting's minimum is 2
      * @param safeSelfDamage epsilon, the {@code safe-self-damage} setting ({@link #DEFAULT_SAFE_SELF_DAMAGE})
      */
     public static SelfBudget of(long now, double health, List<CrystalView> crystals, List<Double> pending,

@@ -458,8 +458,8 @@ class CrystalBrainBudgetTest {
 
     @Test
     void theReserveAndEpsilonAreSettings() {
-        // A reserve of 4: 9 - 5 = 4 >= 4.
-        assertDecision(Decision.place(1, Reason.WITHIN_BUDGET), new CrystalBrain().preTick(DEFAULTS.toBuilder().reserve(4).build(),
+        // A reserve of 4 (read under risk Custom): 9 - 5 = 4 >= 4.
+        assertDecision(Decision.place(1, Reason.WITHIN_BUDGET), new CrystalBrain().preTick(DEFAULTS.toBuilder().risk(RiskLevel.CUSTOM).reserve(4).build(),
             tick(1).health(9).candidates(spot(1, 10, 5)).build()));
         // epsilon 0.25: the self-0.5 spot is no longer tiny.
         assertNothing(new CrystalBrain().preTick(DEFAULTS.toBuilder().safeSelfDamage(0.25).build(),

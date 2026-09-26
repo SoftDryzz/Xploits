@@ -37,6 +37,7 @@ import static com.xploits.pvp.crystal.core.CrystalSetting.PLACE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.PLACE_RANGE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.PLACE_WALLS_RANGE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.RESERVE;
+import static com.xploits.pvp.crystal.core.CrystalSetting.RISK;
 import static com.xploits.pvp.crystal.core.CrystalSetting.ROTATE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.SAFE_SELF_DAMAGE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.SELF_BUDGET;
@@ -658,11 +659,150 @@ class CrystalSettingsCoverageTest {
         }
     }
 
+    // risk (R2-5): the level moves the reserve R and nothing else.
+
+    private static CrystalSettings level(RiskLevel risk) {
+        return DEFAULTS.toBuilder().risk(risk).build();
+    }
+
+    @Test
+    @Covers(RISK)
+    void eachLevelKeepsItsOwnReserve() {
+        assertEquals(RiskLevel.SAFE, DEFAULTS.risk());
+        assertEquals(5.0, DEFAULTS.budgetReserve(), 0.0);
+        assertEquals(5.0, level(RiskLevel.SAFE).budgetReserve(), 0.0);
+        assertEquals(3.5, level(RiskLevel.BALANCED).budgetReserve(), 0.0);
+        assertEquals(SelfBudget.FLOOR, level(RiskLevel.AGGRESSIVE).budgetReserve(), 0.0);
+        assertEquals(2.0, level(RiskLevel.AGGRESSIVE).budgetReserve(), 0.0);
+        // Only Custom reads the reserve setting; the others ignore it, whatever it says.
+        for (double custom : new double[] {2, 3.5, 5, 7.25, 15}) {
+            assertEquals(custom, RiskLevel.CUSTOM.reserve(custom), 0.0);
+            assertEquals(custom, DEFAULTS.toBuilder().risk(RiskLevel.CUSTOM).reserve(custom).build().budgetReserve(), 0.0);
+            assertEquals(5.0, RiskLevel.SAFE.reserve(custom), 0.0);
+            assertEquals(3.5, RiskLevel.BALANCED.reserve(custom), 0.0);
+            assertEquals(2.0, RiskLevel.AGGRESSIVE.reserve(custom), 0.0);
+            assertEquals(5.0, DEFAULTS.toBuilder().reserve(custom).build().budgetReserve(), 0.0);
+        }
+        assertThrows(NullPointerException.class, () -> DEFAULTS.toBuilder().risk(null).build());
+    }
+
+    @Test
+    @Covers(RISK)
+    void safePlacesDownToFiveLeft() {
+        // Health 10, self 5: 10 - 5 = 5 leaves R 5 exactly; 9.75 leaves 4.75.
+        assertPlaces(1, once(level(RiskLevel.SAFE), tick(1).health(10).candidates(spot(1, 6, 5))));
+        assertNothing(once(level(RiskLevel.SAFE), tick(1).health(9.75).candidates(spot(1, 6, 5))));
+    }
+
+    @Test
+    @Covers(RISK)
+    void balancedPlacesDownToThreeAndAHalfLeft() {
+        // Health 8.5, self 5: 8.5 - 5 = 3.5 leaves R 3.5 exactly, which Safe refuses; 8.25 leaves 3.25.
+        assertPlaces(1, once(level(RiskLevel.BALANCED), tick(1).health(8.5).candidates(spot(1, 6, 5))));
+        assertNothing(once(level(RiskLevel.BALANCED), tick(1).health(8.25).candidates(spot(1, 6, 5))));
+        assertNothing(once(level(RiskLevel.SAFE), tick(1).health(8.5).candidates(spot(1, 6, 5))));
+    }
+
+    @Test
+    @Covers(RISK)
+    void aggressivePlacesDownToTheFloorAndNoFurther() {
+        // R = F: health 7, self 5 leaves exactly 2, which Balanced refuses; 1.99 left is refused.
+        CrystalBrain b = new CrystalBrain();
+        Action a = only(b.preTick(level(RiskLevel.AGGRESSIVE), tick(1).health(7).candidates(spot(1, 6, 5)).build()));
+        assertEquals(Kind.PLACE, a.decision().kind());
+        assertEquals(Reason.WITHIN_BUDGET, a.decision().reason());
+        assertNothing(once(level(RiskLevel.BALANCED), tick(1).health(7).candidates(spot(1, 6, 5))));
+        CrystalBrain past = new CrystalBrain();
+        assertNothing(past.preTick(level(RiskLevel.AGGRESSIVE), tick(1).health(6.99).candidates(spot(1, 6, 5)).build()));
+        assertEquals(Reason.OVER_RESERVE, past.lastDecision().reason());
+        assertTrue(past.holding());
+        // Under the floor safe mode cannot help either: a harmless spot must still leave F. (pause-health 0,
+        // so Meteor's own pause does not decide it.) Health 2.25 with a crystal of self 0.5 standing: 1.75 left.
+        CrystalBrain floor = new CrystalBrain();
+        CrystalSettings low = level(RiskLevel.AGGRESSIVE).toBuilder().pauseHealth(0).build();
+        assertNothing(floor.preTick(low, tick(1).health(2.25).crystals(crystal(2, 1, 0.5)).candidates(spot(1, 6, 0)).build()));
+        assertEquals(Reason.BELOW_FLOOR, floor.lastDecision().reason());
+        assertPlaces(1, once(low, tick(1).health(2.5).crystals(crystal(2, 1, 0.5)).candidates(spot(1, 6, 0))));
+    }
+
+    @Test
+    @Covers(RISK)
+    void aggressivesOwnCrystalAtTheLimitCanStillBeBroken() {
+        // Placed at health 7 with self 5 (2 left); when it appears, breaking it leaves 7 - 0 - 5 = 2 >= F.
+        CrystalSettings aggressive = level(RiskLevel.AGGRESSIVE);
+        CrystalBrain fast = new CrystalBrain();
+        assertPlaces(9, fast.preTick(aggressive, tick(1).health(7).candidates(spot(9, 8, 5)).build()));
+        fast.placed(9, 0);
+        assertNothing(fast.preTick(aggressive, tick(2).health(7).build()));
+        assertEquals(Decision.breakCrystal(1, Reason.WITHIN_BUDGET),
+            fast.crystalAdded(aggressive, crystal(1, 9, 8, 5), 7, HANDS).orElseThrow().decision());
+
+        // The same crystal found at the next pre-tick instead (fast-break off).
+        CrystalSettings slow = aggressive.toBuilder().fastBreak(false).build();
+        CrystalBrain b = new CrystalBrain();
+        assertPlaces(9, b.preTick(slow, tick(1).health(7).candidates(spot(9, 8, 5)).build()));
+        b.placed(9, 0);
+        assertNothing(b.preTick(slow, tick(2).health(7).build()));
+        assertTrue(b.crystalAdded(slow, crystal(1, 9, 8, 5), 7, HANDS).isEmpty());
+        assertEquals(Decision.breakCrystal(1, Reason.WITHIN_BUDGET),
+            only(b.preTick(slow, tick(3).health(7).crystals(crystal(1, 9, 8, 5)).build())).decision());
+    }
+
+    @Test
+    @Covers({RISK, RESERVE})
+    void customUsesTheReserveSettingAndNoOtherLevelDoes() {
+        CrystalSettings custom = DEFAULTS.toBuilder().risk(RiskLevel.CUSTOM).reserve(15).build();
+        assertPlaces(1, once(custom, tick(1).candidates(spot(1, 6, 5))));
+        assertNothing(once(custom, tick(1).candidates(spot(1, 6, 5.25))));
+        // The same reserve under any other level is ignored: 20 - 5.25 = 14.75 is placed.
+        for (RiskLevel other : List.of(RiskLevel.SAFE, RiskLevel.BALANCED, RiskLevel.AGGRESSIVE)) {
+            assertPlaces(1, once(custom.toBuilder().risk(other).build(), tick(1).candidates(spot(1, 6, 5.25))));
+        }
+        // Custom with the reserve at 2 is Aggressive; with 5 it is Safe.
+        CrystalSettings two = custom.toBuilder().reserve(2).build();
+        assertPlaces(1, once(two, tick(1).health(7).candidates(spot(1, 6, 5))));
+        assertNothing(once(two, tick(1).health(6.99).candidates(spot(1, 6, 5))));
+        CrystalSettings five = custom.toBuilder().reserve(5).build();
+        assertPlaces(1, once(five, tick(1).health(10).candidates(spot(1, 6, 5))));
+        assertNothing(once(five, tick(1).health(9.75).candidates(spot(1, 6, 5))));
+    }
+
+    @Test
+    @Covers(RISK)
+    void aLevelChangedMidFightAppliesFromTheNextDecision() {
+        // One brain, one fight: health 8.5 and a spot of self 5, which leaves 3.5.
+        CrystalBrain b = new CrystalBrain();
+        assertNothing(b.preTick(level(RiskLevel.SAFE), tick(1).health(8.5).candidates(spot(1, 6, 5)).build()));
+        assertTrue(b.holding());
+        assertPlaces(1, b.preTick(level(RiskLevel.BALANCED), tick(2).health(8.5).candidates(spot(1, 6, 5)).build()));
+        assertFalse(b.holding());
+        // Back to Safe: the next decision refuses again.
+        assertNothing(b.preTick(level(RiskLevel.SAFE), tick(3).health(8.5).candidates(spot(1, 6, 5)).build()));
+        assertEquals(Reason.OVER_RESERVE, b.lastDecision().reason());
+        // Split phases, as the adapter drives them: the level given to the break phase is the one placing uses.
+        CrystalBrain split = new CrystalBrain();
+        assertTrue(split.breakPhase(level(RiskLevel.SAFE), tick(1).health(8.5).build()).isEmpty());
+        assertTrue(split.placePhase(8.5, List.of(spot(1, 6, 5))).isEmpty());
+        assertTrue(split.breakPhase(level(RiskLevel.BALANCED), tick(2).health(8.5).build()).isEmpty());
+        assertEquals(Kind.PLACE, split.placePhase(8.5, List.of(spot(1, 6, 5))).orElseThrow().decision().kind());
+    }
+
+    @Test
+    @Covers(RISK)
+    void theLevelNeverMattersWithTheBudgetOff() {
+        // Meteor's rules only: health 6.99 and self 5 is placed at every level.
+        for (RiskLevel risk : RiskLevel.values()) {
+            CrystalSettings off = METEOR.toBuilder().risk(risk).build();
+            Action a = only(new CrystalBrain().preTick(off, tick(1).health(6.99).candidates(spot(1, 6, 5)).build()));
+            assertEquals(Reason.BUDGET_OFF, a.decision().reason(), risk.toString());
+        }
+    }
+
     @Test
     @Covers(RESERVE)
     void reserveAtItsMinimumOfTwoPlacesDownToTwo() {
         // Health 7, self 5: 7 - 5 = 2 leaves the reserve 2 exactly, and not the default 5.
-        CrystalSettings two = DEFAULTS.toBuilder().reserve(2).build();
+        CrystalSettings two = DEFAULTS.toBuilder().risk(RiskLevel.CUSTOM).reserve(2).build();
         assertPlaces(1, once(two, tick(1).health(7).candidates(spot(1, 6, 5))));
         assertNothing(once(two, tick(1).health(7).candidates(spot(1, 6, 5.25))));
         assertNothing(once(DEFAULTS, tick(1).health(7).candidates(spot(1, 6, 5))));
@@ -673,7 +813,7 @@ class CrystalSettingsCoverageTest {
     @Covers(RESERVE)
     void aHighReserveKeepsMoreBack() {
         // Health 20, self 5: 20 - 5 = 15 leaves a reserve of 15; 5.25 does not.
-        CrystalSettings fifteen = DEFAULTS.toBuilder().reserve(15).build();
+        CrystalSettings fifteen = DEFAULTS.toBuilder().risk(RiskLevel.CUSTOM).reserve(15).build();
         assertPlaces(1, once(fifteen, tick(1).candidates(spot(1, 6, 5))));
         assertNothing(once(fifteen, tick(1).candidates(spot(1, 6, 5.25))));
         assertPlaces(1, once(DEFAULTS, tick(1).candidates(spot(1, 6, 5.25))));

@@ -527,7 +527,7 @@ public final class CrystalBrain {
         for (Pending p : pending) {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.selfDamage);
         }
-        return SelfBudget.of(now, health, views, selfDamages, settings.reserve(), settings.safeSelfDamage());
+        return SelfBudget.of(now, health, views, selfDamages, settings.budgetReserve(), settings.safeSelfDamage());
     }
 
     /** Records a budget answer for {@link #holding()}; true if allowed. */

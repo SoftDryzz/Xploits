@@ -16,6 +16,7 @@ import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
+import com.xploits.pvp.crystal.core.RiskLevel;
 import com.xploits.pvp.crystal.core.ServerValues;
 import com.xploits.pvp.crystal.core.SwingMode;
 import com.xploits.pvp.crystal.core.TargetView;
@@ -384,6 +385,13 @@ public class CrystalAuraPlusPlus extends XploitsModule {
 
     // Safety
 
+    private final Setting<RiskLevel> risk = sgSafety.add(new EnumSetting.Builder<RiskLevel>()
+        .name(CrystalSetting.RISK.id())
+        .description(riskDescription())
+        .defaultValue(CrystalSettings.defaults().risk())
+        .build()
+    );
+
     private final Setting<Boolean> selfBudget = sgSafety.add(new BoolSetting.Builder()
         .name(CrystalSetting.SELF_BUDGET.id())
         .description(Texts.startupText(CrystalSetting.SELF_BUDGET.text()))
@@ -397,7 +405,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         .defaultValue(CrystalSettings.defaults().reserve())
         .min(2)
         .sliderRange(2, 20)
-        .visible(() -> selfBudget.get())
+        .visible(() -> selfBudget.get() && risk.get() == RiskLevel.CUSTOM)
         .build()
     );
 
@@ -447,6 +455,13 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         forgetTick();
         lastRotationPos = null;
         refusal.update(false);
+    }
+
+    /** {@code risk}'s description: the setting's own, then what each level means, in the order the list shows them. */
+    private static String riskDescription() {
+        StringBuilder text = new StringBuilder(Texts.startupText(CrystalSetting.RISK.text()));
+        for (RiskLevel level : RiskLevel.values()) text.append(' ').append(Texts.startupText(level.text()));
+        return text.toString();
     }
 
     // What the rest of Xploits reads
@@ -583,6 +598,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             .pauseOnMine(pauseOnMine.get())
             .pauseOnLag(pauseOnLag.get())
             .pauseHealth(pauseHealth.get())
+            .risk(risk.get())
             .selfBudget(selfBudget.get())
             .reserve(reserve.get())
             .safeSelfDamage(safeSelfDamage.get())

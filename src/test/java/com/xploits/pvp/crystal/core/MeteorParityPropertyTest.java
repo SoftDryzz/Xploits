@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 
+import static com.xploits.pvp.crystal.core.CrystalSetting.RISK;
 import static com.xploits.pvp.crystal.core.CrystalSetting.SELF_BUDGET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,7 +39,7 @@ class MeteorParityPropertyTest {
     private static final int SPOTS = 12;
 
     @Test
-    @Covers(SELF_BUDGET)
+    @Covers({SELF_BUDGET, RISK})
     void withTheBudgetOffEveryDecisionIsMeteors() {
         int decisions = 0;
         for (long seed = 1; seed <= FIGHTS; seed++) decisions += new Fight(seed).run();
@@ -307,6 +308,7 @@ class MeteorParityPropertyTest {
                 .pauseOnMine(PauseMode.values()[r.nextInt(4)])
                 .pauseOnLag(r.nextBoolean())
                 .pauseHealth(oneOf(0, 5, 10, quarters(36)))
+                .risk(RiskLevel.values()[r.nextInt(RiskLevel.values().length)])
                 .selfBudget(false)
                 .reserve(2 + quarters(18))
                 .safeSelfDamage(quarters(2))
@@ -317,7 +319,7 @@ class MeteorParityPropertyTest {
         private CrystalSettings changeOne(CrystalSettings from) {
             CrystalSettings fresh = settings();
             CrystalSettings.Builder b = from.toBuilder();
-            switch (r.nextInt(21)) {
+            switch (r.nextInt(22)) {
                 case 0 -> b.targetRange(fresh.targetRange());
                 case 1 -> b.minDamage(fresh.minDamage());
                 case 2 -> b.maxDamage(fresh.maxDamage());
@@ -338,6 +340,7 @@ class MeteorParityPropertyTest {
                 case 17 -> b.pauseOnUse(fresh.pauseOnUse());
                 case 18 -> b.pauseOnMine(fresh.pauseOnMine());
                 case 19 -> b.pauseOnLag(!from.pauseOnLag());
+                case 20 -> b.risk(fresh.risk());
                 default -> b.pauseHealth(fresh.pauseHealth());
             }
             return b.build();

@@ -20,8 +20,8 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
                               boolean antiWeakness, boolean place, boolean facePlace, double facePlaceHealth,
                               double facePlaceDurability, boolean breakCrystals, int breakAttempts,
                               int attackFrequency, boolean fastBreak, PauseMode pauseOnUse, PauseMode pauseOnMine,
-                              boolean pauseOnLag, double pauseHealth, boolean selfBudget, double reserve,
-                              double safeSelfDamage) {
+                              boolean pauseOnLag, double pauseHealth, RiskLevel risk, boolean selfBudget,
+                              double reserve, double safeSelfDamage) {
     /**
      * Meteor's {@code auto-switch}, without Silent (Q6). The display names are Meteor's, which it saves and a
      * player types: never change them.
@@ -81,9 +81,18 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         Objects.requireNonNull(pauseOnUse, "pause on use");
         Objects.requireNonNull(pauseOnMine, "pause on mine");
         Damage.check(pauseHealth, "pause health");
+        Objects.requireNonNull(risk, "risk");
         Damage.check(reserve, "reserve");
         if (reserve < SelfBudget.FLOOR) throw new IllegalArgumentException("reserve " + reserve + " below the floor");
         Damage.check(safeSelfDamage, "safe self damage");
+    }
+
+    /**
+     * The reserve R the budget keeps: {@link #risk}'s, or the {@code reserve} setting when the level is
+     * {@link RiskLevel#CUSTOM}. {@link #reserve} itself is only that setting.
+     */
+    public double budgetReserve() {
+        return risk.reserve(reserve);
     }
 
     /** Meteor's defaults (lines 90-432) and the Safety group's (§2). */
@@ -119,6 +128,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         b.pauseOnMine = pauseOnMine;
         b.pauseOnLag = pauseOnLag;
         b.pauseHealth = pauseHealth;
+        b.risk = risk;
         b.selfBudget = selfBudget;
         b.reserve = reserve;
         b.safeSelfDamage = safeSelfDamage;
@@ -148,6 +158,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         private PauseMode pauseOnMine = PauseMode.NONE;
         private boolean pauseOnLag = true;
         private double pauseHealth = 5;
+        private RiskLevel risk = RiskLevel.SAFE;
         private boolean selfBudget = true;
         private double reserve = SelfBudget.DEFAULT_RESERVE;
         private double safeSelfDamage = SelfBudget.DEFAULT_SAFE_SELF_DAMAGE;
@@ -175,6 +186,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         public Builder pauseOnMine(PauseMode v) { pauseOnMine = v; return this; }
         public Builder pauseOnLag(boolean v) { pauseOnLag = v; return this; }
         public Builder pauseHealth(double v) { pauseHealth = v; return this; }
+        public Builder risk(RiskLevel v) { risk = v; return this; }
         public Builder selfBudget(boolean v) { selfBudget = v; return this; }
         public Builder reserve(double v) { reserve = v; return this; }
         public Builder safeSelfDamage(double v) { safeSelfDamage = v; return this; }
@@ -183,7 +195,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
             return new CrystalSettings(targetRange, minDamage, maxDamage, antiSuicide, rotate, autoSwitch,
                 noGapSwitch, noBowSwitch, antiWeakness, place, facePlace, facePlaceHealth, facePlaceDurability,
                 breakCrystals, breakAttempts, attackFrequency, fastBreak, pauseOnUse, pauseOnMine, pauseOnLag,
-                pauseHealth, selfBudget, reserve, safeSelfDamage);
+                pauseHealth, risk, selfBudget, reserve, safeSelfDamage);
         }
     }
 }

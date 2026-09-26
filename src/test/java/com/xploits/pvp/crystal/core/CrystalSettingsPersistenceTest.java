@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import static com.xploits.pvp.crystal.core.CrystalSetting.AUTO_SWITCH;
 import static com.xploits.pvp.crystal.core.CrystalSetting.PAUSE_ON_MINE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.PAUSE_ON_USE;
+import static com.xploits.pvp.crystal.core.CrystalSetting.RISK;
 import static com.xploits.pvp.crystal.core.CrystalSetting.SWING_MODE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -59,6 +60,19 @@ class CrystalSettingsPersistenceTest {
         assertEquals(List.of("Both", "Place", "Break", "None"), texts(PauseMode.values()));
         assertEquals(List.of("Both", "Packet", "Client", "None"), texts(SwingMode.values()));
         assertEquals(null, parse(AutoSwitch.values(), "Silent"));
+    }
+
+    @Test
+    @Covers(RISK)
+    void theRiskLevelLoadsWhatItSavedUnderItsOwnNames() {
+        roundTrips(RiskLevel.values());
+        assertEquals(List.of("Safe", "Balanced", "Aggressive", "Custom"), texts(RiskLevel.values()));
+        // Each value has its own description in the catalogs.
+        Set<CrystalText> described = new HashSet<>();
+        for (RiskLevel level : RiskLevel.values()) {
+            assertTrue(described.add(level.text()), level.toString());
+            assertEquals("RISK_" + level.name(), level.text().name());
+        }
     }
 
     private static List<String> texts(Enum<?>[] values) {

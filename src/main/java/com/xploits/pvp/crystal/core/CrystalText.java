@@ -32,9 +32,15 @@ public enum CrystalText implements MessageKey {
     SETTING_PAUSE_ON_LAG,
     SETTING_PAUSE_MODULES,
     SETTING_PAUSE_HEALTH,
+    SETTING_RISK,
     SETTING_SELF_BUDGET,
     SETTING_RESERVE,
     SETTING_SAFE_SELF_DAMAGE,
+    /** What each value of {@code risk} means ({@link RiskLevel#text()}), shown after the setting's own description. */
+    RISK_SAFE,
+    RISK_BALANCED,
+    RISK_AGGRESSIVE,
+    RISK_CUSTOM,
     /** Said once each time crystal-aura++ starts refusing because Meteor's crystal-aura is on (spec §2, P5). */
     METEOR_AURA_ON,
     /** The status line with the late own crystals (Q2, Q6); {@code {count}}. */
