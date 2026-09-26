@@ -146,6 +146,37 @@ class RecommendationTest {
             r.stream().map(Recommendation::line).toList());
     }
 
+    // Profiles (R3-9)
+
+    @Test
+    void theEverydayRunPrintsOnlyTheLevelItMeasured() {
+        // The everyday run measures Balanced only: Safe's and Aggressive's pairs did not run, and their lines would
+        // be a NO about nothing. They are named once instead, as not measured.
+        List<Judged> pairs = List.of(new Judged(SAFE, I), new Judged(SAFE, I), new Judged(BALANCED, A),
+            new Judged(BALANCED, A), new Judged(AGGRESSIVE, I));
+        assertEquals(List.of(
+                "capp Balanced: YES (2 of 2 applicable)",
+                "capp Safe, Aggressive: not measured in this run (use -Pbench.full)"),
+            Recommendation.lines(pairs, List.of(SAFE, AGGRESSIVE)));
+    }
+
+    @Test
+    void aRunThatMeasuresEveryLevelPrintsEveryLine() {
+        List<Judged> pairs = List.of(new Judged(SAFE, A), new Judged(BALANCED, R), new Judged(AGGRESSIVE, I));
+        assertEquals(List.of(
+                "capp Safe: YES (1 of 1 applicable)",
+                "capp Balanced: NO (0 of 1 applicable)",
+                "capp Aggressive: NO (0 of 1 applicable)"),
+            Recommendation.lines(pairs, List.of()));
+    }
+
+    @Test
+    void oneLevelNotMeasuredIsNamedAlone() {
+        assertEquals("capp Aggressive: not measured in this run (use -Pbench.full)",
+            Recommendation.notMeasured(List.of(AGGRESSIVE)));
+        assertFalse(PositionLike.in(Recommendation.notMeasured(List.of(SAFE, AGGRESSIVE))));
+    }
+
     @Test
     void aPairNeedsALevelAndAVerdict() {
         assertThrows(NullPointerException.class, () -> new Judged(null, A));

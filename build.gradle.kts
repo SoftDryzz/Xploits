@@ -67,17 +67,25 @@ loom.runs.named("clientGameTest") {
     if (project.hasProperty("bench.updateBaseline")) property("xploits.bench.update-baseline", "true")
     // R3-6: a settled crystal-aura run runs on to 30 s and must end with the metrics it had when it settled.
     if (project.hasProperty("bench.verifySettle")) property("xploits.bench.verify-settle", "true")
+    // R3-9: the everyday run (the default) plays crystal-aura++ at Balanced only; -Pbench.full plays everything
+    // and is the one a release needs. -Pbench.only wins over both.
+    if (project.hasProperty("bench.full")) property("xploits.bench.full", "true")
+    // R3-9: Meteor's ca-* results are served from build/bench/meteor-cache while its key (Meteor's jar, the
+    // Minecraft version, every file under src/gametest, the scenario) matches; -Pbench.fresh measures them again.
+    if (project.hasProperty("bench.fresh")) property("xploits.bench.fresh", "true")
+    property("xploits.bench.sources", file("src/gametest").absolutePath)
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that
-// stops mid-bench (a closed window, a crash) can exit 0. Each run starts from an empty build/bench, and
-// benchVerify, which always follows runClientGameTest, fails unless the report is there, every scenario
-// in it is PASS, DONE or SKIPPED, and the bench's final hygiene scan wrote "clean" into it.
+// stops mid-bench (a closed window, a crash) can exit 0. Each run starts from an empty build/bench but for
+// the Meteor cache (build/bench/meteor-cache, which its own key keeps valid), and benchVerify, which always
+// follows runClientGameTest, fails unless the report is there, every scenario in it is PASS, DONE or SKIPPED
+// (SKIPPED: not in the everyday run), and the bench's final hygiene scan wrote "clean" into it.
 val benchOut = layout.buildDirectory.dir("bench")
 val benchReport = benchOut.map { it.file("report-${project.version}.json") }
 
 tasks.named("runClientGameTest") {
-    doFirst { delete(benchOut) }
+    doFirst { delete(fileTree(benchOut) { exclude("meteor-cache/**") }) }
     finalizedBy("benchVerify")
 }
 
@@ -111,16 +119,24 @@ tasks.register("benchVerify") {
             null -> "hygiene not scanned"
             else -> "hygiene ERROR"
         }
-        // The scenario count, and which names -Pbench.only picked (or "full run"), so a partial run is
-        // visible here and not only in the report's own "only" field.
+        // The scenario count, and which names -Pbench.only picked, or which run it was ("everyday run" or
+        // "full run"), so a partial or everyday run is visible here and not only in the report's own fields.
         val only = root["only"]?.toString()
-        val scope = if (only != null) "only $only" else "full run"
+        val profile = root["profile"]?.toString()
+        val scope = if (only != null) "only $only" else if (profile == "everyday") "everyday run" else "full run"
+        val cached = scenarios.count { it["cached"] == true }
         val summary = (listOf("${scenarios.size} scenario(s), $scope") +
-            counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
+            counts.map { (status, n) -> "$n $status" + (if (status == "DONE" && cached > 0) " ($cached cached)" else "") } +
+            "$regressions regression(s)" + hygieneText).joinToString(", ")
         logger.lifecycle("bench: $summary")
+        // R3-9: only -Pbench.full measures every level; the everyday run is never the release gate.
+        if (only == null && profile == "everyday") {
+            logger.lifecycle("bench: everyday run — not valid for a release (use -Pbench.full)")
+        }
         // The crystal-aura++ verdicts ("capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE") and the
         // strict recommendation at each risk level over its pairs of the full bench ("capp Safe: YES/NO (n of m
-        // applicable)", then Balanced and Aggressive), when any scenario was judged: shown, never a reason to
+        // applicable)", then Balanced and Aggressive; in the everyday run only Balanced, then one "not measured"
+        // line for the others), when any scenario was judged: shown, never a reason to
         // fail (a death in a crystal-aura++ run fails as an ERROR above).
         root["compare"]?.let { logger.lifecycle("bench: $it") }
         (root["recommendation"] as? List<*>)?.forEach { logger.lifecycle("bench: $it") }

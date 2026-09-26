@@ -88,14 +88,33 @@ shipped jar does not change), and `./gradlew build` never opens a window or runs
   a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
   for whoever reads the report.
 
-`./gradlew runClientGameTest` opens a Minecraft window and takes about 36 minutes for the full bench. It
-wipes `build/bench` first, so every report in there is from that run alone; copy a report out of
-`build/bench` if you want to keep it, because the next run erases it.
+`./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
+cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you
+want to keep it, because the next run erases it. There are two profiles:
 
-- `-Pbench.only=<name,name>` runs only the named scenarios, for a quick check while working on one of
-  them. **A release needs a full run** (no `-Pbench.only`): a partial run cannot prove the scenarios it
-  skipped still pass, and the report itself records which names ran, so a partial run is never mistaken
-  for a full one.
+- **The everyday run** (the default, no flag) plays every CHECK, every Meteor `ca-*` MEASURE (served from
+  the cache while it is valid), `defense-attacker`, and crystal-aura++ at Balanced only (`capp-balanced-*`).
+  The `capp-*` scenarios at Safe and the `capp-aggressive-*` ones are experimental levels: the everyday run
+  lists them as SKIPPED, which is not a failure. With the cache warm it takes about 20 minutes.
+- **The full run**, `-Pbench.full`, plays every scenario, about an hour. **A release needs a full run**:
+  the everyday run never measures Safe or Aggressive, and `benchVerify` says so with the line
+  `bench: everyday run — not valid for a release (use -Pbench.full)`.
+- `-Pbench.only=<name,name>` runs only the named scenarios, whichever profile was asked for, for a quick
+  check while working on one of them. A partial run cannot prove the scenarios it skipped still pass
+  either, and the report itself records which names ran, so it is never mistaken for a full one.
+- `-Pbench.fresh` measures every `ca-*` again instead of serving it from the cache (and caches the new
+  results).
+
+**The Meteor cache.** Meteor's crystal-aura gives the same numbers run after run, so a `ca-*` MEASURE that
+finishes DONE keeps its runs in `build/bench/meteor-cache/<scenario>.json` (the build folder: never
+committed). Its key is a SHA-256 over the Meteor jar the game loaded, the Minecraft version, every file
+under `src/gametest/` (by sorted path, with its bytes) and the scenario's name. The next run whose key
+matches does not play that scenario: it reports it DONE with the cached runs, marked `"cached": true` with
+the date it was measured in the JSON report, `cached, measured <date>` in the markdown, `(cached)` in the
+client log and `(n cached)` in the summary lines. A changed Meteor, Minecraft or bench file, a missing file
+or one that cannot be read is a miss: the scenario is measured again and its file overwritten. Cached runs
+count exactly like measured ones for the verdicts, the baseline and the regressions. CHECKs are never
+cached, not even `capp-budget-off-parity`, which plays Meteor's aura inside.
 - `-Pbench.updateBaseline` merges every DONE MEASURE's medians from the run into the committed
   `bench/baseline.json`; a scenario that did not run, or did not finish DONE, keeps its existing entry.
 
@@ -103,10 +122,12 @@ wipes `build/bench` first, so every report in there is from that run alone; copy
 mid-bench (a closed window, a crash) can still exit 0, so the report is what settles it: `benchVerify`
 (which always follows `runClientGameTest`) reads it and prints a `bench: …` summary line. `BUILD
 SUCCESSFUL` plus a `bench:` line that says `full run` means the release gate passed (a line that says
-`only …` is a partial run). `benchVerify` fails the build on:
+`everyday run` is the everyday profile, and one that says `only …` a partial run). `benchVerify` fails the
+build on:
 
 - a missing report, or a report that lists no scenario;
-- any scenario that is PENDING, FAIL or ERROR;
+- any scenario that is PENDING, FAIL or ERROR (SKIPPED, a scenario the everyday run does not play, is not
+  a failure);
 - hygiene not clean (a report line looked like a position).
 
 **PENDING** means the client stopped before that scenario finished. Rerun the bench; never release on a
@@ -120,8 +141,9 @@ show them to whoever is about to release, before tagging.
 from the same run (ACCEPT, REJECT, INCOMPLETE, or NOT_APPLICABLE when neither aura placed a crystal in any
 run, as against the defender). Still and circler also run as `-regen` pairs, with natural health
 regeneration on, closer to a real fight; every other scenario runs without it. The `capp-X` scenarios run
-crystal-aura++ at its default `risk` level, Safe; `capp-balanced-X` and `capp-aggressive-X`, for X in
-still, circler, still-regen and circler-regen, run it at Balanced and Aggressive against the same `ca-X`.
+crystal-aura++ at Safe (the `risk` setting's own default is Balanced); `capp-balanced-X` and
+`capp-aggressive-X`, for X in still, circler, still-regen and circler-regen, run it at Balanced and
+Aggressive against the same `ca-X`.
 Four fight situations run last, only with healing on, at every level: `above` (the enemy walks on a
 platform 3 blocks above our feet), `below` (in a pit 3 blocks below), `approach` (it walks at us from 8
 blocks to 3 and back, with fixed irregular pauses) and `strafe` (it zig-zags 3 blocks to each side, 5 blocks
@@ -130,9 +152,11 @@ out); each as `ca-<s>-regen`, `capp-<s>-regen`, `capp-balanced-<s>-regen` and `c
 level: `bench: capp Safe: YES/NO (n of m applicable)`, then the same for Balanced and Aggressive (with
 `; k not applicable` when a pair of that level was not applicable, as the defender pair at Safe). A level
 says YES only when every applicable pair of that level is ACCEPT; each level counts only its own pairs. A
-pair that did not run counts as INCOMPLETE, so only a full run can say YES. None of these lines ever fails
-the build. The report's markdown also has a risk table: for each `ca-X`, the median damage dealt and min
-health of Meteor's aura and of crystal-aura++ at each level, side by side.
+pair that did not run counts as INCOMPLETE, so only a full run can say YES about every level. The everyday
+run prints only the Balanced line, over all of Balanced's pairs, then `bench: capp Safe, Aggressive: not
+measured in this run (use -Pbench.full)`. None of these lines ever fails the build. The report's markdown
+also has a risk table: for each `ca-X`, the median damage dealt and min health of Meteor's aura and of
+crystal-aura++ at each level, side by side (a dash for a level that did not run).
 
 The CHECK `capp-budget-off-parity` is different: it does block a release. It runs Meteor's crystal-aura and
 crystal-aura++ with `self-budget` off in turns on the still arena, 3 runs each, and fails when a median of

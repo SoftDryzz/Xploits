@@ -68,6 +68,24 @@ public record Recommendation(RiskLevel level, boolean yes, int accepted, int app
     }
 
     /**
+     * The report's recommendation lines (R3-9): one per level this run measured, over its own pairs
+     * ({@link #byLevel}), then, when the run's profile left levels out ({@link Profile#notMeasured}), one line
+     * naming them ({@link #notMeasured}) instead of a NO about pairs that were never meant to run.
+     */
+    public static List<String> lines(List<Judged> pairs, List<RiskLevel> notMeasured) {
+        List<Judged> measured = pairs.stream().filter(pair -> !notMeasured.contains(pair.level())).toList();
+        List<String> lines = new ArrayList<>(byLevel(measured).stream().map(Recommendation::line).toList());
+        if (!notMeasured.isEmpty()) lines.add(notMeasured(notMeasured));
+        return lines;
+    }
+
+    /** {@code capp Safe, Aggressive: not measured in this run (use -Pbench.full)}. */
+    public static String notMeasured(List<RiskLevel> levels) {
+        return LABEL + " " + String.join(", ", levels.stream().map(RiskLevel::toString).toList())
+            + ": not measured in this run (use -Pbench.full)";
+    }
+
+    /**
      * {@code capp Safe: YES (n of m applicable)}, or NO; {@code ; k not applicable} is added when a pair of
      * the level was not applicable.
      */

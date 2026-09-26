@@ -2,10 +2,14 @@ package com.xploits.bench;
 
 import com.xploits.bench.BenchReport.Run;
 import com.xploits.bench.BenchReport.Status;
+import com.xploits.bench.core.MeteorCache;
+import com.xploits.bench.core.Profile;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
+import net.fabricmc.loader.api.metadata.ModOrigin;
 import net.minecraft.client.gui.screen.world.WorldCreator;
 import net.minecraft.client.option.InactivityFpsLimit;
 import net.minecraft.registry.RegistryKeys;
@@ -18,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +34,11 @@ import java.util.Map;
  * at the end fails the task (an {@link AssertionError} ends the client with exit code 1) if any
  * scenario is FAIL or ERROR.
  *
+ * <p>Which scenarios it plays is the run's {@link Profile} (R3-9): the everyday run by default, the full run
+ * with {@code -Pbench.full}, the named ones with {@code -Pbench.only}. A {@code ca-*} MEASURE is served from
+ * the Meteor cache ({@link MeteorCache}) while its key matches, and cached again whenever it is measured DONE;
+ * {@code -Pbench.fresh} measures every one of them again.
+ *
  * <p>Nothing it prints carries a position: names, statuses and bench-written messages only. An
  * exception from outside the bench is described by its class alone.
  */
@@ -36,8 +46,16 @@ public class BenchTest implements FabricClientGameTest {
     private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
     private static final String BENCH_PACKAGE = "com.xploits.bench.";
 
-    /** What {@code build.gradle.kts} passes to the run as system properties. */
-    record Config(Path out, Path baseline, List<String> only, boolean updateBaseline) {
+    /**
+     * What {@code build.gradle.kts} passes to the run as system properties. {@code sources} is
+     * {@code src/gametest}, which the Meteor cache's key reads; null leaves the cache off.
+     */
+    record Config(Path out, Path baseline, List<String> only, boolean updateBaseline, boolean full, boolean fresh,
+                  Path sources) {
+        Profile profile() {
+            return Profile.of(full, !only.isEmpty());
+        }
+
         static Config fromSystemProperties() {
             String out = System.getProperty("xploits.bench.out");
             if (out == null || out.isBlank()) {
@@ -46,19 +64,25 @@ public class BenchTest implements FabricClientGameTest {
             String baseline = System.getProperty("xploits.bench.baseline");
             String only = System.getProperty("xploits.bench.only", "");
             List<String> names = Arrays.stream(only.split(",")).map(String::strip).filter(s -> !s.isEmpty()).toList();
+            String sources = System.getProperty("xploits.bench.sources");
             return new Config(Path.of(out), baseline == null ? null : Path.of(baseline), names,
-                Boolean.getBoolean("xploits.bench.update-baseline"));
+                Boolean.getBoolean("xploits.bench.update-baseline"), Boolean.getBoolean("xploits.bench.full"),
+                Boolean.getBoolean("xploits.bench.fresh"), sources == null || sources.isBlank() ? null : Path.of(sources));
         }
     }
 
     @Override
     public void runTest(ClientGameTestContext ctx) {
         Config config = Config.fromSystemProperties();
+        Profile profile = config.profile();
         List<Scenario> selected = select(Scenarios.all(), config.only());
+        List<Scenario> played = selected.stream().filter(s -> BenchReport.plays(profile, s)).toList();
         Baseline baseline = loadBaseline(config.baseline());
         BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline,
-            config.only(), Scenarios.judged());
-        LOG.info("[bench] {} scenario(s) selected; the baseline has {} scenario(s)", selected.size(), baseline.size());
+            config.only(), Scenarios.judged(), profile);
+        LOG.info("[bench] {}: {} scenario(s) selected, {} to play, {} skipped; the baseline has {} scenario(s)",
+            profile.label(), selected.size(), played.size(), selected.size() - played.size(), baseline.size());
+        MeteorCache.Key cacheKey = cacheKey(config);
         if (Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE)) {
             LOG.info("[bench] settle verification on: a settled crystal-aura run runs on to its full length and is checked");
         }
@@ -68,7 +92,24 @@ public class BenchTest implements FabricClientGameTest {
         write(report);
         keepFullFrameRate(ctx);
 
-        for (Scenario scenario : selected) {
+        Path cacheFolder = config.out().resolve(MeteorCache.FOLDER);
+        for (Scenario scenario : played) {
+            long start = System.nanoTime();
+            String key = cacheKey != null && cacheable(scenario) ? cacheKey.of(scenario.name()) : null;
+            Path cacheFile = key == null ? null : MeteorCache.file(cacheFolder, scenario.name());
+            if (key != null && !config.fresh()) {
+                MeteorCache.Lookup lookup = MeteorCache.read(cacheFile, scenario.name(), key, scenario.runs());
+                if (lookup.hit()) {
+                    report.cached(scenario, lookup.entry().runs(), lookup.entry().measured());
+                    write(report);
+                    LOG.info("[bench] {}: {} (cached, measured {}) in {} s", scenario.name(), report.status(scenario.name()),
+                        lookup.entry().measured(), seconds(start));
+                    continue;
+                }
+                LOG.info("[bench] {}: measured, not served from the Meteor cache ({})", scenario.name(), lookup.miss());
+            } else if (key != null) {
+                LOG.info("[bench] {}: measured, not served from the Meteor cache (-Pbench.fresh)", scenario.name());
+            }
             for (int i = 1; i <= scenario.runs(); i++) {
                 Run run = runOnce(ctx, scenario, config.out());
                 LOG.info("[bench] {} run {} of {}: {}{}", scenario.name(), i, scenario.runs(), run.status(),
@@ -76,6 +117,8 @@ public class BenchTest implements FabricClientGameTest {
                 report.add(scenario, run);
                 write(report);
             }
+            if (key != null && report.status(scenario.name()) == Status.DONE) store(cacheFile, scenario, key, report);
+            LOG.info("[bench] {}: {} in {} s", scenario.name(), report.status(scenario.name()), seconds(start));
         }
         write(report);
 
@@ -83,8 +126,65 @@ public class BenchTest implements FabricClientGameTest {
         hygiene(report, config);
 
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
-        report.recommendations().forEach(r -> LOG.info("[bench] {}", r.line()));
+        report.recommendations().forEach(line -> LOG.info("[bench] {}", line));
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
+    }
+
+    /**
+     * Only Meteor's own MEASUREs, {@code ca-*}, are cached: no CHECK (not even {@code capp-budget-off-parity},
+     * which plays Meteor's aura inside) and no crystal-aura++ scenario.
+     */
+    static boolean cacheable(Scenario scenario) {
+        return scenario.kind() == Scenario.Kind.MEASURE && scenario.name().startsWith("ca-") && scenario.risk().isEmpty()
+            && scenario.compareWith().isEmpty();
+    }
+
+    /**
+     * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version and every file under
+     * {@code src/gametest}; null, which leaves the cache off and every {@code ca-*} measured, when any of them
+     * cannot be read. Computed with {@code -Pbench.fresh} too: what that run measures is cached again.
+     */
+    private static MeteorCache.Key cacheKey(Config config) {
+        try {
+            if (config.sources() == null) throw new BenchException("xploits.bench.sources is not set");
+            Path jar = meteorJar();
+            MeteorCache.Key key = MeteorCache.Key.of(Files.readAllBytes(jar), version("minecraft"),
+                MeteorCache.sources(config.sources()));
+            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {} and src/gametest{}", jar.getFileName(),
+                version("minecraft"), config.fresh() ? "; -Pbench.fresh measures every ca-* again" : "");
+            return key;
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("[bench] Meteor cache off, every ca-* is measured: {}", describe(e));
+            return null;
+        }
+    }
+
+    /** The one jar Meteor was loaded from. */
+    private static Path meteorJar() {
+        ModContainer meteor = FabricLoader.getInstance().getModContainer("meteor-client")
+            .orElseThrow(() -> new BenchException("Meteor is not loaded"));
+        ModOrigin origin = meteor.getOrigin();
+        if (origin.getKind() != ModOrigin.Kind.PATH || origin.getPaths().size() != 1
+            || !Files.isRegularFile(origin.getPaths().getFirst())) {
+            throw new BenchException("Meteor is not loaded from one jar");
+        }
+        return origin.getPaths().getFirst();
+    }
+
+    /** Caches a {@code ca-*} MEASURE that finished DONE; a cache that cannot be written only costs a measure next time. */
+    private static void store(Path file, Scenario scenario, String key, BenchReport report) {
+        try {
+            MeteorCache.write(file, new MeteorCache.Entry(scenario.name(), key, LocalDate.now().toString(),
+                report.doneRuns(scenario.name())));
+            LOG.info("[bench] {}: cached for the next run", scenario.name());
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("[bench] {}: could not be cached: {}", scenario.name(), describe(e));
+        }
+    }
+
+    /** The seconds since {@code start}, one decimal. */
+    private static String seconds(long start) {
+        return String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - start) / 1e9);
     }
 
     /**
@@ -159,7 +259,10 @@ public class BenchTest implements FabricClientGameTest {
         }
     }
 
-    /** All the scenarios, or those named in {@code only}; a name that matches nothing is an error. */
+    /**
+     * All the scenarios, or those named in {@code only}; a name that matches nothing is an error. The run's
+     * profile then decides which of them it plays ({@link BenchReport#plays}).
+     */
     static List<Scenario> select(List<Scenario> all, List<String> only) {
         if (only.isEmpty()) return all;
         List<Scenario> selected = new ArrayList<>();
