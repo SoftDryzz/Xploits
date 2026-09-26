@@ -263,7 +263,8 @@ public final class Acceptance {
         return median(present(side, metric));
     }
 
-    private static double median(List<Double> values) {
+    /** The middle value, or the mean of the two middle ones. */
+    static double median(List<Double> values) {
         List<Double> sorted = values.stream().sorted().toList();
         int n = sorted.size();
         return n % 2 == 1 ? sorted.get(n / 2) : (sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2;

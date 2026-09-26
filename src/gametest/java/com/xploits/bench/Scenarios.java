@@ -19,7 +19,8 @@ public final class Scenarios {
         CrystalAuraMeasure cappStill = CrystalAuraMeasure.plusPlus("capp-still", "ca-still", Still::new);
         CrystalAuraMeasure cappCircler = CrystalAuraMeasure.plusPlus("capp-circler", "ca-circler", Circler::new);
         return List.of(new RecorderPopEnd(), new RecorderLost(), new RecorderOpponent(),
-            new AutoPvpEngages(), new AutoPvpEngagesCapp(), new ProfileDefensive(), new AutoPvpAntiResources(),
+            new AutoPvpEngages(), new AutoPvpEngagesCapp(), new CappBudgetOffParity(), new ProfileDefensive(),
+            new AutoPvpAntiResources(),
             new Panel(),
             caStill,
             caCircler,

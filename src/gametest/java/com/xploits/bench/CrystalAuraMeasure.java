@@ -1,6 +1,7 @@
 package com.xploits.bench;
 
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.crystal.core.CrystalSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
@@ -31,26 +32,37 @@ final class CrystalAuraMeasure implements Scenario {
     private final String compareWith;
     private final Supplier<Script> script;
     private final boolean regeneration;
+    /** crystal-aura++'s {@code self-budget}; always on but for the CHECK {@code capp-budget-off-parity}. */
+    private final boolean selfBudget;
     private MeasureRun run;
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
-                               String compareWith, Supplier<Script> script, boolean regeneration) {
+                               String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget) {
         this.name = name;
         this.aura = aura;
         this.other = other;
         this.compareWith = compareWith;
         this.script = script;
         this.regeneration = regeneration;
+        this.selfBudget = selfBudget;
     }
 
     /** Meteor's CrystalAura. */
     static CrystalAuraMeasure meteor(String name, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false);
+        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false, true);
     }
 
     /** crystal-aura++, judged against the Meteor scenario {@code compareWith} on the same arena and script. */
     static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false);
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false, true);
+    }
+
+    /**
+     * crystal-aura++ with {@code self-budget} off: Meteor's offense and nothing else, for the CHECK
+     * {@code capp-budget-off-parity} ({@link CappBudgetOffParity}), which does the judging.
+     */
+    static CrystalAuraMeasure plusPlusWithoutBudget(String name, Supplier<Script> script) {
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, null, script, false, false);
     }
 
     /** The suffix of a healing twin's name. */
@@ -63,7 +75,7 @@ final class CrystalAuraMeasure implements Scenario {
     CrystalAuraMeasure healing() {
         if (regeneration) throw new IllegalStateException(name + " already heals");
         return new CrystalAuraMeasure(name + HEALING, aura, other, compareWith == null ? null : compareWith + HEALING,
-            script, true);
+            script, true, selfBudget);
     }
 
     @Override
@@ -93,8 +105,18 @@ final class CrystalAuraMeasure implements Scenario {
 
     @Override
     public void arrange(Bench bench) {
-        if (aura == CrystalAura.class) MeasureRun.crystalAura(bench);
-        else MeasureRun.crystalAuraPlusPlus(bench);
+        if (aura == CrystalAura.class) {
+            MeasureRun.crystalAura(bench);
+        } else {
+            CrystalAuraPlusPlus plusPlus = MeasureRun.crystalAuraPlusPlus(bench);
+            if (!selfBudget) {
+                CrystalSetting budget = CrystalSetting.SELF_BUDGET;
+                bench.setting(plusPlus, budget.group().title(), budget.id(), false);
+                if (bench.fromClient(client -> (Boolean) plusPlus.settings.getGroup(budget.group().title()).get(budget.id()).get())) {
+                    throw new BenchException("crystal-aura++ kept its self-budget on");
+                }
+            }
+        }
         run = new MeasureRun(bench, aura);
         bench.onClient(client -> {
             Module module = Modules.get().get(other);

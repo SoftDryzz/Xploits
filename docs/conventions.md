@@ -88,7 +88,7 @@ shipped jar does not change), and `./gradlew build` never opens a window or runs
   a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
   for whoever reads the report.
 
-`./gradlew runClientGameTest` opens a Minecraft window and takes about 18 minutes for the full bench. It
+`./gradlew runClientGameTest` opens a Minecraft window and takes about 22 minutes for the full bench. It
 wipes `build/bench` first, so every report in there is from that run alone; copy a report out of
 `build/bench` if you want to keep it, because the next run erases it.
 
@@ -124,6 +124,13 @@ verdicts as a second `bench: capp: …` line and the strict recommendation as a 
 recommendation: YES/NO (n of m applicable pairs ACCEPT; k not applicable)`: YES only when every applicable
 pair is ACCEPT. A pair that did not run counts as INCOMPLETE, so only a full run can say YES. Neither line
 ever fails the build.
+
+The CHECK `capp-budget-off-parity` is different: it does block a release. It runs Meteor's crystal-aura and
+crystal-aura++ with `self-budget` off in turns on the still arena, 3 runs each, and fails when a median of
+damage dealt, sparring pops, self damage, min health or placements per second differs by more than the
+metric's noise floor or 15 % of Meteor's, whichever is larger. Without the budget, crystal-aura++ must be
+Meteor's aura, so any difference the `capp` pairs show comes from the budget alone. It also checks that the
+module shows exactly the settings its unit tests cover (`CrystalSetting`).
 
 `./gradlew benchVerify` alone re-checks an existing `build/bench` report without opening a window, for
 example right after a run that already finished.

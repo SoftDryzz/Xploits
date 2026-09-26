@@ -59,7 +59,7 @@ public interface Scenario {
 
     /**
      * T0 ({@link Bench#start}), the scenario's own steps, and the close ({@link Bench#finish}). A CHECK
-     * returns {@link Metrics#none()}.
+     * returns {@link Metrics#none()}, or the numbers of the run it judges, which the report lists with the run.
      */
     Metrics act(Bench bench);
 }

@@ -196,8 +196,9 @@ public class BenchTest implements FabricClientGameTest {
                 scenario.arrange(bench);
                 phase = "act";
                 Metrics metrics = scenario.act(bench);
+                // A CHECK's numbers, when it judged some, go to the report with its run.
                 run = scenario.kind() == Scenario.Kind.CHECK
-                    ? new Run(Status.PASS, null, Map.of())
+                    ? new Run(Status.PASS, null, metrics.values())
                     : new Run(Status.DONE, null, metrics.values());
             } catch (RuntimeException | AssertionError e) {
                 run = failure(scenario, phase, e);
