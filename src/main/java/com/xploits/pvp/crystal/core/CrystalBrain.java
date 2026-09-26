@@ -405,9 +405,9 @@ public final class CrystalBrain {
             Known k = known.get(c.id());
             if (k == null || !k.live()) continue;
             float damage = breakDamage(k, tick.health());
-            if (damage > 0) able.add(new Scored<>(k, damage));
+            if (damage > 0) able.add(new Scored<>(k, damage, k.seen.budgetSelfDamage()));
         }
-        able.sort(BY_DAMAGE);
+        able.sort(byDamage(settings.selfBudget()));
 
         SelfBudget budget = null;
         for (Scored<Known> s : able) {
@@ -469,9 +469,9 @@ public final class CrystalBrain {
             float damage = c.damageTo(targets);
             if (damage < minimum || boxTaken(c)) continue;
             // Meteor keeps a spot only if it beats the best so far, which starts at 0 (lines 927, 972, 982).
-            if (damage > 0) able.add(new Scored<>(c, damage));
+            if (damage > 0) able.add(new Scored<>(c, damage, c.budgetSelfDamage()));
         }
-        able.sort(BY_DAMAGE);
+        able.sort(byDamage(settings.selfBudget()));
 
         SelfBudget shared = null;
         for (Scored<Candidate> s : able) {
@@ -596,10 +596,20 @@ public final class CrystalBrain {
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
     }
 
-    /** Highest damage first; equal ones keep their order, so the first found wins as in Meteor (strict {@code >}). */
-    private static final Comparator<Scored<?>> BY_DAMAGE = (a, b) -> Float.compare(b.damage, a.damage);
+    /**
+     * Highest target damage first (Meteor's float, {@code Float.compare}). With the self-budget off, ties
+     * keep their original order, so the first spot found wins as in Meteor (strict {@code >}, lines 927,
+     * 972, 982). With it on, only among spots whose target damage is EXACTLY equal ({@code Float.compare
+     * == 0}; no epsilon window, so a spot with less target damage is never preferred) the tie is broken by
+     * {@code budgetSelfDamage} ascending — the crystal that hurts us least — and beyond that ties still
+     * keep their original order: both orders are stable sorts on the input list.
+     */
+    private static Comparator<Scored<?>> byDamage(boolean selfBudget) {
+        Comparator<Scored<?>> byTargetDamage = (a, b) -> Float.compare(b.damage, a.damage);
+        return selfBudget ? byTargetDamage.thenComparingDouble(s -> s.budgetSelfDamage) : byTargetDamage;
+    }
 
-    private record Scored<T>(T item, float damage) {}
+    private record Scored<T>(T item, float damage, double budgetSelfDamage) {}
 
     /** A placement decided this tick, with the self damage the budget counts for it. */
     private record Placement(long pos, double budgetSelfDamage) {}

@@ -661,8 +661,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         ClientPlayerEntity p = mc.player;
         double self = ServerValues.crystalSelfDamage(DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base));
         double distance = ServerValues.crystalDistance(PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z));
+        // With the budget off nothing reads the exact value, so the raycast it needs is skipped: budget-off
+        // decisions must stay identical to Meteor's.
+        double budgetSelf = selfBudget.get() ? ServerValues.budgetSelfDamage(self, exactSelfDamage(pos)) : self;
         return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self,
-            ServerValues.budgetSelfDamage(self, exactSelfDamage(pos)), distance, !outOfRange(pos, crystal.getBlockPos(), false));
+            budgetSelf, distance, !outOfRange(pos, crystal.getBlockPos(), false));
     }
 
     /**
@@ -672,7 +675,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * ({@code ExplosionImpl.calculateReceivedDamage}, which raycasts in our own, the client's, world); the
      * reductions are Meteor's, with the explosion source it uses (lines 97, 271-290). Distance from our feet
      * with no predicted movement, as Meteor measures it ({@link #PREDICT_MOVEMENT} is off). Only the budget
-     * reads it, through {@link ServerValues#budgetSelfDamage}, which keeps Meteor's value when this one is odd.
+     * reads it, through {@link ServerValues#budgetSelfDamage}, which keeps Meteor's value when this one is odd;
+     * its callers skip this raycast entirely when {@code self-budget} is off, so budget-off decisions stay
+     * identical to Meteor's.
      */
     private double exactSelfDamage(Vec3d explosion) {
         ClientPlayerEntity p = mc.player;
@@ -813,8 +818,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             return !entity.isSpectator();
         });
         double meteorSelf = self.getAsDouble();
+        // With the budget off nothing reads the exact value, so the raycast it needs is skipped: budget-off
+        // decisions must stay identical to Meteor's.
+        double budgetSelf = selfBudget.get() ? ServerValues.budgetSelfDamage(meteorSelf, exactSelfDamage(pos)) : meteorSelf;
         return Optional.of(new Candidate(base.asLong(), damage, meteorSelf,
-            ServerValues.budgetSelfDamage(meteorSelf, exactSelfDamage(pos)), true, crystalsInBox, other));
+            budgetSelf, true, crystalsInBox, other));
     }
 
     // Acting

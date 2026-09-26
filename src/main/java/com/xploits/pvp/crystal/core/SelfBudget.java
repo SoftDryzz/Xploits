@@ -176,11 +176,11 @@ public final class SelfBudget {
      * reserve ({@code health - C - self >= R}); otherwise, in safe mode, if the self damage is tiny and it
      * still leaves the floor ({@code self <= epsilon} and {@code health - C - self >= F}).
      */
-    public Verdict placeAllowed(double selfDamage) {
-        Damage.check(selfDamage, "self damage");
-        double left = health - worstCase() - selfDamage;
+    public Verdict placeAllowed(double budgetSelfDamage) {
+        Damage.check(budgetSelfDamage, "budget self damage");
+        double left = health - worstCase() - budgetSelfDamage;
         if (left >= reserve) return Verdict.ALLOWED;
-        if (selfDamage > safeSelfDamage) return Verdict.REFUSED_RESERVE;
+        if (budgetSelfDamage > safeSelfDamage) return Verdict.REFUSED_RESERVE;
         return left >= FLOOR ? Verdict.ALLOWED_SAFE : Verdict.REFUSED_FLOOR;
     }
 
