@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "xploits-gametest",
+  "version": "0.0.0",
+  "name": "Xploits in-game bench",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "com.xploits.bench.BenchTest"
+    ]
+  },
+  "depends": {
+    "xploits": "*",
+    "fabric-client-gametest-api-v1": "*"
+  }
+}

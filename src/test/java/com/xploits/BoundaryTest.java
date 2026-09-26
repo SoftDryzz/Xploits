@@ -137,7 +137,7 @@ class BoundaryTest {
 
     /**
      * Source path prefixes whose identifiers and main string literals are fully English (code-in-English
-     * design §8): every source under src/main/java and src/test/java.
+     * design §8): every source under src/main/java, src/test/java and src/gametest/java.
      */
     private static final List<String> ENGLISH = List.of("com/xploits/");
 
@@ -331,6 +331,8 @@ class BoundaryTest {
     );
 
     private static final Path TEST_SOURCES = Path.of("src", "test", "java");
+    /** The in-game bench: English like the rest, and checked the same way. */
+    private static final Path GAMETEST_SOURCES = Path.of("src", "gametest", "java");
     private static final Pattern STRIP = Pattern.compile(
         "\"\"\"(?:.|\\n)*?\"\"\"|\"(?:\\\\.|[^\"\\\\\\n])*\"|'(?:\\\\.|[^'\\\\\\n])*'|//[^\\n]*|/\\*.*?\\*/", Pattern.DOTALL);
     private static final Pattern IDENT = Pattern.compile("[A-Za-z_\\u00C0-\\u017F][A-Za-z0-9_\\u00C0-\\u017F]*");
@@ -355,7 +357,7 @@ class BoundaryTest {
     @Test
     void identifiersInEnglishPackagesHaveNoSpanishWords() throws IOException {
         List<String> found = new ArrayList<>();
-        for (Path root : List.of(SOURCES, TEST_SOURCES)) {
+        for (Path root : List.of(SOURCES, TEST_SOURCES, GAMETEST_SOURCES)) {
             sourcesUnder(root).forEach((path, text) -> {
                 if (!english(path)) return;
                 String code = STRIP.matcher(text).replaceAll(" ");
@@ -382,17 +384,19 @@ class BoundaryTest {
     @Test
     void mainStringLiteralsInEnglishPackagesHaveNoSpanishMarks() throws IOException {
         List<String> found = new ArrayList<>();
-        sourcesUnder(SOURCES).forEach((path, text) -> {
-            if (!english(path)) return;
-            String[] lines = text.split("\n");
-            for (int i = 0; i < lines.length; i++) {
-                if (lines[i].contains("// i18n: allowed")) continue;
-                Matcher m = STRING_LITERAL.matcher(lines[i]);
-                while (m.find()) {
-                    if (SPANISH_MARKS.matcher(m.group()).find()) found.add(path + ":" + (i + 1) + "  " + m.group());
+        for (Path root : List.of(SOURCES, GAMETEST_SOURCES)) {
+            sourcesUnder(root).forEach((path, text) -> {
+                if (!english(path)) return;
+                String[] lines = text.split("\n");
+                for (int i = 0; i < lines.length; i++) {
+                    if (lines[i].contains("// i18n: allowed")) continue;
+                    Matcher m = STRING_LITERAL.matcher(lines[i]);
+                    while (m.find()) {
+                        if (SPANISH_MARKS.matcher(m.group()).find()) found.add(path + ":" + (i + 1) + "  " + m.group());
+                    }
                 }
-            }
-        });
+            });
+        }
         assertEquals(List.of(), found, "Spanish text in code: player text belongs in the catalogs, the rest in English");
     }
 
