@@ -1,5 +1,6 @@
 package com.xploits.bench;
 
+import com.xploits.bench.core.CrystalRefill;
 import com.xploits.bench.core.Settle;
 import com.xploits.bench.core.SettleVerification;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
@@ -14,6 +15,12 @@ import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.decoration.EndCrystalEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.world.rule.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +46,11 @@ import java.util.function.Supplier;
  * strafe) run the same way, only as healing twins ({@link Scenarios}).
  *
  * <p>Each run turns the other aura off before T0, so only the aura under test acts.
+ *
+ * <p>From T0 to the end of the run the server tops the crystal stack in hotbar slot 0 back up to
+ * {@value CrystalRefill#FULL} after every tick (R3-7, {@link CrystalRefill}), for both auras, so no run runs out of
+ * crystals and ammunition never decides a number. The crystals the refills added are logged once per run, not a
+ * metric.
  *
  * <p>A run lasts 30 s, unless it settles first (R3-6, {@link Settle}): natural regeneration off (the scenario's
  * and the world's rule, read at T0, which must agree), a static script
@@ -74,8 +86,10 @@ final class CrystalAuraMeasure implements Scenario {
     /** crystal-aura++'s {@code risk} level; null for Meteor's aura. */
     private final RiskLevel risk;
     private MeasureRun run;
-    /** Runs arranged so far, the one in progress included: the {@code n} of the settle line. */
+    /** Runs arranged so far, the one in progress included: the {@code n} of the settle and refill lines. */
     private int runs;
+    /** The refills of the run in progress. */
+    private CrystalRefill refill;
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
                                String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget,
@@ -196,8 +210,10 @@ final class CrystalAuraMeasure implements Scenario {
         if (bench.fromClient(client -> Modules.get().get(other).isActive())) {
             throw new BenchException(other.getSimpleName() + " was on before T0");
         }
+        refill = new CrystalRefill();
         run.start();
         SettleVerification verification = waitOut(bench);
+        LOG.info("[bench] {} run {}: used {} crystal(s) (the stack was refilled, log only)", name, runs, refill.used());
         if (aura == CrystalAuraPlusPlus.class) {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
@@ -231,8 +247,9 @@ final class CrystalAuraMeasure implements Scenario {
 
     /**
      * The run's {@link #seconds()}, tick by tick, or less once it has settled ({@link Settle}); a run that cannot
-     * settle waits them in one go, as before. With {@value #VERIFY_SETTLE} set, a settled run runs on to the end
-     * and the verification is returned for the close; otherwise null.
+     * settle waits them all. At T0 and after every tick the crystal stack is topped up, in the one server call of
+     * that tick ({@link #observe}, or {@link #topUp} alone when nothing is observed). With {@value #VERIFY_SETTLE}
+     * set, a settled run runs on to the end and the verification is returned for the close; otherwise null.
      */
     private SettleVerification waitOut(Bench bench) {
         int nominal = seconds() * 20;
@@ -244,16 +261,21 @@ final class CrystalAuraMeasure implements Scenario {
         } catch (IllegalStateException e) {
             throw new BenchException(name + ": " + e.getMessage());
         }
+        String player = bench.player();
         if (!settle.possible()) {
-            bench.ticks(nominal);
+            topUp(bench, player, refill);
+            for (int tick = 1; tick <= nominal; tick++) {
+                bench.ticks(1);
+                topUp(bench, player, refill);
+            }
             return null;
         }
         SettleVerification verification = Boolean.getBoolean(VERIFY_SETTLE) ? new SettleVerification() : null;
         boolean plusPlus = aura == CrystalAuraPlusPlus.class;
-        settle.observe(observe(bench, plusPlus));
+        settle.observe(observe(bench, plusPlus, player, refill));
         for (int tick = 1; tick <= nominal; tick++) {
             bench.ticks(1);
-            boolean settled = settle.observe(observe(bench, plusPlus));
+            boolean settled = settle.observe(observe(bench, plusPlus, player, refill));
             if (verification == null) {
                 if (settled && tick < nominal) {
                     LOG.info("[bench] {} run {}: settled after {} s, the remaining {} s could not change anything", name,
@@ -298,14 +320,41 @@ final class CrystalAuraMeasure implements Scenario {
         return String.format(Locale.ROOT, "%.2f", ticks / 20.0);
     }
 
+    /** Tops the crystal stack up ({@link #topUp(MinecraftServer, String, CrystalRefill)}) in one server call. */
+    private static void topUp(Bench bench, String player, CrystalRefill refill) {
+        bench.onServer(srv -> topUp(srv, player, refill));
+    }
+
+    /**
+     * On the server thread: tops the end crystals in {@code player}'s hotbar slot 0 up to {@value CrystalRefill#FULL}
+     * and counts what it added in {@code refill}; a stack already full is left alone. A top-up is sent to the client
+     * at once: the client takes a crystal off its own stack when it places one, and without the slot the server has
+     * already refilled it might never hear that the stack is full again. Anything but end crystals in the slot is
+     * ERROR, naming it.
+     */
+    private static void topUp(MinecraftServer srv, String player, CrystalRefill refill) {
+        ServerPlayerEntity serverPlayer = Arena.player(srv, player);
+        PlayerInventory inventory = serverPlayer.getInventory();
+        ItemStack stack = inventory.getStack(0);
+        if (!stack.isOf(Items.END_CRYSTAL)) {
+            throw new BenchException("hotbar slot 0 holds " + (stack.isEmpty() ? "nothing"
+                : stack.getCount() + " " + Registries.ITEM.getId(stack.getItem())) + ", not end crystals");
+        }
+        if (refill.topUp(stack.getCount()) > 0) {
+            stack.setCount(CrystalRefill.FULL);
+            serverPlayer.networkHandler.sendPacket(inventory.createSlotSetPacket(0));
+        }
+    }
+
     /**
      * What {@link Settle} looks at, now, in one client call and one server call: the end crystals the client and
      * the server have, the block and entity interaction packets sent so far (every placement and every attack,
      * and more), our health plus absorption and, for crystal-aura++, its longest timer from our ping on the client;
      * the sparring's health plus absorption and its pops on the server. Meteor's timers are fixed at their short
-     * defaults ({@link Settle}), so its timer is 0.
+     * defaults ({@link Settle}), so its timer is 0. The server call also tops the crystal stack up first
+     * ({@link #topUp(MinecraftServer, String, CrystalRefill)}): that changes none of what is observed.
      */
-    private static Settle.Observation observe(Bench bench, boolean plusPlus) {
+    private static Settle.Observation observe(Bench bench, boolean plusPlus, String player, CrystalRefill refill) {
         ClientSide client = bench.fromClient(mc -> {
             if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) {
                 throw new BenchException("the client has no player");
@@ -326,9 +375,11 @@ final class CrystalAuraMeasure implements Scenario {
                 (double) mc.player.getHealth() + mc.player.getAbsorptionAmount(), timer);
         });
         Sparring sparring = bench.sparring();
-        ServerSide server = bench.fromServer(srv -> new ServerSide(
-            srv.getOverworld().getEntitiesByType(EntityType.END_CRYSTAL, e -> true).size(),
-            (double) sparring.getHealth() + sparring.getAbsorptionAmount(), sparring.stats(-1).pops()));
+        ServerSide server = bench.fromServer(srv -> {
+            topUp(srv, player, refill);
+            return new ServerSide(srv.getOverworld().getEntitiesByType(EntityType.END_CRYSTAL, e -> true).size(),
+                (double) sparring.getHealth() + sparring.getAbsorptionAmount(), sparring.stats(-1).pops());
+        });
         return new Settle.Observation(client.crystals() + server.crystals(), client.blockInteractions(),
             client.entityInteractions(), client.health(), server.sparringHealth(), server.sparringPops(), client.timer());
     }
