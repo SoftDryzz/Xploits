@@ -1,5 +1,6 @@
 package com.xploits.bench;
 
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.CombatEvent.AttackerKind;
 import com.xploits.pvp.recorder.core.FightOutcome;
@@ -15,7 +16,7 @@ import java.util.List;
  * recorder reset, T0 with the module under test, our health sampled every tick from T0, and the close
  * with the rules that make a run ERROR:
  * <ul>
- *   <li>our death, or a record that ends LOST;</li>
+ *   <li>our death, or a record that ends LOST ({@link PlayerDied});</li>
  *   <li>a record that dropped damage events;</li>
  *   <li>no record at all although a crystal placement packet was sent (a failed save);</li>
  *   <li>the records' summed placements exceed what the bench itself sent (the placement counter would
@@ -55,6 +56,16 @@ final class MeasureRun {
     }
 
     /**
+     * crystal-aura++ reset, with the same override as {@link #crystalAura}: {@code pause-on-lag} off
+     * (crystal-aura++ spec P6, fairness).
+     */
+    static CrystalAuraPlusPlus crystalAuraPlusPlus(Bench bench) {
+        CrystalAuraPlusPlus aura = bench.meteor(CrystalAuraPlusPlus.class);
+        bench.setting(aura, "Pause", "pause-on-lag", false);
+        return aura;
+    }
+
+    /**
      * T0: the recorder, then the module under test, in one client call; the placement count is taken
      * just before. Our health is sampled now and after every tick until {@link #close}.
      */
@@ -77,7 +88,7 @@ final class MeasureRun {
             : new double[] {client.player.isDead() ? 0 : client.player.getHealth() + client.player.getAbsorptionAmount(),
                 client.player.isDead() ? 1 : 0});
         if (health == null) throw new BenchException("the client has no player");
-        if (health[1] > 0) throw new BenchException("the player died");
+        if (health[1] > 0) throw new PlayerDied("the player died");
         minHealth = Math.min(minHealth, health[0]);
     }
 
@@ -90,7 +101,7 @@ final class MeasureRun {
         placementsAtClose = bench.fromClient(client -> PlacementCounter.get().sent());
         records = bench.finish();
         for (FightRecord record : records) {
-            if (record.outcome() == FightOutcome.LOST) throw new BenchException("a record ends LOST");
+            if (record.outcome() == FightOutcome.LOST) throw new PlayerDied("a record ends LOST");
             if (record.damageEventsDropped() > 0) {
                 throw new BenchException("a record dropped " + record.damageEventsDropped() + " damage events");
             }

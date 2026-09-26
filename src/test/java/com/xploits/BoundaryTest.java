@@ -91,6 +91,27 @@ class BoundaryTest {
         assertEquals(List.of(), bad, "this cannot run outside the game");
     }
 
+    /**
+     * The bench's pure core is also compiled with the unit tests (build.gradle.kts), where the game is on
+     * the classpath too: it may import only pure cores, never the game nor the rest of the bench.
+     */
+    @Test
+    void theBenchCoreDoesNotTouchTheGame() throws IOException {
+        Path core = Path.of("src", "gametest", "java", "com", "xploits", "bench", "core");
+        List<String> bad = new ArrayList<>();
+        sourcesUnder(core).forEach((path, text) -> {
+            for (String l : text.split("\n")) {
+                if (!l.startsWith("import ")) continue;
+                String imported = l.replace("import static ", "").replace("import ", "").replace(";", "").trim();
+                for (String prefix : GAME_PACKAGES) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
+                }
+                if (imported.startsWith("com.xploits.") && !imported.contains(".core.")) bad.add(path + " imports " + imported);
+            }
+        });
+        assertEquals(List.of(), bad, "the bench core must stay pure");
+    }
+
     /** Packages whose player text is fully in the catalogs (language spec §6): all of them. */
     private static final List<String> MIGRATED = List.of("com/xploits/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of

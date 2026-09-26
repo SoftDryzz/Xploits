@@ -1,14 +1,22 @@
 package com.xploits.bench;
 
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * MEASURE {@code ca-still}, {@code ca-circler} and {@code ca-defender} (spec {@code
  * 2026-09-25-ingame-bench}, §Scenarios, §Metrics): Meteor's CrystalAura, reset with {@code pause-on-lag}
  * off, against a scripted sparring for 30 s, from the standard loadout (AutoTotem Strict) with the
- * recorder on.
+ * recorder on. And {@code capp-still}, {@code capp-circler} and {@code capp-defender} (crystal-aura++
+ * spec §4, P6): crystal-aura++ the same way, on the same arenas and scripts, each judged against its
+ * {@code ca-} twin ({@link #compareWith}).
+ *
+ * <p>Each run turns the other aura off before T0, so only the aura under test acts.
  *
  * <p>Metrics: {@code damage_dealt}, {@code sparring_pops}, {@code first_pop_s} (only in a run that
  * popped), {@code no_pop_runs} (1 for a run without a pop), {@code self_damage}, {@code self_pops},
@@ -16,12 +24,29 @@ import java.util.function.Supplier;
  */
 final class CrystalAuraMeasure implements Scenario {
     private final String name;
+    private final Class<? extends Module> aura;
+    private final Class<? extends Module> other;
+    private final String compareWith;
     private final Supplier<Script> script;
     private MeasureRun run;
 
-    CrystalAuraMeasure(String name, Supplier<Script> script) {
+    private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
+                               String compareWith, Supplier<Script> script) {
         this.name = name;
+        this.aura = aura;
+        this.other = other;
+        this.compareWith = compareWith;
         this.script = script;
+    }
+
+    /** Meteor's CrystalAura. */
+    static CrystalAuraMeasure meteor(String name, Supplier<Script> script) {
+        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script);
+    }
+
+    /** crystal-aura++, judged against the Meteor scenario {@code compareWith} on the same arena and script. */
+    static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script) {
+        return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script);
     }
 
     @Override
@@ -40,15 +65,29 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     @Override
+    public Optional<String> compareWith() {
+        return Optional.ofNullable(compareWith);
+    }
+
+    @Override
     public void arrange(Bench bench) {
-        MeasureRun.crystalAura(bench);
-        run = new MeasureRun(bench, CrystalAura.class);
+        if (aura == CrystalAura.class) MeasureRun.crystalAura(bench);
+        else MeasureRun.crystalAuraPlusPlus(bench);
+        run = new MeasureRun(bench, aura);
+        bench.onClient(client -> {
+            Module module = Modules.get().get(other);
+            if (module == null) throw new BenchException("no module " + other.getSimpleName());
+            if (module.isActive()) module.disable();
+        });
         bench.arena().loadout(false);
         bench.spawn(script.get());
     }
 
     @Override
     public Metrics act(Bench bench) {
+        if (bench.fromClient(client -> Modules.get().get(other).isActive())) {
+            throw new BenchException(other.getSimpleName() + " was on before T0");
+        }
         run.start();
         bench.ticks(seconds() * 20);
         Sparring.Stats sparring = bench.sparringStats();

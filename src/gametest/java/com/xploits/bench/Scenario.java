@@ -1,5 +1,7 @@
 package com.xploits.bench;
 
+import java.util.Optional;
+
 /**
  * One bench scenario (spec {@code 2026-09-25-ingame-bench}, §Code layout). Every run of it gets a fresh
  * world and a fresh {@link Bench}; {@link BenchTest} runs {@link #arrange} then {@link #act}, and the
@@ -34,6 +36,14 @@ public interface Scenario {
 
     default int runs() {
         return kind() == Kind.CHECK ? 1 : MEASURE_RUNS;
+    }
+
+    /**
+     * The MEASURE this one is judged against in the same invocation (crystal-aura++ spec §4: {@code capp-X}
+     * against {@code ca-X}), or empty. The verdict goes to the report and never fails the bench by itself.
+     */
+    default Optional<String> compareWith() {
+        return Optional.empty();
     }
 
     /** Builds the scene after the common preparation ({@link Bench#prepare}); everything before T0. */

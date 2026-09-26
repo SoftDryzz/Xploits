@@ -1,5 +1,7 @@
 package com.xploits.bench;
 
+import com.xploits.bench.core.PositionLike;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,7 +19,7 @@ import java.util.stream.Stream;
  * Hits are named by file and line number only: the line itself is never printed.
  */
 final class Hygiene {
-    static final Pattern POSITION = Pattern.compile("-?\\d+(\\.\\d+)?[ ,]+-?\\d+(\\.\\d+)?[ ,]+-?\\d+(\\.\\d+)?");
+    static final Pattern POSITION = PositionLike.PATTERN;
 
     private Hygiene() {
     }

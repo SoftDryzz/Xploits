@@ -6,6 +6,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.xploits.bench.Metrics.Better;
 import com.xploits.bench.Metrics.Definition;
+import com.xploits.bench.core.Acceptance;
+import com.xploits.bench.core.Acceptance.Outcome;
+import com.xploits.bench.core.Acceptance.Verdict;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,13 +19,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The bench report (spec {@code 2026-09-25-ingame-bench}, §Report and baseline): {@code
  * report-<version>.json} and an English {@code .md} table, both rewritten after every run so a crash
  * still leaves what ran. For a MEASURE it gives the median, min and max of every metric over its DONE
  * runs, how many runs popped the sparring, the metrics whose runs spread too far (noisy), and the ones
- * worse than the baseline (regressions).
+ * worse than the baseline (regressions). A MEASURE judged against another ({@link Scenario#compareWith})
+ * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts; a verdict never makes
+ * the report fail (crystal-aura++ spec §4, Q5: only a run's ERROR does).
  *
  * <p>Numbers, names, statuses and bench-written messages only: never a position. No line of either file
  * holds three numbers in a row separated by spaces or commas (the hygiene scan would take it for a
@@ -49,13 +55,23 @@ public final class BenchReport {
         }
     }
 
+    /** What the comparisons' summary is called: every comparison is crystal-aura++ against crystal-aura. */
+    static final String COMPARE_LABEL = "capp";
+
     /** The value of the report's {@code hygiene} field once the scan found nothing. */
     public static final String HYGIENE_CLEAN = "clean";
 
-    /** One run: its status, the bench-written error when it did not pass, and its numbers. */
-    public record Run(Status status, String error, Map<String, Double> metrics) {
+    /**
+     * One run: its status, the bench-written error when it did not pass, its numbers, and whether our
+     * player died in it ({@link PlayerDied}: a crystal-aura++ comparison is then a REJECT).
+     */
+    public record Run(Status status, String error, Map<String, Double> metrics, boolean died) {
         public Run {
             metrics = Map.copyOf(metrics);
+        }
+
+        public Run(Status status, String error, Map<String, Double> metrics) {
+            this(status, error, metrics, false);
         }
     }
 
@@ -117,6 +133,19 @@ public final class BenchReport {
             return null;
         }
 
+        /** The verdict against {@link Scenario#compareWith}, judged on this invocation's runs alone. */
+        Optional<Outcome> compare() {
+            return scenario.compareWith().map(with -> {
+                Entry other = scenarios.get(with);
+                return Acceptance.judge(side(), other == null ? Acceptance.Side.absent(with) : other.side());
+            });
+        }
+
+        private Acceptance.Side side() {
+            List<Map<String, Double>> done = runs.stream().filter(r -> r.status() == Status.DONE).map(Run::metrics).toList();
+            return new Acceptance.Side(scenario.name(), status().name(), done, runs.stream().anyMatch(Run::died));
+        }
+
         Aggregate aggregate() {
             if (scenario.kind() != Scenario.Kind.MEASURE) return Aggregate.NONE;
             List<Run> done = runs.stream().filter(r -> r.status() == Status.DONE).toList();
@@ -162,9 +191,30 @@ public final class BenchReport {
         });
         int regressions = scenarios.values().stream().mapToInt(e -> e.aggregate().regressions().size()).sum();
         if (regressions > 0) parts.add(regressions + " regression(s)");
+        compareSummary().ifPresent(parts::add);
         if (hygieneHits()) parts.add("hygiene ERROR");
         else if (hygiene != null) parts.add("hygiene " + HYGIENE_CLEAN);
         return parts.isEmpty() ? "no scenario ran" : String.join(", ", parts);
+    }
+
+    /**
+     * The verdicts counted, {@code capp: n ACCEPT / m REJECT / k INCOMPLETE}; empty when no scenario that
+     * ran is judged against another.
+     */
+    public Optional<String> compareSummary() {
+        Map<Verdict, Integer> counts = new LinkedHashMap<>();
+        for (Verdict verdict : Verdict.values()) counts.put(verdict, 0);
+        boolean any = false;
+        for (Entry e : scenarios.values()) {
+            Optional<Outcome> outcome = e.compare();
+            if (outcome.isEmpty()) continue;
+            any = true;
+            counts.merge(outcome.get().verdict(), 1, Integer::sum);
+        }
+        if (!any) return Optional.empty();
+        List<String> parts = new ArrayList<>();
+        counts.forEach((verdict, n) -> parts.add(n + " " + verdict.name()));
+        return Optional.of(COMPARE_LABEL + ": " + String.join(" / ", parts));
     }
 
     /**
@@ -300,9 +350,11 @@ public final class BenchReport {
                 regressions.add(o);
             }
             s.add("regressions", regressions);
+            e.compare().ifPresent(outcome -> s.add("compare", compare(e.scenario.compareWith().orElseThrow(), outcome)));
             list.add(s);
         }
         root.add("scenarios", list);
+        compareSummary().ifPresent(summary -> root.addProperty("compare", summary));
         // Absent until the scan ran: the Gradle-side check (benchVerify) wants it, and wants it clean.
         if (hygieneHits()) {
             JsonArray lines = new JsonArray();
@@ -312,6 +364,25 @@ public final class BenchReport {
             root.addProperty("hygiene", HYGIENE_CLEAN);
         }
         return root;
+    }
+
+    /** A verdict: against what, the verdict, why when it is not ACCEPT, and each rule with what it compared. */
+    private static JsonObject compare(String with, Outcome outcome) {
+        JsonObject o = new JsonObject();
+        o.addProperty("with", with);
+        o.addProperty("verdict", outcome.verdict().name());
+        if (outcome.reason() != null) o.addProperty("reason", outcome.reason());
+        JsonArray rules = new JsonArray();
+        for (Acceptance.Rule rule : outcome.rules()) {
+            JsonObject r = new JsonObject();
+            r.addProperty("rule", rule.id());
+            r.addProperty("kind", rule.kind().name().toLowerCase(Locale.ROOT));
+            r.addProperty("result", rule.result().name());
+            r.addProperty("detail", rule.detail());
+            rules.add(r);
+        }
+        o.add("rules", rules);
+        return o;
     }
 
     /** Metrics in the table's order, rounded; one per line once pretty-printed. */
@@ -349,6 +420,7 @@ public final class BenchReport {
             // printing a header with no rows under it.
             if (e.scenario.kind() == Scenario.Kind.MEASURE && !e.runs.isEmpty()) measure(md, e);
         }
+        comparisons(md);
         if (hygieneHits()) {
             md.append("\n## Hygiene\n\nThese lines look like a position:\n\n");
             for (String hit : hygiene) md.append("- ").append(hit).append('\n');
@@ -393,6 +465,34 @@ public final class BenchReport {
             md.append(" | ").append(number(base == null ? null : base.get(name)))
                 .append(" | ").append(String.join(" and ", flags))
                 .append(" |\n");
+        }
+    }
+
+    /** Every verdict: a line with it and why, then a row per rule. */
+    private void comparisons(StringBuilder md) {
+        boolean header = false;
+        for (Entry e : scenarios.values()) {
+            Optional<Outcome> judged = e.compare();
+            if (judged.isEmpty()) continue;
+            Outcome outcome = judged.get();
+            if (!header) {
+                md.append("\n## crystal-aura++ against crystal-aura\n\n")
+                    .append("A verdict never fails the bench; a crystal-aura++ run in which our player died is ERROR")
+                    .append(" and makes the verdict REJECT.\n");
+                header = true;
+            }
+            md.append("\n### ").append(e.scenario.name()).append(" against ").append(e.scenario.compareWith().orElseThrow())
+                .append(": ").append(outcome.verdict().name()).append("\n\n");
+            if (outcome.reason() != null) md.append("Why: ").append(outcome.reason()).append(".\n\n");
+            if (outcome.rules().isEmpty()) continue;
+            md.append("| Rule | Kind | Result | What was compared |\n|---|---|---|---|\n");
+            for (Acceptance.Rule rule : outcome.rules()) {
+                md.append("| ").append(rule.id())
+                    .append(" | ").append(rule.kind().name().toLowerCase(Locale.ROOT))
+                    .append(" | ").append(rule.result().name())
+                    .append(" | ").append(cell(rule.detail()))
+                    .append(" |\n");
+            }
         }
     }
 

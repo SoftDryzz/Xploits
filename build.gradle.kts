@@ -51,6 +51,15 @@ dependencies {
     "modGametestImplementation"("net.fabricmc.fabric-api:fabric-api:0.141.4+1.21.11")
 }
 
+// The bench's pure core (src/gametest/java/com/xploits/bench/core: the acceptance rules) is compiled with
+// the unit tests too, so ./gradlew build tests it. Only that folder, with its own filter, and never into
+// the shipped jar, which is built from the main source set alone.
+val benchCore = objects.sourceDirectorySet("benchCore", "the bench's pure core").apply {
+    srcDir("src/gametest/java")
+    include("com/xploits/bench/core/**")
+}
+sourceSets.named("test") { java.source(benchCore) }
+
 loom.runs.named("clientGameTest") {
     property("xploits.bench.baseline", file("bench/baseline.json").absolutePath)
     property("xploits.bench.out", layout.buildDirectory.dir("bench").get().asFile.absolutePath)
@@ -107,6 +116,9 @@ tasks.register("benchVerify") {
         val summary = (listOf("${scenarios.size} scenario(s), $scope") +
             counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
         logger.lifecycle("bench: $summary")
+        // The crystal-aura++ verdicts ("capp: n ACCEPT / m REJECT / k INCOMPLETE"), when any scenario was
+        // judged: shown, never a reason to fail (a death in a crystal-aura++ run fails as an ERROR above).
+        root["compare"]?.let { logger.lifecycle("bench: $it") }
         if (scenarios.isEmpty()) throw GradleException("bench: the report lists no scenario")
         if (blocking.isNotEmpty() || hygiene != "clean") {
             val reasons = blocking + (if (hygiene != "clean") listOf(hygieneText) else emptyList())

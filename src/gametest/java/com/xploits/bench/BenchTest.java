@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.screen.world.WorldCreator;
+import net.minecraft.client.option.InactivityFpsLimit;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.world.gen.WorldPreset;
@@ -62,6 +63,7 @@ public class BenchTest implements FabricClientGameTest {
         // leaves a report that says so, and the Gradle side (benchVerify) fails on it.
         report.plan(selected);
         write(report);
+        keepFullFrameRate(ctx);
 
         for (Scenario scenario : selected) {
             for (int i = 1; i <= scenario.runs(); i++) {
@@ -79,6 +81,17 @@ public class BenchTest implements FabricClientGameTest {
 
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
+    }
+
+    /**
+     * With its default {@code inactivityFpsLimit} (AFK), Minecraft drops to 10 frames per second once there
+     * has been no input for 10 minutes ({@code InactivityFpsLimiter}, LONG_AFK), and a gametest tick waits
+     * for a frame: a bench longer than that would run at half speed from then on, and the next world load
+     * times out. Nobody types during the bench, so only a minimized window may limit the frame rate. The
+     * option belongs to the gametest's own run folder, not to the player's game.
+     */
+    private static void keepFullFrameRate(ClientGameTestContext ctx) {
+        ctx.runOnClient(client -> client.options.getInactivityFpsLimit().setValue(InactivityFpsLimit.MINIMIZED));
     }
 
     /** The committed baseline; a missing file compares nothing, a broken one ends the bench before any run. */
@@ -190,7 +203,7 @@ public class BenchTest implements FabricClientGameTest {
                 String teardown = "teardown: " + String.join("; ", leftovers);
                 // A failed run keeps its status and its first error; what the teardown left is added to it.
                 run = run.status().fails()
-                    ? new Run(run.status(), run.error() + "; " + teardown, run.metrics())
+                    ? new Run(run.status(), run.error() + "; " + teardown, run.metrics(), run.died())
                     : new Run(Status.ERROR, teardown, Map.of());
             }
             phase = "world close";
@@ -212,7 +225,7 @@ public class BenchTest implements FabricClientGameTest {
             error = error + " during " + phase;
         }
         logTrace(e);
-        return new Run(checkFailed ? Status.FAIL : Status.ERROR, error, Map.of());
+        return new Run(checkFailed ? Status.FAIL : Status.ERROR, error, Map.of(), e instanceof PlayerDied);
     }
 
     /**
