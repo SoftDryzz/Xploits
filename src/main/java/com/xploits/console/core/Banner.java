@@ -7,16 +7,17 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * The XTO2002 logo (console spec §15). It is drawn at full size or not at all: scaled down, the strokes
- * fall below the rasterizing threshold and the letters break up (verified on screenshots).
+ * The Xploits logo (console spec §15), CustomCLI's compact cut ({@code art/xploits-compacto.txt}). It is
+ * drawn at full size or not at all: scaled down, the strokes fall below the rasterizing threshold and the
+ * letters break up (verified on screenshots).
  */
 public final class Banner {
     public static final String RESOURCE = "/xploits/console/logo.ans";
-    public static final int ROWS = 13;
+    public static final int ROWS = 12;
     public static final int MAX_WIDTH = 100;
     public static final int MIN_COLUMNS = 100;
     public static final int MIN_ROWS = 40;
-    public static final String TEXT = "XTO2002";
+    public static final String TEXT = "Xploits";
     private static final Pattern COLOR = Pattern.compile("\u001b\\[[0-9;]*m");
 
     private Banner() {
@@ -60,9 +61,9 @@ public final class Banner {
         return cols >= MIN_COLUMNS && rows >= MIN_ROWS;
     }
 
-    /** The logo if the window has room for it; otherwise the name on one row, in the logo's cyan. */
+    /** The logo if the window has room for it; otherwise the name on one row, in the logo's purple. */
     public static List<String> choose(List<String> art, int cols, int rows) {
         if (fits(cols, rows)) return art;
-        return List.of(Ansi.color(Ansi.CYAN) + TEXT + Ansi.RESET);
+        return List.of(Ansi.color(Ansi.PURPLE) + TEXT + Ansi.RESET);
     }
 }

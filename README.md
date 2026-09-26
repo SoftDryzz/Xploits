@@ -228,7 +228,7 @@ nothing.** Later `.xploits find <item>` tells you where it was.
 
 ### `console` — see what the addon does in a separate window
 
-Opens a terminal window with the XTO2002 logo at the top, the game status below it and the log of
+Opens a terminal window with the Xploits logo at the top, the game status below it and the log of
 everything the Xploits modules say. To keep it on the other screen while you play, or to read later
 what happened.
 

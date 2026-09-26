@@ -6,6 +6,11 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- `console`: the window now opens with the Xploits logo instead of XTO2002. When the window is too
+  small for it, the one-row fallback says "Xploits" in the logo's purple.
+
 ### Fixed
 
 - `auto-pvp` turned on `anti-anvil` and `anti-anchor` as if they needed nothing, but they place
