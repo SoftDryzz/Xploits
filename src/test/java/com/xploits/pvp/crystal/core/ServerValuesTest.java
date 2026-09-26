@@ -111,6 +111,17 @@ class ServerValuesTest {
     }
 
     @Test
+    void feetThatAreNotFiniteAreUnknownSoNothingIsCredited() {
+        assertTrue(ServerValues.feet(1.5, 64, -3).known());
+        for (double v : new double[] {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            assertEquals(Feet.UNKNOWN, ServerValues.feet(v, 64, 0));
+            assertEquals(Feet.UNKNOWN, ServerValues.feet(0, v, 0));
+            assertEquals(Feet.UNKNOWN, ServerValues.feet(0, 64, v));
+        }
+        assertEquals("Feet[known]", ServerValues.feet(1.5, 64, -3).toString(), "no coordinates in any text");
+    }
+
+    @Test
     void armourPiecesWithNoOrOddDurability() {
         assertEquals(50, ServerValues.armorPercent(100, 50).getAsDouble());
         assertFalse(ServerValues.armorPercent(0, 0).isPresent(), "no durability never counts, as in Meteor (NaN)");

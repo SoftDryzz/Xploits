@@ -176,6 +176,7 @@ public final class CrystalBrain {
         now = tick.tick();
         decided = null;
         hurt.health(now, tick.health());
+        hurt.feet(tick.feet());
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -242,12 +243,22 @@ public final class CrystalBrain {
      * @param hands  your hands now (anti-weakness reads them when attacking, lines 826-835)
      */
     public Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+        return crystalAdded(crystal, health, hands, Feet.UNKNOWN);
+    }
+
+    /**
+     * {@link #crystalAdded(CrystalSeen, double, CrystalTick.Hands)}, with where your feet are now (the hurt
+     * cooldown's movement guard; unknown feet never credit).
+     */
+    public Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands, Feet feet) {
         Objects.requireNonNull(crystal, "crystal");
+        Objects.requireNonNull(feet, "feet");
         Objects.requireNonNull(hands, "hands");
         Damage.check(health, "health");
         // Before the first pre-tick Meteor has no targets and nothing pending; the crystal is seen then.
         if (now == NO_TICK) return Optional.empty();
         hurt.health(now, health);
+        hurt.feet(feet);
         if (known.containsKey(crystal.id())) return Optional.empty();
         Known k = appeared(crystal, now);
 
@@ -269,20 +280,25 @@ public final class CrystalBrain {
     /**
      * A damage packet for us from an explosion caused by us ({@code player_explosion}; the adapter checked the
      * type and the cause) whose direct source is this entity. If it is one of our crystals, known with its raw
-     * damage, it opens our hurt cooldown window ({@link HurtWindow}), stamped with the last pre-tick; anything
-     * else (a crystal we did not place, one no longer known) cancels the credit, as any other hit does.
+     * damage, it opens our hurt cooldown window ({@link HurtWindow}), stamped with the last pre-tick, with R_last
+     * the lower of that raw damage and {@code packetRaw}; anything else (a crystal we did not place, one no longer
+     * known) cancels the credit, as any other hit does.
      *
-     * @param rttTicks your round trip in ticks, rounded up ({@link #pingTicks}); {@link #UNKNOWN_PING_TICKS} when
-     *                 unknown
+     * @param rttTicks  your round trip in ticks, rounded up ({@link #pingTicks}); {@link #UNKNOWN_PING_TICKS} when
+     *                  unknown
+     * @param packetRaw the crystal's raw damage to you from where you are now, at its last known position, or
+     *                  {@link RawExplosion#UNKNOWN}
+     * @param feet      where your feet are now
      */
-    public void hurtByOwnCrystal(int crystalId, int rttTicks) {
+    public void hurtByOwnCrystal(int crystalId, int rttTicks, double packetRaw, Feet feet) {
         if (rttTicks < 0) throw new IllegalArgumentException("round trip " + rttTicks);
+        Objects.requireNonNull(feet, "feet");
         Known k = known.get(crystalId);
         if (now == NO_TICK || k == null || !k.ours) {
             hurt.otherHit();
             return;
         }
-        hurt.ownHit(now, k.seen.rawSelfDamage(), rttTicks);
+        hurt.ownHit(now, k.seen.rawSelfDamage(), packetRaw, rttTicks, feet);
     }
 
     /** Any other damage packet for us: no credit until one of our crystals hits us in full again. */

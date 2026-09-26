@@ -18,7 +18,8 @@ import java.util.OptionalDouble;
  *   stands within reach, so nothing is added next to it;</li>
  *   <li>a crystal at no measurable distance is taken as next to us, so it counts;</li>
  *   <li>a negative effect amplifier counts as 0;</li>
- *   <li>a raw damage to us that cannot be measured is unknown, and is never credited ({@link HurtWindow}).</li>
+ *   <li>a raw damage to us that cannot be measured is unknown, and is never credited ({@link HurtWindow});</li>
+ *   <li>a position of our feet that is not finite is unknown, and then nothing is credited either.</li>
  * </ul>
  * Each of these makes ++ do less than it would otherwise, never more, so every action is still one Meteor
  * allows.
@@ -76,6 +77,11 @@ public final class ServerValues {
         if (!valid(distance) || !(exposure >= 0 && exposure <= 1)) return RawExplosion.UNKNOWN;
         double raw = RawExplosion.crystal(distance, exposure);
         return valid(raw) ? raw : RawExplosion.UNKNOWN;
+    }
+
+    /** Where our feet are, or {@link Feet#UNKNOWN} if any coordinate is not finite. */
+    public static Feet feet(double x, double y, double z) {
+        return Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z) ? new Feet(x, y, z) : Feet.UNKNOWN;
     }
 
     /** Our distance to a standing crystal; 0 if it is odd, so the crystal counts in the budget. */
