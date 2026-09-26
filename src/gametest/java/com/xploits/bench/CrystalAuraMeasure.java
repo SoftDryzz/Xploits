@@ -6,6 +6,8 @@ import com.xploits.pvp.crystal.core.RiskLevel;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -28,9 +30,12 @@ import java.util.function.Supplier;
  *
  * <p>Metrics: {@code damage_dealt}, {@code sparring_pops}, {@code first_pop_s} (only in a run that
  * popped), {@code no_pop_runs} (1 for a run without a pop), {@code self_damage}, {@code self_pops},
- * {@code min_health} and {@code placements_per_s}.
+ * {@code min_health} and {@code placements_per_s}. A crystal-aura++ run also logs how many placements it held
+ * back for the sparring's hurt window (R3-3); that count is not a metric.
  */
 final class CrystalAuraMeasure implements Scenario {
+    private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
+
     private final String name;
     private final Class<? extends Module> aura;
     private final Class<? extends Module> other;
@@ -163,6 +168,11 @@ final class CrystalAuraMeasure implements Scenario {
         }
         run.start();
         bench.ticks(seconds() * 20);
+        if (aura == CrystalAuraPlusPlus.class) {
+            int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
+            LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
+                name, held);
+        }
         Sparring.Stats sparring = bench.sparringStats();
         run.close();
 

@@ -13,13 +13,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 
 /**
  * What crystal-aura++ does, tick by tick: Meteor's CrystalAura with its default settings (spec P1, Q1,
- * line numbers from the 1.21.11 sources), plus the self-damage budget (§1, P2-P4) and nothing else. Every
- * action it returns is one Meteor would also allow in the same state; the budget only refuses, and never
- * for breaking a crystal we did not place.
+ * line numbers from the 1.21.11 sources), plus the self-damage budget (§1, P2-P4) and, with it, the targets'
+ * hurt windows ({@link TargetWindows}), and nothing else. Every action it returns is one Meteor would also allow
+ * in the same state; the budget only refuses, and never for breaking a crystal we did not place, and a hurt
+ * window only holds a placement back, never a break.
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -37,7 +39,8 @@ import java.util.Set;
  *   {@code Rotations} callback (Q1: the counter goes up there, line 891);</li>
  *   <li>{@link #placed(long, int)} when a placement packet goes out, in the same client tick;</li>
  *   <li>{@link #crystalAdded} on {@code EntityAddedEvent} for an end crystal (ownership, then fast-break),
- *   and {@link #crystalRemoved} on {@code EntityRemovedEvent}.</li>
+ *   and {@link #crystalRemoved} on {@code EntityRemovedEvent};</li>
+ *   <li>{@link #targetHurt} for each full-hit damage packet on another player, before the next pre-tick.</li>
  * </ol>
  * {@link #preTick} does both phases on one set of facts.
  */
@@ -54,6 +57,8 @@ public final class CrystalBrain {
     public static final int UNKNOWN_PING_TICKS = 5;
     /** A latency the adapter could not read, for {@link #pingTicks}. */
     public static final int UNKNOWN_LATENCY = -1;
+    /** A damage packet with no direct source entity, for {@link #targetHurt}. */
+    public static final int NO_SOURCE = -1;
     /** Milliseconds in a tick. */
     private static final int TICK_MS = 50;
     /**
@@ -86,6 +91,11 @@ public final class CrystalBrain {
     private boolean holding;
     private int lateOwn;
     private Decision lastDecision = Decision.none(Reason.NOTHING_TO_DO);
+    /** The targets' hurt windows our crystals opened (with the budget on, they hold placements back). */
+    private final TargetWindows windows = new TargetWindows();
+    /** This pre-tick's ping in ticks, from its facts. */
+    private int pingTicks = UNKNOWN_PING_TICKS;
+    private int deferred;
     /** The placement decided this tick, until the adapter says it was sent. */
     private Placement decided;
 
@@ -185,6 +195,8 @@ public final class CrystalBrain {
         known.values().removeIf(k -> k.removedTick != CrystalView.NEVER
             && now - k.removedTick >= SelfBudget.DISAPPEARANCE_WINDOW);
         expirePending();
+        windows.expire(now);
+        pingTicks = tick.pingTicks();
 
         rotated = false;
         // Meteor counts on without bound; past the delay the count no longer matters, so it stops there.
@@ -270,6 +282,37 @@ public final class CrystalBrain {
     public void crystalRemoved(int id) {
         Known k = known.get(id);
         if (k != null && k.removedTick == CrystalView.NEVER) k.reportedGone = true;
+    }
+
+    /**
+     * A full hit on another player (research-external M1: the server sends the damage packet for full hits only),
+     * read since the last pre-tick; it counts as read at that pre-tick. If its direct source is one of our
+     * crystals, and we measured that crystal's raw damage to the player (when we attacked it, or when it was last
+     * seen), the player's window opens at that size ({@link TargetWindows}); anything else (another source, one we
+     * do not know, no measurement) closes it. Before the first pre-tick it is ignored: nothing is ours yet.
+     *
+     * @param target         the player's name, as the targets are named
+     * @param directSourceId the id of the entity that dealt the damage directly (the crystal for an explosion), or
+     *                       {@link #NO_SOURCE}
+     */
+    public void targetHurt(String target, int directSourceId) {
+        Objects.requireNonNull(target, "target");
+        if (now == NO_TICK) return;
+        Known k = known.get(directSourceId);
+        OptionalDouble raw = OptionalDouble.empty();
+        if (k != null && k.ours) {
+            Double measured = k.seen.targetRaw().get(target);
+            if (measured != null) raw = OptionalDouble.of(measured);
+        }
+        windows.fullHit(target, now, raw);
+    }
+
+    /**
+     * Spots held back since activation because a target's hurt window would have swallowed them: one for each spot
+     * skipped that way, which may be several in one pre-tick.
+     */
+    public int deferredForTargetWindow() {
+        return deferred;
     }
 
     /** An attack packet went out (Q1: Meteor counts it there, line 891, not when it decides). */
@@ -477,6 +520,11 @@ public final class CrystalBrain {
         for (Scored<Candidate> s : able) {
             Reason reason = Reason.BUDGET_OFF;
             if (settings.selfBudget()) {
+                // Held back, not refused: the budget is not asked, so it does not count for holding().
+                if (swallowed(s.item)) {
+                    deferred++;
+                    continue;
+                }
                 long pos = s.item.pos();
                 SelfBudget budget;
                 // Placing again where we are still waiting for a crystal replaces that placement (see
@@ -493,6 +541,26 @@ public final class CrystalBrain {
             return Optional.of(new Action(Decision.place(s.item.pos(), reason), crystalHand(hands), swap));
         }
         return Optional.empty();
+    }
+
+    /**
+     * Whether a crystal placed on this spot now would be wasted: every target it hurts is in a window one of our
+     * crystals opened, which surely swallows it ({@link TargetWindows#swallows}). A target it hurts that is not, or
+     * whose exact raw damage was not measured, takes the hit, so the spot is placed.
+     */
+    private boolean swallowed(Candidate c) {
+        return swallowed(c.targetDamage(), c.targetRaw());
+    }
+
+    private boolean swallowed(Map<String, Double> damage, Map<String, Double> exactRaw) {
+        boolean hurtsOne = false;
+        for (String target : targets) {
+            if (!(damage.getOrDefault(target, 0.0) > 0)) continue;
+            Double raw = exactRaw.get(target);
+            if (raw == null || !windows.swallows(target, raw, now, pingTicks)) return false;
+            hurtsOne = true;
+        }
+        return hurtsOne;
     }
 
     private boolean pendingAt(long pos) {

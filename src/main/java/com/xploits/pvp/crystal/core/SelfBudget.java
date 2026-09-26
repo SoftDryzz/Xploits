@@ -171,10 +171,10 @@ public final class SelfBudget {
     }
 
     /**
-     * Placing a crystal with this self damage (the spot's {@link Candidate#budgetSelfDamage}), once it passed
-     * Meteor's checks: allowed if it leaves the
-     * reserve ({@code health - C - self >= R}); otherwise, in safe mode, if the self damage is tiny and it
-     * still leaves the floor ({@code self <= epsilon} and {@code health - C - self >= F}).
+     * Placing a crystal with this {@code budgetSelfDamage} (the spot's {@link Candidate#budgetSelfDamage}), once it
+     * passed Meteor's checks: allowed if it leaves the reserve ({@code health - C - budgetSelfDamage >= R});
+     * otherwise, in safe mode, if the {@code budgetSelfDamage} is tiny and it still leaves the floor
+     * ({@code budgetSelfDamage <= epsilon} and {@code health - C - budgetSelfDamage >= F}).
      */
     public Verdict placeAllowed(double budgetSelfDamage) {
         Damage.check(budgetSelfDamage, "budget self damage");

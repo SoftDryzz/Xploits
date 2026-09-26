@@ -25,6 +25,7 @@ import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.events.entity.EntityAddedEvent;
 import meteordevelopment.meteorclient.events.entity.EntityRemovedEvent;
+import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -67,6 +68,7 @@ import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
+import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -87,7 +89,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * crystal-aura++ (spec §2): Meteor's CrystalAura with its default settings, measured with Meteor's own public
@@ -104,6 +108,9 @@ import java.util.Set;
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
  *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
  *   in-flight ledger;</li>
+ *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
+ *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
+ *   phase, so they count as read at the previous pre-tick;</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
@@ -427,6 +434,13 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private CrystalBrain brain = new CrystalBrain();
     /** Late own crystals counted by brains replaced after a refusal, since activation. */
     private int lateOwnBefore;
+    /** Placements held back for a target's hurt window by brains replaced after a refusal, since activation. */
+    private int deferredBefore;
+    /**
+     * Damage packets received since the last pre-tick. Filled on the Netty thread ({@code PacketEvent.Receive} is
+     * posted there, before the packet is applied), read on the game thread.
+     */
+    private final Queue<EntityDamageS2CPacket> damagePackets = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -447,6 +461,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onActivate() {
         brain = new CrystalBrain();
         lateOwnBefore = 0;
+        deferredBefore = 0;
+        damagePackets.clear();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -457,6 +473,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @Override
     public void onDeactivate() {
         forgetTick();
+        damagePackets.clear();
         lastRotationPos = null;
         refusal.update(false);
     }
@@ -483,6 +500,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return lateOwnBefore + brain.lateOwnCrystals();
     }
 
+    /**
+     * Placements held back since activation because the target's hurt window would have swallowed them (one per
+     * spot skipped, {@link CrystalBrain#deferredForTargetWindow}). Only with {@code self-budget} on.
+     */
+    public int deferredForTargetWindow() {
+        return deferredBefore + brain.deferredForTargetWindow();
+    }
+
     /** The last thing decided, or why nothing was. */
     public Decision lastDecision() {
         return refusal.refusing() ? Decision.none(Reason.METEOR_AURA_ON) : brain.lastDecision();
@@ -492,8 +517,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
 
     @EventHandler(priority = EventPriority.HIGH)
     private void onPreTick(TickEvent.Pre event) {
-        if (mc.player == null || mc.world == null) return;
-        if (refusingNow()) return;
+        if (mc.player == null || mc.world == null || refusingNow()) {
+            damagePackets.clear();
+            return;
+        }
         // Our health not a valid number (a broken or spoofing server): do nothing this tick.
         OptionalDouble health = health();
         if (health.isEmpty()) return;
@@ -512,9 +539,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
 
         CrystalTick measured = new CrystalTick(tick, health.getAsDouble(), totems(), usingItem(), mc.interactionManager.isBreakingBlock(),
-            TickRate.INSTANCE.getTimeSinceLastTick() >= LAG_SECONDS, pauseModuleActive(), hands(first), seen, standing, List.of());
+            TickRate.INSTANCE.getTimeSinceLastTick() >= LAG_SECONDS, pauseModuleActive(), hands(first), seen, standing, List.of(),
+            pingTicks());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
+        readDamagePackets(b);
         b.breakPhase(settings, measured).ifPresent(a -> execute(a, crystals::get));
         if (b.wantsPlacement()) scan(b, tick);
     }
@@ -550,6 +579,27 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         brain.crystalRemoved(crystal.getId());
     }
 
+    /** Netty thread: queue only, the world is not touched here. */
+    @EventHandler
+    private void onPacketReceive(PacketEvent.Receive event) {
+        if (event.packet instanceof EntityDamageS2CPacket damage) damagePackets.add(damage);
+    }
+
+    /**
+     * The full hits on other players received since the last pre-tick, to the brain: the server sends this packet
+     * for full hits only, to every player tracking the one hurt (research-external M1). The player is named as the
+     * targets are; a packet about us, or about an entity that is not a player we see, is dropped. With
+     * {@code self-budget} off nothing is kept: only the budget holds placements back for a hurt window.
+     */
+    private void readDamagePackets(CrystalBrain b) {
+        boolean keep = selfBudget.get();
+        for (EntityDamageS2CPacket damage; (damage = damagePackets.poll()) != null; ) {
+            if (!keep) continue;
+            if (!(mc.world.getEntityById(damage.entityId()) instanceof PlayerEntity player) || player == mc.player) continue;
+            b.targetHurt(player.getUuidAsString(), damage.sourceDirectId());
+        }
+    }
+
     // Refusal
 
     /**
@@ -561,6 +611,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             case STARTED -> warning(CrystalText.METEOR_AURA_ON);
             case ENDED -> {
                 lateOwnBefore += brain.lateOwnCrystals();
+                deferredBefore += brain.deferredForTargetWindow();
                 brain = new CrystalBrain();
                 forgetTick();
                 lastRotationPos = null;
@@ -664,7 +715,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // With the budget off nothing reads the exact value, so the raycast it needs is skipped: budget-off
         // decisions must stay identical to Meteor's.
         double budgetSelf = selfBudget.get() ? ServerValues.budgetSelfDamage(self, exactSelfDamage(pos)) : self;
-        return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self,
+        Map<String, Double> raw = selfBudget.get() ? targetRaw(against, pos) : Map.of();
+        return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), raw, self,
             budgetSelf, distance, !outOfRange(pos, crystal.getBlockPos(), false));
     }
 
@@ -689,6 +741,27 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         if (distance > ExplosionMath.CRYSTAL_RADIUS) return 0;
         float raw = ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
         return DamageUtils.calculateReductions(raw, p, mc.world.getDamageSources().explosion((Explosion) null));
+    }
+
+    /**
+     * The exact raw damage (before armour) an end crystal exploding at {@code explosion} would deal to each of these
+     * players, as the server computes it ({@code ExplosionBehavior.calculateDamage}: the distance from the player's
+     * feet, {@code Math.sqrt(squaredDistanceTo)}, and vanilla's exposure, raycast in the player's world, which is
+     * the client's), by the name the brain knows them by, for the targets' hurt windows ({@code TargetWindows}).
+     * Only with {@code self-budget} on: its callers skip it otherwise, so budget-off decisions and their cost stay
+     * Meteor's. A value that is not a valid number leaves the player out ({@link ServerValues#targetRaw}), which never
+     * holds a placement back.
+     */
+    private static Map<String, Double> targetRaw(Iterable<PlayerEntity> against, Vec3d explosion) {
+        Map<String, Double> raw = new LinkedHashMap<>();
+        for (PlayerEntity target : against) {
+            double distance = Math.sqrt(target.squaredDistanceTo(explosion));
+            // Beyond the radius there is nothing to deal, and no need to raycast for the exposure.
+            float value = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f
+                : ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, target));
+            ServerValues.targetRaw(value).ifPresent(v -> raw.put(target.getUuidAsString(), v));
+        }
+        return raw;
     }
 
     private static Map<String, Double> damageTo(Iterable<PlayerEntity> against, Vec3d pos, BlockPos base) {
@@ -821,7 +894,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // With the budget off nothing reads the exact value, so the raycast it needs is skipped: budget-off
         // decisions must stay identical to Meteor's.
         double budgetSelf = selfBudget.get() ? ServerValues.budgetSelfDamage(meteorSelf, exactSelfDamage(pos)) : meteorSelf;
-        return Optional.of(new Candidate(base.asLong(), damage, meteorSelf,
+        Map<String, Double> raw = selfBudget.get() ? targetRaw(targets.values(), pos) : Map.of();
+        return Optional.of(new Candidate(base.asLong(), damage, raw, meteorSelf,
             budgetSelf, true, crystalsInBox, other));
     }
 

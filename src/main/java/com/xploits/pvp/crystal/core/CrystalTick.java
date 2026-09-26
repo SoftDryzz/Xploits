@@ -27,12 +27,16 @@ import java.util.function.Predicate;
  * @param candidates        the places a crystal could go, in {@code BlockIterator} order (ties go to the
  *                          first found); empty for {@link CrystalBrain#breakPhase}, which is measured
  *                          before the scan
+ * @param pingTicks         your ping in ticks, rounded up ({@link CrystalBrain#pingTicks}); {@link TargetWindows}
+ *                          counts two of them from a hit to a crystal placed now landing.
+ *                          {@link CrystalBrain#UNKNOWN_PING_TICKS} when unknown, which never holds a spot back
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,
                           boolean lagging, boolean pauseModuleActive, Hands hands, List<TargetView> targets,
-                          List<CrystalSeen> crystals, List<Candidate> candidates) {
+                          List<CrystalSeen> crystals, List<Candidate> candidates, int pingTicks) {
     public CrystalTick {
         if (tick < 0) throw new IllegalArgumentException("tick " + tick);
+        if (pingTicks < 0) throw new IllegalArgumentException("ping " + pingTicks);
         if (!Double.isFinite(health) || health < 0) throw new IllegalArgumentException("health " + health);
         if (totems < 0) throw new IllegalArgumentException("totems " + totems);
         Objects.requireNonNull(hands, "hands");
@@ -51,6 +55,14 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
         for (Candidate c : candidates) {
             if (!spots.add(c.pos())) throw new IllegalArgumentException("candidate twice");
         }
+    }
+
+    /** A tick whose ping is unknown ({@link CrystalBrain#UNKNOWN_PING_TICKS}). */
+    public CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining, boolean lagging,
+                       boolean pauseModuleActive, Hands hands, List<TargetView> targets, List<CrystalSeen> crystals,
+                       List<Candidate> candidates) {
+        this(tick, health, totems, usingItem, mining, lagging, pauseModuleActive, hands, targets, crystals, candidates,
+            CrystalBrain.UNKNOWN_PING_TICKS);
     }
 
     /**

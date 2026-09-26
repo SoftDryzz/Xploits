@@ -62,17 +62,18 @@ final class Crystals {
 
     /** The same crystal measured again, now dealing this damage to the enemy. */
     static CrystalSeen dealing(CrystalSeen c, double damage) {
-        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.selfDamage(), c.budgetSelfDamage(), c.distance(),
-            c.inBreakRange());
+        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.targetRaw(), c.selfDamage(), c.budgetSelfDamage(),
+            c.distance(), c.inBreakRange());
     }
 
     static CrystalSeen outOfBreakRange(CrystalSeen c) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), c.distance(), false);
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), c.budgetSelfDamage(),
+            c.distance(), false);
     }
 
     static CrystalSeen at(CrystalSeen c, double distance) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), distance,
-            c.inBreakRange());
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), c.budgetSelfDamage(),
+            distance, c.inBreakRange());
     }
 
     /**
@@ -80,7 +81,20 @@ final class Crystals {
      * checks). The shortcuts above give the budget Meteor's value.
      */
     static CrystalSeen withBudget(CrystalSeen c, double budgetSelfDamage) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), budgetSelfDamage, c.distance(),
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), budgetSelfDamage,
+            c.distance(), c.inBreakRange());
+    }
+
+    /**
+     * The same crystal with this exact raw damage (before armour) to the enemy, as the adapter measures it with the
+     * budget on; the shortcuts above carry none, so no hurt window can ever hold a placement back.
+     */
+    static CrystalSeen withRaw(CrystalSeen c, double raw) {
+        return withRaw(c, Map.of(ENEMY, raw));
+    }
+
+    static CrystalSeen withRaw(CrystalSeen c, Map<String, Double> raw) {
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), raw, c.selfDamage(), c.budgetSelfDamage(), c.distance(),
             c.inBreakRange());
     }
 
@@ -94,19 +108,29 @@ final class Crystals {
     }
 
     static Candidate boxed(Candidate c, Set<Integer> crystals, boolean otherEntity) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), c.inRange(), crystals,
-            otherEntity);
+        return new Candidate(c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), c.budgetSelfDamage(), c.inRange(),
+            crystals, otherEntity);
     }
 
     static Candidate outOfRange(Candidate c) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), false, c.crystalsInBox(),
-            c.otherEntityInBox());
+        return new Candidate(c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), c.budgetSelfDamage(), false,
+            c.crystalsInBox(), c.otherEntityInBox());
     }
 
     /** The same spot with this exact self damage for the budget, as {@link #withBudget(CrystalSeen, double)}. */
     static Candidate withBudget(Candidate c, double budgetSelfDamage) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), budgetSelfDamage, c.inRange(), c.crystalsInBox(),
-            c.otherEntityInBox());
+        return new Candidate(c.pos(), c.targetDamage(), c.targetRaw(), c.selfDamage(), budgetSelfDamage, c.inRange(),
+            c.crystalsInBox(), c.otherEntityInBox());
+    }
+
+    /** The same spot with this exact raw damage to the enemy, as {@link #withRaw(CrystalSeen, double)}. */
+    static Candidate withRaw(Candidate c, double raw) {
+        return withRaw(c, Map.of(ENEMY, raw));
+    }
+
+    static Candidate withRaw(Candidate c, Map<String, Double> raw) {
+        return new Candidate(c.pos(), c.targetDamage(), raw, c.selfDamage(), c.budgetSelfDamage(), c.inRange(),
+            c.crystalsInBox(), c.otherEntityInBox());
     }
 
     static Tick tick(long n) {
@@ -123,6 +147,7 @@ final class Crystals {
         private boolean lagging;
         private boolean pauseModule;
         private CrystalTick.Hands hands = HANDS;
+        private int pingTicks = CrystalBrain.UNKNOWN_PING_TICKS;
         private List<TargetView> targets = List.of(enemy());
         private final List<CrystalSeen> crystals = new ArrayList<>();
         private final List<Candidate> candidates = new ArrayList<>();
@@ -138,6 +163,7 @@ final class Crystals {
         Tick lagging() { lagging = true; return this; }
         Tick pauseModule() { pauseModule = true; return this; }
         Tick hands(CrystalTick.Hands v) { hands = v; return this; }
+        Tick ping(int v) { pingTicks = v; return this; }
         Tick targets(TargetView... v) { targets = List.of(v); return this; }
         Tick crystals(CrystalSeen... v) { crystals.addAll(List.of(v)); return this; }
         Tick crystals(List<CrystalSeen> v) { crystals.addAll(v); return this; }
@@ -145,7 +171,7 @@ final class Crystals {
 
         CrystalTick build() {
             return new CrystalTick(n, health, totems, usingItem, mining, lagging, pauseModule, hands, targets,
-                crystals, candidates);
+                crystals, candidates, pingTicks);
         }
     }
 }

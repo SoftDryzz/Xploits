@@ -13,6 +13,9 @@ import java.util.Set;
  * @param pos              the base block, packed by the adapter; an opaque key the core never shows.
  *                         {@link CrystalView#pos} is packed the same way
  * @param targetDamage     the damage a crystal here would deal to each target, by target name
+ * @param targetRaw        the exact raw damage (before armour, {@link ExplosionMath}) it would deal to each target,
+ *                         by target name, for {@link TargetWindows}; measured only with the budget on, so it may be
+ *                         empty, and a target with no entry is never a reason to hold the spot back
  * @param selfDamage       the damage it would deal to you as Meteor predicts it ({@code DamageUtils}, raw damage
  *                         truncated to an int), with no totem or invulnerability counted: Meteor's max-damage
  *                         and anti-suicide read this one
@@ -24,16 +27,23 @@ import java.util.Set;
  * @param crystalsInBox    ids of the crystals intersecting the 1x2x1 box above the base
  * @param otherEntityInBox whether any other entity that is not a spectator intersects that box
  */
-public record Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, double budgetSelfDamage,
-                        boolean inRange, Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+public record Candidate(long pos, Map<String, Double> targetDamage, Map<String, Double> targetRaw, double selfDamage,
+                        double budgetSelfDamage, boolean inRange, Set<Integer> crystalsInBox, boolean otherEntityInBox) {
     public Candidate {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
+        targetRaw = Damage.copyOf(targetRaw, "target raw damage");
         Damage.check(selfDamage, "self damage");
         budgetSelfDamage = Damage.budgetSelf(budgetSelfDamage, selfDamage);
         crystalsInBox = Set.copyOf(Objects.requireNonNull(crystalsInBox, "crystals in box"));
     }
 
-    /** A spot whose budget self damage is Meteor's own. */
+    /** A spot with no exact raw damage to its targets. */
+    public Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, double budgetSelfDamage,
+                     boolean inRange, Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+        this(pos, targetDamage, Map.of(), selfDamage, budgetSelfDamage, inRange, crystalsInBox, otherEntityInBox);
+    }
+
+    /** A spot whose budget self damage is Meteor's own, with no exact raw damage to its targets. */
     public Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, boolean inRange,
                      Set<Integer> crystalsInBox, boolean otherEntityInBox) {
         this(pos, targetDamage, selfDamage, selfDamage, inRange, crystalsInBox, otherEntityInBox);

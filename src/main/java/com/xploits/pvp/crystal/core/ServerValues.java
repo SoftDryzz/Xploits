@@ -12,6 +12,7 @@ import java.util.OptionalDouble;
  *   <li>a player whose health or squared distance is not a valid number is not a target;</li>
  *   <li>our own health that is not a valid number means the tick does nothing;</li>
  *   <li>odd damage to a target counts as none;</li>
+ *   <li>an odd exact raw damage to a target is left out, so no hurt window holds a spot back for it;</li>
  *   <li>a spot with odd damage to us is not an option;</li>
  *   <li>a standing crystal with odd damage to us is taken as deadly ({@link #UNKNOWN_SELF_DAMAGE}): it is
  *   never ours to break (Meteor's max-damage and anti-suicide refuse it) and it fills the budget while it
@@ -52,6 +53,14 @@ public final class ServerValues {
     /** Damage a crystal would deal to a target; an odd value counts as none. */
     public static double targetDamage(double damage) {
         return valid(damage) ? damage : 0;
+    }
+
+    /**
+     * The exact raw damage (before armour) a crystal would deal to a target, for {@link TargetWindows}; nothing if
+     * it is odd, and then the target has no entry, which never holds a spot back.
+     */
+    public static OptionalDouble targetRaw(double raw) {
+        return valid(raw) ? OptionalDouble.of(raw) : OptionalDouble.empty();
     }
 
     /** Damage a crystal placed on a spot would deal to us; nothing (the spot is left out) if it is odd. */
