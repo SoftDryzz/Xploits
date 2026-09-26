@@ -13,6 +13,7 @@ import com.xploits.pvp.crystal.core.CrystalSettings.PauseMode;
 import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
+import com.xploits.pvp.crystal.core.ExplosionMath;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
@@ -73,7 +74,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.GameMode;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.world.explosion.Explosion;
+import net.minecraft.world.explosion.ExplosionImpl;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -657,8 +661,29 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         ClientPlayerEntity p = mc.player;
         double self = ServerValues.crystalSelfDamage(DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base));
         double distance = ServerValues.crystalDistance(PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z));
-        return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self, distance,
-            !outOfRange(pos, crystal.getBlockPos(), false));
+        return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self,
+            ServerValues.budgetSelfDamage(self, exactSelfDamage(pos)), distance, !outOfRange(pos, crystal.getBlockPos(), false));
+    }
+
+    /**
+     * The damage an end crystal exploding at {@code explosion} would deal to us, as the server computes it
+     * (research-reserve-undershoot): Meteor's formula without its int cast of the raw damage (line 95), which
+     * makes its prediction up to one raw point short. The exposure is vanilla's
+     * ({@code ExplosionImpl.calculateReceivedDamage}, which raycasts in our own, the client's, world); the
+     * reductions are Meteor's, with the explosion source it uses (lines 97, 271-290). Distance from our feet
+     * with no predicted movement, as Meteor measures it ({@link #PREDICT_MOVEMENT} is off). Only the budget
+     * reads it, through {@link ServerValues#budgetSelfDamage}, which keeps Meteor's value when this one is odd.
+     */
+    private double exactSelfDamage(Vec3d explosion) {
+        ClientPlayerEntity p = mc.player;
+        // Meteor predicts nothing for a player in creative (DamageUtils, explosionDamage), and the server deals nothing.
+        if (EntityUtils.getGameMode(p) == GameMode.CREATIVE) return 0;
+        Vec3d feet = p.getEntityPos();
+        double distance = PlayerUtils.distance(feet.x, feet.y, feet.z, explosion.x, explosion.y, explosion.z);
+        // Beyond the radius there is nothing to deal, and no need to raycast for the exposure.
+        if (distance > ExplosionMath.CRYSTAL_RADIUS) return 0;
+        float raw = ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
+        return DamageUtils.calculateReductions(raw, p, mc.world.getDamageSources().explosion((Explosion) null));
     }
 
     private static Map<String, Double> damageTo(Iterable<PlayerEntity> against, Vec3d pos, BlockPos base) {
@@ -787,7 +812,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             }
             return !entity.isSpectator();
         });
-        return Optional.of(new Candidate(base.asLong(), damage, self.getAsDouble(), true, crystalsInBox, other));
+        double meteorSelf = self.getAsDouble();
+        return Optional.of(new Candidate(base.asLong(), damage, meteorSelf,
+            ServerValues.budgetSelfDamage(meteorSelf, exactSelfDamage(pos)), true, crystalsInBox, other));
     }
 
     // Acting

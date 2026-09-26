@@ -17,8 +17,10 @@ import java.util.Map;
  *                     {@link Candidate#pos}, so a crystal that appears can be matched against a pending
  *                     placement (Meteor matches by block, lines 734-738)
  * @param targetDamage the damage this crystal's explosion would deal to each target, by target name
- * @param selfDamage   the damage it would deal to you ({@code DamageUtils.crystalDamage}), with no totem
- *                     or invulnerability taken into account
+ * @param selfDamage   the damage it would deal to you ({@code DamageUtils.crystalDamage}, raw damage truncated
+ *                     to an int), with no totem or invulnerability taken into account: Meteor's checks read it
+ * @param budgetSelfDamage the same with the raw damage exact ({@link ExplosionMath}): {@link SelfBudget} reads
+ *                     only this one. Never below {@code selfDamage}: a lower value is replaced by it
  * @param distance     the distance from your feet to the crystal, as {@code DamageUtils} measures it:
  *                     beyond {@link SelfBudget#HAZARD_RADIUS} its explosion cannot reach you
  * @param inBreakRange whether it is within break range (Meteor's break-range or break-walls-range after
@@ -28,7 +30,7 @@ import java.util.Map;
  * @param attackedTick the pre-tick of our last attack on it, or {@link #NEVER}
  * @param removedTick  the pre-tick at which it was first seen gone, or {@link #NEVER} while it stands
  */
-public record CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage,
+public record CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double budgetSelfDamage,
                           double distance, boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
     /** No such tick: never attacked, or still standing. */
     public static final long NEVER = -1;
@@ -43,6 +45,7 @@ public record CrystalView(int id, long pos, Map<String, Double> targetDamage, do
     public CrystalView {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
         Damage.check(selfDamage, "self damage");
+        budgetSelfDamage = Damage.budgetSelf(budgetSelfDamage, selfDamage);
         if (!Double.isFinite(distance) || distance < 0) throw new IllegalArgumentException("distance " + distance);
         if (attempts < 0) throw new IllegalArgumentException("attempts " + attempts);
         if (attackedTick < NEVER) throw new IllegalArgumentException("attacked tick " + attackedTick);
@@ -50,6 +53,13 @@ public record CrystalView(int id, long pos, Map<String, Double> targetDamage, do
         if (attackedTick != NEVER && attempts == 0) {
             throw new IllegalArgumentException("attacked with no attempts");
         }
+    }
+
+    /** A crystal whose budget self damage is Meteor's own. */
+    public CrystalView(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
+                       boolean inBreakRange, boolean ours, int attempts, long attackedTick, long removedTick) {
+        this(id, pos, targetDamage, selfDamage, selfDamage, distance, inBreakRange, ours, attempts, attackedTick,
+            removedTick);
     }
 
     /** Whether it is still standing. */

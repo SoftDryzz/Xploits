@@ -23,6 +23,9 @@ import java.util.Set;
  *   <li><b>Worst case C = I + S.</b> Totems and invulnerability are never counted.</li>
  * </ul>
  *
+ * <p>Every self damage here is the exact one ({@link CrystalView#budgetSelfDamage}, {@link ExplosionMath}), never
+ * Meteor's truncated prediction: that one is up to a raw point short, and health would end that far below R.
+ *
  * <p>These rules only add checks on top of Meteor's; they never allow what Meteor would refuse.
  * Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
  * {@link Verdict#FOREIGN} for it without reading health, so no caller can get that wrong.
@@ -95,7 +98,7 @@ public final class SelfBudget {
      * @param now            the current pre-tick
      * @param health         your health plus absorption, read now
      * @param crystals       the crystals measured, standing or just gone
-     * @param pending        the self damage of each placement sent whose crystal has not appeared yet
+     * @param pending        the budget self damage of each placement sent whose crystal has not appeared yet
      * @param reserve        R, from the {@code risk} level ({@link CrystalSettings#budgetReserve()}); never
      *                       below {@link #FLOOR}, because a placement could then leave less than the floor
      *                       and its own crystal could never be broken. So the lowest level keeps exactly F,
@@ -115,10 +118,10 @@ public final class SelfBudget {
         for (CrystalView c : crystals) {
             switch (shareOf(c, now)) {
                 case IN_FLIGHT -> {
-                    in += c.selfDamage();
-                    byId.put(c.id(), c.selfDamage());
+                    in += c.budgetSelfDamage();
+                    byId.put(c.id(), c.budgetSelfDamage());
                 }
-                case STANDING -> stand += c.selfDamage();
+                case STANDING -> stand += c.budgetSelfDamage();
                 case NOT_COUNTED -> { }
             }
         }
@@ -168,7 +171,8 @@ public final class SelfBudget {
     }
 
     /**
-     * Placing a crystal with this self damage, once it passed Meteor's checks: allowed if it leaves the
+     * Placing a crystal with this self damage (the spot's {@link Candidate#budgetSelfDamage}), once it passed
+     * Meteor's checks: allowed if it leaves the
      * reserve ({@code health - C - self >= R}); otherwise, in safe mode, if the self damage is tiny and it
      * still leaves the floor ({@code self <= epsilon} and {@code health - C - self >= F}).
      */
@@ -190,6 +194,6 @@ public final class SelfBudget {
         if (!crystal.live()) throw new IllegalArgumentException("crystal already gone: " + crystal.id());
         if (!crystal.ours()) return Verdict.FOREIGN;
         double others = inFlight - inFlightById.getOrDefault(crystal.id(), 0.0);
-        return health - others - crystal.selfDamage() >= FLOOR ? Verdict.ALLOWED : Verdict.REFUSED_FLOOR;
+        return health - others - crystal.budgetSelfDamage() >= FLOOR ? Verdict.ALLOWED : Verdict.REFUSED_FLOOR;
     }
 }

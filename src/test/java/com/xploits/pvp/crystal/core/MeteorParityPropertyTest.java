@@ -262,8 +262,14 @@ class MeteorParityPropertyTest {
             return r.nextBoolean() ? near(s.maxDamage(), 12) : quarters(8);
         }
 
+        /** The budget's exact self damage: Meteor's, or up to 2 above it. Only the budget reads it. */
+        private double budgetSelfDamage(double self) {
+            return r.nextBoolean() ? self : self + quarters(2);
+        }
+
         private CrystalSeen crystal(int id, long pos) {
-            return new CrystalSeen(id, pos, damages(), selfDamage(), quarters(14), r.nextDouble() < 0.85);
+            double self = selfDamage();
+            return new CrystalSeen(id, pos, damages(), self, budgetSelfDamage(self), quarters(14), r.nextDouble() < 0.85);
         }
 
         private List<Candidate> candidates() {
@@ -276,7 +282,9 @@ class MeteorParityPropertyTest {
                     if (c.pos() == pos) inBox.add(c.id());
                 }
                 if (!ids.isEmpty() && r.nextDouble() < 0.05) inBox.add(ids.get(r.nextInt(ids.size())));
-                spots.add(new Candidate(pos, damages(), selfDamage(), r.nextDouble() < 0.9, inBox, r.nextDouble() < 0.1));
+                double self = selfDamage();
+                spots.add(new Candidate(pos, damages(), self, budgetSelfDamage(self), r.nextDouble() < 0.9, inBox,
+                    r.nextDouble() < 0.1));
             }
             // BlockIterator's order is not the spots' order.
             java.util.Collections.shuffle(spots, r);

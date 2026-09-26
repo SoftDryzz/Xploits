@@ -64,6 +64,18 @@ public final class ServerValues {
         return valid(damage) ? damage : UNKNOWN_SELF_DAMAGE;
     }
 
+    /**
+     * The self damage the budget counts for a crystal or spot: the exact one ({@link ExplosionMath}, with vanilla's
+     * exposure and Meteor's reductions) when it is higher than Meteor's, which is up to a raw point short. An exact
+     * value that is not a valid number falls back to Meteor's, never to 0, so it cannot make anything look safer.
+     *
+     * @param meteorSelfDamage Meteor's prediction, already through {@link #spotSelfDamage} or
+     *                         {@link #crystalSelfDamage}
+     */
+    public static double budgetSelfDamage(double meteorSelfDamage, double exactSelfDamage) {
+        return valid(exactSelfDamage) ? Math.max(meteorSelfDamage, exactSelfDamage) : meteorSelfDamage;
+    }
+
     /** Our distance to a standing crystal; 0 if it is odd, so the crystal counts in the budget. */
     public static double crystalDistance(double distance) {
         return valid(distance) ? distance : 0;

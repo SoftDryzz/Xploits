@@ -16,6 +16,15 @@ final class Damage {
         return value;
     }
 
+    /**
+     * The self damage the budget reads: the exact one ({@link ExplosionMath}) checked like any damage, and never
+     * below Meteor's {@code selfDamage}. A lower value is replaced by Meteor's, so the budget never counts less
+     * than Meteor predicts.
+     */
+    static double budgetSelf(double budgetSelfDamage, double selfDamage) {
+        return Math.max(selfDamage, check(budgetSelfDamage, "budget self damage"));
+    }
+
     /** An unmodifiable copy of the damage per target name, keeping the order it was given in. */
     static Map<String, Double> copyOf(Map<String, Double> damage, String what) {
         Objects.requireNonNull(damage, what);

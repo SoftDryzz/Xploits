@@ -14,17 +14,27 @@ import java.util.Map;
  *                     matches by block, lines 734-738)
  * @param targetDamage the damage its explosion would deal to each player, by name
  *                     ({@code DamageUtils.crystalDamage}); the brain sums it over its targets only
- * @param selfDamage   the damage it would deal to you, with no totem or invulnerability taken into account
+ * @param selfDamage   the damage it would deal to you as Meteor predicts it (raw damage truncated to an int),
+ *                     with no totem or invulnerability taken into account: Meteor's checks read this one
+ * @param budgetSelfDamage the same with the raw damage exact ({@link ExplosionMath}): the budget reads this one.
+ *                     Never below {@code selfDamage}: a lower value is replaced by it
  * @param distance     the distance from your feet to the crystal, as {@code DamageUtils} measures it
  * @param inBreakRange whether it is within break range (break-range, or break-walls-range when the eye
  *                     raycast hits a wall, lines 1164-1171)
  */
-public record CrystalSeen(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
-                          boolean inBreakRange) {
+public record CrystalSeen(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double budgetSelfDamage,
+                          double distance, boolean inBreakRange) {
     public CrystalSeen {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
         Damage.check(selfDamage, "self damage");
+        budgetSelfDamage = Damage.budgetSelf(budgetSelfDamage, selfDamage);
         if (!Double.isFinite(distance) || distance < 0) throw new IllegalArgumentException("distance " + distance);
+    }
+
+    /** A crystal whose budget self damage is Meteor's own. */
+    public CrystalSeen(int id, long pos, Map<String, Double> targetDamage, double selfDamage, double distance,
+                       boolean inBreakRange) {
+        this(id, pos, targetDamage, selfDamage, selfDamage, distance, inBreakRange);
     }
 
     /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */

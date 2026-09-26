@@ -291,7 +291,7 @@ public final class CrystalBrain {
         if (pingTicks < 0) throw new IllegalArgumentException("ping " + pingTicks);
         pending.removeIf(p -> p.pos == pos);
         late.removeIf(l -> l.pos == pos);
-        pending.add(new Pending(pos, decided.selfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN)));
+        pending.add(new Pending(pos, decided.budgetSelfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN)));
         decided = null;
     }
 
@@ -363,7 +363,10 @@ public final class CrystalBrain {
         return facePlacing ? Math.min(settings.minDamage(), FACE_PLACE_MIN_DAMAGE) : settings.minDamage();
     }
 
-    /** Meteor's self-damage checks: max-damage and anti-suicide (lines 812, 953). */
+    /**
+     * Meteor's self-damage checks: max-damage and anti-suicide (lines 812, 953), on Meteor's own prediction
+     * ({@code selfDamage}, never the budget's exact one), so with the budget off ++ is Meteor.
+     */
     private boolean tooHurtful(double selfDamage, double health) {
         return selfDamage > settings.maxDamage() || (settings.antiSuicide() && selfDamage >= health);
     }
@@ -480,12 +483,12 @@ public final class CrystalBrain {
                 // placed): only one crystal can come of the two, so the pending one does not count here.
                 if (pendingAt(pos)) budget = budget(health, pos);
                 else budget = shared != null ? shared : (shared = budget(health, null));
-                Verdict v = budget.placeAllowed(s.item.selfDamage());
+                Verdict v = budget.placeAllowed(s.item.budgetSelfDamage());
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
             rotateNow();
-            decided = new Placement(s.item.pos(), s.item.selfDamage());
+            decided = new Placement(s.item.pos(), s.item.budgetSelfDamage());
             boolean swap = settings.autoSwitch() == AutoSwitch.NORMAL && !hands.offhandCrystals() && !hands.mainHandCrystals();
             return Optional.of(new Action(Decision.place(s.item.pos(), reason), crystalHand(hands), swap));
         }
@@ -525,7 +528,7 @@ public final class CrystalBrain {
         for (Known k : known.values()) views.add(k.view(now));
         List<Double> selfDamages = new ArrayList<>(pending.size());
         for (Pending p : pending) {
-            if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.selfDamage);
+            if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.budgetSelfDamage);
         }
         return SelfBudget.of(now, health, views, selfDamages, settings.budgetReserve(), settings.safeSelfDamage());
     }
@@ -598,9 +601,10 @@ public final class CrystalBrain {
 
     private record Scored<T>(T item, float damage) {}
 
-    private record Placement(long pos, double selfDamage) {}
+    /** A placement decided this tick, with the self damage the budget counts for it. */
+    private record Placement(long pos, double budgetSelfDamage) {}
 
-    private record Pending(long pos, double selfDamage, long tick, int lifetime) {}
+    private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime) {}
 
     private record Late(long pos, long since) {}
 
@@ -631,8 +635,8 @@ public final class CrystalBrain {
         /** As the budget sees it now; one removed since the last pre-tick counts as gone from it. */
         CrystalView view(long now) {
             long removed = removedTick != CrystalView.NEVER ? removedTick : reportedGone ? now : CrystalView.NEVER;
-            return new CrystalView(seen.id(), seen.pos(), seen.targetDamage(), seen.selfDamage(), seen.distance(),
-                seen.inBreakRange(), ours, attempts, attackedTick, removed);
+            return new CrystalView(seen.id(), seen.pos(), seen.targetDamage(), seen.selfDamage(), seen.budgetSelfDamage(),
+                seen.distance(), seen.inBreakRange(), ours, attempts, attackedTick, removed);
         }
     }
 }

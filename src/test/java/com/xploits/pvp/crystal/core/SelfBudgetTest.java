@@ -45,7 +45,8 @@ class SelfBudgetTest {
     }
 
     private static CrystalView at(CrystalView c, double distance) {
-        return new CrystalView(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange(), c.ours(),
+        return new CrystalView(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), distance,
+            c.inBreakRange(), c.ours(),
             c.attempts(), c.attackedTick(), c.removedTick());
     }
 

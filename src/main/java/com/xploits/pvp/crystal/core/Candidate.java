@@ -13,18 +13,30 @@ import java.util.Set;
  * @param pos              the base block, packed by the adapter; an opaque key the core never shows.
  *                         {@link CrystalView#pos} is packed the same way
  * @param targetDamage     the damage a crystal here would deal to each target, by target name
- * @param selfDamage       the damage it would deal to you, with no totem or invulnerability counted
+ * @param selfDamage       the damage it would deal to you as Meteor predicts it ({@code DamageUtils}, raw damage
+ *                         truncated to an int), with no totem or invulnerability counted: Meteor's max-damage
+ *                         and anti-suicide read this one
+ * @param budgetSelfDamage the same with the raw damage exact, as the server deals it ({@link ExplosionMath}):
+ *                         the self-damage budget reads this one. Never below {@code selfDamage}: a lower
+ *                         value is replaced by it
  * @param inRange          whether the crystal position is within place range from the feet, or within
  *                         place-walls-range when the eye raycast hits a wall (lines 947-949, 1164-1171)
  * @param crystalsInBox    ids of the crystals intersecting the 1x2x1 box above the base
  * @param otherEntityInBox whether any other entity that is not a spectator intersects that box
  */
-public record Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, boolean inRange,
-                        Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+public record Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, double budgetSelfDamage,
+                        boolean inRange, Set<Integer> crystalsInBox, boolean otherEntityInBox) {
     public Candidate {
         targetDamage = Damage.copyOf(targetDamage, "target damage");
         Damage.check(selfDamage, "self damage");
+        budgetSelfDamage = Damage.budgetSelf(budgetSelfDamage, selfDamage);
         crystalsInBox = Set.copyOf(Objects.requireNonNull(crystalsInBox, "crystals in box"));
+    }
+
+    /** A spot whose budget self damage is Meteor's own. */
+    public Candidate(long pos, Map<String, Double> targetDamage, double selfDamage, boolean inRange,
+                     Set<Integer> crystalsInBox, boolean otherEntityInBox) {
+        this(pos, targetDamage, selfDamage, selfDamage, inRange, crystalsInBox, otherEntityInBox);
     }
 
     /** The damage to these targets, summed in {@code float} in their order (Meteor, lines 1190-1210). */

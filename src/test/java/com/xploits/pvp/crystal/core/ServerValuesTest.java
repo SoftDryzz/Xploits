@@ -131,6 +131,24 @@ class ServerValuesTest {
         }
     }
 
+    @Test
+    void theBudgetTakesTheExactSelfDamageWhenItIsHigherAndMeteorsOtherwise() {
+        assertEquals(5.5420, ServerValues.budgetSelfDamage(5.4144, 5.5420));
+        assertEquals(5.4144, ServerValues.budgetSelfDamage(5.4144, 5.0), "never below Meteor's");
+        assertEquals(ServerValues.UNKNOWN_SELF_DAMAGE, ServerValues.budgetSelfDamage(ServerValues.UNKNOWN_SELF_DAMAGE, 5));
+    }
+
+    @Test
+    void anOddExactSelfDamageFallsBackToMeteorsNeverToNothing() {
+        for (double v : ODD) {
+            if (Double.isFinite(v) && v >= 0) continue;
+            assertEquals(5.4144, ServerValues.budgetSelfDamage(5.4144, v), "exact " + v);
+            double self = ServerValues.budgetSelfDamage(5.4144, v);
+            assertDoesNotThrow(() -> new Candidate(1, Map.of(), 5.4144, self, true, Set.of(), false));
+        }
+        assertEquals(Float.MAX_VALUE, ServerValues.budgetSelfDamage(5.4144, Float.MAX_VALUE));
+    }
+
     private static Optional<TargetView> target(double health, double absorption, double squaredDistance) {
         return ServerValues.target("p", squaredDistance, health, absorption, TargetView.NO_ARMOR, false, true, false);
     }

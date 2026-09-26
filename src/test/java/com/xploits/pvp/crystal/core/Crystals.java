@@ -62,15 +62,26 @@ final class Crystals {
 
     /** The same crystal measured again, now dealing this damage to the enemy. */
     static CrystalSeen dealing(CrystalSeen c, double damage) {
-        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.selfDamage(), c.distance(), c.inBreakRange());
+        return new CrystalSeen(c.id(), c.pos(), Map.of(ENEMY, damage), c.selfDamage(), c.budgetSelfDamage(), c.distance(),
+            c.inBreakRange());
     }
 
     static CrystalSeen outOfBreakRange(CrystalSeen c) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.distance(), false);
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), c.distance(), false);
     }
 
     static CrystalSeen at(CrystalSeen c, double distance) {
-        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), distance, c.inBreakRange());
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), distance,
+            c.inBreakRange());
+    }
+
+    /**
+     * The same crystal with this exact self damage for the budget (Meteor's truncated one stays for Meteor's
+     * checks). The shortcuts above give the budget Meteor's value.
+     */
+    static CrystalSeen withBudget(CrystalSeen c, double budgetSelfDamage) {
+        return new CrystalSeen(c.id(), c.pos(), c.targetDamage(), c.selfDamage(), budgetSelfDamage, c.distance(),
+            c.inBreakRange());
     }
 
     /** A spot in range with nothing in its box, dealing {@code damage} to the enemy. */
@@ -83,11 +94,19 @@ final class Crystals {
     }
 
     static Candidate boxed(Candidate c, Set<Integer> crystals, boolean otherEntity) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.inRange(), crystals, otherEntity);
+        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), c.inRange(), crystals,
+            otherEntity);
     }
 
     static Candidate outOfRange(Candidate c) {
-        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), false, c.crystalsInBox(), c.otherEntityInBox());
+        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), c.budgetSelfDamage(), false, c.crystalsInBox(),
+            c.otherEntityInBox());
+    }
+
+    /** The same spot with this exact self damage for the budget, as {@link #withBudget(CrystalSeen, double)}. */
+    static Candidate withBudget(Candidate c, double budgetSelfDamage) {
+        return new Candidate(c.pos(), c.targetDamage(), c.selfDamage(), budgetSelfDamage, c.inRange(), c.crystalsInBox(),
+            c.otherEntityInBox());
     }
 
     static Tick tick(long n) {
