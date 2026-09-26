@@ -76,6 +76,50 @@ share the error, the test passes anyway.
 
 ---
 
+## In-game bench
+
+A permanent bench of scripted fights, separate from the unit tests: `src/gametest/`, run with
+`./gradlew runClientGameTest`. It never ships (Fabric API is on the gametest classpath only, so the
+shipped jar does not change), and `./gradlew build` never opens a window or runs it.
+
+- **CHECK** scenarios assert one behaviour and block a release on FAIL.
+- **MEASURE** scenarios run a module under test for a fixed time against a scripted sparring partner and
+  report numbers (damage dealt, pops, placements per second, and the rest of the metric table) instead of
+  a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
+  for whoever reads the report.
+
+`./gradlew runClientGameTest` opens a Minecraft window and takes about 10 minutes for the full bench. It
+wipes `build/bench` first, so every report in there is from that run alone; copy a report out of
+`build/bench` if you want to keep it, because the next run erases it.
+
+- `-Pbench.only=<name,name>` runs only the named scenarios, for a quick check while working on one of
+  them. **A release needs a full run** (no `-Pbench.only`): a partial run cannot prove the scenarios it
+  skipped still pass, and the report itself records which names ran, so a partial run is never mistaken
+  for a full one.
+- `-Pbench.updateBaseline` merges every DONE MEASURE's medians from the run into the committed
+  `bench/baseline.json`; a scenario that did not run, or did not finish DONE, keeps its existing entry.
+
+**The verdict is `runClientGameTest`'s Gradle result, not the client's exit code.** A client that stops
+mid-bench (a closed window, a crash) can still exit 0, so the report is what settles it: `benchVerify`
+(which always follows `runClientGameTest`) reads it and prints a `bench: …` summary line. `BUILD
+SUCCESSFUL` plus that line means the release gate passed. `benchVerify` fails the build on:
+
+- a missing report;
+- any scenario that is PENDING, FAIL or ERROR;
+- hygiene not clean (a report line looked like a position).
+
+**PENDING** means the client stopped before that scenario finished. Rerun the bench; never release on a
+PENDING report. If the window hangs, with no progress in the client log for minutes, kill the Java
+process by hand — the same PENDING result follows.
+
+Regressions against the baseline are counted in the summary line but do not fail the build by themselves:
+show them to whoever is about to release, before tagging.
+
+`./gradlew benchVerify` alone re-checks an existing `build/bench` report without opening a window, for
+example right after a run that already finished.
+
+---
+
 ## Reject rather than degrade
 
 When something cannot be done as asked, **it is rejected, saying which setting to change and to what
