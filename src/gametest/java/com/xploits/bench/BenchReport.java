@@ -364,7 +364,8 @@ public final class BenchReport {
         if (aggregate.poppedRuns() != null) {
             long done = e.runs.stream().filter(r -> r.status() == Status.DONE).count();
             md.append("The sparring popped in ").append(aggregate.poppedRuns()).append(" of ").append(done)
-                .append(" DONE runs; first_pop_s is the median of those runs only.\n\n");
+                .append(" DONE runs; first_pop_s is the median of those runs only, and is not compared")
+                .append(" when no run popped (no_pop_runs carries it).\n\n");
         }
         md.append("| Metric | Better | Median | Min | Max");
         for (int i = 1; i <= e.scenario.runs(); i++) md.append(" | Run ").append(i);
