@@ -258,7 +258,10 @@ public final class CrystalBrain {
         return action;
     }
 
-    /** {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands)} with the last pre-tick's settings (tests). */
+    /**
+     * {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands)} with the last settings given
+     * to the brain, by a pre-tick or by an earlier {@code crystalAdded} (tests).
+     */
     Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
         return crystalAdded(settings, crystal, health, hands);
     }

@@ -346,13 +346,34 @@ class CrystalSettingsCoverageTest {
         assertFalse(b.wantsPlacement());
     }
 
+    /** Out of range for a spot, with the break ranges set apart (5.5 and 6) so they can never stand in. */
+    private static boolean spotOut(boolean behindWall, double squared, double placeRange, double placeWallsRange) {
+        return Reach.outOfRange(squared, Reach.rangeFor(true, behindWall, placeRange, placeWallsRange, 5.5, 6));
+    }
+
+    /** Out of range for a crystal, with the place ranges set apart (5.5 and 6). */
+    private static boolean crystalOut(boolean behindWall, double squared, double breakRange, double breakWallsRange) {
+        return Reach.outOfRange(squared, Reach.rangeFor(false, behindWall, 5.5, 6, breakRange, breakWallsRange));
+    }
+
+    @Test
+    @Covers({PLACE_RANGE, PLACE_WALLS_RANGE, BREAK_RANGE, BREAK_WALLS_RANGE})
+    void eachOfTheFourRangesIsUsedWhereMeteorUsesIt() {
+        // Line 949 measures a spot against the place ranges, line 807 a crystal against the break ranges, and
+        // lines 1169-1171 pick the walls range behind a wall. Four distinct values, so no swap can pass.
+        assertEquals(1, Reach.rangeFor(true, false, 1, 2, 3, 4), 0.0);
+        assertEquals(2, Reach.rangeFor(true, true, 1, 2, 3, 4), 0.0);
+        assertEquals(3, Reach.rangeFor(false, false, 1, 2, 3, 4), 0.0);
+        assertEquals(4, Reach.rangeFor(false, true, 1, 2, 3, 4), 0.0);
+    }
+
     @Test
     @Covers(PLACE_RANGE)
     void placeRangeThreeReachesThreeFromTheFeet() {
         // Lines 947-949 and 1171: PlayerUtils.isWithin is a squared distance from the feet <= r * r.
-        assertFalse(Reach.outOfRange(false, 9, 3, 4.5));
-        assertTrue(Reach.outOfRange(false, Math.nextUp(9.0), 3, 4.5));
-        assertFalse(Reach.outOfRange(false, Math.nextUp(9.0), 4.5, 4.5));
+        assertFalse(spotOut(false, 9, 3, 4.5));
+        assertTrue(spotOut(false, Math.nextUp(9.0), 3, 4.5));
+        assertFalse(spotOut(false, Math.nextUp(9.0), 4.5, 4.5));
         // The brain never places on a spot the adapter measured out of range.
         assertNothing(once(METEOR, tick(1).candidates(outOfRange(spot(1, 6, 1)))));
     }
@@ -361,9 +382,9 @@ class CrystalSettingsCoverageTest {
     @Covers(PLACE_WALLS_RANGE)
     void placeWallsRangeTwoAppliesOnlyBehindAWall() {
         // Lines 1169-1170: when the eye raycast does not end on the block, the walls range applies.
-        assertFalse(Reach.outOfRange(true, 4, 4.5, 2));
-        assertTrue(Reach.outOfRange(true, Math.nextUp(4.0), 4.5, 2));
-        assertFalse(Reach.outOfRange(false, 16, 4.5, 2));
+        assertFalse(spotOut(true, 4, 4.5, 2));
+        assertTrue(spotOut(true, Math.nextUp(4.0), 4.5, 2));
+        assertFalse(spotOut(false, 16, 4.5, 2));
     }
 
     @Test
@@ -416,8 +437,8 @@ class CrystalSettingsCoverageTest {
     @Covers(BREAK_RANGE)
     void breakRangeThreeReachesThreeFromTheFeet() {
         // Lines 807 and 1171.
-        assertFalse(Reach.outOfRange(false, 9, 3, 4.5));
-        assertTrue(Reach.outOfRange(false, Math.nextUp(9.0), 3, 4.5));
+        assertFalse(crystalOut(false, 9, 3, 4.5));
+        assertTrue(crystalOut(false, Math.nextUp(9.0), 3, 4.5));
         // Out of range: not broken, and no longer blocking a placement (807, then 921-924).
         assertPlaces(2, once(METEOR, tick(1).crystals(outOfBreakRange(crystal(1, 8, 1))).candidates(spot(2, 7, 1))));
         CrystalBrain b = new CrystalBrain();
@@ -429,9 +450,9 @@ class CrystalSettingsCoverageTest {
     @Covers(BREAK_WALLS_RANGE)
     void breakWallsRangeTwoAppliesOnlyBehindAWall() {
         // Lines 1169-1170.
-        assertFalse(Reach.outOfRange(true, 4, 4.5, 2));
-        assertTrue(Reach.outOfRange(true, Math.nextUp(4.0), 4.5, 2));
-        assertFalse(Reach.outOfRange(false, 16, 4.5, 2));
+        assertFalse(crystalOut(true, 4, 4.5, 2));
+        assertTrue(crystalOut(true, Math.nextUp(4.0), 4.5, 2));
+        assertFalse(crystalOut(false, 16, 4.5, 2));
     }
 
     /** Pre-ticks {@code from..to} with crystal {@code c} standing, each attack sent at once; the breaks seen. */

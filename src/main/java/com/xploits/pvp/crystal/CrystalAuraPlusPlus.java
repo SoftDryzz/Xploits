@@ -660,8 +660,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         boolean behindWall = !(result instanceof BlockHitResult hit) || !hit.getBlockPos().equals(blockPos);
         // PlayerUtils.isWithin(pos, r) is this squared distance from the feet <= r * r.
         double squared = PlayerUtils.squaredDistanceTo(pos.x, pos.y, pos.z);
-        return placing ? Reach.outOfRange(behindWall, squared, placeRange.get(), placeWallsRange.get())
-            : Reach.outOfRange(behindWall, squared, breakRange.get(), breakWallsRange.get());
+        return Reach.outOfRange(squared, Reach.rangeFor(placing, behindWall, placeRange.get(), placeWallsRange.get(),
+            breakRange.get(), breakWallsRange.get()));
     }
 
     /** Our health plus absorption, or nothing if the server made it an odd number. */
