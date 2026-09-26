@@ -76,7 +76,7 @@ tasks.register("benchVerify") {
     doLast {
         val file = benchReport.get().asFile
         if (!file.isFile) {
-            throw GradleException("bench: no report (build/bench/${file.name}): the client stopped before the bench wrote it")
+            throw GradleException("bench: no report (build/bench/${file.name}): the bench ended before writing it; see the client log")
         }
         @Suppress("UNCHECKED_CAST")
         val root = groovy.json.JsonSlurper().parse(file) as Map<String, Any?>
@@ -100,7 +100,12 @@ tasks.register("benchVerify") {
             null -> "hygiene not scanned"
             else -> "hygiene ERROR"
         }
-        val summary = (counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
+        // The scenario count, and which names -Pbench.only picked (or "full run"), so a partial run is
+        // visible here and not only in the report's own "only" field.
+        val only = root["only"]?.toString()
+        val scope = if (only != null) "only $only" else "full run"
+        val summary = (listOf("${scenarios.size} scenario(s), $scope") +
+            counts.map { (status, n) -> "$n $status" } + "$regressions regression(s)" + hygieneText).joinToString(", ")
         logger.lifecycle("bench: $summary")
         if (scenarios.isEmpty()) throw GradleException("bench: the report lists no scenario")
         if (blocking.isNotEmpty() || hygiene != "clean") {

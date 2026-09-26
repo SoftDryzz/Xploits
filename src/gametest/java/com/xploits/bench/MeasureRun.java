@@ -17,7 +17,9 @@ import java.util.List;
  * <ul>
  *   <li>our death, or a record that ends LOST;</li>
  *   <li>a record that dropped damage events;</li>
- *   <li>no record at all although a crystal placement packet was sent (a failed save).</li>
+ *   <li>no record at all although a crystal placement packet was sent (a failed save);</li>
+ *   <li>the records' summed placements exceed what the bench itself sent (the placement counter would
+ *   otherwise never be proven against an independent count).</li>
  * </ul>
  * The totals are summed over <b>all</b> the new records: a lull can split one run into two.
  */
@@ -96,6 +98,10 @@ final class MeasureRun {
         int placed = placementsSent();
         if (records.isEmpty() && placed > 0) {
             throw new BenchException("no fight was recorded although " + placed + " crystal placements were sent");
+        }
+        int recorded = crystalsPlaced();
+        if (recorded > placed) {
+            throw new BenchException("the records counted " + recorded + " crystal placements but the bench sent " + placed);
         }
         return records;
     }

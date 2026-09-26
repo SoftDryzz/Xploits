@@ -76,6 +76,9 @@ public final class BenchReport {
     private final String meteor;
     private final Path folder;
     private final Baseline baseline;
+    /** {@code -Pbench.only}'s names, comma-joined, or null for a full run: so a partial run stays visible
+     * in the report and not only in the console line that started it. */
+    private final String only;
     /** The planned scenarios, then any other that ran, in order. */
     private final Map<String, Entry> scenarios = new LinkedHashMap<>();
     /**
@@ -122,11 +125,12 @@ public final class BenchReport {
         }
     }
 
-    public BenchReport(String addon, String meteor, Path folder, Baseline baseline) {
+    public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only) {
         this.addon = addon;
         this.meteor = meteor;
         this.folder = folder;
         this.baseline = baseline;
+        this.only = only.isEmpty() ? null : String.join(",", only);
     }
 
     /** Lists the scenarios about to run, PENDING, so a report cut short shows what never ran. */
@@ -267,6 +271,7 @@ public final class BenchReport {
         root.addProperty("addon", addon);
         root.addProperty("meteor", meteor);
         root.addProperty("difficulty", "normal");
+        root.addProperty("only", only);
         JsonArray list = new JsonArray();
         for (Entry e : scenarios.values()) {
             JsonObject s = new JsonObject();
@@ -340,7 +345,9 @@ public final class BenchReport {
                 .append(" |\n");
         }
         for (Entry e : scenarios.values()) {
-            if (e.scenario.kind() == Scenario.Kind.MEASURE) measure(md, e);
+            // A MEASURE with no runs yet (PENDING) has nothing to tabulate: skip the table instead of
+            // printing a header with no rows under it.
+            if (e.scenario.kind() == Scenario.Kind.MEASURE && !e.runs.isEmpty()) measure(md, e);
         }
         if (hygieneHits()) {
             md.append("\n## Hygiene\n\nThese lines look like a position:\n\n");
