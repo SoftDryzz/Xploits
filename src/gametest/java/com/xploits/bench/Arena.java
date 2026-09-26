@@ -173,6 +173,17 @@ public final class Arena {
         });
     }
 
+    /**
+     * Puts {@code count} of {@code item} in hotbar slot {@code slot}, on top of a loadout that has none of
+     * it. It returns once the client holds exactly that many.
+     */
+    public void give(int slot, Item item, int count) {
+        if (slot < 0 || slot >= PlayerInventory.HOTBAR_SIZE) throw new BenchException("slot " + slot + " is not in the hotbar");
+        String name = bench.player();
+        bench.onServer(srv -> player(srv, name).getInventory().setStack(slot, new ItemStack(item, count)));
+        awaitClient(player -> holds(player, count, item), "an extra hotbar stack");
+    }
+
     /** The bare loadout: one offhand totem, nothing else, AutoTotem off. It returns once the client holds it. */
     public void bare() {
         AutoTotem totem = bench.meteor(AutoTotem.class);
