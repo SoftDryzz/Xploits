@@ -518,12 +518,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGH)
     private void onPreTick(TickEvent.Pre event) {
         if (mc.player == null || mc.world == null || refusingNow()) {
-            damagePackets.clear();
+            skipPreTick();
             return;
         }
         // Our health not a valid number (a broken or spoofing server): do nothing this tick.
         OptionalDouble health = health();
-        if (health.isEmpty()) return;
+        if (health.isEmpty()) {
+            skipPreTick();
+            return;
+        }
         tick++;
         ClientPlayerEntity p = mc.player;
         eyePos = new Vec3d(p.getEntityPos().x, p.getEntityPos().y + p.getEyeHeight(p.getPose()), p.getEntityPos().z);
@@ -543,6 +546,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             pingTicks());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
+        // Before the break phase, and the order matters: the brain counts the hits handed over before a pre-tick
+        // from the previous one. Handed over after it, they would count from this one, a tick short.
         readDamagePackets(b);
         b.breakPhase(settings, measured).ifPresent(a -> execute(a, crystals::get));
         if (b.wantsPlacement()) scan(b, tick);
@@ -579,6 +584,16 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         brain.crystalRemoved(crystal.getId());
     }
 
+    /**
+     * A pre-tick the brain does not get while the client ticks on. The ticks since a target's hit would then come
+     * out short, so every window is forgotten (the cautious reading: nothing is held back), with the packets read
+     * so far.
+     */
+    private void skipPreTick() {
+        damagePackets.clear();
+        brain.forgetWindows();
+    }
+
     /** Netty thread: queue only, the world is not touched here. */
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
@@ -589,7 +604,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * The full hits on other players received since the last pre-tick, to the brain: the server sends this packet
      * for full hits only, to every player tracking the one hurt (research-external M1). The player is named as the
      * targets are; a packet about us, or about an entity that is not a player we see, is dropped. With
-     * {@code self-budget} off nothing is kept: only the budget holds placements back for a hurt window.
+     * {@code self-budget} off nothing is kept: only the budget holds placements back for a hurt window, and the brain
+     * forgets its windows at every pre-tick with it off, so none survives a packet dropped here.
      */
     private void readDamagePackets(CrystalBrain b) {
         boolean keep = selfBudget.get();

@@ -36,6 +36,13 @@ class CrystalBrainTargetWindowTest {
 
     /** A brain whose crystal {@link #OURS} opened the enemy's window at pre-tick 2, with this raw1 recorded. */
     private static CrystalBrain windowFromOurCrystal(CrystalSettings settings, Map<String, Double> raw1) {
+        CrystalBrain brain = ourCrystalGone(settings, raw1);
+        brain.targetHurt(ENEMY, OURS);
+        return brain;
+    }
+
+    /** A brain whose crystal {@link #OURS} was placed at pre-tick 1 and broken at pre-tick 2, with no hit read yet. */
+    private static CrystalBrain ourCrystalGone(CrystalSettings settings, Map<String, Double> raw1) {
         CrystalBrain brain = new CrystalBrain();
         assertEquals(Decision.place(1, settings.selfBudget() ? Reason.WITHIN_BUDGET : Reason.BUDGET_OFF),
             only(brain.preTick(settings, tick(1).candidates(spot(1, 8, 0)).build())).decision());
@@ -43,7 +50,6 @@ class CrystalBrainTargetWindowTest {
         CrystalSeen ours = withRaw(crystal(OURS, 1, 8, 0), raw1);
         assertEquals(Decision.Kind.BREAK, only(brain.preTick(settings, tick(2).crystals(ours).build())).decision().kind());
         brain.crystalRemoved(OURS);
-        brain.targetHurt(ENEMY, OURS);
         return brain;
     }
 
@@ -219,5 +225,64 @@ class CrystalBrainTargetWindowTest {
         CrystalSeen foreign = withRaw(crystal(FOREIGN, 5, 10, 0), 47.0);
         assertEquals(Decision.breakCrystal(FOREIGN, Reason.FOREIGN_CRYSTAL),
             only(brain.preTick(DEFAULTS, tick(4).ping(0).crystals(foreign).build())).decision());
+    }
+
+    // Fix round 1: gaps, the budget turned off, and when a hit counts from
+
+    @Test
+    void forgettingTheWindowsHoldsNothingBack() {
+        // A hit handed over but not yet counted, and a window already open: both forgotten.
+        CrystalBrain queued = windowFromOurCrystal();
+        queued.forgetWindows();
+        assertEquals(BEST, placedOn(spotsAt(queued, DEFAULTS, 2, 0, 47.0)));
+
+        CrystalBrain open = windowFromOurCrystal();
+        assertTrue(open.preTick(DEFAULTS, tick(3).build()).isEmpty());
+        open.forgetWindows();
+        assertEquals(BEST, placedOn(open.preTick(DEFAULTS, tick(4).ping(0).candidates(
+            withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())));
+    }
+
+    @Test
+    void aPreTickWithTheBudgetOffForgetsTheWindows() {
+        // The hit handed over, then a pre-tick with the budget off: dropped, and nothing held once it is on again.
+        CrystalBrain queued = windowFromOurCrystal();
+        assertTrue(queued.preTick(METEOR, tick(3).build()).isEmpty());
+        assertEquals(BEST, placedOn(queued.preTick(DEFAULTS, tick(4).ping(0).candidates(
+            withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())));
+
+        // The window open, then one pre-tick with the budget off: k = 3 would still hold the spot.
+        CrystalBrain open = windowFromOurCrystal();
+        assertTrue(open.preTick(DEFAULTS, tick(3).build()).isEmpty());
+        assertTrue(open.preTick(METEOR, tick(4).build()).isEmpty());
+        assertEquals(BEST, placedOn(open.preTick(DEFAULTS, tick(5).ping(0).candidates(
+            withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())));
+    }
+
+    @Test
+    void aHitCountsFromThePreTickBeforeTheOneThatTakesIt() {
+        // Handed over during pre-tick 3 (after its break phase): not counted in pre-tick 3 itself, and counted from 3
+        // by pre-tick 4, so k = 7 at pre-tick 10 still holds the spot and k = 8 at pre-tick 11 does not.
+        for (int at : new int[] {10, 11}) {
+            CrystalBrain brain = ourCrystalGone(DEFAULTS, Map.of(ENEMY, RAW1));
+            assertTrue(brain.breakPhase(DEFAULTS, tick(3).ping(0).build()).isEmpty());
+            assertTrue(brain.wantsPlacement());
+            brain.targetHurt(ENEMY, OURS);
+            assertEquals(BEST, placedOn(brain.placePhase(20, List.of(withRaw(spot(BEST, 10, 0), 47.0),
+                withRaw(spot(NEXT, 9, 0), 47.5))).stream().toList()));
+            for (int t = 4; t < at; t++) assertTrue(brain.preTick(DEFAULTS, tick(t).build()).isEmpty());
+            long expected = at == 10 ? NEXT : BEST;
+            assertEquals(expected, placedOn(brain.preTick(DEFAULTS, tick(at).ping(0).candidates(
+                withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())), "pre-tick " + at);
+        }
+    }
+
+    @Test
+    void aHitHandedOverBeforeTheFirstPreTickIsDropped() {
+        CrystalBrain brain = new CrystalBrain();
+        brain.targetHurt(ENEMY, OURS);
+        assertTrue(brain.preTick(DEFAULTS, tick(1).build()).isEmpty());
+        assertEquals(BEST, placedOn(brain.preTick(DEFAULTS, tick(2).ping(0).candidates(
+            withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())));
     }
 }

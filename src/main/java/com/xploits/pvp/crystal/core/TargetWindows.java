@@ -14,8 +14,11 @@ import java.util.OptionalDouble;
  * opens a window here, and any other full hit on that target closes it: its size is unknown.
  *
  * <p>{@link CrystalBrain} feeds it the full hits, in pre-ticks, and asks it about each spot it would place on.
- * The ticks are the brain's pre-tick numbers; a hit read between two pre-ticks carries the earlier one, so the
- * ticks since it are never fewer than have passed.
+ * The ticks are the brain's pre-tick numbers; a hit read between two pre-ticks carries the earlier one, which is
+ * never later than it arrived. That makes the ticks since it never fewer than have passed only while the pre-ticks
+ * follow the client's ticks one to one: when the adapter skips pre-ticks (a tick it cannot measure), the ticks since
+ * a hit would come out short, so it forgets every window then ({@link #clear}, through
+ * {@link CrystalBrain#forgetWindows}), and a hit read during the gap counts from the last pre-tick before it.
  */
 public final class TargetWindows {
     /** A full hit's window: the server compares hits with it while its cooldown is above 10 of its 20 ticks. */
@@ -74,6 +77,11 @@ public final class TargetWindows {
     /** Forgets the hits whose window is over at pre-tick {@code now}; none of them could hold anything back. */
     public void expire(long now) {
         last.values().removeIf(hit -> now - hit.tick >= HURT_WINDOW_TICKS);
+    }
+
+    /** Forgets every hit: after a gap in the pre-ticks, or while the budget is off, the windows are not known. */
+    public void clear() {
+        last.clear();
     }
 
     /** Whether a hit on this target is still remembered (tests). */

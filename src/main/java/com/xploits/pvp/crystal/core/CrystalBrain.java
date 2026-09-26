@@ -93,6 +93,8 @@ public final class CrystalBrain {
     private Decision lastDecision = Decision.none(Reason.NOTHING_TO_DO);
     /** The targets' hurt windows our crystals opened (with the budget on, they hold placements back). */
     private final TargetWindows windows = new TargetWindows();
+    /** Full hits handed over since the last pre-tick; the next one counts them from the last. */
+    private final List<ReadHit> hits = new ArrayList<>();
     /** This pre-tick's ping in ticks, from its facts. */
     private int pingTicks = UNKNOWN_PING_TICKS;
     private int deferred;
@@ -177,6 +179,10 @@ public final class CrystalBrain {
         long previous = now;
         now = tick.tick();
         decided = null;
+        // The hits read since the last pre-tick count from it, never later than they arrived. With the budget off
+        // nothing is kept, so turning it on again never reuses a window that missed a hit in the meantime.
+        if (settings.selfBudget()) countHits(previous);
+        else forgetWindows();
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -286,25 +292,50 @@ public final class CrystalBrain {
 
     /**
      * A full hit on another player (research-external M1: the server sends the damage packet for full hits only),
-     * read since the last pre-tick; it counts as read at that pre-tick. If its direct source is one of our
-     * crystals, and we measured that crystal's raw damage to the player (when we attacked it, or when it was last
-     * seen), the player's window opens at that size ({@link TargetWindows}); anything else (another source, one we
-     * do not know, no measurement) closes it. Before the first pre-tick it is ignored: nothing is ours yet.
+     * read since the last pre-tick. It is kept until the next pre-tick, which counts it as read at the last one,
+     * whenever it was handed over in between (even during a pre-tick, after its break phase). So the adapter must
+     * hand over, before a pre-tick's break phase, every hit read before that pre-tick: one handed over later counts
+     * from that pre-tick, one tick short. If its direct source is one of our crystals, and we measured that
+     * crystal's raw damage to the player (when we attacked it, or when it was last seen), the player's window opens
+     * at that size ({@link TargetWindows}); anything else (another source, one we do not know, no measurement)
+     * closes it. A hit handed over before the first pre-tick is dropped: nothing is ours yet.
      *
      * @param target         the player's name, as the targets are named
      * @param directSourceId the id of the entity that dealt the damage directly (the crystal for an explosion), or
      *                       {@link #NO_SOURCE}
      */
     public void targetHurt(String target, int directSourceId) {
-        Objects.requireNonNull(target, "target");
-        if (now == NO_TICK) return;
-        Known k = known.get(directSourceId);
-        OptionalDouble raw = OptionalDouble.empty();
-        if (k != null && k.ours) {
-            Double measured = k.seen.targetRaw().get(target);
-            if (measured != null) raw = OptionalDouble.of(measured);
+        hits.add(new ReadHit(Objects.requireNonNull(target, "target"), directSourceId));
+    }
+
+    /**
+     * At the start of a pre-tick, before the crystals are updated: the hits handed over since {@code previous}
+     * open or close the targets' windows as read at {@code previous}. Before the first pre-tick nothing is ours, so
+     * they are dropped.
+     */
+    private void countHits(long previous) {
+        if (previous != NO_TICK) {
+            for (ReadHit hit : hits) {
+                Known k = known.get(hit.directSourceId);
+                OptionalDouble raw = OptionalDouble.empty();
+                if (k != null && k.ours) {
+                    Double measured = k.seen.targetRaw().get(hit.target);
+                    if (measured != null) raw = OptionalDouble.of(measured);
+                }
+                windows.fullHit(hit.target, previous, raw);
+            }
         }
-        windows.fullHit(target, now, raw);
+        hits.clear();
+    }
+
+    /**
+     * Forgets every target's hurt window, and the hits handed over and not yet counted. The adapter calls it when it
+     * skips a pre-tick while the client ticks on (the ticks since a hit would come out short, so a window could
+     * seem open after the server's has closed); the brain does the same at every pre-tick with the budget off.
+     */
+    public void forgetWindows() {
+        windows.clear();
+        hits.clear();
     }
 
     /**
@@ -685,6 +716,9 @@ public final class CrystalBrain {
     private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime) {}
 
     private record Late(long pos, long since) {}
+
+    /** A full hit handed over by {@link #targetHurt}, not yet counted. */
+    private record ReadHit(String target, int directSourceId) {}
 
     /** What we know of one crystal: the latest measurement and what we did to it. */
     private static final class Known {

@@ -67,6 +67,17 @@ class TargetWindowsTest {
     }
 
     @Test
+    void clearingForgetsEveryHit() {
+        TargetWindows w = new TargetWindows();
+        w.fullHit(T, 10, OptionalDouble.of(47.5));
+        w.fullHit("u", 10, OptionalDouble.of(47.5));
+        w.clear();
+        assertFalse(w.remembers(T));
+        assertFalse(w.remembers("u"));
+        assertFalse(w.swallows(T, 1.0, 11, 0));
+    }
+
+    @Test
     void oddValuesAreRefused() {
         TargetWindows w = new TargetWindows();
         assertThrows(IllegalArgumentException.class, () -> w.fullHit(T, 1, OptionalDouble.of(Double.NaN)));
