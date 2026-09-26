@@ -9,8 +9,8 @@ import java.util.List;
  * The profile parts of {@code .xploits pvp} (design, precise rules "Status command"): the active profile
  * as {@code profile <name>[*]}, and the modules the profile does not allow grouped into one
  * {@code off by profile: ...} line instead of one "not turned on" line each. The managed modules this
- * Meteor build does not have get the same treatment, on their own {@code missing in Meteor: ...} line.
- * Pure, so it is tested.
+ * Meteor build does not have get their own {@code missing in Meteor: ...} line, built from what was
+ * measured on activation ({@link MissingModules}) and not from the plan. Pure, so it is tested.
  */
 public final class PvpStatus {
     private PvpStatus() {
@@ -44,15 +44,6 @@ public final class PvpStatus {
         return names;
     }
 
-    /** The names of the modules this Meteor build does not have, in the director's order. */
-    public static List<String> missingNames(List<Skipped> skipped) {
-        List<String> names = new ArrayList<>();
-        for (Skipped s : skipped) {
-            if (isMissing(s)) names.add(s.module().name());
-        }
-        return names;
-    }
-
     /**
      * The one chat line said on turning auto-pvp on when Meteor lacks managed modules: a single message
      * that lists them ("a, b and c"), so it reads right with one or with several.
@@ -68,12 +59,23 @@ public final class PvpStatus {
         return Msg.of(PvpText.STATUS_PROFILE, "name", name, "modified", modified ? "*" : "");
     }
 
+    /** {@link #skippedLines(List, List)} with nothing missing in Meteor. */
+    public static Msg skippedLines(List<Skipped> skipped) {
+        return skippedLines(skipped, List.of());
+    }
+
     /**
      * One {@code STATUS_SKIPPED} line per {@linkplain #realSkips real skip}, then a single {@code
      * STATUS_PROFILE_OFF} line naming every module the profile keeps off and a single {@code
      * STATUS_MISSING} one naming every module Meteor does not have; {@code NOTHING} when there is none.
+     *
+     * <p>The missing line comes from {@code missing}, not from the plan's {@code MODULE_MISSING_SKIP}
+     * entries, which are ignored here: the plan only has one while something wants that module, and the
+     * status has to say it always, and once.
+     *
+     * @param missing the names of the managed modules Meteor does not have, in catalog order
      */
-    public static Msg skippedLines(List<Skipped> skipped) {
+    public static Msg skippedLines(List<Skipped> skipped, List<String> missing) {
         Msg lines = null;
         for (Skipped s : realSkips(skipped)) {
             lines = append(lines, Msg.of(PvpText.STATUS_SKIPPED, "module", s.module().name(), "reason", s.reason()));
@@ -82,7 +84,6 @@ public final class PvpStatus {
         if (!off.isEmpty()) {
             lines = append(lines, Msg.of(PvpText.STATUS_PROFILE_OFF, "modules", String.join(", ", off)));
         }
-        List<String> missing = missingNames(skipped);
         if (!missing.isEmpty()) {
             lines = append(lines, Msg.of(PvpText.STATUS_MISSING, "modules", String.join(", ", missing)));
         }

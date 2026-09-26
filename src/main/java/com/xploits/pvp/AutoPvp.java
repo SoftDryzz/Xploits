@@ -13,6 +13,7 @@ import com.xploits.pvp.core.DefensivePolicy;
 import com.xploits.pvp.core.FriendLedger;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
+import com.xploits.pvp.core.MissingModules;
 import com.xploits.pvp.core.ModuleLedger;
 import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.core.PvpStatus;
@@ -236,9 +237,10 @@ public class AutoPvp extends XploitsModule {
     /**
      * The managed modules this Meteor build does not register, measured on each activation: asked for
      * by name they give {@code null} (Meteor 1.21.11 has the {@code AntiAnchor} class but does not add
-     * it). The director skips them before anything else, so they never reach the ledger.
+     * it). The director skips them before anything else, so they never reach the ledger; the status
+     * always lists them, and chat hears it once, on the first tick with a world.
      */
-    private Set<ManagedModule> missing = Set.of();
+    private MissingModules missing = MissingModules.measure(name -> true);
 
     /**
      * The "I have it on and it does nothing" watch ({@link ActionWatch}). It lives here and not in
@@ -309,8 +311,9 @@ public class AutoPvp extends XploitsModule {
         // writes nothing to the player's disk.
         friendLedger.reset();
         lastSynced = null;
-        missing = missingManagedModules();
-        warnMissingManagedModules();
+        // Measured here, said on the first tick with a world: restored active at game start, this runs
+        // before there is one, and a chat line said now would be lost.
+        missing = MissingModules.measure(name -> byName(name) != null);
         warnAlreadyActiveManagedModules();
     }
 
@@ -325,6 +328,9 @@ public class AutoPvp extends XploitsModule {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        // Whatever notify says: without it the player would see a module in the use-* list that never
+        // comes up and would not know why.
+        missing.warning(mc.player != null && mc.world != null).ifPresent(this::warning);
         if (mc.player == null || mc.world == null || !mc.player.isAlive()) {
             releaseAll();
             return;
@@ -342,7 +348,7 @@ public class AutoPvp extends XploitsModule {
         CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
         lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing);
+        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules());
         lastPlan = plan;
 
         apply(plan);
@@ -881,28 +887,6 @@ public class AutoPvp extends XploitsModule {
         for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle));
     }
 
-    /** The managed modules Meteor does not find by name, in catalog order. */
-    private static Set<ManagedModule> missingManagedModules() {
-        Set<ManagedModule> result = new LinkedHashSet<>();
-        for (ManagedModule module : ManagedModules.ALL) {
-            if (byName(module.name()) == null) result.add(module);
-        }
-        return Set.copyOf(result);
-    }
-
-    /**
-     * Once per activation, and whatever {@code notify} says: without it the player would see a module
-     * in the {@code use-*} list that never comes up and would not know why.
-     */
-    private void warnMissingManagedModules() {
-        if (missing.isEmpty()) return;
-        List<String> names = new ArrayList<>();
-        for (ManagedModule module : ManagedModules.ALL) {
-            if (missing.contains(module)) names.add(module.name());
-        }
-        warning(PvpStatus.missingWarning(names));
-    }
-
     /** I1: if something it manages was already on when auto-pvp was turned on, it is the player's and that has to be said. */
     private void warnAlreadyActiveManagedModules() {
         for (ManagedModule managed : ManagedModules.ALL) {
@@ -1012,7 +996,7 @@ public class AutoPvp extends XploitsModule {
             "friends", syncedFriendsLine(),
             "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),
             "idle", idleLine(),
-            "skipped", PvpStatus.skippedLines(lastPlan.skipped()),
+            "skipped", PvpStatus.skippedLines(lastPlan.skipped(), missing.names()),
             "warnings", warningLines == null ? Msg.of(PvpText.NOTHING) : warningLines,
             "yours", yours.isEmpty() ? PvpText.NONE : String.join(", ", yours));
     }
