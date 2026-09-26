@@ -14,6 +14,7 @@ import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
+import com.xploits.pvp.crystal.core.ServerValues;
 import com.xploits.pvp.crystal.core.SwingMode;
 import com.xploits.pvp.crystal.core.TargetView;
 import com.xploits.shared.Texts;
@@ -78,6 +79,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 
 /**
@@ -469,6 +471,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private void onPreTick(TickEvent.Pre event) {
         if (mc.player == null || mc.world == null) return;
         if (refusingNow()) return;
+        // Our health not a valid number (a broken or spoofing server): do nothing this tick.
+        OptionalDouble health = health();
+        if (health.isEmpty()) return;
         tick++;
         ClientPlayerEntity p = mc.player;
         eyePos = new Vec3d(p.getEntityPos().x, p.getEntityPos().y + p.getEyeHeight(p.getPose()), p.getEntityPos().z);
@@ -483,7 +488,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             if (first == null) first = crystal;
         }
 
-        CrystalTick measured = new CrystalTick(tick, health(), totems(), usingItem(), mc.interactionManager.isBreakingBlock(),
+        CrystalTick measured = new CrystalTick(tick, health.getAsDouble(), totems(), usingItem(), mc.interactionManager.isBreakingBlock(),
             TickRate.INSTANCE.getTimeSinceLastTick() >= LAG_SECONDS, pauseModuleActive(), hands(first), seen, standing, List.of());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
@@ -503,6 +508,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private void onEntityAdded(EntityAddedEvent event) {
         if (!(event.entity instanceof EndCrystalEntity crystal) || mc.player == null || mc.world == null) return;
         if (refusingNow()) return;
+        OptionalDouble health = health();
+        if (health.isEmpty()) return;
         // Fast-break measures against the previous pre-tick's targets (lines 740-743).
         List<PlayerEntity> previous = new ArrayList<>();
         for (String name : brain.targets()) {
@@ -510,7 +517,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             if (target != null) previous.add(target);
         }
         CrystalSeen seen = measure(crystal, previous);
-        brain.crystalAdded(seen, health(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        brain.crystalAdded(seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
@@ -580,7 +587,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /**
      * Every other player, in the world's entity order, for the brain to pick its targets from; and, in
      * {@link #targets}, the ones Meteor would target (lines 1222-1253), which the damage is measured against.
-     * A player's name for the brain is its UUID, which no two share.
+     * A player's name for the brain is its UUID, which no two share. A player whose health or distance is not a
+     * valid number is left out ({@link ServerValues#target}).
      */
     private List<TargetView> measureTargets() {
         targets.clear();
@@ -592,8 +600,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             double squared = player.squaredDistanceTo(mc.player);
             boolean creative = player.getAbilities().creativeMode;
             boolean friend = !Friends.get().shouldAttack(player);
-            seen.add(new TargetView(name, Math.sqrt(squared), EntityUtils.getTotalHealth(player), lowestArmorPercent(player),
-                creative, player.isAlive(), friend));
+            Optional<TargetView> view = ServerValues.target(name, Math.sqrt(squared), player.getHealth(),
+                player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend);
+            if (view.isEmpty()) continue;
+            seen.add(view.get());
             if (creative || !player.isAlive() || friend || !ENTITIES.contains(player.getType())) continue;
             if (squared > targetRange.get() * targetRange.get()) continue;
             targets.put(name, player);
@@ -609,20 +619,23 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         double lowest = TargetView.NO_ARMOR;
         for (EquipmentSlot slot : AttributeModifierSlot.ARMOR) {
             ItemStack stack = player.getEquippedStack(slot);
-            if (stack == null || stack.isEmpty() || stack.getMaxDamage() <= 0) continue;
-            double percent = (double) (stack.getMaxDamage() - stack.getDamage()) / stack.getMaxDamage() * 100;
-            lowest = Math.min(lowest, Math.max(0, percent));
+            if (stack == null || stack.isEmpty()) continue;
+            OptionalDouble percent = ServerValues.armorPercent(stack.getMaxDamage(), stack.getDamage());
+            if (percent.isPresent()) lowest = Math.min(lowest, percent.getAsDouble());
         }
         return lowest;
     }
 
-    /** One end crystal as Meteor's {@code getBreakDamage} measures it (lines 791-822). */
+    /**
+     * One end crystal as Meteor's {@code getBreakDamage} measures it (lines 791-822). Odd damage to us makes it
+     * deadly and an odd distance puts it next to us ({@link ServerValues}).
+     */
     private CrystalSeen measure(EndCrystalEntity crystal, Iterable<PlayerEntity> against) {
         Vec3d pos = crystal.getEntityPos();
         BlockPos base = crystal.getBlockPos().down();
         ClientPlayerEntity p = mc.player;
-        double self = DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base);
-        double distance = PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z);
+        double self = ServerValues.crystalSelfDamage(DamageUtils.crystalDamage(p, pos, PREDICT_MOVEMENT, base));
+        double distance = ServerValues.crystalDistance(PlayerUtils.distance(p.getEntityPos().x, p.getEntityPos().y, p.getEntityPos().z, pos.x, pos.y, pos.z));
         return new CrystalSeen(crystal.getId(), base.asLong(), damageTo(against, pos, base), self, distance,
             !outOfRange(pos, crystal.getBlockPos(), false));
     }
@@ -630,7 +643,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private static Map<String, Double> damageTo(Iterable<PlayerEntity> against, Vec3d pos, BlockPos base) {
         Map<String, Double> damage = new LinkedHashMap<>();
         for (PlayerEntity target : against) {
-            damage.put(target.getUuidAsString(), (double) DamageUtils.crystalDamage(target, pos, PREDICT_MOVEMENT, base));
+            damage.put(target.getUuidAsString(), ServerValues.targetDamage(DamageUtils.crystalDamage(target, pos, PREDICT_MOVEMENT, base)));
         }
         return damage;
     }
@@ -645,8 +658,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return !PlayerUtils.isWithin(pos, range);
     }
 
-    private double health() {
-        return EntityUtils.getTotalHealth(mc.player);
+    /** Our health plus absorption, or nothing if the server made it an odd number. */
+    private OptionalDouble health() {
+        return ServerValues.ownHealth(mc.player.getHealth(), mc.player.getAbsorptionAmount());
     }
 
     private int totems() {
@@ -688,8 +702,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             mainCrystals, offCrystals,
             main == Items.GOLDEN_APPLE || off == Items.GOLDEN_APPLE || main == Items.ENCHANTED_GOLDEN_APPLE || off == Items.ENCHANTED_GOLDEN_APPLE,
             main == Items.BOW || off == Items.BOW,
-            weakness == null ? CrystalTick.Hands.NO_EFFECT : weakness.getAmplifier(),
-            strength == null ? CrystalTick.Hands.NO_EFFECT : strength.getAmplifier(),
+            ServerValues.amplifier(weakness != null, weakness == null ? 0 : weakness.getAmplifier()),
+            ServerValues.amplifier(strength != null, strength == null ? 0 : strength.getAmplifier()),
             mainBreaks, hotbarBreaks || mainBreaks);
     }
 
@@ -707,7 +721,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      */
     private void scan(CrystalBrain b, long decidedAt) {
         List<Candidate> spots = new ArrayList<>();
-        double[] scanHealth = {Double.NaN};
+        OptionalDouble[] scanHealth = {null};
         int radius = (int) Math.ceil(placeRange.get());
         BlockIterator.register(radius, radius, (bp, state) -> {
             // Meteor reads your health while checking each spot (line 953).
@@ -715,9 +729,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             spot(bp, state).ifPresent(spots::add);
         });
         BlockIterator.after(() -> {
-            if (!isActive() || b != brain || decidedAt != tick || mc.player == null || refusingNow()) return;
-            double h = Double.isNaN(scanHealth[0]) ? health() : scanHealth[0];
-            b.placePhase(h, spots).ifPresent(a -> execute(a, crystals::get));
+            // The refusal first: one ending here replaces the brain, and then this scan is stale.
+            if (!isActive() || mc.player == null || refusingNow() || b != brain || decidedAt != tick) return;
+            OptionalDouble h = scanHealth[0] != null ? scanHealth[0] : health();
+            if (h.isEmpty()) return;
+            b.placePhase(h.getAsDouble(), spots).ifPresent(a -> execute(a, crystals::get));
         });
     }
 
@@ -732,7 +748,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         if (outOfRange(pos, above, true)) return Optional.empty();
 
         BlockPos base = bp.toImmutable();
-        double self = DamageUtils.crystalDamage(mc.player, pos, PREDICT_MOVEMENT, base);
+        // A spot whose damage to us cannot be measured is not an option (ServerValues).
+        OptionalDouble self = ServerValues.spotSelfDamage(DamageUtils.crystalDamage(mc.player, pos, PREDICT_MOVEMENT, base));
+        if (self.isEmpty()) return Optional.empty();
         Map<String, Double> damage = damageTo(targets.values(), pos, base);
 
         double x = bp.getX();
@@ -749,7 +767,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             }
             return !entity.isSpectator();
         });
-        return Optional.of(new Candidate(base.asLong(), damage, self, true, crystalsInBox, other));
+        return Optional.of(new Candidate(base.asLong(), damage, self.getAsDouble(), true, crystalsInBox, other));
     }
 
     // Acting
@@ -793,7 +811,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * so it is not tied to the tick it was decided in; only to this activation and this brain.
      */
     private void attack(EndCrystalEntity crystal, CrystalBrain b) {
-        if (!isActive() || b != brain || mc.player == null || refusingNow()) return;
+        // The refusal first: one ending here replaces the brain, and then this action is stale.
+        if (!isActive() || mc.player == null || refusingNow() || b != brain) return;
         mc.player.networkHandler.sendPacket(PlayerInteractEntityC2SPacket.attack(crystal, mc.player.isSneaking()));
         Hand hand = InvUtils.findInHotbar(Items.END_CRYSTAL).getHand();
         if (hand == null) hand = Hand.MAIN_HAND;
@@ -853,7 +872,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * tick it was decided in: {@link CrystalBrain#placed} belongs to that tick.
      */
     private void placeCrystal(BlockHitResult result, CrystalBrain b, long decidedAt) {
-        if (!isActive() || b != brain || decidedAt != tick || mc.player == null || refusingNow()) return;
+        // The refusal first: one ending here replaces the brain, and then this placement is stale.
+        if (!isActive() || mc.player == null || refusingNow() || b != brain || decidedAt != tick) return;
         FindItemResult item = InvUtils.findInHotbar(Items.END_CRYSTAL);
         if (!item.found()) return;
         if (autoSwitch.get() != AutoSwitch.NONE && !item.isOffhand()) InvUtils.swap(item.slot(), false);
