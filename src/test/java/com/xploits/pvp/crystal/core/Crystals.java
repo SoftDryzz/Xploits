@@ -42,8 +42,9 @@ final class Crystals {
         return player(ENEMY, 3, 20);
     }
 
+    /** A player at {@code distance} blocks (the view carries its square, as Meteor compares it). */
     static TargetView player(String name, double distance, double health) {
-        return new TargetView(name, distance, health, TargetView.NO_ARMOR, false, true, false);
+        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false);
     }
 
     /** A crystal on base {@code 1000 + id}, at 3 blocks, in break range, dealing {@code damage} to the enemy. */

@@ -12,6 +12,7 @@ import com.xploits.pvp.crystal.core.CrystalSettings.PauseMode;
 import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
+import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
 import com.xploits.pvp.crystal.core.ServerValues;
@@ -517,7 +518,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             if (target != null) previous.add(target);
         }
         CrystalSeen seen = measure(crystal, previous);
-        brain.crystalAdded(seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        // Meteor reads its settings live here (lines 740-742): a change since the pre-tick already applies.
+        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
@@ -600,12 +602,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             double squared = player.squaredDistanceTo(mc.player);
             boolean creative = player.getAbilities().creativeMode;
             boolean friend = !Friends.get().shouldAttack(player);
-            Optional<TargetView> view = ServerValues.target(name, Math.sqrt(squared), player.getHealth(),
+            Optional<TargetView> view = ServerValues.target(name, squared, player.getHealth(),
                 player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend);
             if (view.isEmpty()) continue;
             seen.add(view.get());
             if (creative || !player.isAlive() || friend || !ENTITIES.contains(player.getType())) continue;
-            if (squared > targetRange.get() * targetRange.get()) continue;
+            if (!Reach.inTargetRange(squared, targetRange.get())) continue;
             targets.put(name, player);
         }
         return seen;
@@ -653,9 +655,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         HitResult result = mc.world.raycast(new RaycastContext(eyePos, pos, RaycastContext.ShapeType.COLLIDER,
             RaycastContext.FluidHandling.NONE, mc.player));
         boolean behindWall = !(result instanceof BlockHitResult hit) || !hit.getBlockPos().equals(blockPos);
-        double range = placing ? (behindWall ? placeWallsRange.get() : placeRange.get())
-            : (behindWall ? breakWallsRange.get() : breakRange.get());
-        return !PlayerUtils.isWithin(pos, range);
+        // PlayerUtils.isWithin(pos, r) is this squared distance from the feet <= r * r.
+        double squared = PlayerUtils.squaredDistanceTo(pos.x, pos.y, pos.z);
+        return placing ? Reach.outOfRange(behindWall, squared, placeRange.get(), placeWallsRange.get())
+            : Reach.outOfRange(behindWall, squared, breakRange.get(), breakWallsRange.get());
     }
 
     /** Our health plus absorption, or nothing if the server made it an odd number. */

@@ -103,9 +103,9 @@ class CrystalBrainParityTest {
         // Lines 1222-1253: creative, dead and friends are left out; beyond 10 too (squared distance > 100).
         TargetView edge = player("edge", 10, 20);
         TargetView far = player("far", 10.25, 20);
-        TargetView creative = new TargetView("creative", 3, 20, TargetView.NO_ARMOR, true, true, false);
-        TargetView dead = new TargetView("dead", 3, 20, TargetView.NO_ARMOR, false, false, false);
-        TargetView friend = new TargetView("friend", 3, 20, TargetView.NO_ARMOR, false, true, true);
+        TargetView creative = new TargetView("creative", 9, 20, TargetView.NO_ARMOR, true, true, false);
+        TargetView dead = new TargetView("dead", 9, 20, TargetView.NO_ARMOR, false, false, false);
+        TargetView friend = new TargetView("friend", 9, 20, TargetView.NO_ARMOR, false, true, true);
         Candidate forOthers = spot(1, Map.of("far", 50.0, "creative", 50.0, "dead", 50.0, "friend", 50.0), 1);
         Candidate forEdge = spot(2, Map.of("edge", 6.0), 1);
         CrystalBrain b = new CrystalBrain();
@@ -115,6 +115,21 @@ class CrystalBrainParityTest {
 
         assertEquals(List.of("edge"), b.targets());
         assertPlaces(2, actions);
+    }
+
+    @Test
+    void aPlayerAnUlpPastTheRangeIsNoTarget() {
+        // Parity bug fixed in R2-4: the core compared the distance (a square root) with the range, and
+        // sqrt(nextUp(100)) rounds to exactly 10.0, so a player Meteor leaves out (line 1250 compares the
+        // squares) was a target. The adapter now hands over the squared distance, as Meteor reads it.
+        double squared = Math.nextUp(100.0);
+        assertEquals(10.0, Math.sqrt(squared), 0.0);
+        TargetView edge = ServerValues.target(ENEMY, squared, 20, 0, TargetView.NO_ARMOR, false, true, false).orElseThrow();
+        CrystalBrain b = new CrystalBrain();
+        assertNothing(b.preTick(METEOR, tick(1).targets(edge).candidates(spot(1, 6, 1)).build()));
+        assertEquals(List.of(), b.targets());
+        assertTrue(Reach.inTargetRange(100, 10));
+        assertFalse(Reach.inTargetRange(squared, 10));
     }
 
     @Test
@@ -209,8 +224,8 @@ class CrystalBrainParityTest {
         // Lines 1127-1149, 817, 959: any target at <= 8 health, or wearing a piece at <= 2 %.
         TargetView low = player(ENEMY, 3, 8);
         TargetView notLow = player(ENEMY, 3, 8.25);
-        TargetView worn = new TargetView(ENEMY, 3, 20, 2, false, true, false);
-        TargetView notWorn = new TargetView(ENEMY, 3, 20, 2.25, false, true, false);
+        TargetView worn = new TargetView(ENEMY, 9, 20, 2, false, true, false);
+        TargetView notWorn = new TargetView(ENEMY, 9, 20, 2.25, false, true, false);
         CrystalSettings off = METEOR.toBuilder().facePlace(false).build();
 
         assertPlaces(1, once(METEOR, tick(1).targets(low).candidates(spot(1, 1.5, 1))));
@@ -314,6 +329,17 @@ class CrystalBrainParityTest {
         assertTrue(b.crystalAdded(crystal(2, 8, 6.25), 20, HANDS).isEmpty());
         assertTrue(b.crystalAdded(outOfBreakRange(crystal(3, 8, 1)), 20, HANDS).isEmpty());
         assertTrue(b.crystalAdded(crystal(4, 8, 4), 4.25, HANDS).isPresent());
+    }
+
+    @Test
+    void fastBreakReadsTheSettingsOfTheMomentTheCrystalArrives() {
+        // Parity bug fixed in R2-4: Meteor reads fast-break, attack-frequency, min-damage and the other
+        // settings live in onEntityAdded (lines 740-742, 791-822); the brain used the last pre-tick's.
+        CrystalBrain b = new CrystalBrain();
+        b.preTick(METEOR, tick(1).build());
+        assertTrue(b.crystalAdded(METEOR.toBuilder().fastBreak(false).build(), crystal(1, 8, 1), 20, HANDS).isEmpty());
+        assertTrue(b.crystalAdded(METEOR.toBuilder().minDamage(8).build(), crystal(2, 8, 1), 20, HANDS).isEmpty());
+        assertTrue(b.crystalAdded(METEOR, crystal(3, 8, 1), 20, HANDS).isPresent());
     }
 
     @Test

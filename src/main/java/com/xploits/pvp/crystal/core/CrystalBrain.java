@@ -229,15 +229,19 @@ public final class CrystalBrain {
      * {@code break} setting; it uses the previous pre-tick's targets. The budget reads {@code health} as
      * it is now (P4).
      *
-     * @param health your health plus absorption now
-     * @param hands  your hands now (anti-weakness reads them when attacking, lines 826-835)
+     * @param settings the settings now: Meteor reads them live here (lines 740-742 and {@code getBreakDamage}),
+     *                 so a change made since the last pre-tick already applies
+     * @param health   your health plus absorption now
+     * @param hands    your hands now (anti-weakness reads them when attacking, lines 826-835)
      */
-    public Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+    public Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+        Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(crystal, "crystal");
         Objects.requireNonNull(hands, "hands");
         Damage.check(health, "health");
         // Before the first pre-tick Meteor has no targets and nothing pending; the crystal is seen then.
         if (now == NO_TICK || known.containsKey(crystal.id())) return Optional.empty();
+        this.settings = settings;
         Known k = appeared(crystal, now);
 
         if (!settings.fastBreak() || rotated || attacks >= settings.attackFrequency()) return Optional.empty();
@@ -252,6 +256,11 @@ public final class CrystalBrain {
         Optional<Action> action = attack(k, hands, reason);
         action.ifPresent(a -> lastDecision = a.decision());
         return action;
+    }
+
+    /** {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands)} with the last pre-tick's settings (tests). */
+    Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+        return crystalAdded(settings, crystal, health, hands);
     }
 
     /** An end crystal left the world (lines 747-752). */
@@ -335,7 +344,9 @@ public final class CrystalBrain {
         List<String> names = new ArrayList<>();
         boolean face = false;
         for (TargetView t : seen) {
-            if (t.creative() || !t.alive() || t.friend() || t.distance() > settings.targetRange()) continue;
+            if (t.creative() || !t.alive() || t.friend() || !Reach.inTargetRange(t.squaredDistance(), settings.targetRange())) {
+                continue;
+            }
             names.add(t.name());
             if (t.totalHealth() <= settings.facePlaceHealth() || t.lowestArmorPercent() <= settings.facePlaceDurability()) {
                 face = true;

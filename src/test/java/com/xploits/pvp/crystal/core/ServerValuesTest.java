@@ -35,15 +35,15 @@ class ServerValuesTest {
     void aTargetsHealthIsSummedInFloatAsMeteorDoes() {
         float health = 0.1f;
         float absorption = 0.2f;
-        assertEquals((double) (health + absorption), target(health, absorption, 3).orElseThrow().totalHealth());
+        assertEquals((double) (health + absorption), target(health, absorption, 9).orElseThrow().totalHealth());
     }
 
     @Test
-    void aTargetAtNoMeasurableDistanceIsSkipped() {
+    void aTargetAtNoMeasurableSquaredDistanceIsSkipped() {
         assertFalse(target(20, 0, Double.NaN).isPresent());
         assertFalse(target(20, 0, Double.POSITIVE_INFINITY).isPresent());
         assertFalse(target(20, 0, -1).isPresent());
-        assertEquals(3, target(20, 0, 3).orElseThrow().distance());
+        assertEquals(9, target(20, 0, 9).orElseThrow().squaredDistance());
     }
 
     @Test
@@ -117,7 +117,7 @@ class ServerValuesTest {
                         TargetView.NO_ARMOR, false, true, false));
                     t.ifPresent(v -> {
                         assertTrue(Double.isFinite(v.totalHealth()) && v.totalHealth() >= 0);
-                        assertTrue(Double.isFinite(v.distance()) && v.distance() >= 0);
+                        assertTrue(Double.isFinite(v.squaredDistance()) && v.squaredDistance() >= 0);
                     });
                 }
             }
@@ -131,7 +131,7 @@ class ServerValuesTest {
         }
     }
 
-    private static Optional<TargetView> target(double health, double absorption, double distance) {
-        return ServerValues.target("p", distance, health, absorption, TargetView.NO_ARMOR, false, true, false);
+    private static Optional<TargetView> target(double health, double absorption, double squaredDistance) {
+        return ServerValues.target("p", squaredDistance, health, absorption, TargetView.NO_ARMOR, false, true, false);
     }
 }

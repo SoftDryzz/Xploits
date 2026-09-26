@@ -9,7 +9,7 @@ import java.util.OptionalDouble;
  * the core's records reject those by throwing, which inside a tick handler would crash the game. So each odd
  * value is turned into the cautious reading here:
  * <ul>
- *   <li>a player whose health or distance is not a valid number is not a target;</li>
+ *   <li>a player whose health or squared distance is not a valid number is not a target;</li>
  *   <li>our own health that is not a valid number means the tick does nothing;</li>
  *   <li>odd damage to a target counts as none;</li>
  *   <li>a spot with odd damage to us is not an option;</li>
@@ -30,17 +30,17 @@ public final class ServerValues {
 
     /**
      * A player seen this tick, or nothing if its health (health plus absorption, summed in {@code float} as
-     * Meteor's {@code EntityUtils.getTotalHealth} does) or its distance is not a valid number.
+     * Meteor's {@code EntityUtils.getTotalHealth} does) or its squared distance is not a valid number.
      *
      * @param lowestArmorPercent as {@link TargetView#lowestArmorPercent}; a NaN means no piece counts, a
      *                           negative one is worn out
      */
-    public static Optional<TargetView> target(String name, double distance, double health, double absorption,
+    public static Optional<TargetView> target(String name, double squaredDistance, double health, double absorption,
                                               double lowestArmorPercent, boolean creative, boolean alive, boolean friend) {
         double total = floatSum(health, absorption);
-        if (!valid(total) || !valid(distance)) return Optional.empty();
+        if (!valid(total) || !valid(squaredDistance)) return Optional.empty();
         double armor = Double.isNaN(lowestArmorPercent) ? TargetView.NO_ARMOR : Math.max(0, lowestArmorPercent);
-        return Optional.of(new TargetView(name, distance, total, armor, creative, alive, friend));
+        return Optional.of(new TargetView(name, squaredDistance, total, armor, creative, alive, friend));
     }
 
     /** Our health plus absorption, summed as Meteor does, or nothing if it is not a valid number. */
