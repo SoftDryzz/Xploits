@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-09-26
+
 ### Changed
 
 - `console`: the window now opens with the Xploits logo instead of XTO2002. When the window is too
