@@ -195,6 +195,10 @@ valores de fábrica — más un presupuesto de daño propio que nunca deja que t
 de una reserva. Suma todos los cristales que todavía pueden hacerte daño, ya puestos o de camino a
 explotar, y calcula el daño exacto de un golpe (Meteor lo redondea hacia abajo).
 
+> **Experimental en la 0.7.0.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
+> pero todavía se está afinando: en algunas situaciones hace menos daño que el `crystal-aura` de Meteor
+> (mira la tabla y los problemas conocidos más abajo). Las próximas 0.7.x mejoran su ataque.
+
 **Úsalo desde el ajuste `crystal-module` de `auto-pvp`** (`meteor` de fábrica | `xploits++`), o
 enciende `crystal-aura++` por su cuenta. **No hace nada mientras el `crystal-aura` de Meteor esté
 encendido** — dos auras se pelearían por los mismos cristales — y lo dice.
@@ -213,32 +217,54 @@ diga lo que diga `risk`.
 - Mantiene la reserva mientras te mueves, suponiendo el peor sitio al que podrías llegar antes de que
   explote el cristal.
 
-**Medido** (banco de pruebas en el juego, 27-09-2026; un rival falso que nunca ataca; 100 ms de ping
+**Medido** (banco de pruebas de la 0.7.0, 28-09-2026; un rival falso que nunca ataca; 100 ms de ping
 simulado; cristales ilimitados; regeneración de vida natural solo donde se indica; mediana de 3
-tandas de 30 s; «lowest» es la vida más baja de esas 3 tandas, sobre 20). Daño hecho / tu vida más
+tandas de 30 s; «más baja» es la vida más baja de esas 3 tandas, sobre 20). Daño hecho / tu vida más
 baja, Balanced frente al `crystal-aura` de Meteor:
 
 | Situación | Meteor | Balanced |
 |---|---|---|
 | Rival quieto | 30 / 3,4 | 30 / 3,5 |
-| Rival dando vueltas | 20 / 3,9 | 20 / 3,9 |
+| Rival dando vueltas | 20 / 3,8 | 20 / 4,0 |
 | Quieto, con regeneración | 40 / 0,2 | 40,8 / 3,5 |
-| Dando vueltas, con regeneración | 29,9 / 0,6 | 28,8 / 4,4 |
-| Rival 3 bloques más alto | 296 / 18,8 | 304 / 18,8 |
-| Rival 3 bloques más bajo | 287 / 18,8 | 298 / 18,8 |
-| Rival yendo y viniendo | 36 / 0,2 | 39 / 3,6 |
-| Rival esquivando a los lados | 30 / 1,8 | 31 / 3,5 |
-| Tú caminando en círculos | 40 / 0,4 | 29 / 7,2 |
-| Tú esquivando, rival dando vueltas | 30 / 0,3 | 27 / 3,9 |
+| Dando vueltas, con regeneración | 29,9 / 0,4 | 29,3 / 3,8 |
+| Rival 3 bloques más alto | 289 / 18,8 | 273 / 18,9 |
+| Rival 3 bloques más bajo | 290 / 18,8 | 269 / 18,8 |
+| Rival yendo y viniendo | 35,5 / 0,4 | 39,5 / 3,6 |
+| Rival esquivando a los lados | 38 / 1,6 | 31 / 3,5 |
+| Tú caminando en círculos | 41 / 0,3 | 29 / 7,1 |
+| Tú esquivando, rival dando vueltas | 29,8 / 0,2 | 27,3 / 3,9 |
 
-**Límites conocidos:**
+En todas las tandas de todos los niveles tu vida se quedó por encima de la reserva de ese nivel; con
+el `crystal-aura` de Meteor bajó hasta 0,2.
 
-- Contra un rival que se mueve a tu alrededor, Balanced saca el primer tótem entre 0,3 y 0,6 s más
-  tarde que Meteor: rechaza un cristal que te dejaría por debajo de 3,5.
-- Mientras te mueves **tú**, es deliberadamente más prudente: menos daño, y el primer tótem más
-  tarde.
-- Todavía sin medir: un rival que te ataca a ti, manzanas doradas, varios enemigos a la vez.
-- Safe y Aggressive son experimentales.
+**Problemas conocidos:**
+
+- **Contra un rival que se mueve a tu alrededor**, Balanced saca el primer tótem más tarde que Meteor
+  (entre 0,4 y 0,75 s; 3,5 s más tarde mientras esquivas): rechaza cristales que te dejarían por
+  debajo de 3,5.
+- **Con el rival más arriba o más abajo** hace alrededor de un 6 % menos de daño que Meteor, y el
+  primer tótem llega unos 0,5 s más tarde. Ahí es más prudente de lo necesario; la 0.7.1 lo afina.
+- **Mientras te mueves tú** es prudente a propósito: alrededor de un 30 % menos de daño al caminar
+  en círculos.
+- **De cerca** (el rival encima de ti) puede no colocar nada, igual que Meteor: sigue valiendo el
+  límite de Meteor de 6 de daño para ti por cristal. La 0.7.1 deja que decida la reserva.
+- **Todavía sin medir:** un rival que te ataca a ti, manzanas doradas, varios enemigos a la vez.
+- **Safe y Aggressive** son experimentales: Safe guarda más vida y hace claramente menos daño;
+  Aggressive guarda 2.
+
+**Ajustes recomendados:**
+
+- `auto-pvp` → `crystal-module`: `xploits++` si quieres el suelo de vida; `meteor` (el de fábrica) si
+  prefieres el daño de Meteor mientras esto se afina.
+- `crystal-aura++` → `risk`: **Balanced**.
+- **Apaga el `crystal-aura` de Meteor** mientras uses `crystal-aura++` (no hace nada con los dos
+  encendidos).
+- Si te quedas con el `crystal-aura` de Meteor, deja su **`anti-suicide` encendido**: sin él y sin
+  tótems, `auto-pvp` lo apaga (también romper cristales) para protegerte.
+- **Enciende `fight-recorder`** para que una pelea perdida se pueda revisar.
+- Lleva tótems, obsidiana y cristales en la barra rápida: `auto-pvp` no enciende un módulo sin su
+  material.
 
 ### `fight-recorder` — grabar cada pelea y averiguar por qué moriste
 

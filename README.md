@@ -197,6 +197,10 @@ self-damage budget that never lets your health (plus absorption) drop below a re
 crystal that can still hurt you, already placed or on its way to exploding, and works out the exact
 damage a hit would deal (Meteor rounds it down).
 
+> **Experimental in 0.7.0.** It kept your health above the reserve in every measured run, but it is still
+> being tuned: in some situations it deals less damage than Meteor's `crystal-aura` (see the table and the
+> known issues below). The next 0.7.x releases improve its attack.
+
 **Use it from `auto-pvp`'s `crystal-module` setting** (`meteor` default | `xploits++`), or turn
 `crystal-aura++` on by itself. **It does nothing while Meteor's `crystal-aura` is on** — two auras
 would fight over the same crystals — and says so.
@@ -214,31 +218,51 @@ recommended), **Safe** (keeps 5, experimental), **Aggressive** (keeps 2, experim
 - Keeps the reserve while you move, by assuming the worst spot you could reach before the crystal
   explodes.
 
-**Measured** (in-game bench, 2026-09-27; a fake opponent that never attacks; 100 ms simulated ping;
-unlimited crystals; natural health regeneration only where noted; median of 3 runs of 30 s; "lowest" is
-the lowest health seen across those 3 runs, out of 20). Damage dealt / your lowest health, Balanced
+**Measured** (the 0.7.0 release bench, 2026-09-28; a fake opponent that never attacks; 100 ms simulated
+ping; unlimited crystals; natural health regeneration only where noted; median of 3 runs of 30 s; "lowest"
+is the lowest health seen across those 3 runs, out of 20). Damage dealt / your lowest health, Balanced
 against Meteor's `crystal-aura`:
 
 | Situation | Meteor | Balanced |
 |---|---|---|
 | Opponent standing still | 30 / 3.4 | 30 / 3.5 |
-| Opponent circling | 20 / 3.9 | 20 / 3.9 |
+| Opponent circling | 20 / 3.8 | 20 / 4.0 |
 | Standing still, with regeneration | 40 / 0.2 | 40.8 / 3.5 |
-| Circling, with regeneration | 29.9 / 0.6 | 28.8 / 4.4 |
-| Opponent 3 blocks higher | 296 / 18.8 | 304 / 18.8 |
-| Opponent 3 blocks lower | 287 / 18.8 | 298 / 18.8 |
-| Opponent coming and going | 36 / 0.2 | 39 / 3.6 |
-| Opponent dodging sideways | 30 / 1.8 | 31 / 3.5 |
-| You walking in circles | 40 / 0.4 | 29 / 7.2 |
-| You dodging, opponent circling | 30 / 0.3 | 27 / 3.9 |
+| Circling, with regeneration | 29.9 / 0.4 | 29.3 / 3.8 |
+| Opponent 3 blocks higher | 289 / 18.8 | 273 / 18.9 |
+| Opponent 3 blocks lower | 290 / 18.8 | 269 / 18.8 |
+| Opponent coming and going | 35.5 / 0.4 | 39.5 / 3.6 |
+| Opponent dodging sideways | 38 / 1.6 | 31 / 3.5 |
+| You walking in circles | 41 / 0.3 | 29 / 7.1 |
+| You dodging, opponent circling | 29.8 / 0.2 | 27.3 / 3.9 |
 
-**Known limits:**
+In every run of every level your health stayed above that level's reserve; with Meteor's `crystal-aura`
+it went down to 0.2.
 
-- Against an opponent who moves around you, Balanced takes the first totem 0.3 to 0.6 s later than
-  Meteor: it refuses a crystal that would take you below 3.5.
-- While **you** move it is deliberately more cautious — less damage, and the first totem later.
-- Not measured yet: an opponent who attacks you back, golden apples, several enemies at once.
-- Safe and Aggressive are experimental.
+**Known issues:**
+
+- **Against an opponent who moves around you** Balanced takes the first totem later than Meteor (0.4 to
+  0.75 s later; 3.5 s later while you dodge): it refuses crystals that would take you below 3.5.
+- **With the opponent above or below you** it deals about 6 % less damage than Meteor, and the first
+  totem comes about 0.5 s later. It is more cautious than it needs to be there; 0.7.1 tunes it.
+- **While you move** it is deliberately cautious: about 30 % less damage when you walk in circles.
+- **Up close** (the opponent right on top of you) it may place nothing, like Meteor: Meteor's limit of 6
+  damage to you per crystal still applies. 0.7.1 lets the reserve decide instead.
+- **Not measured yet:** an opponent who attacks you back, golden apples, several enemies at once.
+- **Safe and Aggressive** are experimental: Safe keeps more health and deals clearly less damage;
+  Aggressive keeps 2.
+
+**Recommended settings:**
+
+- `auto-pvp` → `crystal-module`: `xploits++` if you want the health floor; `meteor` (the default) if you
+  prefer Meteor's damage while this is tuned.
+- `crystal-aura++` → `risk`: **Balanced**.
+- **Turn Meteor's `crystal-aura` off** while you use `crystal-aura++` (it does nothing while both are on).
+- If you stay with Meteor's `crystal-aura`, keep its **`anti-suicide` on**: without it and without totems,
+  `auto-pvp` switches it off (breaking included) to protect you.
+- **Turn `fight-recorder` on** so a lost fight can be looked into.
+- Carry totems, obsidian and crystals in the hotbar: `auto-pvp` does not turn on a module without its
+  material.
 
 ### `fight-recorder` — record every fight and work out why you died
 
