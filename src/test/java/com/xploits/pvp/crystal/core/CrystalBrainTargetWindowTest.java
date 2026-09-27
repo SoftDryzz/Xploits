@@ -462,4 +462,51 @@ class CrystalBrainTargetWindowTest {
         assertEquals(BEST, placedOn(brain.preTick(DEFAULTS, tick(2).ping(0).candidates(
             withRaw(spot(BEST, 10, 0), 47.0), withRaw(spot(NEXT, 9, 0), 47.5)).build())));
     }
+
+    // R3-16: the worst-case reach reads the same landings, learned the same way
+
+    @Test
+    void withNoLandingsLearnedYetTheBoundIsTheDocumentedFallback() {
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, new CrystalBrain().landingTicksBound());
+    }
+
+    @Test
+    void withFewerThanFiveLandingsTheBoundIsStillTheFallback() {
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3);
+        f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void theBoundIsTheSlowestOfTheLandingsLearned() {
+        Fight f = new Fight(DEFAULTS).land(2, 2, 2, 2, 6);
+        f.idle(f.next);
+        assertEquals(6, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void anOutlierLandingNeverSetsTheBoundAndIsNotCountedEither() {
+        // The 25 is dropped outright (TargetWindowsTest): only four real samples remain, so the fallback
+        // still applies, exactly as withFewerThanFiveLandingsTheBoundIsStillTheFallback above.
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 25);
+        f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void agedOutLandingsFallBackToTheDocumentedBound() {
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 3);
+        f.idle(f.next);
+        f.next++;
+        assertEquals(3, f.brain.landingTicksBound());
+        f.idleUntil(f.next + 250);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void withTheBudgetOffNoLandingIsLearnedForTheBoundEither() {
+        Fight f = new Fight(METEOR).land(3, 3, 3, 3, 3);
+        f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
 }

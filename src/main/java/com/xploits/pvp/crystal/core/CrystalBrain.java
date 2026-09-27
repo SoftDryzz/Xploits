@@ -353,6 +353,18 @@ public final class CrystalBrain {
         return deferred;
     }
 
+    /**
+     * How many pre-ticks can pass between deciding one of our placements and its crystal exploding (task
+     * R3-16): the slowest of our own crystals' recent landings ({@link TargetWindows#landed}, the same
+     * measurement R3-11 already learns for the targets' hurt windows), or {@link
+     * TargetWindows#LANDING_SAMPLE_MAX_TICKS} while too few are known yet to trust. That constant is already
+     * the ceiling {@link TargetWindows} itself discards a landing past, so no landing it would otherwise have
+     * learned from is ever underestimated by falling back to it.
+     */
+    public int landingTicksBound() {
+        return windows.slowestLanding(now).orElse(TargetWindows.LANDING_SAMPLE_MAX_TICKS);
+    }
+
     /** An attack packet went out (Q1: Meteor counts it there, line 891, not when it decides). */
     public void attackSent() {
         attacks++;

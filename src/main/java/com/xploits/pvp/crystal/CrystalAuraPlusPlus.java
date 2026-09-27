@@ -14,6 +14,7 @@ import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.ExplosionMath;
+import com.xploits.pvp.crystal.core.MovementReach;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
 import com.xploits.pvp.crystal.core.Refusal;
@@ -113,6 +114,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   phase, so they count as read at the previous pre-tick;</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
+ *
+ * <p>Every self-damage budget number (spots, standing and in-flight crystals) is the worst over every
+ * position you could reach before that crystal explodes, not only where you stand right now ({@link
+ * #exactSelfDamage}, task R3-16): {@link #velocityThisTick}, set once per pre-tick, and {@link
+ * CrystalBrain#landingTicksBound()} feed {@link MovementReach}.
  *
  * <p>While Meteor's crystal-aura is on it does nothing, warns once each time that starts and never turns
  * itself off (Q3); when Meteor's is off again it starts afresh, as on activation, because Meteor's aura acted
@@ -446,6 +452,21 @@ public class CrystalAuraPlusPlus extends XploitsModule {
 
     /** Your eyes at this pre-tick, for the range raycasts (Meteor sets them at HIGH, line 711). */
     private Vec3d eyePos = Vec3d.ZERO;
+    /** Your feet at the previous pre-tick, for {@link #horizontalVelocity}; null before the first one measured. */
+    private Vec3d lastFeetPos;
+    /**
+     * Your horizontal velocity this pre-tick, in blocks/tick, from how far your feet moved since the last one
+     * (task R3-16): {@link #horizontalVelocity}, set once per pre-tick, read by {@link #exactSelfDamage} for
+     * every crystal and spot measured this tick and by {@link #onEntityAdded}'s fast-break measurement.
+     */
+    private Vec3d velocityThisTick = Vec3d.ZERO;
+    /**
+     * The wall-clock spent finding the worst case over where you could move before a crystal explodes (task
+     * R3-16, task R3-12: raycasts are expensive, this reads none), and how many times it was asked. Log only,
+     * never a metric: {@link #worstCaseExtraNanos()}, {@link #worstCaseExtraCalls()}.
+     */
+    private long worstCaseNanos;
+    private long worstCaseCalls;
     /** This pre-tick's targets, by the name the brain knows them by, in the world's entity order. */
     private final Map<String, PlayerEntity> targets = new LinkedHashMap<>();
     /** This pre-tick's end crystals, by id. */
@@ -467,6 +488,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         refusal.update(false);
         forgetTick();
         lastRotationPos = null;
+        // A position from before this activation says nothing about how fast you are moving now.
+        lastFeetPos = null;
+        velocityThisTick = Vec3d.ZERO;
         refusingNow();
     }
 
@@ -508,6 +532,19 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return deferredBefore + brain.deferredForTargetWindow();
     }
 
+    /**
+     * Task R3-16, log only, never a metric: the wall-clock spent finding the worst case over where you could
+     * move before a crystal explodes, since activation.
+     */
+    public long worstCaseExtraNanos() {
+        return worstCaseNanos;
+    }
+
+    /** How many times {@link #worstCaseExtraNanos()} was asked, since activation. Log only. */
+    public long worstCaseExtraCalls() {
+        return worstCaseCalls;
+    }
+
     /** The last thing decided, or why nothing was. */
     public Decision lastDecision() {
         return refusal.refusing() ? Decision.none(Reason.METEOR_AURA_ON) : brain.lastDecision();
@@ -529,7 +566,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
         tick++;
         ClientPlayerEntity p = mc.player;
-        eyePos = new Vec3d(p.getEntityPos().x, p.getEntityPos().y + p.getEyeHeight(p.getPose()), p.getEntityPos().z);
+        Vec3d feet = p.getEntityPos();
+        eyePos = new Vec3d(feet.x, feet.y + p.getEyeHeight(p.getPose()), feet.z);
+        velocityThisTick = horizontalVelocity(feet);
 
         List<TargetView> seen = measureTargets();
         List<CrystalSeen> standing = new ArrayList<>();
@@ -592,6 +631,20 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private void skipPreTick() {
         damagePackets.clear();
         brain.forgetWindows();
+    }
+
+    /**
+     * Your horizontal velocity now, in blocks/tick, from how far your feet moved since the last pre-tick
+     * measured (task R3-16): real movement, whatever set it. Reading it this way, rather than {@code
+     * Entity.getVelocity()}, also covers the bench's own self-motion scripts, which move our player with
+     * {@code Entity.updatePosition} directly and never touch that field (task-r3-14-report.md); a real
+     * player's velocity leaves the same trace in its own position either way. Zero on the first pre-tick
+     * measured, or right after an activation ({@link #onActivate}): nothing is known to move from yet.
+     */
+    private Vec3d horizontalVelocity(Vec3d feet) {
+        Vec3d last = lastFeetPos;
+        lastFeetPos = feet;
+        return last == null ? Vec3d.ZERO : new Vec3d(feet.x - last.x, 0, feet.z - last.z);
     }
 
     /** Netty thread: queue only, the world is not touched here. */
@@ -737,15 +790,20 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     }
 
     /**
-     * The damage an end crystal exploding at {@code explosion} would deal to us, as the server computes it
-     * (research-reserve-undershoot): Meteor's formula without its int cast of the raw damage (line 95), which
-     * makes its prediction up to one raw point short. The exposure is vanilla's
-     * ({@code ExplosionImpl.calculateReceivedDamage}, which raycasts in our own, the client's, world); the
-     * reductions are Meteor's, with the explosion source it uses (lines 97, 271-290). Distance from our feet
-     * with no predicted movement, as Meteor measures it ({@link #PREDICT_MOVEMENT} is off). Only the budget
-     * reads it, through {@link ServerValues#budgetSelfDamage}, which keeps Meteor's value when this one is odd;
-     * its callers skip this raycast entirely when {@code self-budget} is off, so budget-off decisions stay
-     * identical to Meteor's.
+     * The worst damage an end crystal exploding at {@code explosion} could deal to us, as the server computes
+     * it (research-reserve-undershoot): Meteor's formula without its int cast of the raw damage (line 95),
+     * which makes its prediction up to one raw point short, and over every position we could reach before it
+     * actually explodes (task R3-16: judged only from where we stand right now, this budget still undershoots
+     * the reserve whenever we are the one moving). Exposure for where we stand right now is vanilla's raycast
+     * ({@code ExplosionImpl.calculateReceivedDamage}, in our own, the client's, world); for the extra
+     * positions {@link MovementReach#worstRawDamage} reads the worst exposure an explosion can have instead of
+     * raycasting each one (task R3-12: raycasts are expensive). The reductions are Meteor's, with the
+     * explosion source it uses (lines 97, 271-290), applied once to the worst raw damage found, never
+     * per-position. Distance from our feet with no predicted movement, as Meteor measures it ({@link
+     * #PREDICT_MOVEMENT} is off) for where we stand right now; {@link #velocityThisTick} for the rest. Only the
+     * budget reads it, through {@link ServerValues#budgetSelfDamage}, which keeps Meteor's value when this one
+     * is odd; its callers skip this raycast entirely when {@code self-budget} is off, so budget-off decisions
+     * stay identical to Meteor's.
      */
     private double exactSelfDamage(Vec3d explosion) {
         ClientPlayerEntity p = mc.player;
@@ -753,10 +811,26 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         if (EntityUtils.getGameMode(p) == GameMode.CREATIVE) return 0;
         Vec3d feet = p.getEntityPos();
         double distance = PlayerUtils.distance(feet.x, feet.y, feet.z, explosion.x, explosion.y, explosion.z);
-        // Beyond the radius there is nothing to deal, and no need to raycast for the exposure.
-        if (distance > ExplosionMath.CRYSTAL_RADIUS) return 0;
-        float raw = ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
-        return DamageUtils.calculateReductions(raw, p, mc.world.getDamageSources().explosion((Explosion) null));
+        // Beyond the radius there is nothing to deal here, and no need to raycast for the exposure; a
+        // reachable position closer to it is still checked below.
+        float currentRaw = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f
+            : ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
+        float worstRaw = Math.max(currentRaw, worstReachableRawDamage(feet, explosion));
+        return DamageUtils.calculateReductions(worstRaw, p, mc.world.getDamageSources().explosion((Explosion) null));
+    }
+
+    /**
+     * The worst raw damage this explosion could deal from anywhere we could reach before it goes off
+     * ({@link MovementReach}), timed for {@link #worstCaseExtraNanos()}/{@link #worstCaseExtraCalls()} (log
+     * only, bench).
+     */
+    private float worstReachableRawDamage(Vec3d feet, Vec3d explosion) {
+        long start = System.nanoTime();
+        float worst = MovementReach.worstRawDamage(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
+            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound());
+        worstCaseNanos += System.nanoTime() - start;
+        worstCaseCalls++;
+        return worst;
     }
 
     /**

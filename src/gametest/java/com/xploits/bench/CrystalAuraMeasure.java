@@ -244,6 +244,10 @@ final class CrystalAuraMeasure implements Scenario {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
                 name, held);
+            long nanos = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraNanos());
+            long calls = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraCalls());
+            LOG.info("[bench] {}: crystal-aura++'s worst-case reach (R3-16) cost {} call(s), {} total, {} per call (log only, not a metric)",
+                name, calls, nanosText(nanos), calls == 0 ? "n/a" : nanosText(nanos / calls));
         }
         if (motion != null) motion.log(bench, name, runs);
         Sparring.Stats sparring = bench.sparringStats();
@@ -396,6 +400,11 @@ final class CrystalAuraMeasure implements Scenario {
     /** Ticks as seconds, with two decimals. */
     private static String seconds(int ticks) {
         return String.format(Locale.ROOT, "%.2f", ticks / 20.0);
+    }
+
+    /** Nanoseconds as microseconds, with two decimals (R3-16, log only). */
+    private static String nanosText(long nanos) {
+        return String.format(Locale.ROOT, "%.2f us", nanos / 1000.0);
     }
 
     /**
