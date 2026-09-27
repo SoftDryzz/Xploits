@@ -468,7 +468,7 @@ public final class CombatDirector {
             now.selfGliding(), now.selfTotems(), now.resources(),
             seen.targetId(), now.hostilesInCrystalRange(),
             now.selfTotalHealth(), now.incomingDamage(), now.selfInHole(), now.selfOnGround(),
-            now.selfYChanged(), now.crystalAuraAntiSuicide());
+            now.selfYChanged(), now.crystalAuraProtectsYou());
     }
 
     private void enter(CombatState next) {
@@ -662,9 +662,13 @@ public final class CombatDirector {
                 // autobreak exactly when you carry no totems, which is when it is needed most.
                 //
                 // But anti-suicide is only a default value: if the player has turned it off, that
-                // protection does not exist, and then -and only then- the floor stays in place. The
-                // reason says it in full so the player knows what to turn off or on.
-                if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraAntiSuicide()) {
+                // protection does not exist, and then -and only then- the floor stays in place. Task
+                // R3-13 fix 1: crystal-aura++'s self-budget, on, is a second and stronger way of not
+                // needing the floor -it never leaves you below its own reserve, which anti-suicide alone
+                // does not guarantee for every placement-, so the adapter folds both settings of the
+                // latched aura into the one fact below; the floor only stands when neither protects you.
+                // The reason says it in full so the player knows what to turn off or on.
+                if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraProtectsYou()) {
                     skipped.add(new Skipped(module, Msg.of(PvpText.TOTEM_FLOOR)));
                     continue;
                 }

@@ -6,7 +6,8 @@ import java.util.Map;
  * Test shortcut to build a {@link CombatSnapshot} giving only the enemy's half and the
  * inventory's, with the rest at neutral values: no identified target, no hostiles in crystal
  * range, full health, no damage aimed at you, neither in a hole nor on the ground, with your height still and with the
- * {@code anti-suicide} of {@code crystal-aura} <b>on</b>, which is how it ships.
+ * latched crystal aura's protection (Meteor's {@code anti-suicide}, or crystal-aura++'s
+ * {@code anti-suicide} or {@code self-budget}) <b>on</b>, which is how it ships.
  *
  * <p>This shortcut used to live in the core as a transitional constructor while the adapter did not yet
  * read the redesign's new fields. That scaffolding no longer exists —the adapter fills them all in—,
@@ -27,10 +28,10 @@ final class Snapshots {
     }
 
     /**
-     * The same snapshot with the {@code anti-suicide} of {@code crystal-aura} off: the only case
-     * in which the totem floor stays in place (redesign §7, through the door of §10).
+     * The same snapshot with the latched crystal aura's protection off: the only case in which the
+     * totem floor stays in place (redesign §7, through the door of §10; task R3-13 fix 1).
      */
-    static CombatSnapshot antiSuicideOff(CombatSnapshot base) {
+    static CombatSnapshot protectionOff(CombatSnapshot base) {
         return new CombatSnapshot(base.hasTarget(), base.targetDistance(), base.targetSurroundSides(),
             base.cityBlockDistance(), base.targetBurrowed(), base.targetGliding(),
             base.selfGliding(), base.selfTotems(), base.resources(),

@@ -46,6 +46,37 @@ class CrystalModuleTest {
         assertSame(CrystalModule.METEOR, CrystalModule.XPLOITS.other());
     }
 
+    // --- task R3-13 fix 1: the totem floor must not switch off crystal-aura++ while its self-budget
+    // protects you (of 47 deaths in the owner's real log, 21 had auto-pvp refuse the aura for lack of
+    // totems 0.3-1.2 s before the fatal crystal, sometimes at 18+ health) ---
+
+    @Test
+    void xploitsProtectsYouWithSelfBudgetOnEvenWithAntiSuicideOff() {
+        // self-budget on never leaves you below its reserve (>= SelfBudget.FLOOR): a stronger guarantee
+        // than anti-suicide, which only refuses what would kill you outright.
+        assertEquals(true, CrystalModule.XPLOITS.protectsYou(false, true));
+    }
+
+    @Test
+    void xploitsDoesNotProtectYouWithBothSettingsOff() {
+        assertEquals(false, CrystalModule.XPLOITS.protectsYou(false, false));
+    }
+
+    @Test
+    void meteorIgnoresSelfBudgetItDoesNotHave() {
+        // Unchanged (constraint: with crystal-module=meteor everything behaves as in 0.6.2). Meteor's
+        // crystal-aura has no self-budget setting to ask about at all; a stray true must change nothing.
+        assertEquals(false, CrystalModule.METEOR.protectsYou(false, true));
+        assertEquals(false, CrystalModule.METEOR.protectsYou(false, false));
+    }
+
+    @Test
+    void antiSuicideAloneAlwaysProtectsYouForEitherAura() {
+        assertEquals(true, CrystalModule.METEOR.protectsYou(true, false));
+        assertEquals(true, CrystalModule.XPLOITS.protectsYou(true, false));
+        assertEquals(true, CrystalModule.XPLOITS.protectsYou(true, true));
+    }
+
     @Test
     void onlyTheLogicalAuraResolvesToAnotherModule() {
         assertEquals("crystal-aura", CrystalModule.METEOR.resolve("crystal-aura"));
@@ -79,17 +110,37 @@ class CrystalModuleTest {
     @Test
     void withXploitsTheTextsNameCrystalAuraPlusPlus() {
         CrystalModule m = CrystalModule.XPLOITS;
-        assertEquals("you carry no totems and crystal-aura++'s anti-suicide is off",
-            EN.render(m.name(Msg.of(PvpText.TOTEM_FLOOR))));
         assertEquals("crystal-aura++ sin cristales: solo romperá los que te pongan.",
             ES.render(m.name(Msg.of(PvpText.AURA_NO_CRYSTALS))));
+    }
+
+    @Test
+    void withXploitsTheTotemFloorSaysBothSettingsAreOff() {
+        // Task R3-13 fix 1: crystal-aura++'s self-budget, on, is a second and stronger way of not
+        // needing the floor, so the reason for the ++ aura has to name both settings, not just
+        // anti-suicide's. The key itself is swapped, not just the module name.
+        CrystalModule m = CrystalModule.XPLOITS;
+        Msg named = m.name(Msg.of(PvpText.TOTEM_FLOOR));
+        assertEquals(PvpText.TOTEM_FLOOR_PLUS_PLUS, named.key());
+        assertEquals("you carry no totems and crystal-aura++'s anti-suicide and self-budget are both off",
+            EN.render(named));
+        assertEquals("no llevas tótems y el anti-suicide y el self-budget de crystal-aura++ están apagados",
+            ES.render(named));
+    }
+
+    @Test
+    void withMeteorTheTotemFloorKeepsTheSingleSettingText() {
+        // The default aura's text is unchanged (constraint: with crystal-module=meteor everything
+        // behaves as in 0.6.2): Meteor's crystal-aura only ever had anti-suicide to lose.
+        Msg named = CrystalModule.METEOR.name(Msg.of(PvpText.TOTEM_FLOOR));
+        assertEquals(PvpText.TOTEM_FLOOR, named.key());
     }
 
     @Test
     void theNameReachesNestedMessagesAndTheWholePlan() {
         CrystalModule m = CrystalModule.XPLOITS;
         Msg line = Msg.of(PvpText.STATUS_SKIPPED, "module", "auto-trap", "reason", Msg.of(PvpText.TOTEM_FLOOR));
-        assertEquals("\n  not turned on:  auto-trap — you carry no totems and crystal-aura++'s anti-suicide is off",
+        assertEquals("\n  not turned on:  auto-trap — you carry no totems and crystal-aura++'s anti-suicide and self-budget are both off",
             EN.render(m.name(line)));
 
         Plan plan = new Plan(CombatState.SURFACE, CombatPosture.CALM, List.of(ManagedModules.CRYSTAL_AURA),
@@ -100,8 +151,9 @@ class CrystalModuleTest {
         assertEquals(plan.posture(), named.posture());
         assertEquals(plan.enable(), named.enable(), "the plan keeps the catalog's modules");
         assertEquals(List.of(Msg.of(PvpText.AURA_NO_CRYSTALS, "module", "crystal-aura++")), named.warnings());
-        assertEquals(new Skipped(ManagedModules.AUTO_TRAP, Msg.of(PvpText.TOTEM_FLOOR, "module", "crystal-aura++")),
-            named.skipped().getFirst());
+        assertEquals(new Skipped(ManagedModules.AUTO_TRAP,
+                Msg.of(PvpText.TOTEM_FLOOR_PLUS_PLUS, "module", "crystal-aura++")),
+            named.skipped().getFirst(), "the ++ aura's totem-floor skip also carries the ++ key, not just the name");
 
         PositionedMsg profile = PositionedMsg.same(Msg.of(ProfileText.PROFILE_NO_AUTOBREAK, "name", "solo"));
         assertEquals(PositionedMsg.same(Msg.of(ProfileText.PROFILE_NO_AUTOBREAK, "name", "solo", "module", "crystal-aura++")),

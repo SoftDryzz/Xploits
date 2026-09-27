@@ -71,14 +71,19 @@ import java.util.Map;
  *                                true (§5, critical C2): asking for it on a tick in which the module is
  *                                about to turn itself off is what made it impossible to tell its
  *                                self-shutdown from you turning it off
- * @param crystalAuraAntiSuicide  whether the {@code anti-suicide} setting of {@code CrystalAura} is
- *                                on. It is {@code defaultValue(true)}, and with it Meteor refuses
- *                                to place or break a crystal whose damage to yourself would kill you:
- *                                the same decision the totem floor used to take, but with the exact
- *                                damage instead of an item counter. <b>But it is only a
- *                                default value</b>: if the player turns it off, that protection does
- *                                not exist, and then -and only then- the totem floor is needed
- *                                again
+ * @param crystalAuraProtectsYou  whether the latched crystal aura already keeps you from suiciding
+ *                                (redesign §7, corrected by task R3-13 fix 1): Meteor's
+ *                                {@code crystal-aura} answers with its {@code anti-suicide} alone
+ *                                ({@code defaultValue(true)}, refuses to place or break a crystal whose
+ *                                damage to yourself would kill you), but {@code crystal-aura++} answers
+ *                                with {@code anti-suicide} <b>or</b> its own {@code self-budget}: with
+ *                                {@code self-budget} on, it never places a crystal that would leave you
+ *                                below its {@code reserve} (&ge; 2, {@link
+ *                                com.xploits.pvp.crystal.core.SelfBudget#FLOOR}) -a stronger guarantee
+ *                                than anti-suicide, since it also protects the totem-less placements
+ *                                anti-suicide alone would still refuse. <b>Both are only default
+ *                                values</b>: if the player turns every protection the latched aura offers
+ *                                off, this reads false and the totem floor is needed again
  */
 public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              int targetSurroundSides, double cityBlockDistance,
@@ -88,7 +93,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              String targetId, int hostilesInCrystalRange,
                              double selfTotalHealth, double incomingDamage,
                              boolean selfInHole, boolean selfOnGround, boolean selfYChanged,
-                             boolean crystalAuraAntiSuicide) {
+                             boolean crystalAuraProtectsYou) {
     /** Full health without absorption: the neutral value when nobody has measured the real one. */
     public static final double FULL_HEALTH = 20.0;
 
@@ -114,7 +119,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             id, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, selfYChanged, crystalAuraAntiSuicide);
+            selfInHole, selfOnGround, selfYChanged, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with another count of hostiles in crystal range (§4.4, corrected by C1). */
@@ -122,7 +127,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostiles, selfTotalHealth, incomingDamage, selfInHole, selfOnGround,
-            selfYChanged, crystalAuraAntiSuicide);
+            selfYChanged, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with another defensive reading (§5). */
@@ -130,7 +135,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, totalHealth, incoming, inHole, onGround,
-            selfYChanged, crystalAuraAntiSuicide);
+            selfYChanged, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with your height moving or still (§5, critical C2). */
@@ -138,7 +143,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, changed, crystalAuraAntiSuicide);
+            selfInHole, selfOnGround, changed, crystalAuraProtectsYou);
     }
 
     /** The same snapshot at another distance from the target. */
@@ -146,6 +151,6 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, distance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, selfYChanged, crystalAuraAntiSuicide);
+            selfInHole, selfOnGround, selfYChanged, crystalAuraProtectsYou);
     }
 }

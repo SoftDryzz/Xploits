@@ -380,6 +380,7 @@ pvp.profile-off=el perfil activo no lo permite
 pvp.module-missing=Módulos que esta versión de Meteor no trae y que auto-pvp no usará: {modules}.
 pvp.module-missing-skip=no está en esta versión de Meteor
 pvp.totem-floor=no llevas tótems y el anti-suicide de {module} está apagado
+pvp.totem-floor-plus-plus=no llevas tótems y el anti-suicide y el self-budget de {module} están apagados
 pvp.aura-no-crystals={module} sin cristales: solo romperá los que te pongan.
 pvp.shortage=tienes {have}, necesita {minimum}
 pvp.shortage-shared=tienes {have} y {others} ya han apartado: quedan {left} y necesita {minimum}

@@ -23,6 +23,7 @@ import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.hud.core.PanelInput;
 import com.xploits.pvp.profile.core.AutobreakWatch;
 import com.xploits.pvp.profile.core.ProfileSession;
@@ -667,7 +668,7 @@ public class AutoPvp extends XploitsModule {
         double incomingDamage = PlayerUtils.possibleHealthReductions();
         boolean inHole = PlayerUtils.isInHole(false);
         boolean onGround = mc.player.isOnGround();
-        boolean antiSuicide = crystalAuraAntiSuicide();
+        boolean protectsYou = crystalAuraProtectsYou();
         int hostiles = hostilesInCrystalRange(couriers, tpyUsers);
         // The same comparison Surround makes in its toggle-on-y-change -field_6036 is lastY in
         // yarn 1.21.11+build.3, checked in the mappings, not assumed-, plus the previous tick's:
@@ -681,7 +682,7 @@ public class AutoPvp extends XploitsModule {
         if (target == null) {
             return new CombatSnapshot(false, 0, 0, 0, false, false,
                 mc.player.isGliding(), inventory.totems(), inventory.resources(),
-                null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+                null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, protectsYou);
         }
 
         // SURROUNDED requires auto-city's real reach to the block, not to the target (spec §4.2.1,
@@ -694,7 +695,7 @@ public class AutoPvp extends XploitsModule {
         return new CombatSnapshot(true, mc.player.distanceTo(target),
             surroundSides(target), cityBlockDistance, protectedFromCrystals(target), target.isGliding(),
             mc.player.isGliding(), inventory.totems(), inventory.resources(),
-            nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+            nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, protectsYou);
     }
 
     /**
@@ -804,24 +805,40 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Whether the {@code anti-suicide} of the crystal aura it drives is on (redesign §7, through the door
-     * of §10). It is the only thing that decides whether the totem floor stays in place. Both auras have
-     * a setting of that name and meaning ({@code crystal-aura++} copies Meteor's), and {@link #byName}
-     * picks the latched one.
+     * Whether the crystal aura it drives already keeps you from suiciding (redesign §7, through the door
+     * of §10; corrected by task R3-13 fix 1). It is the only thing that decides whether the totem floor
+     * stays in place, and {@link #byName} picks the latched module.
      *
-     * <p>It is read through Meteor's public settings API —{@code Module.settings} is
+     * <p>Meteor's {@code crystal-aura} only has {@code anti-suicide} to ask. {@code crystal-aura++} copies
+     * that setting and adds a second, stronger one: {@code self-budget}, which on never leaves you below
+     * its {@code reserve} (&ge; {@link com.xploits.pvp.crystal.core.SelfBudget#FLOOR}) -a placement it
+     * would refuse for that reason alone is one {@code anti-suicide} might still have let through, since
+     * anti-suicide only refuses what would kill you outright. {@link CrystalModule#protectsYou} is where
+     * the two settings are folded into the one answer, per aura; it is pure and its own tests cover the
+     * four combinations.
+     *
+     * <p>Both settings are read through Meteor's public settings API —{@code Module.settings} is
      * {@code public final} and {@code Settings#get(String, Class)} returns the already typed
      * {@code Setting<Boolean>}, comparing the name case-insensitively—, not by reflection nor by a mixin:
-     * the {@code antiSuicide} field of {@code CrystalAura} is private, but the setting is not.
+     * the {@code antiSuicide} field of {@code CrystalAura} is private, but the setting is not, and
+     * {@code CrystalAuraPlusPlus}'s {@code self-budget} setting is {@code CrystalSetting.SELF_BUDGET}'s
+     * own id.
      *
-     * <p>If the module is not loaded or the setting does not show up, the answer is <b>off</b>, which is the
-     * prudent value: without being able to prove the protection exists, the totem floor stays.
+     * <p>If the module is not loaded or a setting does not show up, that setting reads as <b>off</b>,
+     * which is the prudent value: without being able to prove a protection exists, the totem floor stays.
      */
-    private boolean crystalAuraAntiSuicide() {
+    private boolean crystalAuraProtectsYou() {
         Module crystalAura = byName(ManagedModules.CRYSTAL_AURA.name());
         if (crystalAura == null) return false;
-        Setting<Boolean> antiSuicide = crystalAura.settings.get("anti-suicide", Boolean.class);
-        return antiSuicide != null && antiSuicide.get();
+        boolean antiSuicide = boolSettingOn(crystalAura, "anti-suicide");
+        boolean selfBudget = boolSettingOn(crystalAura, CrystalSetting.SELF_BUDGET.id());
+        return crystalLatch.latched().protectsYou(antiSuicide, selfBudget);
+    }
+
+    /** A boolean setting of {@code module} by name, or off if the module lacks it (prudent default). */
+    private static boolean boolSettingOn(Module module, String settingName) {
+        Setting<Boolean> setting = module.settings.get(settingName, Boolean.class);
+        return setting != null && setting.get();
     }
 
     /** Loaded players and how many of them are on your side, with the same definition as the target. Works with auto-pvp off. */

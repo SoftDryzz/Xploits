@@ -57,7 +57,7 @@ class CombatDirectorTest {
             burrowed, targetGliding, selfGliding, base.selfTotems(), base.resources(),
             base.targetId(), base.hostilesInCrystalRange(), base.selfTotalHealth(),
             base.incomingDamage(), base.selfInHole(), base.selfOnGround(), base.selfYChanged(),
-            base.crystalAuraAntiSuicide());
+            base.crystalAuraProtectsYou());
     }
 
     /**
@@ -1141,7 +1141,7 @@ class CombatDirectorTest {
         // anti-suicide is only a default value: off, that protection does not exist and the totem
         // floor is once again the only thing left.
         CombatSnapshot noTotems =
-            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, FULL));
+            Snapshots.protectionOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, FULL));
         Plan plan = settle(new CombatDirector(), noTotems);
 
         assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
@@ -1154,7 +1154,7 @@ class CombatDirectorTest {
     @Test
     void withTotemsTheAntiSuicideSettingChangesNothing() {
         CombatSnapshot withTotems =
-            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, FULL));
+            Snapshots.protectionOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, FULL));
         assertTrue(enables(settle(new CombatDirector(), withTotems), ManagedModules.CRYSTAL_AURA));
     }
 
@@ -1165,7 +1165,7 @@ class CombatDirectorTest {
         assertEquals(CombatState.SURFACE, settle(new CombatDirector(), snapshot).state(),
             "with anti-suicide on the aura comes up and there is something to fight with");
         assertEquals(CombatState.OUT_OF_RESOURCES,
-            settle(new CombatDirector(), Snapshots.antiSuicideOff(snapshot)).state());
+            settle(new CombatDirector(), Snapshots.protectionOff(snapshot)).state());
     }
 
     @Test
@@ -1186,7 +1186,7 @@ class CombatDirectorTest {
     void withNothingAtAllAndNoTotemsItReportsOutOfResources() {
         // With nothing on you and without the anti-suicide net, not even the autobreak is left.
         CombatSnapshot broke =
-            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of()));
+            Snapshots.protectionOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of()));
         Plan plan = settle(new CombatDirector(), broke);
 
         assertEquals(CombatState.OUT_OF_RESOURCES, plan.state());
@@ -1207,7 +1207,7 @@ class CombatDirectorTest {
     @Test
     void outOfResourcesIsHowItReportsNotWhereItLives() {
         CombatSnapshot broke =
-            Snapshots.antiSuicideOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of()));
+            Snapshots.protectionOff(Snapshots.of(true, 3.0, 0, 0, false, false, false, 0, Map.of()));
         CombatDirector director = new CombatDirector();
         settle(director, broke);
 

@@ -122,7 +122,7 @@ class PvpStatusTest {
     void withCrystalAuraPlusPlusTheAuraIsNamedAsTheRealModule() {
         List<Skipped> skipped = List.of(new Skipped(ManagedModules.CRYSTAL_AURA, Msg.of(PvpText.TOTEM_FLOOR)),
             off(ManagedModules.AUTO_CITY));
-        assertEquals("\n  not turned on:  crystal-aura++ — you carry no totems and crystal-aura++'s anti-suicide is off"
+        assertEquals("\n  not turned on:  crystal-aura++ — you carry no totems and crystal-aura++'s anti-suicide and self-budget are both off"
                 + "\n  off by profile: auto-city",
             EN.render(CrystalModule.XPLOITS.name(PvpStatus.skippedLines(skipped, List.of(), CrystalModule.XPLOITS))));
         assertEquals("\n  off by profile: crystal-aura++, auto-city", EN.render(PvpStatus.skippedLines(

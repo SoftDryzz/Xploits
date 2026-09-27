@@ -30,6 +30,8 @@ public enum PvpText implements MessageKey {
     MODULE_MISSING,
     MODULE_MISSING_SKIP,
     TOTEM_FLOOR,
+    /** {@code TOTEM_FLOOR} for crystal-aura++ (task R3-13 fix 1): says both its settings are off. */
+    TOTEM_FLOOR_PLUS_PLUS,
     AURA_NO_CRYSTALS,
     SHORTAGE,
     SHORTAGE_SHARED,
