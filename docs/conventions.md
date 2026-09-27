@@ -96,39 +96,60 @@ want to keep it, because the next run erases it. There are two profiles:
   the cache while it is valid), `defense-attacker`, and crystal-aura++ at Balanced only (`capp-balanced-*`).
   The `capp-*` scenarios at Safe and the `capp-aggressive-*` ones are experimental levels: the everyday run
   lists them as SKIPPED, which is not a failure. With the cache warm it takes about 20 minutes.
-- **The full run**, `-Pbench.full`, plays every scenario, about an hour. **A release needs a full run**:
-  the everyday run never measures Safe or Aggressive, and `benchVerify` says so with the line
-  `bench: everyday run — not valid for a release (use -Pbench.full)`.
+- **The full run**, `-Pbench.full`, plays every scenario, about an hour. **A release runs
+  `./gradlew runClientGameTest -Pbench.full -Pbench.fresh`**: the full run, with Meteor measured again.
+  The everyday run never measures Safe or Aggressive, and `benchVerify` says so with the line
+  `bench: everyday run — not valid for a release (use -Pbench.full)`. A full run that served any `ca-*`
+  from the cache fails `benchVerify` with
+  `bench: full run with cached Meteor results — not valid for a release (add -Pbench.fresh)`: the cache's key cannot see everything that could change Meteor's numbers (below),
+  and Meteor's runs are not perfectly identical either (placements per second and the first pop's time can
+  move a little), so a release never rests on one frozen sample of them.
 - `-Pbench.only=<name,name>` runs only the named scenarios, whichever profile was asked for, for a quick
   check while working on one of them. A partial run cannot prove the scenarios it skipped still pass
   either, and the report itself records which names ran, so it is never mistaken for a full one.
 - `-Pbench.fresh` measures every `ca-*` again instead of serving it from the cache (and caches the new
   results).
+- `-Pbench.updateBaseline` merges every DONE MEASURE's medians from the run into the committed
+  `bench/baseline.json`; a scenario that did not run, or did not finish DONE, keeps its existing entry.
 
 **The Meteor cache.** Meteor's crystal-aura gives the same numbers run after run, so a `ca-*` MEASURE that
 finishes DONE keeps its runs in `build/bench/meteor-cache/<scenario>.json` (the build folder: never
-committed). Its key is a SHA-256 over the Meteor jar the game loaded, the Minecraft version, every file
-under `src/gametest/` (by sorted path, with its bytes) and the scenario's name. The next run whose key
-matches does not play that scenario: it reports it DONE with the cached runs, marked `"cached": true` with
-the date it was measured in the JSON report, `cached, measured <date>` in the markdown, `(cached)` in the
-client log and `(n cached)` in the summary lines. A changed Meteor, Minecraft or bench file, a missing file
-or one that cannot be read is a miss: the scenario is measured again and its file overwritten. Cached runs
-count exactly like measured ones for the verdicts, the baseline and the regressions. CHECKs are never
-cached, not even `capp-budget-off-parity`, which plays Meteor's aura inside.
-- `-Pbench.updateBaseline` merges every DONE MEASURE's medians from the run into the committed
-  `bench/baseline.json`; a scenario that did not run, or did not finish DONE, keeps its existing entry.
+committed). Its key is a SHA-256 over what can change Meteor's crystal-aura in the bench, each file by its
+sorted path with its bytes:
+
+- the Meteor jar the game loaded, and the Minecraft version;
+- every file under `src/gametest/`: the bench itself, its scenarios, arenas and scripts;
+- the build files `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties` and
+  `gradle/libs.versions.toml`, which pin the Fabric API, loader, yarn, Loom, Meteor and Minecraft versions;
+- every mixin config under `src/main/resources` (a JSON with a `package` and a mixin list), and every Java
+  file under each config's `package` in `src/main/java`, sub-packages included, found from the configs and
+  never hard-coded: the addon's mixins reach into Minecraft itself, so into what Meteor sees;
+- the scenario's name.
+
+The rest of `src/main` is left out on purpose: crystal-aura++ is off in every `ca-*` run, and hashing it
+would re-measure Meteor on every crystal-aura++ change, which would defeat the cache. What it does leave out
+(an addon module that stays on during a `ca-*` run, say) is what the release's `-Pbench.fresh` is for.
+
+The next run whose key matches does not play that scenario: it reports it DONE with the cached runs, marked
+`"cached": true` with the date it was measured in the JSON report, `cached, measured <date>` in the
+markdown, `(cached)` in the client log and `(n cached)` in the summary lines. A change to any input of the
+key, a missing file or one that cannot be read is a miss: the scenario is measured again and its file
+overwritten. Cached runs count exactly like measured ones for the verdicts, the baseline and the
+regressions. CHECKs are never cached, not even `capp-budget-off-parity`, which plays Meteor's aura inside.
 
 **The verdict is `runClientGameTest`'s Gradle result, not the client's exit code.** A client that stops
 mid-bench (a closed window, a crash) can still exit 0, so the report is what settles it: `benchVerify`
 (which always follows `runClientGameTest`) reads it and prints a `bench: …` summary line. `BUILD
-SUCCESSFUL` plus a `bench:` line that says `full run` means the release gate passed (a line that says
-`everyday run` is the everyday profile, and one that says `only …` a partial run). `benchVerify` fails the
-build on:
+SUCCESSFUL` plus a `bench:` line that says `full run` with no `cached` count means the release gate passed
+(a line that says `everyday run` is the everyday profile, and one that says `only …` a partial run).
+`benchVerify` fails the build on:
 
 - a missing report, or a report that lists no scenario;
 - any scenario that is PENDING, FAIL or ERROR (SKIPPED, a scenario the everyday run does not play, is not
   a failure);
-- hygiene not clean (a report line looked like a position).
+- hygiene not clean (a report line looked like a position);
+- a full run that served any `ca-*` from the Meteor cache (release rule `ReleaseGate`, in the bench's pure
+  core with its unit tests; `benchVerify` runs its compiled class).
 
 **PENDING** means the client stopped before that scenario finished. Rerun the bench; never release on a
 PENDING report. If the window hangs, with no progress in the client log for minutes, kill the Java

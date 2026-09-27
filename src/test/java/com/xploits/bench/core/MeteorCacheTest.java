@@ -148,6 +148,135 @@ class MeteorCacheTest {
         assertThrows(IOException.class, () -> MeteorCache.sources(root.resolve("absent")));
     }
 
+    // The project inputs (fix round 1): what can change Meteor's behaviour in the game besides src/gametest
+
+    private static void put(Path project, String path, String text) throws IOException {
+        Path file = project.resolve(path);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, text, StandardCharsets.UTF_8);
+    }
+
+    private static final String MIXINS = "{\"required\": true, \"package\": \"com.xploits.mixin\", \"client\": [\"ChatHudMixin\"]}";
+
+    /** A project like the real one: the bench, the build files, a mixin config and its package, and other code. */
+    private static void project(Path project) throws IOException {
+        put(project, "src/gametest/java/com/xploits/bench/Still.java", "class Still {}");
+        put(project, "src/gametest/resources/fabric.mod.json", "{}");
+        put(project, "build.gradle.kts", "fabric-api 0.141.4");
+        put(project, "settings.gradle.kts", "rootProject.name = \"xploits\"");
+        put(project, "gradle.properties", "org.gradle.jvmargs=-Xmx2G");
+        put(project, "gradle/libs.versions.toml", "meteor = \"1.21.11-SNAPSHOT\"");
+        put(project, "src/main/resources/xploits.mixins.json", MIXINS);
+        put(project, "src/main/resources/fabric.mod.json", "{\"mixins\": [\"xploits.mixins.json\"]}");
+        put(project, "src/main/resources/assets/xploits/lang/en_us.json", "{\"key\": \"text\"}");
+        put(project, "src/main/java/com/xploits/mixin/ChatHudMixin.java", "class ChatHudMixin {}");
+        put(project, "src/main/java/com/xploits/mixin/inner/Deep.java", "class Deep {}");
+        put(project, "src/main/java/com/xploits/pvp/crystal/CrystalAuraPlusPlus.java", "class CrystalAuraPlusPlus {}");
+        put(project, "src/main/java/com/xploits/mixinlike/NotAMixin.java", "class NotAMixin {}");
+    }
+
+    private static String projectKey(Path project) throws IOException {
+        return Key.of(METEOR, MINECRAFT, MeteorCache.inputs(project)).of("ca-still");
+    }
+
+    @Test
+    void theInputsAreTheBenchTheBuildFilesAndTheMixins(@TempDir Path project) throws IOException {
+        project(project);
+        assertEquals(List.of(
+                "build.gradle.kts",
+                "gradle.properties",
+                "gradle/libs.versions.toml",
+                "settings.gradle.kts",
+                "src/gametest/java/com/xploits/bench/Still.java",
+                "src/gametest/resources/fabric.mod.json",
+                "src/main/java/com/xploits/mixin/ChatHudMixin.java",
+                "src/main/java/com/xploits/mixin/inner/Deep.java",
+                "src/main/resources/xploits.mixins.json"),
+            List.copyOf(MeteorCache.inputs(project).keySet()));
+    }
+
+    @Test
+    void theKeyChangesWithEachBuildFile(@TempDir Path project) throws IOException {
+        project(project);
+        for (String file : List.of("build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradle/libs.versions.toml")) {
+            String before = projectKey(project);
+            put(project, file, "changed " + file);
+            assertNotEquals(before, projectKey(project), file);
+        }
+        String before = projectKey(project);
+        Files.delete(project.resolve("settings.gradle.kts"));
+        assertNotEquals(before, projectKey(project), "a build file removed");
+    }
+
+    @Test
+    void theKeyChangesWithAMixinConfig(@TempDir Path project) throws IOException {
+        project(project);
+        String before = projectKey(project);
+        put(project, "src/main/resources/xploits.mixins.json", MIXINS.replace("\"ChatHudMixin\"", "\"ChatHudMixin\", \"Other\""));
+        assertNotEquals(before, projectKey(project));
+    }
+
+    @Test
+    void theKeyChangesWithAMixinClass(@TempDir Path project) throws IOException {
+        project(project);
+        String before = projectKey(project);
+        put(project, "src/main/java/com/xploits/mixin/ChatHudMixin.java", "class ChatHudMixin { int changed; }");
+        String edited = projectKey(project);
+        assertNotEquals(before, edited);
+        put(project, "src/main/java/com/xploits/mixin/inner/Deep.java", "class Deep { int changed; }");
+        String deep = projectKey(project);
+        assertNotEquals(edited, deep, "a mixin in a sub-package");
+        put(project, "src/main/java/com/xploits/mixin/NewMixin.java", "class NewMixin {}");
+        assertNotEquals(deep, projectKey(project), "a mixin added");
+    }
+
+    @Test
+    void theKeyKeepsCrystalAuraPlusPlusAndTheRestOfTheAddonOut(@TempDir Path project) throws IOException {
+        // Hashing all of src/main would re-measure Meteor on every crystal-aura++ change and defeat the cache.
+        project(project);
+        String before = projectKey(project);
+        put(project, "src/main/java/com/xploits/pvp/crystal/CrystalAuraPlusPlus.java", "class CrystalAuraPlusPlus { int tuned; }");
+        put(project, "src/main/java/com/xploits/mixinlike/NotAMixin.java", "class NotAMixin { int changed; }");
+        put(project, "src/main/resources/assets/xploits/lang/en_us.json", "{\"key\": \"other text\"}");
+        put(project, "src/main/resources/fabric.mod.json", "{\"mixins\": [\"xploits.mixins.json\"], \"version\": \"2\"}");
+        put(project, "README.md", "notes");
+        assertEquals(before, projectKey(project));
+    }
+
+    @Test
+    void theMixinPackagesComeFromTheConfigs(@TempDir Path project) throws IOException {
+        // Never a hard-coded package: a second config with its own package brings that package in.
+        project(project);
+        put(project, "src/main/resources/sub/other.mixins.json", "{\"package\": \"org.example.hooks\", \"mixins\": [\"Hook\"]}");
+        put(project, "src/main/java/org/example/hooks/Hook.java", "class Hook {}");
+        String before = projectKey(project);
+        assertTrue(MeteorCache.inputs(project).containsKey("src/main/java/org/example/hooks/Hook.java"));
+        assertTrue(MeteorCache.inputs(project).containsKey("src/main/resources/sub/other.mixins.json"));
+        put(project, "src/main/java/org/example/hooks/Hook.java", "class Hook { int changed; }");
+        assertNotEquals(before, projectKey(project));
+    }
+
+    @Test
+    void aMixinConfigThatDoesNotParseStillCounts(@TempDir Path project) throws IOException {
+        // A JSON under src/main/resources that cannot be read might be a mixin config: it is kept, never guessed away.
+        project(project);
+        put(project, "src/main/resources/broken.mixins.json", "{ not json");
+        assertTrue(MeteorCache.inputs(project).containsKey("src/main/resources/broken.mixins.json"));
+    }
+
+    @Test
+    void aMixinPackageThatIsNotAPackageIsAnError(@TempDir Path project) throws IOException {
+        project(project);
+        put(project, "src/main/resources/bad.mixins.json", "{\"package\": \"../../outside\", \"mixins\": [\"X\"]}");
+        assertThrows(IOException.class, () -> MeteorCache.inputs(project));
+    }
+
+    @Test
+    void aProjectWithoutTheBenchIsAnError(@TempDir Path project) throws IOException {
+        put(project, "build.gradle.kts", "x");
+        assertThrows(IOException.class, () -> MeteorCache.inputs(project));
+    }
+
     // The file
 
     @Test

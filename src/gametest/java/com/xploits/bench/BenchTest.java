@@ -47,11 +47,11 @@ public class BenchTest implements FabricClientGameTest {
     private static final String BENCH_PACKAGE = "com.xploits.bench.";
 
     /**
-     * What {@code build.gradle.kts} passes to the run as system properties. {@code sources} is
-     * {@code src/gametest}, which the Meteor cache's key reads; null leaves the cache off.
+     * What {@code build.gradle.kts} passes to the run as system properties. {@code project} is the project's
+     * folder, whose files the Meteor cache's key reads ({@link MeteorCache#inputs}); null leaves the cache off.
      */
     record Config(Path out, Path baseline, List<String> only, boolean updateBaseline, boolean full, boolean fresh,
-                  Path sources) {
+                  Path project) {
         Profile profile() {
             return Profile.of(full, !only.isEmpty());
         }
@@ -64,10 +64,10 @@ public class BenchTest implements FabricClientGameTest {
             String baseline = System.getProperty("xploits.bench.baseline");
             String only = System.getProperty("xploits.bench.only", "");
             List<String> names = Arrays.stream(only.split(",")).map(String::strip).filter(s -> !s.isEmpty()).toList();
-            String sources = System.getProperty("xploits.bench.sources");
+            String project = System.getProperty("xploits.bench.project");
             return new Config(Path.of(out), baseline == null ? null : Path.of(baseline), names,
                 Boolean.getBoolean("xploits.bench.update-baseline"), Boolean.getBoolean("xploits.bench.full"),
-                Boolean.getBoolean("xploits.bench.fresh"), sources == null || sources.isBlank() ? null : Path.of(sources));
+                Boolean.getBoolean("xploits.bench.fresh"), project == null || project.isBlank() ? null : Path.of(project));
         }
     }
 
@@ -140,17 +140,19 @@ public class BenchTest implements FabricClientGameTest {
     }
 
     /**
-     * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version and every file under
-     * {@code src/gametest}; null, which leaves the cache off and every {@code ca-*} measured, when any of them
+     * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version, and the project files
+     * that can change what Meteor does in the bench ({@link MeteorCache#inputs}: {@code src/gametest}, the build
+     * files, the mixin configs and their packages); null, which leaves the cache off and every {@code ca-*} measured, when any of them
      * cannot be read. Computed with {@code -Pbench.fresh} too: what that run measures is cached again.
      */
     private static MeteorCache.Key cacheKey(Config config) {
         try {
-            if (config.sources() == null) throw new BenchException("xploits.bench.sources is not set");
+            if (config.project() == null) throw new BenchException("xploits.bench.project is not set");
             Path jar = meteorJar();
             MeteorCache.Key key = MeteorCache.Key.of(Files.readAllBytes(jar), version("minecraft"),
-                MeteorCache.sources(config.sources()));
-            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {} and src/gametest{}", jar.getFileName(),
+                MeteorCache.inputs(config.project()));
+            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {}, src/gametest, the build files and the mixins{}",
+                jar.getFileName(),
                 version("minecraft"), config.fresh() ? "; -Pbench.fresh measures every ca-* again" : "");
             return key;
         } catch (IOException | RuntimeException e) {

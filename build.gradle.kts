@@ -1,3 +1,5 @@
+import java.net.URLClassLoader
+
 plugins {
     alias(libs.plugins.fabric.loom)
 }
@@ -70,17 +72,20 @@ loom.runs.named("clientGameTest") {
     // R3-9: the everyday run (the default) plays crystal-aura++ at Balanced only; -Pbench.full plays everything
     // and is the one a release needs. -Pbench.only wins over both.
     if (project.hasProperty("bench.full")) property("xploits.bench.full", "true")
-    // R3-9: Meteor's ca-* results are served from build/bench/meteor-cache while its key (Meteor's jar, the
-    // Minecraft version, every file under src/gametest, the scenario) matches; -Pbench.fresh measures them again.
+    // R3-9: Meteor's ca-* results are served from build/bench/meteor-cache while its key matches: Meteor's jar,
+    // the Minecraft version, every file under src/gametest, the build files (this one, settings.gradle.kts,
+    // gradle.properties, gradle/libs.versions.toml), the mixin configs and their packages' Java files, and the
+    // scenario (MeteorCache.inputs). -Pbench.fresh measures them again, and a release needs it (benchVerify).
     if (project.hasProperty("bench.fresh")) property("xploits.bench.fresh", "true")
-    property("xploits.bench.sources", file("src/gametest").absolutePath)
+    property("xploits.bench.project", projectDir.absolutePath)
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that
 // stops mid-bench (a closed window, a crash) can exit 0. Each run starts from an empty build/bench but for
 // the Meteor cache (build/bench/meteor-cache, which its own key keeps valid), and benchVerify, which always
 // follows runClientGameTest, fails unless the report is there, every scenario in it is PASS, DONE or SKIPPED
-// (SKIPPED: not in the everyday run), and the bench's final hygiene scan wrote "clean" into it.
+// (SKIPPED: not in the everyday run), the bench's final hygiene scan wrote "clean" into it, and a full run did not
+// serve any ca-* from the Meteor cache (ReleaseGate).
 val benchOut = layout.buildDirectory.dir("bench")
 val benchReport = benchOut.map { it.file("report-${project.version}.json") }
 
@@ -89,9 +94,14 @@ tasks.named("runClientGameTest") {
     finalizedBy("benchVerify")
 }
 
+// The release rules are pure Java in the bench core (ReleaseGate), unit-tested there, and run here from its
+// compiled class, alone in a loader of its own: build.gradle.kts keeps no copy of them to drift.
+val benchCoreClasses = sourceSets.named("gametest").map { it.output.classesDirs }
+
 tasks.register("benchVerify") {
     group = "verification"
     description = "Fails unless the in-game bench report says every scenario passed (run by runClientGameTest)."
+    dependsOn("compileGametestJava")
     doLast {
         val file = benchReport.get().asFile
         if (!file.isFile) {
@@ -133,6 +143,15 @@ tasks.register("benchVerify") {
         if (only == null && profile == "everyday") {
             logger.lifecycle("bench: everyday run — not valid for a release (use -Pbench.full)")
         }
+        // R3-9, fix round 1: a release re-measures Meteor, so a full run that served a ca-* from the Meteor cache
+        // fails ("bench: full run with cached Meteor results — not valid for a release (add -Pbench.fresh)").
+        val urls = benchCoreClasses.get().files.map { it.toURI().toURL() }.toTypedArray()
+        @Suppress("UNCHECKED_CAST")
+        val release = URLClassLoader(urls, ClassLoader.getPlatformClassLoader()).use { loader ->
+            loader.loadClass("com.xploits.bench.core.ReleaseGate").getMethod("check", Map::class.java)
+                .invoke(null, root) as List<String>
+        }
+        release.forEach { logger.lifecycle(it) }
         // The crystal-aura++ verdicts ("capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE") and the
         // strict recommendation at each risk level over its pairs of the full bench ("capp Safe: YES/NO (n of m
         // applicable)", then Balanced and Aggressive; in the everyday run only Balanced, then one "not measured"
@@ -141,8 +160,9 @@ tasks.register("benchVerify") {
         root["compare"]?.let { logger.lifecycle("bench: $it") }
         (root["recommendation"] as? List<*>)?.forEach { logger.lifecycle("bench: $it") }
         if (scenarios.isEmpty()) throw GradleException("bench: the report lists no scenario")
-        if (blocking.isNotEmpty() || hygiene != "clean") {
-            val reasons = blocking + (if (hygiene != "clean") listOf(hygieneText) else emptyList())
+        if (blocking.isNotEmpty() || hygiene != "clean" || release.isNotEmpty()) {
+            val reasons = blocking + (if (hygiene != "clean") listOf(hygieneText) else emptyList()) +
+                release.map { it.removePrefix("bench: ") }
             throw GradleException("bench failed: " + reasons.joinToString("; "))
         }
     }

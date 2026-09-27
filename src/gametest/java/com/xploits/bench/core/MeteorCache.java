@@ -29,9 +29,9 @@ import java.util.stream.Stream;
 /**
  * The Meteor cache (R3-9). Meteor's crystal-aura gives the same numbers run after run, so once a {@code ca-*}
  * MEASURE has finished DONE its runs' metrics are kept in {@code build/bench/meteor-cache/<scenario>.json},
- * under a {@link Key} over everything that could change them: the bytes of Meteor's jar on the game's
- * classpath, the Minecraft version, every file under {@code src/gametest/} (by sorted path, with its bytes)
- * and the scenario's name. The next run serves them instead of playing the scenario, but only while the key
+ * under a {@link Key} over what can change them: the bytes of Meteor's jar on the game's classpath, the
+ * Minecraft version, the project files of {@link #inputs} (the bench, the build files, the mixins; by sorted
+ * path, with their bytes) and the scenario's name. A release re-measures Meteor anyway ({@link ReleaseGate}). The next run serves them instead of playing the scenario, but only while the key
  * still matches: a missing file, another key, or a file that cannot be read as one is a miss
  * ({@link Lookup}), and the scenario is measured again. Reading never throws. Pure: no game class.
  */
@@ -48,7 +48,7 @@ public final class MeteorCache {
     }
 
     /**
-     * A SHA-256 over Meteor's jar, the Minecraft version and the bench's sources, to which {@link #of} adds a
+     * A SHA-256 over Meteor's jar, the Minecraft version and the project files, to which {@link #of} adds a
      * scenario's name. Every field goes in with its length first, so bytes moved from one field to the next
      * never give the same key. The shared part is hashed once and copied for each scenario.
      */
@@ -63,8 +63,8 @@ public final class MeteorCache {
         /**
          * @param meteorJar        the bytes of the Meteor jar the game loaded
          * @param minecraftVersion the game's version
-         * @param sources          every file under {@code src/gametest/}: its path relative to it, with
-         *                         {@code /}, to its bytes ({@link MeteorCache#sources})
+         * @param sources          the key's project files, each path relative to the project with {@code /},
+         *                         to its bytes ({@link MeteorCache#inputs})
          */
         public static Key of(byte[] meteorJar, String minecraftVersion, SortedMap<String, byte[]> sources) {
             MessageDigest digest = sha256();
@@ -160,6 +160,77 @@ public final class MeteorCache {
         }
         for (Path path : paths) files.put(root.relativize(path).toString().replace('\\', '/'), Files.readAllBytes(path));
         return files;
+    }
+
+    /** The build files that pin what the game loads: Fabric API, loader, yarn, Loom, Meteor and Minecraft versions. */
+    public static final List<String> BUILD_FILES =
+        List.of("build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradle/libs.versions.toml");
+    private static final String BENCH = "src/gametest";
+    private static final String RESOURCES = "src/main/resources";
+    private static final String MAIN_JAVA = "src/main/java";
+    private static final Pattern PACKAGE = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
+
+    /**
+     * Every project file whose change can change what Meteor's crystal-aura does in the bench, by its path
+     * relative to {@code project} with {@code /}, sorted, with its bytes: every file under {@code src/gametest}
+     * (the bench itself), the {@link #BUILD_FILES} that exist (the versions of everything the game loads), every
+     * mixin config under {@code src/main/resources}, and every Java file under each of their {@code package}s in
+     * {@code src/main/java}, sub-packages included (the addon's mixins reach into Minecraft, and so into what
+     * Meteor sees). The rest of the addon is left out on purpose: crystal-aura++ is off in every {@code ca-*} run,
+     * and hashing it would re-measure Meteor on every crystal-aura++ change, which would defeat the cache. A
+     * missing {@code src/gametest}, or a mixin package that is not a Java package name, is an error.
+     */
+    public static SortedMap<String, byte[]> inputs(Path project) throws IOException {
+        SortedMap<String, byte[]> files = new TreeMap<>();
+        sources(project.resolve(BENCH)).forEach((path, bytes) -> files.put(BENCH + "/" + path, bytes));
+        for (String name : BUILD_FILES) {
+            Path file = project.resolve(name);
+            if (Files.isRegularFile(file)) files.put(name, Files.readAllBytes(file));
+        }
+        Path resources = project.resolve(RESOURCES);
+        if (!Files.isDirectory(resources)) return files;
+        for (Map.Entry<String, byte[]> resource : sources(resources).entrySet()) {
+            if (!resource.getKey().endsWith(".json")) continue;
+            String text = new String(resource.getValue(), StandardCharsets.UTF_8);
+            MixinConfig config = mixinConfig(text);
+            if (config == MixinConfig.NOT_ONE) continue;
+            files.put(RESOURCES + "/" + resource.getKey(), resource.getValue());
+            if (config.pkg() == null) continue;
+            if (!PACKAGE.matcher(config.pkg()).matches()) {
+                throw new IOException("a mixin config's package is not a Java package name");
+            }
+            String folder = MAIN_JAVA + "/" + config.pkg().replace('.', '/');
+            Path packageRoot = project.resolve(folder);
+            if (!Files.isDirectory(packageRoot)) continue;
+            sources(packageRoot).forEach((path, bytes) -> {
+                if (path.endsWith(".java")) files.put(folder + "/" + path, bytes);
+            });
+        }
+        return files;
+    }
+
+    /** What a JSON under the resources is: not a mixin config, or one with its package (null if it cannot be read). */
+    private record MixinConfig(String pkg) {
+        static final MixinConfig NOT_ONE = new MixinConfig("");
+    }
+
+    /**
+     * A mixin config is an object with a string {@code package} and a {@code mixins}, {@code client} or
+     * {@code server} list. Text that does not parse might be one, so it counts, with no package to follow.
+     */
+    private static MixinConfig mixinConfig(String text) {
+        JsonElement parsed;
+        try {
+            parsed = JsonParser.parseString(text);
+        } catch (RuntimeException e) {
+            return new MixinConfig(null);
+        }
+        if (!parsed.isJsonObject()) return MixinConfig.NOT_ONE;
+        JsonObject root = parsed.getAsJsonObject();
+        String pkg = string(root, "package");
+        boolean lists = List.of("mixins", "client", "server").stream()
+            .anyMatch(name -> root.get(name) != null && root.get(name).isJsonArray());
+        return pkg != null && lists ? new MixinConfig(pkg) : MixinConfig.NOT_ONE;
     }
 
     /** {@code <folder>/<scenario>.json}. */
