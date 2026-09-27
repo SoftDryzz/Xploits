@@ -64,6 +64,17 @@ public interface Scenario {
         return false;
     }
 
+    /**
+     * Whether this run's connection plays over the bench's simulated ping (R3-12, {@code PingDelay}): every
+     * crystal-aura MEASURE, {@code ca-*} and {@code capp-*} ({@code CrystalAuraMeasure}), and the CHECK that
+     * measures crystal-aura++ without the budget inside it ({@code CappBudgetOffParity}), all identically for
+     * both auras. Every other scenario keeps today's lock-step (0 ms): none of them race the tick crystal-aura's
+     * exact-damage raycasts can lose, so the delay is not needed for them to stay valid.
+     */
+    default boolean simulatesPing() {
+        return false;
+    }
+
     /** Builds the scene after the common preparation ({@link Bench#prepare}); everything before T0. */
     void arrange(Bench bench);
 

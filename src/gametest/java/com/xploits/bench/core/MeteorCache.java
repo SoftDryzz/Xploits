@@ -31,8 +31,9 @@ import java.util.stream.Stream;
  * The Meteor cache (R3-9). Meteor's crystal-aura gives nearly the same numbers run after run, so once a
  * {@code ca-*} MEASURE ({@link #cacheable}) has finished DONE its runs' metrics are kept in
  * {@code build/bench/meteor-cache/<scenario>.json}, under a {@link Key} over what can change them: the bytes of
- * Meteor's jar on the game's classpath, the Minecraft version, the project files of {@link #inputs} (the bench,
- * the build files, the mixins, the recorder; by sorted path, with their bytes) and the scenario's name.
+ * Meteor's jar on the game's classpath, the Minecraft version, the round trip the run played over (R3-12,
+ * {@link PingDelay}), the project files of {@link #inputs} (the bench, the build files, the mixins, the
+ * recorder; by sorted path, with their bytes) and the scenario's name.
  *
  * <p>The next run serves them instead of playing the scenario, unless it asks for fresh results or verifies the
  * settle shortcut ({@link #bypass}), and only while the key still matches: a missing file, another key, or a
@@ -67,14 +68,17 @@ public final class MeteorCache {
         /**
          * @param meteorJar        the bytes of the Meteor jar the game loaded
          * @param minecraftVersion the game's version
+         * @param pingMs           the round trip (R3-12, {@link PingDelay}) the scenario played over: a
+         *                         {@code ca-*} run's numbers depend on it, so a different ping is a different key
          * @param sources          the key's project files, each path relative to the project with {@code /},
          *                         to its bytes ({@link MeteorCache#inputs})
          */
-        public static Key of(byte[] meteorJar, String minecraftVersion, SortedMap<String, byte[]> sources) {
+        public static Key of(byte[] meteorJar, String minecraftVersion, int pingMs, SortedMap<String, byte[]> sources) {
             MessageDigest digest = sha256();
             field(digest, DOMAIN);
             field(digest, meteorJar);
             field(digest, utf8(minecraftVersion));
+            field(digest, utf8(Integer.toString(pingMs)));
             digest.update(ByteBuffer.allocate(Long.BYTES).putLong(sources.size()).array());
             sources.forEach((path, bytes) -> {
                 field(digest, utf8(path));

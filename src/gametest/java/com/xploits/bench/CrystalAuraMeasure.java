@@ -174,6 +174,11 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     @Override
+    public boolean simulatesPing() {
+        return true;
+    }
+
+    @Override
     public Optional<String> compareWith() {
         return Optional.ofNullable(compareWith);
     }
@@ -216,6 +221,7 @@ final class CrystalAuraMeasure implements Scenario {
         run.start();
         SettleVerification verification = waitOut(bench);
         LOG.info("[bench] {} run {}: used {} crystal(s) (the stack was refilled, log only)", name, runs, refill.used());
+        LOG.info("[bench] {} run {}: the client sees {} ms latency (R3-12, log only)", name, runs, latencyMs(bench));
         if (aura == CrystalAuraPlusPlus.class) {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
@@ -320,6 +326,31 @@ final class CrystalAuraMeasure implements Scenario {
     /** Ticks as seconds, with two decimals. */
     private static String seconds(int ticks) {
         return String.format(Locale.ROOT, "%.2f", ticks / 20.0);
+    }
+
+    /**
+     * Our latency in the player list, in milliseconds, as the client sees it (R3-12, requirement 3). Log only,
+     * never a metric.
+     *
+     * <p><b>Verified: this always reads 0 for the bench's own player, whatever the simulated ping.</b> The
+     * integrated server's {@code isHost} check ({@code IntegratedServer.isHost}, matched by profile name) makes
+     * {@code ServerCommonNetworkHandler.baseTick} skip sending {@code KeepAliveS2CPacket} to the host player
+     * entirely: our bench's player is always that host, in every run, so no keep-alive round trip is ever
+     * measured for it and {@code getLatency()} never leaves its default, on the server or on the client's copy
+     * of it. This is a vanilla singleplayer behaviour, not a defect in the bench's delay: the delay itself is
+     * confirmed a different way (a wiring run: crystal-aura++ and Meteor became bit-for-bit identical in
+     * "below" once every run stopped losing the tick race, and every metric of every run was identical across
+     * the 3 runs of a scenario, where an undelayed bench always shows a little run-to-run spread). The
+     * requirement's other half — every packet, keep-alives included, goes through the same delay — still holds:
+     * a keep-alive is an ordinary packet to the pipeline, the pipeline does not know it will never be sent to
+     * this player, and every packet MC does send the host (everything but a keep-alive) is what the "below"
+     * result above evidences.
+     */
+    private static int latencyMs(Bench bench) {
+        return bench.fromClient(client -> {
+            PlayerListEntry entry = client.getNetworkHandler().getPlayerListEntry(client.player.getUuid());
+            return entry == null ? CrystalBrain.UNKNOWN_LATENCY : entry.getLatency();
+        });
     }
 
     /** Tops the crystal stack up ({@link #topUp(MinecraftServer, String, CrystalRefill)}) in one server call. */

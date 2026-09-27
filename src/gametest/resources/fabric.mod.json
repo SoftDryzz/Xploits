@@ -9,6 +9,9 @@
       "com.xploits.bench.BenchTest"
     ]
   },
+  "mixins": [
+    "xploits-bench.mixins.json"
+  ],
   "depends": {
     "xploits": "*",
     "fabric-client-gametest-api-v1": "*"

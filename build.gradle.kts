@@ -73,12 +73,24 @@ loom.runs.named("clientGameTest") {
     // and is the one a release needs. -Pbench.only wins over both.
     if (project.hasProperty("bench.full")) property("xploits.bench.full", "true")
     // R3-9: Meteor's ca-* results are served from build/bench/meteor-cache while its key matches: Meteor's jar,
-    // the Minecraft version, every file under src/gametest, the build files (this one, settings.gradle.kts,
-    // gradle.properties, gradle/libs.versions.toml), the mixin configs and their packages' Java files, the
-    // recorder, and the scenario (MeteorCache.inputs). -Pbench.fresh measures them again, and a release needs it
-    // (benchVerify); -Pbench.verifySettle measures them again too.
+    // the Minecraft version, the effective simulated ping (R3-12), every file under src/gametest, the build files
+    // (this one, settings.gradle.kts, gradle.properties, gradle/libs.versions.toml), the mixin configs and their
+    // packages' Java files, the recorder, and the scenario (MeteorCache.inputs). -Pbench.fresh measures them
+    // again, and a release needs it (benchVerify); -Pbench.verifySettle measures them again too.
     if (project.hasProperty("bench.fresh")) property("xploits.bench.fresh", "true")
     property("xploits.bench.project", projectDir.absolutePath)
+    // R3-12: every crystal-aura MEASURE plays over a simulated round trip of PingDelay.BENCH_PING_MS (100 ms);
+    // -Pbench.ping overrides it (0 restores today's lock-step for those runs too).
+    project.findProperty("bench.ping")?.let { property("xploits.bench.ping", it.toString()) }
+    // R3-12: Fabric's own client-gametest NetworkSynchronizer assumes every packet is handled on the netty
+    // thread almost at once and blocks each frame until it is (waitForPacketHandlers, 10 s timeout); the
+    // bench's simulated ping deliberately holds a packet longer than that inside the pipeline, which the
+    // synchronizer treats as "interfacing with packets at a lower level" and, once it has waited out its own
+    // timeout, crashes the client with "Network synchronizer in invalid state". Fabric's own log line for that
+    // error names this exact property as the fix, so the bench always disables it, ping or not: a run with no
+    // simulated ping installs no extra handler and was never at risk, and one JVM cannot toggle a static-final
+    // system property mid-run scenario by scenario.
+    property("fabric.client.gametest.disableNetworkSynchronizer", "true")
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that

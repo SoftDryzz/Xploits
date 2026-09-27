@@ -25,14 +25,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Meteor cache (R3-9): Meteor's crystal-aura gives nearly the same numbers run after run, so a {@code ca-*}
- * MEASURE's runs are kept under a key over what can change them (Meteor's jar, the Minecraft version, the bench's
- * sources, the build files, the addon's mixins and its recorder, the scenario's name) and served again only while
+ * MEASURE's runs are kept under a key over what can change them (Meteor's jar, the Minecraft version, the
+ * simulated ping it played over, the bench's sources, the build files, the addon's mixins and its recorder, the
+ * scenario's name) and served again only while
  * that key still matches and the run neither asks for fresh results nor verifies the settle shortcut. A missing,
  * stale or broken file is a miss, never a crash. Only Meteor's own MEASUREs are ever cached.
  */
 class MeteorCacheTest {
     private static final byte[] METEOR = bytes("meteor jar bytes");
     private static final String MINECRAFT = "1.21.11";
+    private static final int PING = 100;
 
     private static byte[] bytes(String text) {
         return text.getBytes(StandardCharsets.UTF_8);
@@ -46,12 +48,12 @@ class MeteorCacheTest {
         return sources;
     }
 
-    private static String key(byte[] meteor, String minecraft, SortedMap<String, byte[]> sources, String scenario) {
-        return Key.of(meteor, minecraft, sources).of(scenario);
+    private static String key(byte[] meteor, String minecraft, int ping, SortedMap<String, byte[]> sources, String scenario) {
+        return Key.of(meteor, minecraft, ping, sources).of(scenario);
     }
 
     private static String key() {
-        return key(METEOR, MINECRAFT, sources(), "ca-still");
+        return key(METEOR, MINECRAFT, PING, sources(), "ca-still");
     }
 
     private static List<Map<String, Double>> runs() {
@@ -76,39 +78,46 @@ class MeteorCacheTest {
 
     @Test
     void theKeyChangesWithMeteorsJar() {
-        assertNotEquals(key(), key(bytes("meteor jar bytez"), MINECRAFT, sources(), "ca-still"));
+        assertNotEquals(key(), key(bytes("meteor jar bytez"), MINECRAFT, PING, sources(), "ca-still"));
     }
 
     @Test
     void theKeyChangesWithTheMinecraftVersion() {
-        assertNotEquals(key(), key(METEOR, "1.21.12", sources(), "ca-still"));
+        assertNotEquals(key(), key(METEOR, "1.21.12", PING, sources(), "ca-still"));
     }
 
     @Test
     void theKeyChangesWithTheScenario() {
-        assertNotEquals(key(), key(METEOR, MINECRAFT, sources(), "ca-circler"));
+        assertNotEquals(key(), key(METEOR, MINECRAFT, PING, sources(), "ca-circler"));
+    }
+
+    @Test
+    void theKeyChangesWithThePing() {
+        // R3-12: a different simulated ping means a different Meteor result.
+        assertNotEquals(key(), key(METEOR, MINECRAFT, 0, sources(), "ca-still"));
+        assertNotEquals(key(METEOR, MINECRAFT, 100, sources(), "ca-still"), key(METEOR, MINECRAFT, 200, sources(), "ca-still"));
     }
 
     @Test
     void theKeyChangesWithAnyBenchSourceByte() {
         SortedMap<String, byte[]> changed = sources();
         changed.put("java/com/xploits/bench/Still.java", bytes("class Still { }"));
-        assertNotEquals(key(), key(METEOR, MINECRAFT, changed, "ca-still"));
+        assertNotEquals(key(), key(METEOR, MINECRAFT, PING, changed, "ca-still"));
     }
 
     @Test
     void theKeyChangesWhenABenchSourceIsAddedRemovedOrRenamed() {
         SortedMap<String, byte[]> added = sources();
         added.put("java/com/xploits/bench/Strafe.java", bytes(""));
-        assertNotEquals(key(), key(METEOR, MINECRAFT, added, "ca-still"));
+        assertNotEquals(key(), key(METEOR, MINECRAFT, PING, added, "ca-still"));
 
         SortedMap<String, byte[]> removed = sources();
         removed.remove("resources/fabric.mod.json");
-        assertNotEquals(key(), key(METEOR, MINECRAFT, removed, "ca-still"));
+        assertNotEquals(key(), key(METEOR, MINECRAFT, PING, removed, "ca-still"));
 
         SortedMap<String, byte[]> renamed = sources();
         renamed.put("java/com/xploits/bench/Still2.java", renamed.remove("java/com/xploits/bench/Still.java"));
-        assertNotEquals(key(), key(METEOR, MINECRAFT, renamed, "ca-still"));
+        assertNotEquals(key(), key(METEOR, MINECRAFT, PING, renamed, "ca-still"));
     }
 
     @Test
@@ -118,14 +127,14 @@ class MeteorCacheTest {
         one.put("a", bytes("bc"));
         SortedMap<String, byte[]> two = new TreeMap<>();
         two.put("ab", bytes("c"));
-        assertNotEquals(key(METEOR, MINECRAFT, one, "ca-still"), key(METEOR, MINECRAFT, two, "ca-still"));
-        assertNotEquals(key(bytes("ab"), "c", sources(), "ca-still"), key(bytes("a"), "bc", sources(), "ca-still"));
-        assertNotEquals(key(METEOR, "1.21.11c", sources(), "a-still"), key(METEOR, "1.21.11", sources(), "ca-still"));
+        assertNotEquals(key(METEOR, MINECRAFT, PING, one, "ca-still"), key(METEOR, MINECRAFT, PING, two, "ca-still"));
+        assertNotEquals(key(bytes("ab"), "c", PING, sources(), "ca-still"), key(bytes("a"), "bc", PING, sources(), "ca-still"));
+        assertNotEquals(key(METEOR, "1.21.11c", PING, sources(), "a-still"), key(METEOR, "1.21.11", PING, sources(), "ca-still"));
     }
 
     @Test
     void oneKeyServesEveryScenarioAlike() {
-        Key shared = Key.of(METEOR, MINECRAFT, sources());
+        Key shared = Key.of(METEOR, MINECRAFT, PING, sources());
         String first = shared.of("ca-still");
         shared.of("ca-circler");
         assertEquals(first, shared.of("ca-still"));
@@ -179,7 +188,7 @@ class MeteorCacheTest {
     }
 
     private static String projectKey(Path project) throws IOException {
-        return Key.of(METEOR, MINECRAFT, MeteorCache.inputs(project)).of("ca-still");
+        return Key.of(METEOR, MINECRAFT, PING, MeteorCache.inputs(project)).of("ca-still");
     }
 
     @Test
@@ -341,7 +350,7 @@ class MeteorCacheTest {
     void anotherKeyIsAMiss(@TempDir Path folder) throws IOException {
         Path file = MeteorCache.file(folder, "ca-still");
         MeteorCache.write(file, new Entry("ca-still", key(), "2026-09-27", runs()));
-        Lookup lookup = MeteorCache.read(file, "ca-still", key(bytes("new meteor"), MINECRAFT, sources(), "ca-still"), 3);
+        Lookup lookup = MeteorCache.read(file, "ca-still", key(bytes("new meteor"), MINECRAFT, PING, sources(), "ca-still"), 3);
         assertFalse(lookup.hit());
         assertEquals("cached under another key", lookup.miss());
     }

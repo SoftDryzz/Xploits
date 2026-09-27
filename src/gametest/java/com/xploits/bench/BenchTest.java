@@ -3,6 +3,7 @@ package com.xploits.bench;
 import com.xploits.bench.BenchReport.Run;
 import com.xploits.bench.BenchReport.Status;
 import com.xploits.bench.core.MeteorCache;
+import com.xploits.bench.core.PingDelay;
 import com.xploits.bench.core.Profile;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -51,9 +52,11 @@ public class BenchTest implements FabricClientGameTest {
     /**
      * What {@code build.gradle.kts} passes to the run as system properties. {@code project} is the project's
      * folder, whose files the Meteor cache's key reads ({@link MeteorCache#inputs}); null leaves the cache off.
+     * {@code pingMs} is the round trip (R3-12, {@link PingDelay}) every crystal-aura MEASURE plays over
+     * ({@link Scenario#simulatesPing}); {@code -Pbench.ping} overrides {@link PingDelay#BENCH_PING_MS}.
      */
     record Config(Path out, Path baseline, List<String> only, boolean updateBaseline, boolean full, boolean fresh,
-                  Path project) {
+                  Path project, int pingMs) {
         Profile profile() {
             return Profile.of(full, !only.isEmpty());
         }
@@ -69,7 +72,19 @@ public class BenchTest implements FabricClientGameTest {
             String project = System.getProperty("xploits.bench.project");
             return new Config(Path.of(out), baseline == null ? null : Path.of(baseline), names,
                 Boolean.getBoolean("xploits.bench.update-baseline"), Boolean.getBoolean("xploits.bench.full"),
-                Boolean.getBoolean("xploits.bench.fresh"), project == null || project.isBlank() ? null : Path.of(project));
+                Boolean.getBoolean("xploits.bench.fresh"), project == null || project.isBlank() ? null : Path.of(project),
+                PingDelay.effective(pingOverride()));
+        }
+
+        /** The Gradle property {@code -Pbench.ping}, or null when it was not passed. */
+        private static Integer pingOverride() {
+            String value = System.getProperty("xploits.bench.ping");
+            if (value == null || value.isBlank()) return null;
+            try {
+                return Integer.valueOf(value.strip());
+            } catch (NumberFormatException e) {
+                throw new AssertionError("xploits.bench.ping is not a number: " + value);
+            }
         }
     }
 
@@ -115,7 +130,7 @@ public class BenchTest implements FabricClientGameTest {
                 LOG.info("[bench] {}: measured, not served from the Meteor cache ({})", scenario.name(), bypass.get());
             }
             for (int i = 1; i <= scenario.runs(); i++) {
-                Run run = runOnce(ctx, scenario, config.out());
+                Run run = runOnce(ctx, scenario, config.out(), config.pingMs());
                 LOG.info("[bench] {} run {} of {}: {}{}", scenario.name(), i, scenario.runs(), run.status(),
                     run.error() == null ? "" : " (" + run.error() + ")");
                 report.add(scenario, run);
@@ -141,20 +156,21 @@ public class BenchTest implements FabricClientGameTest {
     }
 
     /**
-     * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version, and the project files
-     * that can change what Meteor does in the bench ({@link MeteorCache#inputs}: {@code src/gametest}, the build
-     * files, the mixin configs and their packages, the recorder); null, which leaves the cache off and every
-     * {@code ca-*} measured, when any of them cannot be read. Computed when the run bypasses the cache too
-     * ({@code bypass}): what that run measures is cached again.
+     * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version, the round trip every
+     * {@code ca-*} plays over now (R3-12, {@link PingDelay}: a different ping is a different Meteor result), and
+     * the project files that can change what Meteor does in the bench ({@link MeteorCache#inputs}:
+     * {@code src/gametest}, the build files, the mixin configs and their packages, the recorder); null, which
+     * leaves the cache off and every {@code ca-*} measured, when any of them cannot be read. Computed when the
+     * run bypasses the cache too ({@code bypass}): what that run measures is cached again.
      */
     private static MeteorCache.Key cacheKey(Config config, Optional<String> bypass) {
         try {
             if (config.project() == null) throw new BenchException("xploits.bench.project is not set");
             Path jar = meteorJar();
-            MeteorCache.Key key = MeteorCache.Key.of(Files.readAllBytes(jar), version("minecraft"),
+            MeteorCache.Key key = MeteorCache.Key.of(Files.readAllBytes(jar), version("minecraft"), config.pingMs(),
                 MeteorCache.inputs(config.project()));
-            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {}, src/gametest, the build files, the mixins and"
-                + " the recorder{}", jar.getFileName(), version("minecraft"),
+            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {}, {} ms simulated ping, src/gametest, the build"
+                + " files, the mixins and the recorder{}", jar.getFileName(), version("minecraft"), config.pingMs(),
                 bypass.map(flag -> "; " + flag + " measures every ca-* again").orElse(""));
             return key;
         } catch (IOException | RuntimeException e) {
@@ -293,9 +309,13 @@ public class BenchTest implements FabricClientGameTest {
      * threw: a run that had already failed keeps its status and whether our player died, so a death is
      * never lost (it makes a crystal-aura++ verdict REJECT, not INCOMPLETE).
      */
-    private static Run runOnce(ClientGameTestContext ctx, Scenario scenario, Path out) {
+    private static Run runOnce(ClientGameTestContext ctx, Scenario scenario, Path out, int pingMs) {
         String phase = "world";
         Run run = null;
+        // R3-12: set before the world (and so the integrated server's local connection) is created, which is
+        // when the bench-only pipeline mixin reads it; every other scenario keeps today's lock-step (0).
+        int roundTrip = scenario.simulatesPing() ? pingMs : 0;
+        System.setProperty(PingDelay.ACTIVE_PROPERTY, Integer.toString(PingDelay.eachWayMs(roundTrip)));
         try (TestSingleplayerContext world = ctx.worldBuilder().adjustSettings(BenchTest::superflat).create()) {
             world.getClientWorld().waitForChunksRender();
             Bench bench = new Bench(ctx, world.getServer(), scenario.budgetTicks(), out);

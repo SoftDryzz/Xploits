@@ -65,6 +65,13 @@ final class CappBudgetOffParity implements Scenario {
     }
 
     @Override
+    public boolean simulatesPing() {
+        // R3-12: its inner runs are crystal-aura MEASURE runs (Meteor's aura and crystal-aura++ without the
+        // budget), so they play over the same simulated ping.
+        return true;
+    }
+
+    @Override
     public void arrange(Bench bench) {
         started++;
         current = started % 2 == 1 ? meteor : plusPlus;

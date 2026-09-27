@@ -114,6 +114,8 @@ want to keep it, because the next run erases it. There are two profiles:
   served scenario never runs.
 - `-Pbench.updateBaseline` merges every DONE MEASURE's medians from the run into the committed
   `bench/baseline.json`; a scenario that did not run, or did not finish DONE, keeps its existing entry.
+- `-Pbench.ping=<ms>` overrides the round trip every crystal-aura MEASURE plays over (below, "The simulated
+  ping"); `0` restores today's lock-step for those runs too.
 
 **The Meteor cache.** Meteor's crystal-aura gives nearly the same numbers run after run, so a `ca-*`
 MEASURE that finishes DONE keeps its runs in `build/bench/meteor-cache/<scenario>.json` (the build folder:
@@ -189,6 +191,42 @@ run prints only the Balanced line, over all of Balanced's pairs, then `bench: ca
 measured in this run (use -Pbench.full)`. None of these lines ever fails the build. The report's markdown
 also has a risk table: for each `ca-X`, the median damage dealt and min health of Meteor's aura and of
 crystal-aura++ at each level, side by side (a dash for a level that did not run).
+
+**The simulated ping (R3-12).** On the integrated server the server's tick and the client's tick start in the
+same millisecond, so a few microseconds of client work (crystal-aura++'s exact-damage raycasts, say) decide
+whether a placement is taken this server tick or the next; a real network's latency makes that race irrelevant.
+So every crystal-aura MEASURE — every `ca-*` and `capp-*` run, including the inner Meteor and crystal-aura++
+runs of the CHECK `capp-budget-off-parity` — plays over a simulated round trip, `PingDelay.BENCH_PING_MS`
+(100 ms, 50 ms each way), identical for both auras; every other scenario keeps today's lock-step (0 ms), since
+none of them turn on a decision that race can affect. `-Pbench.ping=<ms>` overrides the round trip those runs
+play over (`0` restores the lock-step for them too); the Meteor cache's key includes it, so a `ca-*` measured
+under one ping is never served to a run asking for another.
+
+The delay is added by a bench-only Fabric mixin (`src/gametest/java/com/xploits/bench/mixin`, its own
+`xploits-bench.mixins.json`, on the gametest classpath only — `./gradlew build` checks the shipped jar carries
+no bench class), on `ClientConnection.addFlowControlHandler`: that method runs once for the client's own
+connection and once for the server's connection to that same player, so delaying both symmetrically gives a
+round trip with no special case for any one packet kind — keep-alives included the same as any other packet.
+**Verified:** the bench always plays through an integrated server, whose one player is always its host, and
+vanilla's `isHost` check (`IntegratedServer.isHost`, matched by profile name) makes
+`ServerCommonNetworkHandler.baseTick` skip sending the host a keep-alive at all — so the player-list latency
+the bench logs is always 0 for it, on the client and on the server, whatever the simulated ping, and that is
+not a sign the delay is off: a keep-alive is an ordinary packet to the pipeline, which does not know none will
+ever be sent to this player. It only touches a `LocalChannel` (the integrated server's connection; never a
+real one) and only while the bench has set a positive delay for the run in progress; each message is re-fired
+on the channel's own event-loop executor after a fixed delay with no jitter, which preserves order and drops
+nothing.
+
+**Verified: Fabric's own `NetworkSynchronizer` must be disabled for this.** The client-gametest framework
+blocks the render thread every frame until every packet it saw sent has been handled on the netty thread
+(`waitForPacketHandlers`, a 10 s timeout), so the gametest code can trust the world is settled after
+`waitTick()`. The bench's simulated ping deliberately holds a packet inside the pipeline longer than that
+synchronizer expects; once its own wait times out, it logs "Detected interfacing with packets at a lower
+level" and the next frame crashes the client with "Network synchronizer in invalid state, see earlier log
+messages" (seen on a real run: a 100 ms ping in the still arena survived two scenarios, then crashed on the
+third once the timeout was actually reached). Fabric's own log line for that error names the fix, and the run
+config sets it unconditionally: `-Dfabric.client.gametest.disableNetworkSynchronizer=true`. A scenario with no
+simulated ping installs no extra pipeline handler and was never at risk from this either way.
 
 The CHECK `capp-budget-off-parity` is different: it does block a release. It runs Meteor's crystal-aura and
 crystal-aura++ with `self-budget` off in turns on the still arena, 3 runs each, and fails when a median of
