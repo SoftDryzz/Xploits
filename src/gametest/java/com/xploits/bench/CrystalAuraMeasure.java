@@ -21,6 +21,7 @@ import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.rule.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,6 +87,9 @@ final class CrystalAuraMeasure implements Scenario {
     private final boolean selfBudget;
     /** crystal-aura++'s {@code risk} level; null for Meteor's aura. */
     private final RiskLevel risk;
+    /** OUR own movement (crystal-aura++ R3-14, self-circle and self-strafe); null for every other scenario,
+     * which leaves our player standing still on its block, as before. */
+    private final Supplier<SelfMotion> selfMotion;
     private MeasureRun run;
     /** Runs arranged so far, the one in progress included: the {@code n} of the settle and refill lines. */
     private int runs;
@@ -94,7 +98,7 @@ final class CrystalAuraMeasure implements Scenario {
 
     private CrystalAuraMeasure(String name, Class<? extends Module> aura, Class<? extends Module> other,
                                String compareWith, Supplier<Script> script, boolean regeneration, boolean selfBudget,
-                               RiskLevel risk) {
+                               RiskLevel risk, Supplier<SelfMotion> selfMotion) {
         this.name = name;
         this.aura = aura;
         this.other = other;
@@ -103,11 +107,13 @@ final class CrystalAuraMeasure implements Scenario {
         this.regeneration = regeneration;
         this.selfBudget = selfBudget;
         this.risk = risk;
+        this.selfMotion = selfMotion;
     }
 
     /** Meteor's CrystalAura. */
     static CrystalAuraMeasure meteor(String name, Supplier<Script> script) {
-        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false, true, null);
+        return new CrystalAuraMeasure(name, CrystalAura.class, CrystalAuraPlusPlus.class, null, script, false, true, null,
+            null);
     }
 
     /**
@@ -122,7 +128,7 @@ final class CrystalAuraMeasure implements Scenario {
     /** crystal-aura++ at the level {@code risk}, judged against the Meteor scenario {@code compareWith}. */
     static CrystalAuraMeasure plusPlus(String name, String compareWith, Supplier<Script> script, RiskLevel risk) {
         return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, compareWith, script, false, true,
-            Objects.requireNonNull(risk, "risk"));
+            Objects.requireNonNull(risk, "risk"), null);
     }
 
     /**
@@ -132,7 +138,7 @@ final class CrystalAuraMeasure implements Scenario {
      */
     static CrystalAuraMeasure plusPlusWithoutBudget(String name, Supplier<Script> script) {
         return new CrystalAuraMeasure(name, CrystalAuraPlusPlus.class, CrystalAura.class, null, script, false, false,
-            RiskLevel.SAFE);
+            RiskLevel.SAFE, null);
     }
 
     /** The suffix of a healing twin's name. */
@@ -145,7 +151,18 @@ final class CrystalAuraMeasure implements Scenario {
     CrystalAuraMeasure healing() {
         if (regeneration) throw new IllegalStateException(name + " already heals");
         return new CrystalAuraMeasure(name + HEALING, aura, other, compareWith == null ? null : compareWith + HEALING,
-            script, true, selfBudget, risk);
+            script, true, selfBudget, risk, selfMotion);
+    }
+
+    /**
+     * This scenario with OUR OWN player moving too (crystal-aura++ R3-14): the sparring keeps its own script,
+     * and every bench tick after T0 {@code selfMotion} also moves our player, real client movement. Since our
+     * player never stands still, {@link com.xploits.bench.core.Settle} treats the run as never static
+     * ({@link #waitOut}), whatever the sparring's own script says.
+     */
+    CrystalAuraMeasure movingSelf(Supplier<SelfMotion> selfMotion) {
+        return new CrystalAuraMeasure(name, aura, other, compareWith, script, regeneration, selfBudget, risk,
+            Objects.requireNonNull(selfMotion, "selfMotion"));
     }
 
     @Override
@@ -219,6 +236,7 @@ final class CrystalAuraMeasure implements Scenario {
         }
         refill = new CrystalRefill();
         run.start();
+        SelfMotionTracker motion = selfMotion == null ? null : startSelfMotion(bench, selfMotion.get());
         SettleVerification verification = waitOut(bench);
         LOG.info("[bench] {} run {}: used {} crystal(s) (the stack was refilled, log only)", name, runs, refill.used());
         LOG.info("[bench] {} run {}: the client sees {} ms latency (R3-12, log only)", name, runs, latencyMs(bench));
@@ -227,6 +245,7 @@ final class CrystalAuraMeasure implements Scenario {
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
                 name, held);
         }
+        if (motion != null) motion.log(bench, name, runs);
         Sparring.Stats sparring = bench.sparringStats();
         run.close();
 
@@ -237,6 +256,53 @@ final class CrystalAuraMeasure implements Scenario {
         Metrics metrics = metrics(sparring, run.selfDamage(), run.selfPops(), run.minHealth(), run.crystalsPlaced());
         if (verification != null) verify(verification, metrics);
         return metrics;
+    }
+
+    /**
+     * Starts driving OUR OWN player from T0 (R3-14): {@code origin} is our position right now, read once on the
+     * client thread and never printed; every bench tick from here on {@code motion} moves us relative to it, and
+     * the distance actually walked is tallied for {@link SelfMotionTracker#log}. Real client movement: see
+     * {@link SelfCircleMotion} for how the client's own per-tick packet carries a position set this way to the
+     * server.
+     */
+    private static SelfMotionTracker startSelfMotion(Bench bench, SelfMotion motion) {
+        Vec3d origin = bench.fromClient(client -> client.player.getEntityPos());
+        SelfMotionTracker tracker = new SelfMotionTracker(origin);
+        bench.everyTick(() -> bench.onClient(client -> {
+            motion.tick(client, origin, bench.sinceT0());
+            tracker.observe(client.player.getEntityPos());
+        }));
+        return tracker;
+    }
+
+    /** Tallies OUR OWN player's travelled distance (R3-14), and where it stood at the last tick observed. */
+    private static final class SelfMotionTracker {
+        private Vec3d previous;
+        private double distance;
+
+        SelfMotionTracker(Vec3d origin) {
+            previous = origin;
+        }
+
+        void observe(Vec3d now) {
+            distance += now.distanceTo(previous);
+            previous = now;
+        }
+
+        /**
+         * Logs the distance walked and, since the client and the server agreeing on where our own player is
+         * is exactly what makes this real movement rather than a rubber-banded one, how far apart the two
+         * sides' own copies of our player are right now: distances only, never a position (log only, not a
+         * metric).
+         */
+        void log(Bench bench, String name, int runs) {
+            double gap = previous.distanceTo(bench.fromServer(srv -> Arena.player(srv, bench.player()).getEntityPos()));
+            LOG.info("[bench] {} run {}: our player walked {} block(s) of real client movement (self-motion, log only)",
+                name, runs, String.format(Locale.ROOT, "%.2f", distance));
+            LOG.info("[bench] {} run {}: the server's and the client's own player are {} block(s) apart now"
+                + " (self-motion, no rubber-band expected beyond the simulated ping's own travel; log only)",
+                name, runs, String.format(Locale.ROOT, "%.3f", gap));
+        }
     }
 
     /** The run's metrics from their parts; the same for the close and for a settle's snapshot. */
@@ -265,7 +331,11 @@ final class CrystalAuraMeasure implements Scenario {
             srv.getOverworld().getGameRules().getValue(GameRules.NATURAL_HEALTH_REGENERATION));
         Settle settle;
         try {
-            settle = new Settle(regeneration, worldRegeneration, bench.sparring().script().isStatic());
+            // R3-14: our own player moving (selfMotion != null) makes nothing here static, whatever the
+            // sparring's own script says; every -regen scenario already keeps this moot (Settle.possible()
+            // is false with regeneration on), but this keeps the rule honest on its own terms too.
+            boolean staticScript = bench.sparring().script().isStatic() && selfMotion == null;
+            settle = new Settle(regeneration, worldRegeneration, staticScript);
         } catch (IllegalStateException e) {
             throw new BenchException(name + ": " + e.getMessage());
         }

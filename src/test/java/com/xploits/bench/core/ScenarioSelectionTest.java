@@ -33,6 +33,8 @@ class ScenarioSelectionTest {
         "autopvp-engages", "autopvp-engages-capp", "capp-budget-off-parity", "profile-defensive",
         "autopvp-anti-resources", "panel");
     private static final List<String> FIGHTS = List.of("above", "below", "approach", "strafe");
+    /** R3-14: the fight situations where OUR player moves too, after {@link #FIGHTS}. */
+    private static final List<String> SELF_FIGHTS = List.of("self-circle", "self-strafe");
 
     /** {@code Scenarios.all()}, in its order. */
     private static List<Mirrored> scenarios() {
@@ -57,6 +59,12 @@ class ScenarioSelectionTest {
             String prefix = "capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-";
             for (String f : FIGHTS) all.add(new Mirrored(prefix + f + "-regen", true, level, "ca-" + f + "-regen"));
         }
+        for (String f : SELF_FIGHTS) all.add(new Mirrored("ca-" + f + "-regen", true, null, null));
+        for (String f : SELF_FIGHTS) all.add(new Mirrored("capp-" + f + "-regen", true, SAFE, "ca-" + f + "-regen"));
+        for (RiskLevel level : List.of(BALANCED, AGGRESSIVE)) {
+            String prefix = "capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-";
+            for (String f : SELF_FIGHTS) all.add(new Mirrored(prefix + f + "-regen", true, level, "ca-" + f + "-regen"));
+        }
         return all;
     }
 
@@ -65,9 +73,9 @@ class ScenarioSelectionTest {
     }
 
     @Test
-    void theBenchHas44Scenarios() {
-        assertEquals(44, scenarios().size());
-        assertEquals(44, names(scenarios()).stream().distinct().count());
+    void theBenchHas52Scenarios() {
+        assertEquals(52, scenarios().size());
+        assertEquals(52, names(scenarios()).stream().distinct().count());
     }
 
     @Test
@@ -78,15 +86,16 @@ class ScenarioSelectionTest {
             "capp-balanced-still", "capp-balanced-circler", "capp-balanced-still-regen", "capp-balanced-circler-regen",
             "defense-attacker", "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen",
             "capp-balanced-above-regen", "capp-balanced-below-regen", "capp-balanced-approach-regen",
-            "capp-balanced-strafe-regen"));
+            "capp-balanced-strafe-regen", "ca-self-circle-regen", "ca-self-strafe-regen",
+            "capp-balanced-self-circle-regen", "capp-balanced-self-strafe-regen"));
         assertEquals(expected, names(played));
-        assertEquals(27, played.size());
+        assertEquals(31, played.size());
     }
 
     @Test
     void theEverydayRunSkipsSafeAndAggressiveOnly() {
         List<Mirrored> skipped = scenarios().stream().filter(s -> !Profile.EVERYDAY.plays(s.measure(), s.risk())).toList();
-        assertEquals(17, skipped.size());
+        assertEquals(21, skipped.size());
         for (Mirrored s : skipped) {
             boolean experimental = s.risk() == SAFE || s.risk() == AGGRESSIVE;
             assertEquals(true, s.measure() && experimental, s.name());
@@ -100,22 +109,24 @@ class ScenarioSelectionTest {
 
     @Test
     void theFullRunPlaysEveryScenario() {
-        assertEquals(44, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
+        assertEquals(52, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
     }
 
     @Test
-    void theCacheServesExactlyMeteorsNineMeasures() {
+    void theCacheServesExactlyMeteorsElevenMeasures() {
         List<String> cacheable = names(scenarios().stream()
             .filter(s -> MeteorCache.cacheable(s.measure(), s.name(), s.risk() != null, s.compareWith() != null)).toList());
         assertEquals(List.of("ca-still", "ca-circler", "ca-defender", "ca-still-regen", "ca-circler-regen",
-            "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen"), cacheable);
+            "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen", "ca-self-circle-regen",
+            "ca-self-strafe-regen"), cacheable);
     }
 
     /**
      * SHA-256 of {@code Scenarios.java}, line endings normalized, when this mirror was last checked against the
-     * real {@code Scenarios.all()} (R3-9 fix round 2: all 44 names, kinds, levels and twins matched).
+     * real {@code Scenarios.all()} (R3-14: all 52 names, kinds, levels and twins matched, self-circle and
+     * self-strafe included).
      */
-    private static final String SCENARIOS_FINGERPRINT = "5a9f874f0a8270c8fe046698097b9c5676974223bc3d343102e4e9aadab98e76";
+    private static final String SCENARIOS_FINGERPRINT = "9a56d6f1ede16c8488d23b0374ad0fd64403c4d4b419376b9f6ffc5e3995fa23";
 
     @Test
     void theMirrorFollowsScenarios() throws IOException, NoSuchAlgorithmException {

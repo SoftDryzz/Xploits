@@ -21,10 +21,16 @@ import java.util.function.Supplier;
  * Aggressive (R2-5), runs as {@code capp-<level>-X} for X in still, circler,
  * still-regen and circler-regen, judged against the same {@code ca-X}, after all the Safe ones.
  *
- * <p>The fight situations (R3-5) come last, after everything above, in the same order: {@code ca-<s>-regen},
+ * <p>The fight situations (R3-5) come next, after everything above, in the same order: {@code ca-<s>-regen},
  * then {@code capp-<s>-regen} at Safe, then each other level, for {@code <s>} in {@link #FIGHTS}' order. Each
  * runs only with healing on: an enemy above us ({@link Above}), below us ({@link Below}), closing in and
  * backing off ({@link Approach}), and strafing ({@link Strafe}).
+ *
+ * <p>Last come the fight situations where OUR player moves too (R3-14), the same way: {@code ca-<s>-regen},
+ * {@code capp-<s>-regen} at Safe, then each other level, for {@code <s>} in {@link #SELF_FIGHTS}' order, each
+ * with healing on too. Self-circle walks a circle around our own start block while the sparring stands still
+ * ({@link Still}, {@link SelfCircleMotion}); self-strafe zig-zags sideways while the sparring circles
+ * ({@link Circler}, {@link SelfStrafeMotion}).
  */
 public final class Scenarios {
     private Scenarios() {
@@ -40,6 +46,18 @@ public final class Scenarios {
     /** The fight situations, in the order they run. */
     private static final List<Fight> FIGHTS = List.of(new Fight("above", Above::new), new Fight("below", Below::new),
         new Fight("approach", Approach::new), new Fight("strafe", Strafe::new));
+
+    /**
+     * A fight situation where OUR player moves too (R3-14): its name, {@code <s>} in the scenarios' names, the
+     * sparring's own script, and our own movement.
+     */
+    private record SelfFight(String name, Supplier<Script> script, Supplier<SelfMotion> selfMotion) {
+    }
+
+    /** The self-moving fight situations, in the order they run, after {@link #FIGHTS}'. */
+    private static final List<SelfFight> SELF_FIGHTS = List.of(
+        new SelfFight("self-circle", Still::new, SelfCircleMotion::new),
+        new SelfFight("self-strafe", Circler::new, SelfStrafeMotion::new));
 
     public static List<Scenario> all() {
         CrystalAuraMeasure caStill = CrystalAuraMeasure.meteor("ca-still", Still::new);
@@ -76,6 +94,20 @@ public final class Scenarios {
             for (Fight fight : FIGHTS) {
                 all.add(CrystalAuraMeasure.plusPlus(prefix + fight.name(), "ca-" + fight.name(), fight.script(), level)
                     .healing());
+            }
+        }
+        for (SelfFight fight : SELF_FIGHTS) {
+            all.add(CrystalAuraMeasure.meteor("ca-" + fight.name(), fight.script()).healing().movingSelf(fight.selfMotion()));
+        }
+        for (SelfFight fight : SELF_FIGHTS) {
+            all.add(CrystalAuraMeasure.plusPlus("capp-" + fight.name(), "ca-" + fight.name(), fight.script())
+                .healing().movingSelf(fight.selfMotion()));
+        }
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            for (SelfFight fight : SELF_FIGHTS) {
+                all.add(CrystalAuraMeasure.plusPlus(prefix + fight.name(), "ca-" + fight.name(), fight.script(), level)
+                    .healing().movingSelf(fight.selfMotion()));
             }
         }
         return List.copyOf(all);
