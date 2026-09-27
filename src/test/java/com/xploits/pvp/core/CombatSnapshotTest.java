@@ -80,6 +80,11 @@ class CombatSnapshotTest {
 
         assertEquals(7.0, base.withTargetDistance(7.0).targetDistance(), 0.0);
         assertEquals(2, base.withTargetDistance(7.0).selfTotems());
+
+        CombatSnapshot breached = base.withHoleBreached(true);
+        assertTrue(breached.selfHoleBreached());
+        assertEquals(3.0, breached.targetDistance(), 0.0, "withHoleBreached changes only that fact");
+        assertFalse(base.selfHoleBreached(), "the original is not mutated");
     }
 
     @Test

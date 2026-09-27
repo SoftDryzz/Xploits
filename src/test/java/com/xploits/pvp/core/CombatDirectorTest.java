@@ -57,7 +57,7 @@ class CombatDirectorTest {
             burrowed, targetGliding, selfGliding, base.selfTotems(), base.resources(),
             base.targetId(), base.hostilesInCrystalRange(), base.selfTotalHealth(),
             base.incomingDamage(), base.selfInHole(), base.selfOnGround(), base.selfYChanged(),
-            base.crystalAuraProtectsYou());
+            base.selfHoleBreached(), base.crystalAuraProtectsYou());
     }
 
     /**
@@ -1323,7 +1323,7 @@ class CombatDirectorTest {
         Map<Resource, Integer> noAnvils = Map.of(
             Resource.CRYSTALS, 12, Resource.OBSIDIAN, 64, Resource.WEBS, 5, Resource.PICKAXE, 1);
         CombatSnapshot noWebsSnapshot = new CombatSnapshot(true, 3.0, 0, 0, true, false, false, 2,
-            noAnvils, "enemy", 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, true);
+            noAnvils, "enemy", 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, false, true);
 
         Plan plan = null;
         for (int i = 0; i < CombatDirector.RESOURCE_RELEASE_DWELL_TICKS - 1; i++) {

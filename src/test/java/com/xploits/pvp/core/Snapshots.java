@@ -5,9 +5,10 @@ import java.util.Map;
 /**
  * Test shortcut to build a {@link CombatSnapshot} giving only the enemy's half and the
  * inventory's, with the rest at neutral values: no identified target, no hostiles in crystal
- * range, full health, no damage aimed at you, neither in a hole nor on the ground, with your height still and with the
- * latched crystal aura's protection (Meteor's {@code anti-suicide}, or crystal-aura++'s
- * {@code anti-suicide} or {@code self-budget}) <b>on</b>, which is how it ships.
+ * range, full health, no damage aimed at you, neither in a hole nor on the ground nor with a hole just
+ * breached, with your height still and with the latched crystal aura's protection (Meteor's
+ * {@code anti-suicide}, or crystal-aura++'s {@code anti-suicide} or {@code self-budget}) <b>on</b>,
+ * which is how it ships.
  *
  * <p>This shortcut used to live in the core as a transitional constructor while the adapter did not yet
  * read the redesign's new fields. That scaffolding no longer exists —the adapter fills them all in—,
@@ -24,7 +25,7 @@ final class Snapshots {
                              Map<Resource, Integer> resources) {
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
-            null, 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, true);
+            null, 0, CombatSnapshot.FULL_HEALTH, 0, false, false, false, false, true);
     }
 
     /**
@@ -37,6 +38,6 @@ final class Snapshots {
             base.selfGliding(), base.selfTotems(), base.resources(),
             base.targetId(), base.hostilesInCrystalRange(), base.selfTotalHealth(),
             base.incomingDamage(), base.selfInHole(), base.selfOnGround(), base.selfYChanged(),
-            false);
+            base.selfHoleBreached(), false);
     }
 }

@@ -71,6 +71,18 @@ import java.util.Map;
  *                                true (§5, critical C2): asking for it on a tick in which the module is
  *                                about to turn itself off is what made it impossible to tell its
  *                                self-shutdown from you turning it off
+ * @param selfHoleBreached        whether an enemy has just mined out a side of the full hole you were
+ *                                standing in (task R3-13 fix 2). {@code selfInHole} alone
+ *                                ({@code PlayerUtils.isInHole(false)}) reads false the instant any one of
+ *                                the four side neighbours or the one below stops protecting you, which is
+ *                                exactly the tick {@code surround} is needed to patch the breach -and the
+ *                                tick it used to stop being requested. The adapter remembers the feet
+ *                                block ({@code player.getBlockPos()}) of the last tick {@code selfInHole}
+ *                                was true and sets this true while you are back on the ground, still on
+ *                                that same block, with your height unchanged and {@code selfInHole} now
+ *                                false, for up to {@link CombatDirector#BREACH_MEMORY_TICKS} ticks after
+ *                                leaving the hole; it is forgotten sooner if you step off that block,
+ *                                your height changes, you die, the world changes or auto-pvp deactivates
  * @param crystalAuraProtectsYou  whether the latched crystal aura already keeps you from suiciding
  *                                (redesign §7, corrected by task R3-13 fix 1): Meteor's
  *                                {@code crystal-aura} answers with its {@code anti-suicide} alone
@@ -93,7 +105,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
                              String targetId, int hostilesInCrystalRange,
                              double selfTotalHealth, double incomingDamage,
                              boolean selfInHole, boolean selfOnGround, boolean selfYChanged,
-                             boolean crystalAuraProtectsYou) {
+                             boolean selfHoleBreached, boolean crystalAuraProtectsYou) {
     /** Full health without absorption: the neutral value when nobody has measured the real one. */
     public static final double FULL_HEALTH = 20.0;
 
@@ -107,7 +119,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
      */
     public static CombatSnapshot none() {
         return new CombatSnapshot(false, 0, 0, 0, false, false, false, 0, Map.of(),
-            null, 0, FULL_HEALTH, 0, false, false, false, false);
+            null, 0, FULL_HEALTH, 0, false, false, false, false, false);
     }
 
     public int amountOf(Resource resource) {
@@ -119,7 +131,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             id, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, selfYChanged, crystalAuraProtectsYou);
+            selfInHole, selfOnGround, selfYChanged, selfHoleBreached, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with another count of hostiles in crystal range (§4.4, corrected by C1). */
@@ -127,7 +139,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostiles, selfTotalHealth, incomingDamage, selfInHole, selfOnGround,
-            selfYChanged, crystalAuraProtectsYou);
+            selfYChanged, selfHoleBreached, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with another defensive reading (§5). */
@@ -135,7 +147,7 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, totalHealth, incoming, inHole, onGround,
-            selfYChanged, crystalAuraProtectsYou);
+            selfYChanged, selfHoleBreached, crystalAuraProtectsYou);
     }
 
     /** The same snapshot with your height moving or still (§5, critical C2). */
@@ -143,7 +155,15 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, changed, crystalAuraProtectsYou);
+            selfInHole, selfOnGround, changed, selfHoleBreached, crystalAuraProtectsYou);
+    }
+
+    /** The same snapshot with the hole you were in just breached, or not (task R3-13 fix 2). */
+    public CombatSnapshot withHoleBreached(boolean breached) {
+        return new CombatSnapshot(hasTarget, targetDistance, targetSurroundSides, cityBlockDistance,
+            targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
+            targetId, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
+            selfInHole, selfOnGround, selfYChanged, breached, crystalAuraProtectsYou);
     }
 
     /** The same snapshot at another distance from the target. */
@@ -151,6 +171,6 @@ public record CombatSnapshot(boolean hasTarget, double targetDistance,
         return new CombatSnapshot(hasTarget, distance, targetSurroundSides, cityBlockDistance,
             targetBurrowed, targetGliding, selfGliding, selfTotems, resources,
             targetId, hostilesInCrystalRange, selfTotalHealth, incomingDamage,
-            selfInHole, selfOnGround, selfYChanged, crystalAuraProtectsYou);
+            selfInHole, selfOnGround, selfYChanged, selfHoleBreached, crystalAuraProtectsYou);
     }
 }
