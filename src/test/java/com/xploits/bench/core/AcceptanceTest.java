@@ -6,6 +6,7 @@ import com.xploits.bench.core.Acceptance.Result;
 import com.xploits.bench.core.Acceptance.Rule;
 import com.xploits.bench.core.Acceptance.Side;
 import com.xploits.bench.core.Acceptance.Verdict;
+import com.xploits.pvp.crystal.core.RiskLevel;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -91,6 +92,10 @@ class AcceptanceTest {
         return Acceptance.judge(capp(capp), meteor(meteor));
     }
 
+    private static Outcome judge(List<Map<String, Double>> capp, List<Map<String, Double>> meteor, RiskLevel level) {
+        return Acceptance.judge(capp(capp), meteor(meteor), level);
+    }
+
     private static Rule rule(Outcome outcome, String id) {
         return outcome.rules().stream().filter(r -> r.id().equals(id)).findFirst()
             .orElseThrow(() -> new AssertionError("no rule " + id + " in " + outcome));
@@ -98,6 +103,10 @@ class AcceptanceTest {
 
     private static Result result(List<Map<String, Double>> capp, List<Map<String, Double>> meteor, String id) {
         return rule(judge(capp, meteor), id).result();
+    }
+
+    private static Result result(List<Map<String, Double>> capp, List<Map<String, Double>> meteor, RiskLevel level, String id) {
+        return rule(judge(capp, meteor, level), id).result();
     }
 
     // --- The whole verdict --------------------------------------------------------------------------
@@ -225,6 +234,99 @@ class AcceptanceTest {
         assertEquals(Result.FAIL, result(with(base, Acceptance.SELF_DAMAGE, 0, 20, 20), meteor, "S3"));
         // Meteor's median 20 (not its lowest run, 0): ++ at 17 passes.
         assertEquals(Result.PASS, result(with(base, Acceptance.SELF_DAMAGE, 17, 17, 30), meteor, "S3"));
+    }
+
+    // --- S3 (R3-10): not applicable when Meteor never went below the level's reserve ------------------
+
+    @Test
+    void s3DoesNotApplyWhenMeteorNeverWentBelowTheLevelsReserve() {
+        // Balanced's reserve is 3.5; Meteor's lowest run is 3.52, just above it. ++ identical to Meteor:
+        // nothing for the budget to prevent, so S3 is not applicable and the pair still accepts.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 16, 0, 3.52));
+        Outcome outcome = judge(same, same, RiskLevel.BALANCED);
+        assertEquals(Result.NOT_APPLICABLE, rule(outcome, "S3").result());
+        assertEquals("Meteor never went below the reserve 3.50 (lowest 3.52): nothing to make safer",
+            rule(outcome, "S3").detail());
+        assertEquals(Verdict.ACCEPT, outcome.verdict());
+        // The exception is S3's alone: S1 and S2 are still judged (never NOT_APPLICABLE) although Meteor
+        // never went below the reserve either.
+        assertEquals(Result.PASS, rule(outcome, "S1").result());
+        assertEquals(Result.PASS, rule(outcome, "S2").result());
+    }
+
+    @Test
+    void s3StillAppliesWhenMeteorWentBelowTheLevelsReserve() {
+        // Meteor's lowest run is 3.37, below Balanced's 3.5: S3 is judged exactly as today, and an
+        // identical ++ fails it (no improvement) exactly as without a risk level.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 16, 0, 3.37));
+        Outcome outcome = judge(same, same, RiskLevel.BALANCED);
+        assertEquals(Result.FAIL, rule(outcome, "S3").result());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+        assertEquals("failed: S3", outcome.reason());
+        // S1 and S2 are untouched by the new exception: still judged and still passing.
+        assertEquals(Result.PASS, rule(outcome, "S1").result());
+        assertEquals(Result.PASS, rule(outcome, "S2").result());
+    }
+
+    @Test
+    void s3sExceptionReadsTheLevelsOwnReserveFromRiskLevel() {
+        // The same Meteor lowest run, 3.37: below Aggressive's reserve (2) it does not apply; below
+        // Safe's reserve (5) it does not apply either... the other way around. Aggressive's reserve is 2,
+        // so 3.37 is above it (not applicable); Safe's reserve is 5, so 3.37 is below it (judged).
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 16, 0, 3.37));
+        assertEquals(Result.NOT_APPLICABLE, result(same, same, RiskLevel.AGGRESSIVE, "S3"));
+        assertEquals(Result.FAIL, result(same, same, RiskLevel.SAFE, "S3"));
+    }
+
+    @Test
+    void s3sExceptionIsExactAtTheBoundary() {
+        // Meteor's lowest run equals Balanced's reserve exactly: not applicable, not judged.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 16, 0, 3.5));
+        assertEquals(Result.NOT_APPLICABLE, result(same, same, RiskLevel.BALANCED, "S3"));
+    }
+
+    @Test
+    void s3sExceptionCoversTheAboveShapeAtEveryLevel() {
+        // Meteor's self damage is above S3_FROM (2.08 >= 2), but its lowest run (18.29) is well above even
+        // Safe's reserve (5): nothing there for any level to make safer.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 2.08, 0, 18.29));
+        for (RiskLevel level : List.of(RiskLevel.SAFE, RiskLevel.BALANCED, RiskLevel.AGGRESSIVE)) {
+            assertEquals(Result.NOT_APPLICABLE, result(same, same, level, "S3"));
+        }
+    }
+
+    @Test
+    void s3sExceptionDoesNotExcuseAFailingOffenseRule() {
+        // Same safety numbers as the first test (S3 not applicable), but ++ deals half the damage: O1
+        // fails and the pair is rejected regardless of S3.
+        List<Map<String, Double>> meteorRuns = three(run(20, 2, 1.0, 16, 0, 3.52));
+        List<Map<String, Double>> cappRuns = three(run(10, 2, 1.0, 16, 0, 3.52));
+        Outcome outcome = judge(cappRuns, meteorRuns, RiskLevel.BALANCED);
+        assertEquals(Result.NOT_APPLICABLE, rule(outcome, "S3").result());
+        assertEquals(Result.FAIL, rule(outcome, "O1").result());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+        assertEquals("failed: O1", outcome.reason());
+    }
+
+    @Test
+    void s3sExceptionUsesTheLowestRunNotTheMedian() {
+        // Meteor's min_health runs are 3.0, 4.0, 4.0: median 4.0 is above Balanced's 3.5, but the lowest
+        // run, 3.0, is below it, so the exception must not apply (a median-based mutant would say it does).
+        List<Map<String, Double>> same = with(meteorRun(), Acceptance.MIN_HEALTH, 3.0, 4.0, 4.0);
+        Outcome outcome = judge(same, same, RiskLevel.BALANCED);
+        assertEquals(Result.FAIL, rule(outcome, "S3").result());
+    }
+
+    @Test
+    void s3sExceptionReadsMeteorsLowestRunNotPlusPluss() {
+        // Meteor's lowest run is 3.0, below Balanced's 3.5: the exception must not apply, whatever ++'s own
+        // lowest run is (a mutant reading ++'s runs instead of Meteor's would say it does, here at 4.0).
+        List<Map<String, Double>> meteorRuns = meteorWith(Acceptance.MIN_HEALTH, 3.0, 3.0, 3.0);
+        List<Map<String, Double>> cappRuns = meteorWith(Acceptance.MIN_HEALTH, 4.0, 4.0, 4.0);
+        Outcome outcome = judge(cappRuns, meteorRuns, RiskLevel.BALANCED);
+        // Judged, not skipped: ++'s median min_health (4.0) meets Meteor's median (3.0) plus one, so S3
+        // passes on the min-health branch instead of being not applicable.
+        assertEquals(Result.PASS, rule(outcome, "S3").result());
     }
 
     // --- O1: damage dealt, never worse beyond max(1, 15 %) ------------------------------------------

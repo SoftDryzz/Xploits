@@ -171,7 +171,11 @@ run, as against the defender). Still and circler also run as `-regen` pairs, wit
 regeneration on, closer to a real fight; every other scenario runs without it. The `capp-X` scenarios run
 crystal-aura++ at Safe (the `risk` setting's own default is Balanced); `capp-balanced-X` and
 `capp-aggressive-X`, for X in still, circler, still-regen and circler-regen, run it at Balanced and
-Aggressive against the same `ca-X`.
+Aggressive against the same `ca-X`. One of the pure safety rules judged inside each verdict, S3 (crystal-aura++'s
+`self_damage` measurably lower or its `min_health` measurably higher), is not applicable when Meteor's
+`min_health` never went below the pair's level's reserve (Safe 5, Balanced 3.5, Aggressive 2): there is
+nothing there for the budget to prevent, so "the same as Meteor" is the best possible outcome, not a
+failure; where Meteor does go below the reserve, S3 still demands more safety.
 Four fight situations run last, only with healing on, at every level: `above` (the enemy walks on a
 platform 3 blocks above our feet), `below` (in a pit 3 blocks below), `approach` (it walks at us from 8
 blocks to 3 and back, with fixed irregular pauses) and `strafe` (it zig-zags 3 blocks to each side, 5 blocks

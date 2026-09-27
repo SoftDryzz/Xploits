@@ -1,5 +1,6 @@
 package com.xploits.bench.core;
 
+import com.xploits.pvp.crystal.core.RiskLevel;
 import com.xploits.pvp.crystal.core.SelfBudget;
 
 import java.util.ArrayList;
@@ -22,8 +23,10 @@ import java.util.function.DoubleBinaryOperator;
  *   <tr><td>S1</td><td>++'s worst {@code self_pops} &le; Meteor's worst</td><td>per-run extremes</td></tr>
  *   <tr><td>S2</td><td>every ++ run's {@code min_health} &ge; F &minus; 0.5, and ++'s median &ge; Meteor's
  *   &minus; 1.0</td><td>per-run extreme, then medians</td></tr>
- *   <tr><td>S3</td><td>only when Meteor's {@code self_damage} &ge; 2: ++'s &le; Meteor's &minus; max(1, 15 %),
- *   or ++'s {@code min_health} &ge; Meteor's + 1</td><td>medians</td></tr>
+ *   <tr><td>S3</td><td>not applicable when Meteor never went below the ++ scenario's risk level's reserve
+ *   (round 3: nothing there for the budget to prevent); otherwise, only when Meteor's {@code self_damage}
+ *   &ge; 2: ++'s &le; Meteor's &minus; max(1, 15 %), or ++'s {@code min_health} &ge; Meteor's + 1</td>
+ *   <td>medians, and Meteor's lowest run</td></tr>
  *   <tr><td>O1</td><td>{@code damage_dealt} &ge; Meteor's &minus; max(1, 15 %), whatever caused a drop
  *   (the budget included)</td><td>medians</td></tr>
  *   <tr><td>O2</td><td>{@code sparring_pops} &ge; Meteor's &minus; 1</td><td>medians</td></tr>
@@ -123,7 +126,17 @@ public final class Acceptance {
     private Acceptance() {
     }
 
+    /** Judges without a risk level (round 3's S3 exception never applies): kept for a capp scenario that,
+     * against expectations, has none. */
     public static Outcome judge(Side capp, Side meteor) {
+        return judge(capp, meteor, null);
+    }
+
+    /**
+     * @param level the ++ scenario's risk level (R3-10's S3 exception reads its reserve), or null when it
+     *              has none
+     */
+    public static Outcome judge(Side capp, Side meteor, RiskLevel level) {
         if (capp.died()) return new Outcome(Verdict.REJECT, "our player died in a " + capp.scenario() + " run", List.of());
         for (Side side : List.of(capp, meteor)) {
             String gap = gap(side);
@@ -133,7 +146,7 @@ public final class Acceptance {
             return new Outcome(Verdict.NOT_APPLICABLE,
                 "neither " + capp.scenario() + " nor " + meteor.scenario() + " placed a crystal in any run", List.of());
         }
-        List<Rule> rules = List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor), o1(capp, meteor),
+        List<Rule> rules = List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
             o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
         if (failed.isEmpty()) return new Outcome(Verdict.ACCEPT, null, rules);
@@ -179,7 +192,15 @@ public final class Acceptance {
                 + "; median " + MIN_HEALTH + ": ++ " + n(ours) + ", Meteor " + n(theirs) + ", needs >= " + n(limit));
     }
 
-    private static Rule s3(Side capp, Side meteor) {
+    private static Rule s3(Side capp, Side meteor, RiskLevel level) {
+        if (level != null) {
+            double reserve = level.reserve(Double.NaN);
+            double meteorLow = extreme(meteor, MIN_HEALTH, Math::min);
+            if (meteorLow >= reserve) {
+                return new Rule("S3", Kind.SAFETY, Result.NOT_APPLICABLE,
+                    "Meteor never went below the reserve " + n(reserve) + " (lowest " + n(meteorLow) + "): nothing to make safer");
+            }
+        }
         double theirs = median(meteor, SELF_DAMAGE);
         if (theirs < S3_FROM) {
             return new Rule("S3", Kind.SAFETY, Result.NOT_APPLICABLE,

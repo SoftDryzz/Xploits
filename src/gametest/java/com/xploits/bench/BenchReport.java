@@ -165,7 +165,8 @@ public final class BenchReport {
             if (skipped != null) return Optional.empty();
             return scenario.compareWith().map(with -> {
                 Entry other = scenarios.get(with);
-                return Acceptance.judge(side(), other == null ? Acceptance.Side.absent(with) : other.side());
+                return Acceptance.judge(side(), other == null ? Acceptance.Side.absent(with) : other.side(),
+                    scenario.risk().orElse(null));
             });
         }
 
