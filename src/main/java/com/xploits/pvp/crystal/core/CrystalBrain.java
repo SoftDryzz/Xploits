@@ -121,6 +121,19 @@ public final class CrystalBrain {
     /** Totems carried at the last pre-tick tracked: fewer now means one popped, which invalidates this tick's drop. */
     private int lastTotems;
     /**
+     * R3-15 (fix round 1): crystals with an unconfirmed self-hit packet, each list the crystals whose packets were
+     * handed over together (one pre-tick's batch), oldest batch first. Every batch here shares one running
+     * {@link #groupBaseline}: resolved (confirmed whole, or expired) strictly in this order, so a later batch's
+     * drop is never consulted before an earlier one either fits or is dropped.
+     */
+    private final List<List<Known>> pendingSelfHitBatches = new ArrayList<>();
+    /** Whether {@link #groupBaseline}/{@link #confirmedSinceBaseline} are live (there is a current group to resolve). */
+    private boolean groupBaselineSet;
+    /** Health (plus absorption) just before the earliest still-unconfirmed self-hit packet in {@link #pendingSelfHitBatches}. */
+    private double groupBaseline;
+    /** The sum of {@link #CONFIRM_FRACTION} * {@code budgetSelfDamage} already confirmed against {@link #groupBaseline}. */
+    private double confirmedSinceBaseline;
+    /**
      * The pre-tick the windows were last forgotten at: a crystal whose placement was first decided then or before is
      * not a landing ({@link TargetWindows#landed}), as the pre-ticks since it may not all have been counted.
      */
@@ -380,18 +393,31 @@ public final class CrystalBrain {
     }
 
     /**
-     * At the start of a pre-tick, before the crystals are updated (R3-15, research-double-count.md): self-hit
-     * packets handed over since {@code previous} are attributed to the crystal named in them, with the health
-     * (plus absorption) just before the packet ({@link #lastHealth}) as the baseline its damage is confirmed
-     * against. Then, unless health rose, or a totem popped, since the last pre-tick tracked (either makes this
-     * tick's drop impossible to attribute to any one crystal with confidence, so nothing is confirmed by it),
-     * every crystal with an unconfirmed packet whose observed drop since its baseline is at least
-     * {@link #CONFIRM_FRACTION} of its predicted {@code budgetSelfDamage} is confirmed: its hit is certain to
-     * already be inside the health read this pre-tick, so {@link #budget} leaves it out for good, never to be
-     * shared into S either ({@code selfHitConfirmed} is never undone once set). Several crystals whose packets
-     * arrived together (the same pre-tick) share one baseline and are confirmed only together, once the drop
-     * reaches the sum of their predicted damages: attributing it to just one of them on no more evidence than "a
-     * drop happened" would be a guess neither packet actually supports, so both stay counted until it does.
+     * At the start of a pre-tick, before the crystals are updated (R3-15, research-double-count.md, fix round 1
+     * for the cross-batch gap review-r3-15.md found): self-hit packets handed over since {@code previous} are
+     * attributed to the crystal named in them and queued, as one batch (the crystals whose packets arrived
+     * together this call), at the end of {@link #pendingSelfHitBatches}; a batch whose crystals have all left
+     * {@link #known} (their window over) without confirming is dropped, since it can no longer block a later one.
+     *
+     * <p>Every crystal in {@link #pendingSelfHitBatches} shares one running {@link #groupBaseline}: the health
+     * (plus absorption) just before the <em>earliest</em> still-unconfirmed packet, established once, when the
+     * queue first becomes non-empty, and kept until every batch under it is resolved (confirmed or dropped) —
+     * never reset merely because a later batch arrives, so a second crystal's packet can never borrow an earlier
+     * crystal's still-unspent baseline for itself. Health rising, or a totem popping, since the last pre-tick
+     * tracked makes this tick's drop impossible to attribute with confidence, so the baseline resets (the still
+     * pending batches are kept, only the reference point is thrown away) and nothing is confirmed this tick;
+     * the next reliable tick re-establishes it fresh, from health as it stood right before that tick. This can
+     * only ever delay a confirmation, never bring one forward, so it stays inside {@link #budget}'s guarantee.
+     *
+     * <p>Unless it was just reset, every batch, oldest first, is offered the observed drop (baseline minus this
+     * pre-tick's health) in order: a batch is confirmed whole, as one, only while the sum of
+     * {@link #CONFIRM_FRACTION} * {@code budgetSelfDamage} already confirmed against this baseline plus this
+     * batch's own still fits within the drop; the first batch that does not fit, and every batch after it, stays
+     * pending (never skipped ahead of), because with one shared baseline the drop cannot be told apart from an
+     * earlier, still-unresolved crystal's own damage landing instead ({@code review-r3-15.md}'s critical finding:
+     * two batches must never be checked against the same health independently). A crystal's hit is certain to
+     * already be inside health only once its own batch is confirmed, so only then does {@link #budget} leave it
+     * out for good ({@code selfHitConfirmed} is never undone once set).
      *
      * <p>This only ever removes a crystal from I once its damage is certain to already be inside health: excluding
      * it can only ever raise {@code health - C}, the placement or break check's left side, never lower it, so no
@@ -400,15 +426,38 @@ public final class CrystalBrain {
      */
     private void confirmSelfHits(long previous, CrystalTick tick) {
         if (healthTracked) {
+            List<Known> batch = new ArrayList<>();
             for (int sourceId : selfHits) {
                 Known k = known.get(sourceId);
                 if (k != null && k.selfHitPacketTick == CrystalView.NEVER) {
                     k.selfHitPacketTick = previous;
-                    k.healthBeforeHit = lastHealth;
+                    batch.add(k);
                 }
             }
+            if (!batch.isEmpty()) pendingSelfHitBatches.add(batch);
+
+            pendingSelfHitBatches.removeIf(b -> {
+                b.removeIf(k -> known.get(k.seen.id()) != k);
+                return b.isEmpty();
+            });
+
+            if (!pendingSelfHitBatches.isEmpty() && !groupBaselineSet) {
+                groupBaseline = lastHealth;
+                groupBaselineSet = true;
+                confirmedSinceBaseline = 0;
+            }
+
             boolean unreliable = tick.health() > lastHealth || tick.totems() < lastTotems;
-            if (!unreliable) confirmGroups(tick.health());
+            if (unreliable) {
+                groupBaselineSet = false;
+                confirmedSinceBaseline = 0;
+            } else if (groupBaselineSet) {
+                confirmPendingBatches(tick.health());
+                if (pendingSelfHitBatches.isEmpty()) {
+                    groupBaselineSet = false;
+                    confirmedSinceBaseline = 0;
+                }
+            }
         }
         selfHits.clear();
         healthTracked = true;
@@ -416,26 +465,27 @@ public final class CrystalBrain {
         lastTotems = tick.totems();
     }
 
-    /** Crystals whose self-hit packets arrived together (R3-15): grouped by that pre-tick, confirmed only as one. */
-    private void confirmGroups(double health) {
-        Map<Long, List<Known>> groups = new LinkedHashMap<>();
-        for (Known k : known.values()) {
-            if (k.selfHitPacketTick != CrystalView.NEVER && !k.selfHitConfirmed) {
-                groups.computeIfAbsent(k.selfHitPacketTick, t -> new ArrayList<>()).add(k);
-            }
-        }
-        for (List<Known> group : groups.values()) {
-            double required = CONFIRM_FRACTION * sumBudgetSelfDamage(group);
-            double drop = group.get(0).healthBeforeHit - health;
-            if (drop >= required) {
-                for (Known k : group) k.selfHitConfirmed = true;
-            }
+    /**
+     * {@link #pendingSelfHitBatches}, oldest first, against {@link #groupBaseline} minus {@code health}: a batch
+     * is confirmed whole once the running total (already confirmed against this baseline, plus this batch's own)
+     * fits the drop; the first that does not fit stops the walk, so nothing after it is even considered this tick.
+     */
+    private void confirmPendingBatches(double health) {
+        double drop = groupBaseline - health;
+        Iterator<List<Known>> it = pendingSelfHitBatches.iterator();
+        while (it.hasNext()) {
+            List<Known> batch = it.next();
+            double required = CONFIRM_FRACTION * sumBudgetSelfDamage(batch);
+            if (confirmedSinceBaseline + required > drop) break;
+            confirmedSinceBaseline += required;
+            for (Known k : batch) k.selfHitConfirmed = true;
+            it.remove();
         }
     }
 
-    private static double sumBudgetSelfDamage(List<Known> group) {
+    private static double sumBudgetSelfDamage(List<Known> batch) {
         double sum = 0;
-        for (Known k : group) sum += k.seen.budgetSelfDamage();
+        for (Known k : batch) sum += k.seen.budgetSelfDamage();
         return sum;
     }
 
@@ -449,7 +499,8 @@ public final class CrystalBrain {
      * either, for the same reason: the drop since it might include ticks nothing here saw). A crystal whose packet
      * arrived but is not yet confirmed loses that attribution too, permanently (its explosion sends the packet at
      * most once, so it simply keeps its full window from here on, exactly as before this fix: the same fallback as
-     * a packet lost outright). The brain does the same at every pre-tick with the budget off, so it learns nothing
+     * a packet lost outright), and the running group baseline ({@link #groupBaseline}/{@link #confirmedSinceBaseline})
+     * it was measured against. The brain does the same at every pre-tick with the budget off, so it learns nothing
      * then. Crystals already confirmed stay confirmed: that is a fact about health already read, not about
      * continuous tracking.
      */
@@ -459,9 +510,12 @@ public final class CrystalBrain {
         landingSince = now;
         selfHits.clear();
         healthTracked = false;
-        for (Known k : known.values()) {
-            if (!k.selfHitConfirmed) k.selfHitPacketTick = CrystalView.NEVER;
+        for (List<Known> batch : pendingSelfHitBatches) {
+            for (Known k : batch) k.selfHitPacketTick = CrystalView.NEVER;
         }
+        pendingSelfHitBatches.clear();
+        groupBaselineSet = false;
+        confirmedSinceBaseline = 0;
     }
 
     /**
@@ -873,10 +927,12 @@ public final class CrystalBrain {
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
         boolean reportedGone;
-        /** R3-15: the pre-tick a full-hit self-damage packet naming this crystal was attributed, or {@link CrystalView#NEVER}. */
+        /**
+         * R3-15: the pre-tick a full-hit self-damage packet naming this crystal was attributed, or
+         * {@link CrystalView#NEVER}; while set and {@code !selfHitConfirmed}, this crystal sits in one batch of
+         * {@link #pendingSelfHitBatches}, checked against the brain's one running {@link #groupBaseline}.
+         */
         long selfHitPacketTick = CrystalView.NEVER;
-        /** R3-15: health (plus absorption) just before that packet, the baseline its damage is confirmed against. */
-        double healthBeforeHit;
         /** R3-15: once true, this crystal's damage is certain to already be in health; never left I twice. */
         boolean selfHitConfirmed;
 

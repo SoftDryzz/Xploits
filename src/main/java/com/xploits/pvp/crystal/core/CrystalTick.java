@@ -13,7 +13,10 @@ import java.util.function.Predicate;
  * @param tick              this pre-tick's number
  * @param health            your health plus absorption ({@code EntityUtils.getTotalHealth}); "health"
  *                          means this everywhere (P3)
- * @param totems            totems you carry; diagnostic only, the budget never counts them (§1)
+ * @param totems            totems you carry; {@link SelfBudget} itself never counts them (§1), but
+ *                          {@link CrystalBrain#confirmSelfHits} reads fewer now than last pre-tick as a totem
+ *                          pop, which invalidates that pre-tick's self-hit confirmation (R3-15) and so can
+ *                          indirectly keep a crystal in I for longer
  * @param usingItem         using an item or holding the use key (Meteor's pause-on-use, lines 1154-1156)
  * @param mining            breaking a block (pause-on-mine, line 1160)
  * @param lagging           at least 1 s since the last server tick (pause-on-lag, line 1158)

@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CrystalBrainConfirmedHitTest {
     private static final CrystalSeen FIVE = outOfBreakRange(crystal(5, 8, 5));
     private static final CrystalSeen SIX = outOfBreakRange(crystal(6, 8, 5));
+    private static final CrystalSeen SEVEN = outOfBreakRange(crystal(7, 8, 5));
 
     private static void assertDecision(Decision expected, List<Action> actions) {
         assertEquals(expected, only(actions).decision());
@@ -121,6 +122,100 @@ class CrystalBrainConfirmedHitTest {
         assertTrue(partial.preTick(SAFE_DEFAULTS, tick(3).health(16).candidates(probe).build()).isEmpty());
     }
 
+    // Crystals whose packets are stamped a tick apart (fix round 1, review-r3-15.md Critical): they must never
+    // be checked against the same later health independently, only in packet order against one shared baseline.
+
+    @Test
+    void twoCrystalsGoneOneTickApartAreConfirmedInPacketOrderNotTogether() {
+        // review-r3-15.md's exact repro. Baseline 20 (FIVE's, the earliest); required 4 each, 8 for both.
+
+        // Only FIVE's damage has synced: health 15 is fully explained by FIVE alone (drop 5 >= 4). SIX's own 4
+        // more would need a combined drop of 8, not yet observed, so it must stay in I: C = 5 (SIX only).
+        // Not under-excluded (C = 10, neither confirmed, self 1 so it would fail there: 15 - 10 - 1 = 4 < 5):
+        // 15 - 5 - 1 = 9 >= 5 passes.
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            twoStaggered().preTick(SAFE_DEFAULTS, tick(4).health(15).candidates(withBudget(spot(9, 10, 0), 1)).build()));
+        // Not over-excluded either (C = 0, both wrongly confirmed, the bug this fixes): 15 - 5 - 7 = 3 < 5 must
+        // still refuse.
+        assertTrue(twoStaggered().preTick(SAFE_DEFAULTS, tick(4).health(15).candidates(withBudget(spot(9, 10, 0), 7)).build()).isEmpty());
+
+        // Once the drop covers both (20 - 10 = 10 >= 4 + 4 = 8), SIX confirms too: C = 0. 10 - 0 - 2 = 8 >= 5.
+        CrystalBrain later = twoStaggered();
+        assertTrue(later.preTick(SAFE_DEFAULTS, tick(4).health(15).build()).isEmpty()); // advance past tick 4 first
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            later.preTick(SAFE_DEFAULTS, tick(5).health(10).candidates(withBudget(spot(9, 10, 0), 2)).build()));
+    }
+
+    /** FIVE and SIX present, then gone one pre-tick apart (2, 3), each handing over its packet as it goes. */
+    private static CrystalBrain twoStaggered() {
+        CrystalBrain b = new CrystalBrain();
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(1).health(20).crystals(FIVE, SIX).build()).isEmpty());
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(2).health(20).crystals(SIX).build()).isEmpty()); // FIVE gone
+        b.selfHurt(5);
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).build()).isEmpty()); // SIX gone too, no sync yet
+        b.selfHurt(6);
+        return b;
+    }
+
+    @Test
+    void threeStaggeredCrystalsConfirmOneAtATimeAsTheDropAllows() {
+        // Baseline 20 throughout (FIVE's, the earliest of the three). Required 4 each, 12 for all three; C after
+        // n confirmed = 5 * (3 - n).
+
+        // Drop 5 (health 15): only FIVE fits (0 + 4 <= 5); SIX would need 4 + 4 = 8. C = 10 (SIX, SEVEN pending).
+        // Not under-excluded (C = 15, none confirmed, self 0 so it would still fail there: 15 - 15 - 0 = 0 < 5):
+        // 15 - 10 - 0 = 5 >= 5 passes.
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            threeStaggered().preTick(SAFE_DEFAULTS, tick(5).health(15).candidates(withBudget(spot(9, 10, 0), 0)).build()));
+        // Not over-excluded (C = 5 or C = 0, self 1 so either would pass: 15 - 5 - 1 = 9, 15 - 0 - 1 = 14, both
+        // >= 5): 15 - 10 - 1 = 4 < 5 must refuse.
+        assertTrue(threeStaggered().preTick(SAFE_DEFAULTS, tick(5).health(15).candidates(withBudget(spot(9, 10, 0), 1)).build()).isEmpty());
+
+        // Drop 10 (health 10): FIVE (0 + 4), then SIX (4 + 4 = 8) both fit; SEVEN would need 8 + 4 = 12. C = 5.
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            threeStaggered().preTick(SAFE_DEFAULTS, tick(5).health(10).candidates(withBudget(spot(9, 10, 0), 0)).build()));
+        // Not over-excluded (C = 0): 10 - 0 - 4 = 6 >= 5 would still pass.
+        assertTrue(threeStaggered().preTick(SAFE_DEFAULTS, tick(5).health(10).candidates(withBudget(spot(9, 10, 0), 4)).build()).isEmpty());
+
+        // Drop 13 (health 7): all three fit (8 + 4 = 12 <= 13). C = 0.
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            threeStaggered().preTick(SAFE_DEFAULTS, tick(5).health(7).candidates(withBudget(spot(9, 10, 0), 1)).build()));
+    }
+
+    /** FIVE, SIX and SEVEN present, then gone one pre-tick apart (2, 3, 4), each handing over its packet as it goes. */
+    private static CrystalBrain threeStaggered() {
+        CrystalBrain b = new CrystalBrain();
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(1).health(20).crystals(FIVE, SIX, SEVEN).build()).isEmpty());
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(2).health(20).crystals(SIX, SEVEN).build()).isEmpty());
+        b.selfHurt(5);
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).crystals(SEVEN).build()).isEmpty());
+        b.selfHurt(6);
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(4).health(20).build()).isEmpty());
+        b.selfHurt(7);
+        return b;
+    }
+
+    /**
+     * A crystal we never placed (no pending placement when it appeared) is foreign: {@code breakAllowed} uses
+     * Meteor's rules only for it ({@code Verdict.FOREIGN}, skipping the budget's own health read), proving
+     * {@code Known.ours} is false. It still gets confirmed through {@code selfHurt}/{@code confirmSelfHits} on
+     * exactly the same terms as one of ours: neither reads {@code ours} at all, the same as {@code targetHurt}.
+     */
+    @Test
+    void aForeignCrystalGoingThroughSelfHurtIsConfirmedOnTheSameTerms() {
+        CrystalBrain b = new CrystalBrain();
+        assertDecision(Decision.breakCrystal(5, Reason.FOREIGN_CRYSTAL),
+            b.preTick(SAFE_DEFAULTS, tick(1).health(20).crystals(crystal(5, 8, 5)).build()));
+        b.attackSent();
+        // Gone (an enemy could break their own crystal, or it could explode on its own): a full-hit packet
+        // naming it arrives.
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(2).health(20).build()).isEmpty());
+        b.selfHurt(5);
+        // 20 - 16 = 4, exactly 0.8 * 5: confirmed. 16 - 0 - 8 = 8 >= 5.
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(SAFE_DEFAULTS, tick(3).health(16).candidates(withBudget(spot(9, 10, 0), 8)).build()));
+    }
+
     // Absorption/regeneration/totem pops invalidate that tick's confirmation, never permanently
 
     @Test
@@ -129,13 +224,16 @@ class CrystalBrainConfirmedHitTest {
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(1).health(20).totems(1).crystals(FIVE).build()).isEmpty());
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(2).health(20).totems(1).build()).isEmpty());
         b.selfHurt(5);
-        var probe = withBudget(spot(9, 10, 0), 8);
 
-        // Totems 1 -> 0: a pop. The drop (20 - 15 = 5) would otherwise be more than enough (required 4).
-        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(15).totems(0).candidates(probe).build()).isEmpty());
-        // No further pop, same health: now it confirms. 15 - 0 - 8 = 7 >= 5.
+        // Totems 1 -> 0: a pop. The drop from the original baseline (20 - 15 = 5) would otherwise be more than
+        // enough (required 4). 15 - 5 - 8 = 2 < 5.
+        assertTrue(b.preTick(SAFE_DEFAULTS,
+            tick(3).health(15).totems(0).candidates(withBudget(spot(9, 10, 0), 8)).build()).isEmpty());
+        // The pop resets the baseline: it is not "20, still 5 short of used up" any more, but a fresh one at
+        // health 15 (as tracked going into this tick), so FIVE needs its own drop of 4 again from there, not
+        // just no further pop. No further pop, and 15 - 10 = 5 >= 4: now it confirms. 10 - 0 - 2 = 8 >= 5.
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
-            b.preTick(SAFE_DEFAULTS, tick(4).health(15).totems(0).candidates(probe).build()));
+            b.preTick(SAFE_DEFAULTS, tick(4).health(10).totems(0).candidates(withBudget(spot(9, 10, 0), 2)).build()));
     }
 
     @Test
