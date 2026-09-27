@@ -26,4 +26,10 @@ public final class Still implements Script {
     public void tick(Sparring sparring, Tick tick) {
         sparring.face(tick.player());
     }
+
+    /** It only turns to face the player. */
+    @Override
+    public boolean isStatic() {
+        return true;
+    }
 }

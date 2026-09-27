@@ -57,8 +57,14 @@ com/xploits/elytra/             Elytra swapping.
 
 com/xploits/pvp/                Directing the combat modules.
       .../core/                 Offensive phase, defensive posture, catalog of directed
-                                modules, who is one of ours, and what is written
-                                to Meteor's friends list.
+                                modules, who is one of ours, what is written to Meteor's
+                                friends list, and the breached-hole memory that keeps
+                                surround asked for (HoleMemory).
+com/xploits/pvp/crystal/        crystal-aura++: the adapter.
+      .../core/                 The pure brain (CrystalBrain): the self-damage budget
+                                (SelfBudget), target hurt windows (TargetWindows), how far
+                                you could move before a crystal explodes (MovementReach)
+                                and the exact damage (ExplosionMath).
 
 com/xploits/travel/             Travel with a decoy pattern.
       .../core/                 Route geometry, the patterns, the Baritone command
@@ -93,6 +99,7 @@ This matters if one day this stops being a Meteor addon.
 | `travel/core/StallWatch` | Detecting that there is no progress, tied to the waypoint by construction |
 | `travel/core/BorrowedModule` | Borrowing another module and returning it to its real state |
 | `pvp/core/*` | The whole combat judgement: phases, posture, module ownership |
+| `pvp/crystal/core/*` | The self-damage budget, target hurt windows and the exact-damage math crystal-aura++ decides with |
 | `sweep/core/*` | Lane planning, coverage, firework budget |
 | `elytra/core/ElytraPolicy` | When to swap the elytra and for which one |
 | `stash/core/*` | The container index |

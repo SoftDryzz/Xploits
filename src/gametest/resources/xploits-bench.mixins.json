@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.xploits.bench.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "SimulatedPingMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

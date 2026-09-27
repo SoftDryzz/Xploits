@@ -2,9 +2,11 @@ package com.xploits.bench;
 
 import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.Plan;
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
@@ -14,8 +16,10 @@ import java.util.Optional;
 
 /**
  * What the auto-pvp CHECKs share (spec {@code 2026-09-25-ingame-bench}, §Arena and loadouts): every
- * Meteor module auto-pvp may turn on is reset, CrystalAura gets {@code pause-on-lag} off, auto-pvp is reset and given a
- * profile, and CrystalAura is off before T0. Then, once per tick, what auto-pvp and its modules show.
+ * Meteor module auto-pvp may turn on is reset, CrystalAura and crystal-aura++ get {@code pause-on-lag}
+ * off, auto-pvp is reset, given its {@code crystal-module} ({@code meteor} unless a CHECK asks for
+ * {@code xploits++}, crystal-aura++ spec §4) and a profile, and both crystal auras are off before T0. Then,
+ * once per tick, what auto-pvp and its modules show.
  */
 final class AutoPvpScene {
     final AutoPvp autoPvp;
@@ -24,10 +28,15 @@ final class AutoPvpScene {
         this.autoPvp = autoPvp;
     }
 
-    /** The resets and the profile; call it first in {@code arrange}, before the loadout. */
+    /** The resets and the profile, with {@code crystal-module} on {@code meteor}; call it first in {@code arrange}. */
     static AutoPvpScene arrange(Bench bench, String profile) {
-        CrystalAura aura = bench.meteor(CrystalAura.class);
-        bench.setting(aura, "Pause", "pause-on-lag", false);
+        return arrange(bench, profile, CrystalModule.METEOR);
+    }
+
+    /** The resets and the profile, with that {@code crystal-module}; call it first in {@code arrange}, before the loadout. */
+    static AutoPvpScene arrange(Bench bench, String profile, CrystalModule crystal) {
+        CrystalAura aura = MeasureRun.crystalAura(bench);
+        CrystalAuraPlusPlus plusPlus = MeasureRun.crystalAuraPlusPlus(bench);
         bench.onClient(client -> {
             for (ManagedModule managed : ManagedModules.ALL) {
                 if (managed.equals(ManagedModules.CRYSTAL_AURA)) continue;
@@ -38,28 +47,34 @@ final class AutoPvpScene {
             }
         });
         AutoPvp autoPvp = bench.meteor(AutoPvp.class);
+        // Set even when it is the default: every auto-pvp CHECK states the aura it drives.
+        bench.setting(autoPvp, "General", "crystal-module", crystal);
         boolean applied = bench.fromClient(client -> autoPvp.useProfile(profile).ok());
         if (!applied) throw new BenchException("the " + profile + " profile was not applied");
         bench.onClient(client -> {
             if (aura.isActive()) aura.disable();
+            if (plusPlus.isActive()) plusPlus.disable();
         });
         return new AutoPvpScene(autoPvp);
     }
 
-    /** T0 with auto-pvp as the module under test; CrystalAura must still be off. */
+    /** T0 with auto-pvp as the module under test; both crystal auras must still be off. */
     void start(Bench bench, boolean recorder) {
         if (bench.fromClient(client -> on(ManagedModules.CRYSTAL_AURA))) {
             throw new BenchException("crystal-aura was on before T0");
         }
+        if (bench.fromClient(client -> plusPlusOn())) throw new BenchException("crystal-aura++ was on before T0");
         bench.start(recorder, AutoPvp.class);
     }
 
     /**
      * One tick as auto-pvp sees it: its reported phase (null before its first plan), its target, whether
-     * its plan enables crystal-aura, the modules that are on, and what the panel lists as off by profile.
+     * its plan enables the logical crystal-aura (whichever module it drives), the modules that are on
+     * ({@code auraOn} is Meteor's CrystalAura, {@code plusPlusOn} crystal-aura++), and what the panel lists
+     * as off by profile.
      */
     record Look(CombatState state, String target, boolean planEnablesAura, boolean auraOn, boolean cityOn,
-                boolean anvilOn, List<String> profileOff) {
+                boolean anvilOn, List<String> profileOff, boolean plusPlusOn) {
     }
 
     Look look(Bench bench) {
@@ -68,7 +83,7 @@ final class AutoPvpScene {
             return new Look(plan.map(Plan::state).orElse(null), autoPvp.currentTarget().orElse(null),
                 plan.map(p -> p.enable().contains(ManagedModules.CRYSTAL_AURA)).orElse(false),
                 on(ManagedModules.CRYSTAL_AURA), on(ManagedModules.AUTO_CITY), on(ManagedModules.AUTO_ANVIL),
-                autoPvp.panelInput(true).profileOff());
+                autoPvp.panelInput(true).profileOff(), plusPlusOn());
         });
     }
 
@@ -76,6 +91,13 @@ final class AutoPvpScene {
     static boolean on(ManagedModule managed) {
         Module module = Modules.get().get(managed.name());
         if (module == null) throw new BenchException("no module " + managed.name());
+        return module.isActive();
+    }
+
+    /** Whether crystal-aura++ is on. Client thread. */
+    static boolean plusPlusOn() {
+        CrystalAuraPlusPlus module = Modules.get().get(CrystalAuraPlusPlus.class);
+        if (module == null) throw new BenchException("no module crystal-aura++");
         return module.isActive();
     }
 }

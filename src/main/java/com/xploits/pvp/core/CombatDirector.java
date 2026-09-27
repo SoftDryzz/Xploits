@@ -194,6 +194,19 @@ public final class CombatDirector {
     public static final int RESOURCE_RELEASE_DWELL_TICKS = 20;
 
     /**
+     * How long {@code selfHoleBreached} keeps asking for {@code surround} after {@code selfInHole}
+     * drops to false on the same feet block (task R3-13 fix 2, from the owner's real log: of 47 deaths,
+     * 21 had auto-pvp already out of resources 0.3-1.2 s before the fatal crystal). {@code isInHole(false)}
+     * reads false the instant any one of the hole's five protecting blocks -four sides, one below- is
+     * gone, which is exactly the tick an enemy has mined in and {@code surround} is needed to patch the
+     * gap; before this fix that was also the tick {@code surround} stopped being requested. Two seconds is
+     * long enough to place a replacement block or two -the owner's own logged crystal cycles run 4-10
+     * ticks each (§9)- and short enough that standing on the same spot long after the breach, with nothing
+     * still threatening it, does not keep asking for a module with nothing left to patch.
+     */
+    public static final int BREACH_MEMORY_TICKS = 40;
+
+    /**
      * Maximum real distance to the surround block to classify {@code SURROUNDED} (spec §4.2.1,
      * second correction). Checked against the {@code meteor-client:1.21.11-SNAPSHOT} sources
      * (`AutoCity.java`): the module turns itself off -inside its own
@@ -468,7 +481,7 @@ public final class CombatDirector {
             now.selfGliding(), now.selfTotems(), now.resources(),
             seen.targetId(), now.hostilesInCrystalRange(),
             now.selfTotalHealth(), now.incomingDamage(), now.selfInHole(), now.selfOnGround(),
-            now.selfYChanged(), now.crystalAuraAntiSuicide());
+            now.selfYChanged(), now.selfHoleBreached(), now.crystalAuraProtectsYou());
     }
 
     private void enter(CombatState next) {
@@ -662,9 +675,13 @@ public final class CombatDirector {
                 // autobreak exactly when you carry no totems, which is when it is needed most.
                 //
                 // But anti-suicide is only a default value: if the player has turned it off, that
-                // protection does not exist, and then -and only then- the floor stays in place. The
-                // reason says it in full so the player knows what to turn off or on.
-                if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraAntiSuicide()) {
+                // protection does not exist, and then -and only then- the floor stays in place. Task
+                // R3-13 fix 1: crystal-aura++'s self-budget, on, is a second and stronger way of not
+                // needing the floor -it never leaves you below its own reserve, which anti-suicide alone
+                // does not guarantee for every placement-, so the adapter folds both settings of the
+                // latched aura into the one fact below; the floor only stands when neither protects you.
+                // The reason says it in full so the player knows what to turn off or on.
+                if (snapshot.selfTotems() <= 0 && !snapshot.crystalAuraProtectsYou()) {
                     skipped.add(new Skipped(module, Msg.of(PvpText.TOTEM_FLOOR)));
                     continue;
                 }

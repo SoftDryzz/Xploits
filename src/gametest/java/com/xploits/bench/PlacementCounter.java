@@ -6,6 +6,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -15,6 +16,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * rule "zero records is valid only if no placement packet was sent" (spec {@code
  * 2026-09-25-ingame-bench}, §Metrics) is checked against.
  *
+ * <p>It also counts every block interaction packet (a placement of anything, crystals included) and every
+ * entity interaction packet (an attack, which is how a crystal is broken, or any other), so a run can tell
+ * whether the aura did anything at all ({@link com.xploits.bench.core.Settle}). Counting more than placements
+ * and attacks only makes a run look busier, never quieter.
+ *
  * <p>One counter for the whole session, subscribed once and never unsubscribed: it only counts, so a
  * run reads it at T0 and at the close and keeps the difference.
  */
@@ -23,6 +29,8 @@ final class PlacementCounter {
     private static volatile boolean subscribed;
 
     private final AtomicInteger sent = new AtomicInteger();
+    private final AtomicInteger blockInteractions = new AtomicInteger();
+    private final AtomicInteger entityInteractions = new AtomicInteger();
 
     private PlacementCounter() {
     }
@@ -41,12 +49,25 @@ final class PlacementCounter {
         return sent.get();
     }
 
+    /** Block interaction packets of any kind, crystal placements included, sent since the session began. */
+    int blockInteractionsSent() {
+        return blockInteractions.get();
+    }
+
+    /** Entity interaction packets of any kind, attacks included, sent since the session began. */
+    int entityInteractionsSent() {
+        return entityInteractions.get();
+    }
+
     @EventHandler
     private void onSend(PacketEvent.Send event) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return;
-        if (event.packet instanceof PlayerInteractBlockC2SPacket place && mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) {
-            sent.incrementAndGet();
+        if (event.packet instanceof PlayerInteractBlockC2SPacket place) {
+            blockInteractions.incrementAndGet();
+            if (mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) sent.incrementAndGet();
+        } else if (event.packet instanceof PlayerInteractEntityC2SPacket) {
+            entityInteractions.incrementAndGet();
         }
     }
 }

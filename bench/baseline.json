@@ -4,22 +4,22 @@
     "ca-still": {
       "damage_dealt": 30.0,
       "sparring_pops": 2.0,
-      "first_pop_s": 0.75,
+      "first_pop_s": 0.9,
       "no_pop_runs": 0.0,
       "self_damage": 16.626,
       "self_pops": 0.0,
       "min_health": 3.374,
-      "placements_per_s": 0.567
+      "placements_per_s": 0.9
     },
     "ca-circler": {
       "damage_dealt": 20.0,
       "sparring_pops": 1.0,
-      "first_pop_s": 1.3,
+      "first_pop_s": 1.65,
       "no_pop_runs": 0.0,
       "self_damage": 16.244,
       "self_pops": 0.0,
       "min_health": 3.756,
-      "placements_per_s": 0.6
+      "placements_per_s": 0.9
     },
     "ca-defender": {
       "damage_dealt": 0.0,
@@ -34,6 +34,394 @@
       "self_pops": 0.0,
       "min_health": 17.681,
       "damage_taken": 2.319
+    },
+    "ca-still-regen": {
+      "damage_dealt": 40.0,
+      "sparring_pops": 3.0,
+      "first_pop_s": 0.85,
+      "no_pop_runs": 0.0,
+      "self_damage": 22.168,
+      "self_pops": 0.0,
+      "min_health": 0.165,
+      "placements_per_s": 1.033
+    },
+    "ca-circler-regen": {
+      "damage_dealt": 29.902,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.6,
+      "no_pop_runs": 0.0,
+      "self_damage": 20.945,
+      "self_pops": 0.0,
+      "min_health": 0.846,
+      "placements_per_s": 1.233
+    },
+    "capp-still": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.15,
+      "no_pop_runs": 0.0,
+      "self_damage": 11.084,
+      "self_pops": 0.0,
+      "min_health": 8.916,
+      "placements_per_s": 0.4
+    },
+    "capp-circler": {
+      "damage_dealt": 14.43,
+      "sparring_pops": 0.0,
+      "no_pop_runs": 3.0,
+      "self_damage": 10.186,
+      "self_pops": 0.0,
+      "min_health": 9.814,
+      "placements_per_s": 0.3
+    },
+    "capp-defender": {
+      "damage_dealt": 0.0,
+      "sparring_pops": 0.0,
+      "no_pop_runs": 3.0,
+      "self_damage": 0.0,
+      "self_pops": 0.0,
+      "min_health": 20.0,
+      "placements_per_s": 0.0
+    },
+    "capp-still-regen": {
+      "damage_dealt": 30.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.1,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.435,
+      "self_pops": 0.0,
+      "min_health": 5.065,
+      "placements_per_s": 0.5
+    },
+    "capp-circler-regen": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.95,
+      "no_pop_runs": 0.0,
+      "self_damage": 15.537,
+      "self_pops": 0.0,
+      "min_health": 6.339,
+      "placements_per_s": 0.567
+    },
+    "capp-balanced-still": {
+      "damage_dealt": 30.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 0.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.477,
+      "self_pops": 0.0,
+      "min_health": 3.523,
+      "placements_per_s": 0.633
+    },
+    "capp-balanced-circler": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 2.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 15.537,
+      "self_pops": 0.0,
+      "min_health": 4.339,
+      "placements_per_s": 0.667
+    },
+    "capp-balanced-still-regen": {
+      "damage_dealt": 40.835,
+      "sparring_pops": 2.0,
+      "first_pop_s": 0.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.286,
+      "self_pops": 0.0,
+      "min_health": 3.506,
+      "placements_per_s": 0.767
+    },
+    "capp-balanced-circler-regen": {
+      "damage_dealt": 29.268,
+      "sparring_pops": 1.0,
+      "first_pop_s": 2.0,
+      "no_pop_runs": 0.0,
+      "self_damage": 20.388,
+      "self_pops": 0.0,
+      "min_health": 4.445,
+      "placements_per_s": 0.767
+    },
+    "capp-aggressive-still": {
+      "damage_dealt": 30.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 0.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.626,
+      "self_pops": 0.0,
+      "min_health": 3.374,
+      "placements_per_s": 0.667
+    },
+    "capp-aggressive-circler": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 2.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.053,
+      "self_pops": 0.0,
+      "min_health": 3.947,
+      "placements_per_s": 0.667
+    },
+    "capp-aggressive-still-regen": {
+      "damage_dealt": 37.0,
+      "sparring_pops": 3.0,
+      "first_pop_s": 0.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.668,
+      "self_pops": 0.0,
+      "min_health": 2.165,
+      "placements_per_s": 0.8
+    },
+    "capp-aggressive-circler-regen": {
+      "damage_dealt": 26.076,
+      "sparring_pops": 1.0,
+      "first_pop_s": 2.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 20.372,
+      "self_pops": 0.0,
+      "min_health": 2.17,
+      "placements_per_s": 0.8
+    },
+    "ca-above-regen": {
+      "damage_dealt": 289.25,
+      "sparring_pops": 27.0,
+      "first_pop_s": 1.55,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.664,
+      "self_pops": 0.0,
+      "min_health": 18.835,
+      "placements_per_s": 15.7
+    },
+    "ca-below-regen": {
+      "damage_dealt": 290.325,
+      "sparring_pops": 27.0,
+      "first_pop_s": 1.45,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.664,
+      "self_pops": 0.0,
+      "min_health": 18.835,
+      "placements_per_s": 15.8
+    },
+    "ca-approach-regen": {
+      "damage_dealt": 35.542,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.35,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.328,
+      "self_pops": 0.0,
+      "min_health": 0.464,
+      "placements_per_s": 1.4
+    },
+    "ca-strafe-regen": {
+      "damage_dealt": 37.969,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 20.048,
+      "self_pops": 0.0,
+      "min_health": 1.828,
+      "placements_per_s": 1.2
+    },
+    "capp-above-regen": {
+      "damage_dealt": 262.0,
+      "sparring_pops": 24.0,
+      "first_pop_s": 2.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.498,
+      "self_pops": 0.0,
+      "min_health": 18.918,
+      "placements_per_s": 13.3
+    },
+    "capp-below-regen": {
+      "damage_dealt": 280.0,
+      "sparring_pops": 26.0,
+      "first_pop_s": 1.7,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.581,
+      "self_pops": 0.0,
+      "min_health": 18.877,
+      "placements_per_s": 13.767
+    },
+    "capp-approach-regen": {
+      "damage_dealt": 28.113,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.45,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.244,
+      "self_pops": 0.0,
+      "min_health": 5.756,
+      "placements_per_s": 0.633
+    },
+    "capp-strafe-regen": {
+      "damage_dealt": 29.777,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.75,
+      "no_pop_runs": 0.0,
+      "self_damage": 18.841,
+      "self_pops": 0.0,
+      "min_health": 5.993,
+      "placements_per_s": 0.767
+    },
+    "capp-balanced-above-regen": {
+      "damage_dealt": 273.0,
+      "sparring_pops": 25.0,
+      "first_pop_s": 2.05,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.581,
+      "self_pops": 0.0,
+      "min_health": 18.918,
+      "placements_per_s": 13.267
+    },
+    "capp-balanced-below-regen": {
+      "damage_dealt": 269.4,
+      "sparring_pops": 24.0,
+      "first_pop_s": 2.0,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.581,
+      "self_pops": 0.0,
+      "min_health": 18.918,
+      "placements_per_s": 15.5
+    },
+    "capp-balanced-approach-regen": {
+      "damage_dealt": 39.47,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.2,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.786,
+      "self_pops": 0.0,
+      "min_health": 3.547,
+      "placements_per_s": 0.867
+    },
+    "capp-balanced-strafe-regen": {
+      "damage_dealt": 31.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.8,
+      "no_pop_runs": 0.0,
+      "self_damage": 18.841,
+      "self_pops": 0.0,
+      "min_health": 3.535,
+      "placements_per_s": 0.767
+    },
+    "capp-aggressive-above-regen": {
+      "damage_dealt": 281.0,
+      "sparring_pops": 26.0,
+      "first_pop_s": 2.1,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.581,
+      "self_pops": 0.0,
+      "min_health": 18.877,
+      "placements_per_s": 13.4
+    },
+    "capp-aggressive-below-regen": {
+      "damage_dealt": 278.153,
+      "sparring_pops": 25.0,
+      "first_pop_s": 1.7,
+      "no_pop_runs": 0.0,
+      "self_damage": 1.581,
+      "self_pops": 0.0,
+      "min_health": 18.918,
+      "placements_per_s": 15.8
+    },
+    "capp-aggressive-approach-regen": {
+      "damage_dealt": 36.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.4,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.595,
+      "self_pops": 0.0,
+      "min_health": 2.738,
+      "placements_per_s": 0.9
+    },
+    "capp-aggressive-strafe-regen": {
+      "damage_dealt": 28.953,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 19.523,
+      "self_pops": 0.0,
+      "min_health": 2.353,
+      "placements_per_s": 0.867
+    },
+    "ca-self-circle-regen": {
+      "damage_dealt": 41.0,
+      "sparring_pops": 3.0,
+      "first_pop_s": 1.35,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.671,
+      "self_pops": 0.0,
+      "min_health": 0.631,
+      "placements_per_s": 1.167
+    },
+    "ca-self-strafe-regen": {
+      "damage_dealt": 29.794,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.6,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.635,
+      "self_pops": 0.0,
+      "min_health": 0.484,
+      "placements_per_s": 1.167
+    },
+    "capp-self-circle-regen": {
+      "damage_dealt": 31.942,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.2,
+      "no_pop_runs": 0.0,
+      "self_damage": 15.996,
+      "self_pops": 0.0,
+      "min_health": 9.337,
+      "placements_per_s": 0.233
+    },
+    "capp-self-strafe-regen": {
+      "damage_dealt": 20.0,
+      "sparring_pops": 1.0,
+      "first_pop_s": 4.5,
+      "no_pop_runs": 0.0,
+      "self_damage": 15.686,
+      "self_pops": 0.0,
+      "min_health": 7.48,
+      "placements_per_s": 0.267
+    },
+    "capp-balanced-self-circle-regen": {
+      "damage_dealt": 29.0,
+      "sparring_pops": 2.0,
+      "first_pop_s": 1.2,
+      "no_pop_runs": 0.0,
+      "self_damage": 16.969,
+      "self_pops": 0.0,
+      "min_health": 7.364,
+      "placements_per_s": 0.3
+    },
+    "capp-balanced-self-strafe-regen": {
+      "damage_dealt": 27.306,
+      "sparring_pops": 1.0,
+      "first_pop_s": 5.1,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.414,
+      "self_pops": 0.0,
+      "min_health": 3.92,
+      "placements_per_s": 0.3
+    },
+    "capp-aggressive-self-circle-regen": {
+      "damage_dealt": 31.942,
+      "sparring_pops": 1.0,
+      "first_pop_s": 1.2,
+      "no_pop_runs": 0.0,
+      "self_damage": 15.949,
+      "self_pops": 0.0,
+      "min_health": 6.884,
+      "placements_per_s": 0.333
+    },
+    "capp-aggressive-self-strafe-regen": {
+      "damage_dealt": 26.987,
+      "sparring_pops": 1.0,
+      "first_pop_s": 3.9,
+      "no_pop_runs": 0.0,
+      "self_damage": 21.194,
+      "self_pops": 0.0,
+      "min_health": 4.139,
+      "placements_per_s": 0.367
     }
   }
 }

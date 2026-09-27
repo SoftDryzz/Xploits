@@ -6,23 +6,43 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.xploits.bench.Metrics.Better;
 import com.xploits.bench.Metrics.Definition;
+import com.xploits.bench.core.Acceptance;
+import com.xploits.bench.core.Acceptance.Outcome;
+import com.xploits.bench.core.Acceptance.Verdict;
+import com.xploits.bench.core.Profile;
+import com.xploits.bench.core.Recommendation;
+import com.xploits.bench.core.RiskTable;
+import com.xploits.pvp.crystal.core.RiskLevel;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The bench report (spec {@code 2026-09-25-ingame-bench}, §Report and baseline): {@code
  * report-<version>.json} and an English {@code .md} table, both rewritten after every run so a crash
  * still leaves what ran. For a MEASURE it gives the median, min and max of every metric over its DONE
  * runs, how many runs popped the sparring, the metrics whose runs spread too far (noisy), and the ones
- * worse than the baseline (regressions).
+ * worse than the baseline (regressions). A MEASURE judged against another ({@link Scenario#compareWith})
+ * also gets that verdict ({@link Acceptance}), and the summary counts the verdicts. One more line per
+ * crystal-aura++ risk level gives the strict recommendation over every pair the full bench judges at that
+ * level ({@link Recommendation}), and a risk table sets each level's damage dealt and min health beside
+ * Meteor's ({@link RiskTable}). Neither a verdict nor a recommendation makes the report fail (crystal-aura++
+ * spec §4, Q5: only a run's ERROR does).
+ *
+ * <p>The report says which {@link Profile} ran (R3-9). A scenario the everyday run does not play is listed
+ * SKIPPED, which blocks nothing, and the levels it did not measure get one "not measured" line instead of a
+ * recommendation. A {@code ca-*} MEASURE served from the Meteor cache is DONE with its cached runs, which count
+ * like measured ones (verdicts, baseline, regressions), and is marked cached with the date it was measured.
  *
  * <p>Numbers, names, statuses and bench-written messages only: never a position. No line of either file
  * holds three numbers in a row separated by spaces or commas (the hygiene scan would take it for a
@@ -49,13 +69,23 @@ public final class BenchReport {
         }
     }
 
+    /** What the comparisons' summary is called: every comparison is crystal-aura++ against crystal-aura. */
+    static final String COMPARE_LABEL = "capp";
+
     /** The value of the report's {@code hygiene} field once the scan found nothing. */
     public static final String HYGIENE_CLEAN = "clean";
 
-    /** One run: its status, the bench-written error when it did not pass, and its numbers. */
-    public record Run(Status status, String error, Map<String, Double> metrics) {
+    /**
+     * One run: its status, the bench-written error when it did not pass, its numbers, and whether our
+     * player died in it ({@link PlayerDied}: a crystal-aura++ comparison is then a REJECT).
+     */
+    public record Run(Status status, String error, Map<String, Double> metrics, boolean died) {
         public Run {
             metrics = Map.copyOf(metrics);
+        }
+
+        public Run(Status status, String error, Map<String, Double> metrics) {
+            this(status, error, metrics, false);
         }
     }
 
@@ -79,6 +109,13 @@ public final class BenchReport {
     /** {@code -Pbench.only}'s names, comma-joined, or null for a full run: so a partial run stays visible
      * in the report and not only in the console line that started it. */
     private final String only;
+    /** Which run this is: everyday, full, or partial ({@code -Pbench.only}). */
+    private final Profile profile;
+    /**
+     * Every scenario the full bench judges against another, whether it runs in this invocation or not, with
+     * the risk level crystal-aura++ runs at in it.
+     */
+    private final Map<String, RiskLevel> judged;
     /** The planned scenarios, then any other that ran, in order. */
     private final Map<String, Entry> scenarios = new LinkedHashMap<>();
     /**
@@ -90,6 +127,10 @@ public final class BenchReport {
     private final class Entry {
         final Scenario scenario;
         final List<Run> runs = new ArrayList<>();
+        /** Why this run's profile does not play it, or null when it plays it. */
+        String skipped;
+        /** The date the Meteor cache's runs were measured, or null when this run measured them. */
+        String cachedOn;
 
         Entry(Scenario scenario) {
             this.scenario = scenario;
@@ -100,6 +141,7 @@ public final class BenchReport {
          * mid-bench leaves it so); then a CHECK's run status, or DONE for a MEASURE whose runs all are.
          */
         Status status() {
+            if (skipped != null) return Status.SKIPPED;
             for (Run run : runs) {
                 if (run.status().fails()) return run.status();
             }
@@ -108,6 +150,7 @@ public final class BenchReport {
         }
 
         String error() {
+            if (skipped != null) return null;
             for (Run run : runs) {
                 if (run.status().fails()) return run.error();
             }
@@ -115,6 +158,21 @@ public final class BenchReport {
                 return "incomplete: " + runs.size() + " of " + scenario.runs() + " runs";
             }
             return null;
+        }
+
+        /** The verdict against {@link Scenario#compareWith}, judged on this invocation's runs alone. */
+        Optional<Outcome> compare() {
+            if (skipped != null) return Optional.empty();
+            return scenario.compareWith().map(with -> {
+                Entry other = scenarios.get(with);
+                return Acceptance.judge(side(), other == null ? Acceptance.Side.absent(with) : other.side(),
+                    scenario.risk().orElse(null));
+            });
+        }
+
+        private Acceptance.Side side() {
+            List<Map<String, Double>> done = runs.stream().filter(r -> r.status() == Status.DONE).map(Run::metrics).toList();
+            return new Acceptance.Side(scenario.name(), status().name(), done, runs.stream().anyMatch(Run::died));
         }
 
         Aggregate aggregate() {
@@ -125,17 +183,55 @@ public final class BenchReport {
         }
     }
 
-    public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only) {
+    /**
+     * {@code judged}: every scenario the full bench judges, with its level ({@link Scenarios#judged});
+     * {@code profile}: which run this is.
+     */
+    public BenchReport(String addon, String meteor, Path folder, Baseline baseline, List<String> only,
+                       Map<String, RiskLevel> judged, Profile profile) {
+        this.profile = profile;
         this.addon = addon;
         this.meteor = meteor;
         this.folder = folder;
         this.baseline = baseline;
         this.only = only.isEmpty() ? null : String.join(",", only);
+        this.judged = new LinkedHashMap<>(judged);
     }
 
-    /** Lists the scenarios about to run, PENDING, so a report cut short shows what never ran. */
+    /**
+     * Lists the scenarios selected, in order: those this run's profile plays PENDING, so a report cut short
+     * shows what never ran, and the others SKIPPED.
+     */
     public void plan(List<Scenario> planned) {
-        for (Scenario scenario : planned) scenarios.computeIfAbsent(scenario.name(), name -> new Entry(scenario));
+        for (Scenario scenario : planned) {
+            Entry entry = scenarios.computeIfAbsent(scenario.name(), name -> new Entry(scenario));
+            if (!plays(profile, scenario)) entry.skipped = profile.skipped();
+        }
+    }
+
+    /** Whether {@code profile} plays {@code scenario} ({@link Profile#plays}). */
+    public static boolean plays(Profile profile, Scenario scenario) {
+        return profile.plays(scenario.kind() == Scenario.Kind.MEASURE, scenario.risk().orElse(null));
+    }
+
+    /** A {@code ca-*} MEASURE served from the Meteor cache: every run it holds, DONE, measured on {@code measuredOn}. */
+    public void cached(Scenario scenario, List<Map<String, Double>> runs, String measuredOn) {
+        Entry entry = scenarios.computeIfAbsent(scenario.name(), name -> new Entry(scenario));
+        for (Map<String, Double> metrics : runs) entry.runs.add(new Run(Status.DONE, null, metrics));
+        entry.cachedOn = measuredOn;
+    }
+
+    /** A scenario's status in this report, or null when it is not in it. */
+    public Status status(String name) {
+        Entry entry = scenarios.get(name);
+        return entry == null ? null : entry.status();
+    }
+
+    /** The metrics of a scenario's DONE runs, in run order: what the Meteor cache keeps. */
+    public List<Map<String, Double>> doneRuns(String name) {
+        Entry entry = scenarios.get(name);
+        if (entry == null) return List.of();
+        return entry.runs.stream().filter(r -> r.status() == Status.DONE).map(Run::metrics).toList();
     }
 
     public void add(Scenario scenario, Run run) {
@@ -151,20 +247,89 @@ public final class BenchReport {
         return hygiene != null && !hygiene.isEmpty();
     }
 
-    /** One line for the console and the final assertion: counts per status. */
+    /**
+     * One line for the console and the final assertion: which run it was, then counts per status, the DONE
+     * ones served from the Meteor cache counted in brackets.
+     */
     public String summary() {
         Map<Status, Integer> counts = new LinkedHashMap<>();
         for (Status status : Status.values()) counts.put(status, 0);
         for (Entry e : scenarios.values()) counts.merge(e.status(), 1, Integer::sum);
+        long cached = scenarios.values().stream().filter(e -> e.cachedOn != null && e.status() == Status.DONE).count();
         List<String> parts = new ArrayList<>();
         counts.forEach((status, n) -> {
-            if (n > 0) parts.add(n + " " + status);
+            if (n > 0) parts.add(n + " " + status + (status == Status.DONE && cached > 0 ? " (" + cached + " cached)" : ""));
         });
         int regressions = scenarios.values().stream().mapToInt(e -> e.aggregate().regressions().size()).sum();
         if (regressions > 0) parts.add(regressions + " regression(s)");
+        compareSummary().ifPresent(parts::add);
         if (hygieneHits()) parts.add("hygiene ERROR");
         else if (hygiene != null) parts.add("hygiene " + HYGIENE_CLEAN);
-        return parts.isEmpty() ? "no scenario ran" : String.join(", ", parts);
+        return profile.label() + ": " + (parts.isEmpty() ? "no scenario ran" : String.join(", ", parts));
+    }
+
+    /**
+     * The verdicts counted, {@code capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE}; empty when
+     * no scenario that ran is judged against another.
+     */
+    public Optional<String> compareSummary() {
+        Map<Verdict, Integer> counts = new LinkedHashMap<>();
+        for (Verdict verdict : Verdict.values()) counts.put(verdict, 0);
+        boolean any = false;
+        for (Entry e : scenarios.values()) {
+            Optional<Outcome> outcome = e.compare();
+            if (outcome.isEmpty()) continue;
+            any = true;
+            counts.merge(outcome.get().verdict(), 1, Integer::sum);
+        }
+        if (!any) return Optional.empty();
+        List<String> parts = new ArrayList<>();
+        counts.forEach((verdict, n) -> parts.add(n + " " + verdict.name()));
+        return Optional.of(COMPARE_LABEL + ": " + String.join(" / ", parts));
+    }
+
+    /**
+     * Whether crystal-aura++ is recommended at each risk level (crystal-aura++ spec, Round 2, strict
+     * criterion; R2-5), each over every pair the full bench judges at that level: a pair that did not run in
+     * this invocation is INCOMPLETE, so only a full run can say YES. A level this run's profile does not
+     * measure gets no line of its own; one line names those levels instead (R3-9: the everyday run measures
+     * Balanced only, over all of its pairs). Empty when no scenario that ran is judged against another.
+     */
+    public List<String> recommendations() {
+        if (compareSummary().isEmpty()) return List.of();
+        List<Recommendation.Judged> pairs = new ArrayList<>();
+        judged.forEach((name, level) -> {
+            Entry e = scenarios.get(name);
+            Optional<Outcome> outcome = e == null ? Optional.empty() : e.compare();
+            pairs.add(new Recommendation.Judged(level, outcome.map(Outcome::verdict).orElse(Verdict.INCOMPLETE)));
+        });
+        return Recommendation.lines(pairs, profile.notMeasured());
+    }
+
+    /**
+     * The risk table's rows: each Meteor scenario a crystal-aura++ scenario of this report is judged against,
+     * in the report's order, with the medians of Meteor's side and of each level's.
+     */
+    private List<RiskTable.Row> riskRows() {
+        Map<String, Map<RiskLevel, Map<String, Double>>> byMeteor = new LinkedHashMap<>();
+        for (Entry e : scenarios.values()) {
+            Optional<String> with = e.scenario.compareWith();
+            Optional<RiskLevel> level = e.scenario.risk();
+            if (with.isEmpty() || level.isEmpty()) continue;
+            byMeteor.computeIfAbsent(with.get(), name -> new EnumMap<>(RiskLevel.class)).put(level.get(), e.aggregate().median());
+        }
+        // Meteor's scenarios in the report's order, then any that is not in this report.
+        LinkedHashSet<String> order = new LinkedHashSet<>();
+        for (String name : scenarios.keySet()) {
+            if (byMeteor.containsKey(name)) order.add(name);
+        }
+        order.addAll(byMeteor.keySet());
+        List<RiskTable.Row> rows = new ArrayList<>();
+        for (String name : order) {
+            Entry meteorSide = scenarios.get(name);
+            rows.add(new RiskTable.Row(name, meteorSide == null ? Map.of() : meteorSide.aggregate().median(), byMeteor.get(name)));
+        }
+        return rows;
     }
 
     /**
@@ -272,6 +437,7 @@ public final class BenchReport {
         root.addProperty("meteor", meteor);
         root.addProperty("difficulty", "normal");
         root.addProperty("only", only);
+        root.addProperty("profile", profile.id());
         JsonArray list = new JsonArray();
         for (Entry e : scenarios.values()) {
             JsonObject s = new JsonObject();
@@ -280,6 +446,11 @@ public final class BenchReport {
             s.addProperty("status", e.status().name());
             String error = e.error();
             if (error != null) s.addProperty("error", error);
+            if (e.skipped != null) s.addProperty("skipped", e.skipped);
+            if (e.cachedOn != null) {
+                s.addProperty("cached", true);
+                s.addProperty("measured", e.cachedOn);
+            }
             JsonArray runs = new JsonArray();
             for (Run run : e.runs) runs.add(numbers(run.metrics()));
             s.add("runs", runs);
@@ -300,9 +471,17 @@ public final class BenchReport {
                 regressions.add(o);
             }
             s.add("regressions", regressions);
+            e.compare().ifPresent(outcome -> s.add("compare", compare(e.scenario.compareWith().orElseThrow(), outcome)));
             list.add(s);
         }
         root.add("scenarios", list);
+        compareSummary().ifPresent(summary -> root.addProperty("compare", summary));
+        List<String> recommendations = recommendations();
+        if (!recommendations.isEmpty()) {
+            JsonArray lines = new JsonArray();
+            recommendations.forEach(lines::add);
+            root.add("recommendation", lines);
+        }
         // Absent until the scan ran: the Gradle-side check (benchVerify) wants it, and wants it clean.
         if (hygieneHits()) {
             JsonArray lines = new JsonArray();
@@ -312,6 +491,25 @@ public final class BenchReport {
             root.addProperty("hygiene", HYGIENE_CLEAN);
         }
         return root;
+    }
+
+    /** A verdict: against what, the verdict, why when it is not ACCEPT, and each rule with what it compared. */
+    private static JsonObject compare(String with, Outcome outcome) {
+        JsonObject o = new JsonObject();
+        o.addProperty("with", with);
+        o.addProperty("verdict", outcome.verdict().name());
+        if (outcome.reason() != null) o.addProperty("reason", outcome.reason());
+        JsonArray rules = new JsonArray();
+        for (Acceptance.Rule rule : outcome.rules()) {
+            JsonObject r = new JsonObject();
+            r.addProperty("rule", rule.id());
+            r.addProperty("kind", rule.kind().name().toLowerCase(Locale.ROOT));
+            r.addProperty("result", rule.result().name());
+            r.addProperty("detail", rule.detail());
+            rules.add(r);
+        }
+        o.add("rules", rules);
+        return o;
     }
 
     /** Metrics in the table's order, rounded; one per line once pretty-printed. */
@@ -331,12 +529,14 @@ public final class BenchReport {
         md.append("# Bench report ").append(addon).append("\n\n");
         md.append("Xploits ").append(addon).append(", Meteor ").append(meteor).append(", difficulty normal. ")
             .append(summary()).append(".\n\n");
+        for (String line : recommendations()) md.append(line).append(".\n\n");
         md.append(baseline.size() == 0 ? "No baseline to compare with.\n\n"
             : "Compared with the baseline in bench/baseline.json.\n\n");
-        md.append("| Scenario | Kind | Runs | Status | Error |\n");
+        md.append("| Scenario | Kind | Runs | Status | Note |\n");
         md.append("|---|---|---|---|---|\n");
         for (Entry e : scenarios.values()) {
             String error = e.error();
+            if (error == null) error = e.skipped != null ? e.skipped : e.cachedOn != null ? cachedNote(e) : null;
             md.append("| ").append(e.scenario.name())
                 .append(" | ").append(e.scenario.kind().name())
                 .append(" | ").append(e.runs.size()).append(" of ").append(e.scenario.runs())
@@ -349,6 +549,8 @@ public final class BenchReport {
             // printing a header with no rows under it.
             if (e.scenario.kind() == Scenario.Kind.MEASURE && !e.runs.isEmpty()) measure(md, e);
         }
+        comparisons(md);
+        riskTable(md);
         if (hygieneHits()) {
             md.append("\n## Hygiene\n\nThese lines look like a position:\n\n");
             for (String hit : hygiene) md.append("- ").append(hit).append('\n');
@@ -360,7 +562,8 @@ public final class BenchReport {
     private void measure(StringBuilder md, Entry e) {
         Aggregate aggregate = e.aggregate();
         Map<String, Double> base = baseline.scenario(e.scenario.name());
-        md.append("\n## ").append(e.scenario.name()).append(" (").append(e.status().name()).append(")\n\n");
+        md.append("\n## ").append(e.scenario.name()).append(" (").append(e.status().name())
+            .append(e.cachedOn != null ? ", " + cachedNote(e) : "").append(")\n\n");
         if (aggregate.poppedRuns() != null) {
             long done = e.runs.stream().filter(r -> r.status() == Status.DONE).count();
             md.append("The sparring popped in ").append(aggregate.poppedRuns()).append(" of ").append(done)
@@ -396,8 +599,59 @@ public final class BenchReport {
         }
     }
 
+    /** Every verdict: a line with it and why, then a row per rule. */
+    private void comparisons(StringBuilder md) {
+        boolean header = false;
+        for (Entry e : scenarios.values()) {
+            Optional<Outcome> judged = e.compare();
+            if (judged.isEmpty()) continue;
+            Outcome outcome = judged.get();
+            if (!header) {
+                md.append("\n## crystal-aura++ against crystal-aura\n\n")
+                    .append("A verdict never fails the bench; a crystal-aura++ run in which our player died is ERROR")
+                    .append(" and makes the verdict REJECT. A pair where neither aura placed a crystal in any run is")
+                    .append(" NOT_APPLICABLE: it is not evidence either way. Each risk level gets its own recommendation:")
+                    .append(" crystal-aura++ is recommended at a level only when every applicable pair of the full bench")
+                    .append(" at that level, the -regen ones with healing included, is ACCEPT; a pair that did not run in")
+                    .append(" this invocation counts as INCOMPLETE. The capp-X pairs run at Safe (R2-5's original")
+                    .append(" level; the risk setting's own default is Balanced since R3-8); the capp-balanced-X and")
+                    .append(" capp-aggressive-X pairs at those levels. The everyday run measures Balanced only; its")
+                    .append(" Safe and Aggressive pairs are SKIPPED and those levels are not recommended either way.\n");
+                header = true;
+            }
+            md.append("\n### ").append(e.scenario.name()).append(" against ").append(e.scenario.compareWith().orElseThrow())
+                .append(": ").append(outcome.verdict().name()).append("\n\n");
+            if (outcome.reason() != null) md.append("Why: ").append(outcome.reason()).append(".\n\n");
+            if (outcome.rules().isEmpty()) continue;
+            md.append("| Rule | Kind | Result | What was compared |\n|---|---|---|---|\n");
+            for (Acceptance.Rule rule : outcome.rules()) {
+                md.append("| ").append(rule.id())
+                    .append(" | ").append(rule.kind().name().toLowerCase(Locale.ROOT))
+                    .append(" | ").append(rule.result().name())
+                    .append(" | ").append(cell(rule.detail()))
+                    .append(" |\n");
+            }
+        }
+    }
+
+    /** The risk table: damage dealt and min health, Meteor's and each level's, per Meteor scenario. */
+    private void riskTable(StringBuilder md) {
+        List<String> lines = RiskTable.lines(riskRows());
+        if (lines.isEmpty()) return;
+        md.append("\n## crystal-aura++ risk levels\n\n")
+            .append("Medians over each scenario's DONE runs: Meteor's crystal-aura, then crystal-aura++ at each level")
+            .append(" (Safe is the level these capp-X columns keep; the risk setting's own default is Balanced")
+            .append(" since R3-8); a dash is a side that did not run.\n\n");
+        for (String line : lines) md.append(line).append('\n');
+    }
+
     private static String number(Double value) {
         return value == null ? "-" : String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    /** {@code cached, measured <date>}. */
+    private static String cachedNote(Entry e) {
+        return "cached, measured " + e.cachedOn;
     }
 
     private static String cell(String text) {

@@ -2,6 +2,7 @@ package com.xploits.pvp.hud.core;
 
 import com.xploits.pvp.core.CombatPosture;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.CrystalModule;
 
 import java.util.List;
 import java.util.Objects;
@@ -41,6 +42,9 @@ import java.util.Objects;
  *                           the recorder is off or no fight is open
  * @param showFight           the panel's own {@code show-fight} setting; the fight line is never drawn
  *                           when this is {@code false}, even with a fight open
+ * @param crystalModule      the real name of the crystal aura auto-pvp drives ({@code crystal-aura} or
+ *                           {@code crystal-aura++}), for the lines that name it; {@link #enabled} and the
+ *                           other name lists already carry real names
  */
 public record PanelInput(
     boolean autoPvpOn,
@@ -60,16 +64,29 @@ public record PanelInput(
     boolean crystalAuraEnabled,
     boolean outOfResources,
     LiveFight fight,
-    boolean showFight
+    boolean showFight,
+    String crystalModule
 ) {
     public PanelInput {
         Objects.requireNonNull(profileName, "profileName");
+        Objects.requireNonNull(crystalModule, "crystalModule");
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(posture, "posture");
         enabled = List.copyOf(enabled);
         released = List.copyOf(released);
         profileOff = List.copyOf(profileOff);
         idle = List.copyOf(idle);
+    }
+
+    /** With Meteor's {@code crystal-aura}, the aura auto-pvp drives by default. */
+    public PanelInput(boolean autoPvpOn, String profileName, boolean profileModified, CombatState state,
+                      CombatPosture posture, String target, double targetDistance, List<String> enabled,
+                      List<String> released, List<String> profileOff, List<Idle> idle, int crystals, int totems,
+                      int obsidian, boolean crystalAuraEnabled, boolean outOfResources, LiveFight fight,
+                      boolean showFight) {
+        this(autoPvpOn, profileName, profileModified, state, posture, target, targetDistance, enabled, released,
+            profileOff, idle, crystals, totems, obsidian, crystalAuraEnabled, outOfResources, fight, showFight,
+            CrystalModule.METEOR.moduleName());
     }
 
     /**

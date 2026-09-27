@@ -257,6 +257,16 @@ class FightAnalysisTest {
     }
 
     @Test
+    void crystalAuraPlusPlusOnIsNotReportedAsTheAuraOff() {
+        // A fight fought with crystal-aura++ on the whole time and Meteor's crystal-aura off: no false
+        // "your crystal aura was off".
+        assertFalse(fires(crystals(60).modules("auto-totem", "surround", "crystal-aura++").build(), CRYSTAL_AURA_OFF));
+        FightRecord late = crystals(60).modules("auto-totem", "surround").moduleChange(11, "crystal-aura++", true).build();
+        assertEquals(Msg.of(RecorderText.CAUSE_CRYSTAL_AURA_OFF, "percent", 60, "active", 9, "seconds", 20),
+            cause(late, CRYSTAL_AURA_OFF).evidence(), "counted like Meteor's when it was on for only part of it");
+    }
+
+    @Test
     void crystalAuraOffNeedsSixtyPercentOfTheDamageFromCrystals() {
         assertFalse(fires(crystals(59).modules("auto-totem", "surround").build(), CRYSTAL_AURA_OFF));
     }

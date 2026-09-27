@@ -1,5 +1,6 @@
 package com.xploits.pvp.core;
 
+import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.shared.core.i18n.Msg;
 
 import java.util.ArrayList;
@@ -76,11 +77,21 @@ public final class PvpStatus {
      * @param missing the names of the managed modules Meteor does not have, in catalog order
      */
     public static Msg skippedLines(List<Skipped> skipped, List<String> missing) {
+        return skippedLines(skipped, missing, CrystalModule.METEOR);
+    }
+
+    /**
+     * {@link #skippedLines(List, List)} naming {@code crystal-aura} as the aura auto-pvp drives
+     * (crystal-aura++ spec §3.3); the other modules keep their names.
+     */
+    public static Msg skippedLines(List<Skipped> skipped, List<String> missing, CrystalModule crystal) {
         Msg lines = null;
         for (Skipped s : realSkips(skipped)) {
-            lines = append(lines, Msg.of(PvpText.STATUS_SKIPPED, "module", s.module().name(), "reason", s.reason()));
+            lines = append(lines, Msg.of(PvpText.STATUS_SKIPPED, "module", crystal.resolve(s.module().name()),
+                "reason", s.reason()));
         }
-        List<String> off = profileOffNames(skipped);
+        List<String> off = new ArrayList<>();
+        for (String name : profileOffNames(skipped)) off.add(crystal.resolve(name));
         if (!off.isEmpty()) {
             lines = append(lines, Msg.of(PvpText.STATUS_PROFILE_OFF, "modules", String.join(", ", off)));
         }
@@ -88,6 +99,17 @@ public final class PvpStatus {
             lines = append(lines, Msg.of(PvpText.STATUS_MISSING, "modules", String.join(", ", missing)));
         }
         return lines == null ? Msg.of(PvpText.NOTHING) : lines;
+    }
+
+    /**
+     * The status with its late-own-crystals line (crystal-aura++ spec Q2, Q6) when auto-pvp drives
+     * {@code crystal-aura++}; with Meteor's aura the status is returned as it is.
+     *
+     * @param lateOwn crystal-aura++'s own count of crystals of ours that appeared after their wait ran out
+     */
+    public static Msg withLateOwn(Msg status, CrystalModule crystal, int lateOwn) {
+        if (crystal != CrystalModule.XPLOITS) return status;
+        return Msg.of(PvpText.CONCAT, "first", status, "second", Msg.of(CrystalText.STATUS_LATE_OWN, "count", lateOwn));
     }
 
     private static Msg append(Msg head, Msg line) {

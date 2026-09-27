@@ -9,8 +9,11 @@ import com.xploits.pvp.core.CombatDirector;
 import com.xploits.pvp.core.CombatPosture;
 import com.xploits.pvp.core.CombatSnapshot;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.CrystalLatch;
+import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.DefensivePolicy;
 import com.xploits.pvp.core.FriendLedger;
+import com.xploits.pvp.core.HoleMemory;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.MissingModules;
@@ -20,6 +23,8 @@ import com.xploits.pvp.core.PvpStatus;
 import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.core.Resource;
 import com.xploits.pvp.core.Skipped;
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.hud.core.PanelInput;
 import com.xploits.pvp.profile.core.AutobreakWatch;
 import com.xploits.pvp.profile.core.ProfileSession;
@@ -35,6 +40,7 @@ import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
+import meteordevelopment.meteorclient.settings.EnumSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.KeybindSetting;
 import meteordevelopment.meteorclient.settings.Setting;
@@ -66,6 +72,7 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -83,7 +90,12 @@ import java.util.Set;
  * <p>It is the <b>adapter</b>: it measures the world and carries out what the core decides, which is
  * pure and tested. Nothing is decided here. What it measures is the enemy's phase, your half of the
  * snapshot -the one behind the defensive axis of redesign §5- and the other Meteor settings a core
- * decision depends on, today only the {@code anti-suicide} of {@code crystal-aura}.
+ * decision depends on, today only the {@code anti-suicide} of the crystal aura it drives.
+ *
+ * <p>Which crystal aura that is -Meteor's {@code crystal-aura} or {@code crystal-aura++}- is the
+ * {@code crystal-module} setting, latched on activation ({@link CrystalLatch}). Everything below this
+ * adapter keys on the catalog's {@code crystal-aura}; {@link #byName} is the one place that turns it into
+ * the real module, and what the player reads names the real one.
  */
 public class AutoPvp extends XploitsModule {
     private static final int FIRST_SLOT = 0;
@@ -155,7 +167,8 @@ public class AutoPvp extends XploitsModule {
      */
     private final Setting<Boolean> syncFriends = sgGeneral.add(new BoolSetting.Builder()
         .name("sync-friends")
-        .description(Texts.startupText(PvpText.SETTING_SYNC_FRIENDS))
+        // Fixed at startup, so it names both auras: either one only spares who is on that list.
+        .description(Texts.startupText(PvpText.SETTING_SYNC_FRIENDS, "module", PvpText.BOTH_CRYSTAL_AURAS))
         .defaultValue(true)
         .build()
     );
@@ -171,6 +184,25 @@ public class AutoPvp extends XploitsModule {
         .name("notify-sound")
         .description(Texts.startupText(PvpText.SETTING_NOTIFY_SOUND))
         .defaultValue(true)
+        .build()
+    );
+
+    /** The crystal aura driven this activation (crystal-aura++ spec P5). Before its setting: it is the setting's state. */
+    private final CrystalLatch crystalLatch = new CrystalLatch(this::isActive, this::releaseAll, this::crystalModuleMoved);
+
+    /**
+     * Which crystal aura to drive (crystal-aura++ spec §3.2). Read once, first thing in
+     * {@link #onActivate}. Its {@code onChanged} only notes the value: the change is applied first thing
+     * on the next tick, while auto-pvp is on and if the value differs from the latch, releasing
+     * everything with the old aura still latched before the latch moves. A Meteor load -a reset to the
+     * default and then the saved value, in one go- that ends on the latched value is no change. Not in
+     * the style profiles.
+     */
+    private final Setting<CrystalModule> crystalModule = sgGeneral.add(new EnumSetting.Builder<CrystalModule>()
+        .name("crystal-module")
+        .description(Texts.startupText(PvpText.SETTING_CRYSTAL_MODULE))
+        .defaultValue(CrystalModule.METEOR)
+        .onChanged(crystalLatch::requested)
         .build()
     );
 
@@ -217,8 +249,16 @@ public class AutoPvp extends XploitsModule {
      */
     private void onUseCrystalAuraChanged(boolean value) {
         if (autobreakWatch.changed(value, !applyingProfile && mc.world != null)) {
-            warning(ProfileText.PROFILE_NO_AUTOBREAK_UNTICKED);
+            warning(ProfileText.PROFILE_NO_AUTOBREAK_UNTICKED, "module", namedCrystalModule().moduleName());
         }
+    }
+
+    /**
+     * The aura the texts name: the latched one while auto-pvp is on, and with it off the one the next
+     * activation will latch. The profile commands and {@code use-crystal-aura} speak with it off too.
+     */
+    private CrystalModule namedCrystalModule() {
+        return isActive() ? crystalLatch.latched() : crystalModule.get();
     }
 
     /** The player's style profiles and their file (ruling R1: owned here, reached by the commands through this module). */
@@ -273,6 +313,16 @@ public class AutoPvp extends XploitsModule {
      * while the director wants it on.
      */
     private boolean yChangedLastTick;
+    /**
+     * {@code selfHoleBreached}'s bookkeeping (task R3-13 fix 2), extracted into its own pure,
+     * unit-tested class in review round 1: this adapter only measures the world and feeds it plain
+     * values every tick ({@link #holeMemory}, {@link #ticks}), and forgets it -{@link
+     * HoleMemory#forget()}- from {@link #onActivate} and {@link #releaseAll}, which between them
+     * cover dying, changing world and auto-pvp deactivating.
+     */
+    private final HoleMemory holeMemory = new HoleMemory();
+    /** The tick counter fed to {@link #holeMemory}; only the difference between two ticks matters. */
+    private long ticks;
     private SkippedAlly skippedAlly;
     /** Names of ours already announced in this activation: each one is said only once. */
     private final Set<String> announcedAllies = new LinkedHashSet<>();
@@ -291,6 +341,9 @@ public class AutoPvp extends XploitsModule {
 
     @Override
     public void onActivate() {
+        // First of all (crystal-aura++ spec P5): the missing-module measure and the already-on warnings
+        // below ask about the crystal aura through the latch.
+        crystalLatch.latch(crystalModule.get());
         sayLoadWarning();
         panelReleased.clear();
         director.reset();
@@ -303,6 +356,8 @@ public class AutoPvp extends XploitsModule {
         lastReported = CombatState.NO_COMBAT;
         lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
+        holeMemory.forget();
+        ticks = 0;
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
@@ -328,9 +383,12 @@ public class AutoPvp extends XploitsModule {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        // Before anything else: a crystal-module change noted since the last tick is applied now.
+        crystalLatch.settle();
         // Whatever notify says: without it the player would see a module in the use-* list that never
         // comes up and would not know why.
         missing.warning(mc.player != null && mc.world != null).ifPresent(this::warning);
+        if (mc.player != null && mc.world != null) reportTwoAuras();
         if (mc.player == null || mc.world == null || !mc.player.isAlive()) {
             releaseAll();
             return;
@@ -348,7 +406,9 @@ public class AutoPvp extends XploitsModule {
         CombatSnapshot snapshot = snapshot(target, couriers, tpyUsers);
         lastSnapshot = snapshot;
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
-        Plan plan = director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules());
+        // Named once here: every warning and skip reason that names the aura says the real one.
+        Plan plan = crystalLatch.latched().name(
+            director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules()));
         lastPlan = plan;
 
         apply(plan);
@@ -360,6 +420,30 @@ public class AutoPvp extends XploitsModule {
         reportSkippedAlly();
         lastReported = plan.state();
         lastPosture = plan.posture();
+    }
+
+    /**
+     * After the latch moved mid-run (crystal-aura++ spec P5): the catalog's {@code crystal-aura} is now
+     * another module, so what Meteor lacks is measured again, and if the newly latched aura is already on
+     * it is the player's, as at activation, and that is said.
+     */
+    private void crystalModuleMoved(CrystalModule now) {
+        missing = missing.remeasure(name -> byName(name) != null);
+        Module aura = byName(CrystalModule.LOGICAL);
+        crystalLatch.alreadyOn(aura != null && aura.isActive()).ifPresent(this::warning);
+    }
+
+    /**
+     * Q4: the crystal aura auto-pvp does not drive is on, next to the one it does. Said once each time
+     * that starts, whatever {@code notify} says and in any phase: two auras fight over the same crystals,
+     * and crystal-aura++ does nothing while Meteor's is on.
+     */
+    private void reportTwoAuras() {
+        CrystalModule driven = crystalLatch.latched();
+        Module other = Modules.get().get(driven.other().moduleName());
+        if (crystalLatch.otherAuraStarted(other != null && other.isActive())) {
+            warning(PvpText.TWO_AURAS, "other", driven.other().moduleName(), "module", driven.moduleName());
+        }
     }
 
     /** One of ours who was in reach and was not attacked: who, why and at what distance. */
@@ -564,8 +648,8 @@ public class AutoPvp extends XploitsModule {
         // PROFILE_OFF is never said in chat (design §1): the player chose it, and the panel shows it.
         // Nor is MODULE_MISSING_SKIP: it was said once when auto-pvp was turned on, and .xploits pvp shows it.
         for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
-            notes.put(skipped.module().name(),
-                Msg.of(PvpText.NOT_ENABLING, "module", skipped.module().name(), "reason", skipped.reason()));
+            notes.put(skipped.module().name(), Msg.of(PvpText.NOT_ENABLING,
+                "module", crystalLatch.resolve(skipped.module().name()), "reason", skipped.reason()));
         }
 
         if (notify.get() && plan.state() != CombatState.OUT_OF_RESOURCES) {
@@ -597,7 +681,7 @@ public class AutoPvp extends XploitsModule {
         double incomingDamage = PlayerUtils.possibleHealthReductions();
         boolean inHole = PlayerUtils.isInHole(false);
         boolean onGround = mc.player.isOnGround();
-        boolean antiSuicide = crystalAuraAntiSuicide();
+        boolean protectsYou = crystalAuraProtectsYou();
         int hostiles = hostilesInCrystalRange(couriers, tpyUsers);
         // The same comparison Surround makes in its toggle-on-y-change -field_6036 is lastY in
         // yarn 1.21.11+build.3, checked in the mappings, not assumed-, plus the previous tick's:
@@ -607,11 +691,15 @@ public class AutoPvp extends XploitsModule {
         boolean movedNow = mc.player.lastY != mc.player.getY();
         boolean yChanged = movedNow || yChangedLastTick;
         yChangedLastTick = movedNow;
+        // selfHoleBreached (task R3-13 fix 2): the adapter only measures the world -the feet block as
+        // a long, the same BlockPos.asLong() convention CandidateTracker uses- and hands it to
+        // HoleMemory, which is pure and carries every tick of judgement (its own tests: HoleMemoryTest).
+        boolean holeBreached = holeMemory.tick(++ticks, inHole, onGround, movedNow, mc.player.getBlockPos().asLong());
 
         if (target == null) {
             return new CombatSnapshot(false, 0, 0, 0, false, false,
                 mc.player.isGliding(), inventory.totems(), inventory.resources(),
-                null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+                null, hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, holeBreached, protectsYou);
         }
 
         // SURROUNDED requires auto-city's real reach to the block, not to the target (spec §4.2.1,
@@ -624,7 +712,7 @@ public class AutoPvp extends XploitsModule {
         return new CombatSnapshot(true, mc.player.distanceTo(target),
             surroundSides(target), cityBlockDistance, protectedFromCrystals(target), target.isGliding(),
             mc.player.isGliding(), inventory.totems(), inventory.resources(),
-            nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, antiSuicide);
+            nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, holeBreached, protectsYou);
     }
 
     /**
@@ -734,22 +822,40 @@ public class AutoPvp extends XploitsModule {
     }
 
     /**
-     * Whether the {@code anti-suicide} of {@code crystal-aura} is on (redesign §7, through the door
-     * of §10). It is the only thing that decides whether the totem floor stays in place.
+     * Whether the crystal aura it drives already keeps you from suiciding (redesign §7, through the door
+     * of §10; corrected by task R3-13 fix 1). It is the only thing that decides whether the totem floor
+     * stays in place, and {@link #byName} picks the latched module.
      *
-     * <p>It is read through Meteor's public settings API —{@code Module.settings} is
+     * <p>Meteor's {@code crystal-aura} only has {@code anti-suicide} to ask. {@code crystal-aura++} copies
+     * that setting and adds a second, stronger one: {@code self-budget}, which on never leaves you below
+     * its {@code reserve} (&ge; {@link com.xploits.pvp.crystal.core.SelfBudget#FLOOR}) -a placement it
+     * would refuse for that reason alone is one {@code anti-suicide} might still have let through, since
+     * anti-suicide only refuses what would kill you outright. {@link CrystalModule#protectsYou} is where
+     * the two settings are folded into the one answer, per aura; it is pure and its own tests cover the
+     * four combinations.
+     *
+     * <p>Both settings are read through Meteor's public settings API —{@code Module.settings} is
      * {@code public final} and {@code Settings#get(String, Class)} returns the already typed
      * {@code Setting<Boolean>}, comparing the name case-insensitively—, not by reflection nor by a mixin:
-     * the {@code antiSuicide} field of {@code CrystalAura} is private, but the setting is not.
+     * the {@code antiSuicide} field of {@code CrystalAura} is private, but the setting is not, and
+     * {@code CrystalAuraPlusPlus}'s {@code self-budget} setting is {@code CrystalSetting.SELF_BUDGET}'s
+     * own id.
      *
-     * <p>If the module is not loaded or the setting does not show up, the answer is <b>off</b>, which is the
-     * prudent value: without being able to prove the protection exists, the totem floor stays.
+     * <p>If the module is not loaded or a setting does not show up, that setting reads as <b>off</b>,
+     * which is the prudent value: without being able to prove a protection exists, the totem floor stays.
      */
-    private static boolean crystalAuraAntiSuicide() {
+    private boolean crystalAuraProtectsYou() {
         Module crystalAura = byName(ManagedModules.CRYSTAL_AURA.name());
         if (crystalAura == null) return false;
-        Setting<Boolean> antiSuicide = crystalAura.settings.get("anti-suicide", Boolean.class);
-        return antiSuicide != null && antiSuicide.get();
+        boolean antiSuicide = boolSettingOn(crystalAura, "anti-suicide");
+        boolean selfBudget = boolSettingOn(crystalAura, CrystalSetting.SELF_BUDGET.id());
+        return crystalLatch.latched().protectsYou(antiSuicide, selfBudget);
+    }
+
+    /** A boolean setting of {@code module} by name, or off if the module lacks it (prudent default). */
+    private static boolean boolSettingOn(Module module, String settingName) {
+        Setting<Boolean> setting = module.settings.get(settingName, Boolean.class);
+        return setting != null && setting.get();
     }
 
     /** Loaded players and how many of them are on your side, with the same definition as the target. Works with auto-pvp off. */
@@ -852,7 +958,7 @@ public class AutoPvp extends XploitsModule {
         // start of this tick, which is what has to be matched against what the plan wants. A module
         // just enabled does not count until the next tick, and that is right: it has not yet
         // had a chance to spend.
-        reportIdle(actionWatch.update(lastSnapshot, wanted, active));
+        reportIdle(actionWatch.update(lastSnapshot, wanted, active, holding()));
 
         ModuleLedger.Result result = ledger.apply(director.state(), plan.posture(), wanted, active);
 
@@ -866,9 +972,26 @@ public class AutoPvp extends XploitsModule {
         }
         if (notify.get()) {
             for (String name : result.newlyReleased()) {
-                info(PvpText.RELEASED, "module", name);
+                info(PvpText.RELEASED, "module", crystalLatch.resolve(name));
             }
         }
+    }
+
+    /**
+     * Q3: the catalog's {@code crystal-aura} while {@code crystal-aura++} is the one driven, is on and is
+     * holding back on purpose -refusing beside Meteor's aura, or its budget refusing every option that
+     * passed Meteor's checks-; nothing otherwise. The watch does not count those ticks as idle.
+     */
+    private Set<String> holding() {
+        if (crystalLatch.latched() != CrystalModule.XPLOITS) return Set.of();
+        CrystalAuraPlusPlus aura = Modules.get().get(CrystalAuraPlusPlus.class);
+        return aura != null && aura.isActive() && aura.holding() ? Set.of(CrystalModule.LOGICAL) : Set.of();
+    }
+
+    /** crystal-aura++'s late own crystals (Q2, Q6), for the status line shown while it is driven. */
+    private int lateOwnCrystals() {
+        CrystalAuraPlusPlus aura = Modules.get().get(CrystalAuraPlusPlus.class);
+        return aura == null ? 0 : aura.lateOwnCrystals();
     }
 
     /**
@@ -884,7 +1007,7 @@ public class AutoPvp extends XploitsModule {
      * a valid position.
      */
     private void reportIdle(List<ActionWatch.Idle> newlyIdle) {
-        for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle));
+        for (ActionWatch.Idle idle : newlyIdle) warning(ActionWatch.reason(idle, crystalLatch.latched()));
     }
 
     /** I1: if something it manages was already on when auto-pvp was turned on, it is the player's and that has to be said. */
@@ -894,7 +1017,7 @@ public class AutoPvp extends XploitsModule {
             if (module == null || !module.isActive()) continue;
 
             if (managed.equals(ManagedModules.CRYSTAL_AURA)) {
-                warning(PvpText.CRYSTAL_AURA_ALREADY_ON);
+                crystalLatch.alreadyOn(true).ifPresent(this::warning);
             } else {
                 warning(PvpText.ALREADY_ON, "module", managed.name());
             }
@@ -914,14 +1037,20 @@ public class AutoPvp extends XploitsModule {
         lastReported = CombatState.NO_COMBAT;
         lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
+        holeMemory.forget();
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
         panelReleased.clear();
     }
 
-    private static Module byName(String name) {
-        return Modules.get().get(name);
+    /**
+     * The module behind a name, the one place where the catalog's {@code crystal-aura} becomes the aura
+     * latched (crystal-aura++ spec §3.2): apply, releaseAll, the missing measure, the anti-suicide read,
+     * the already-on warning and the status all ask here.
+     */
+    private Module byName(String name) {
+        return Modules.get().get(crystalLatch.resolve(name));
     }
 
     /** I5: OUT_OF_RESOURCES is the only loud warning (spec §4.1, §6): chat in warning() and a toast with sound. */
@@ -938,10 +1067,11 @@ public class AutoPvp extends XploitsModule {
         mc.getToastManager().add(toast.build());
     }
 
-    private static Msg outOfResourcesMessage(Plan plan) {
+    private Msg outOfResourcesMessage(Plan plan) {
         Object reasons = null;
         for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
-            Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", skipped.module().name(), "reason", skipped.reason());
+            Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", crystalLatch.resolve(skipped.module().name()),
+                "reason", skipped.reason());
             reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
         }
         if (reasons == null) return Msg.of(PvpText.OUT_OF_RESOURCES_NONE);
@@ -989,16 +1119,25 @@ public class AutoPvp extends XploitsModule {
             warningLines = append(warningLines, Msg.of(PvpText.STATUS_WARNING, "warning", warning));
         }
         List<String> yours = yourActiveModules(owned);
-        return Msg.of(PvpText.STATUS, "state", PvpText.of(lastPlan.state()),
+        CrystalModule crystal = crystalLatch.latched();
+        Msg status = Msg.of(PvpText.STATUS, "state", PvpText.of(lastPlan.state()),
             "seconds", director.ticksInState() / TICKS_PER_SECOND, "posture", PvpText.of(lastPlan.posture()),
             "profile", PvpStatus.profile(activeProfile().name(), profileModified()),
             "target", target, "self", self, "ally", ally,
             "friends", syncedFriendsLine(),
-            "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", owned),
+            "owned", owned.isEmpty() ? PvpText.NONE : String.join(", ", realNames(owned)),
             "idle", idleLine(),
-            "skipped", PvpStatus.skippedLines(lastPlan.skipped(), missing.names()),
+            "skipped", PvpStatus.skippedLines(lastPlan.skipped(), realNames(missing.names()), crystal),
             "warnings", warningLines == null ? Msg.of(PvpText.NOTHING) : warningLines,
             "yours", yours.isEmpty() ? PvpText.NONE : String.join(", ", yours));
+        return PvpStatus.withLateOwn(status, crystal, crystal == CrystalModule.XPLOITS ? lateOwnCrystals() : 0);
+    }
+
+    /** The real module names behind catalog names, in their order. */
+    private List<String> realNames(Collection<String> names) {
+        List<String> real = new ArrayList<>();
+        for (String name : names) real.add(crystalLatch.resolve(name));
+        return real;
     }
 
     /**
@@ -1019,7 +1158,7 @@ public class AutoPvp extends XploitsModule {
         Object parts = null;
         for (ActionWatch.Idle verdict : idle) {
             List<String> names = new ArrayList<>();
-            for (ManagedModule module : verdict.modules()) names.add(module.name());
+            for (ManagedModule module : verdict.modules()) names.add(crystalLatch.resolve(module.name()));
             // The "+" is not decorative: it says those names go together because they share a stack and the
             // verdict cannot be split between them.
             Msg joint = verdict.joint()
@@ -1117,8 +1256,9 @@ public class AutoPvp extends XploitsModule {
 
     private ProfileSession.Outcome carryOut(ProfileSession.Outcome outcome) {
         outcome.apply().ifPresent(this::applyProfile);
-        for (Msg line : outcome.infos()) info(line);
-        for (PositionedMsg line : outcome.warnings()) warningPrivate(line);
+        CrystalModule crystal = namedCrystalModule();
+        for (Msg line : outcome.infos()) info(crystal.name(line));
+        for (PositionedMsg line : outcome.warnings()) warningPrivate(crystal.name(line));
         return outcome;
     }
 
@@ -1181,11 +1321,11 @@ public class AutoPvp extends XploitsModule {
         PanelState panel = state.get();
         Plan plan = panel.plan();
         List<String> enabled = new ArrayList<>();
-        for (ManagedModule module : plan.enable()) enabled.add(module.name());
+        for (ManagedModule module : plan.enable()) enabled.add(crystalLatch.resolve(module.name()));
         List<PanelInput.Idle> idle = new ArrayList<>();
         for (ActionWatch.Idle verdict : panel.idle()) {
             List<String> names = new ArrayList<>();
-            for (ManagedModule module : verdict.modules()) names.add(module.name());
+            for (ManagedModule module : verdict.modules()) names.add(crystalLatch.resolve(module.name()));
             idle.add(new PanelInput.Idle(verdict.resource().name().toLowerCase(Locale.ROOT), names));
         }
         FightRecorder recorder = Modules.get().get(FightRecorder.class);
@@ -1193,20 +1333,26 @@ public class AutoPvp extends XploitsModule {
             .map(live -> new PanelInput.LiveFight(live.seconds(), live.yourPops(), live.theirPops(), live.damageTaken()))
             .orElse(null);
         return new PanelInput(true, profile, modified, plan.state(), plan.posture(), panel.target(),
-            panel.targetDistance(), enabled, List.copyOf(panel.released()), PvpStatus.profileOffNames(plan.skipped()),
+            panel.targetDistance(), enabled, realNames(panel.released()), realNames(PvpStatus.profileOffNames(plan.skipped())),
             idle, panel.crystals(), panel.totems(), panel.obsidian(),
             plan.enable().contains(ManagedModules.CRYSTAL_AURA), plan.state() == CombatState.OUT_OF_RESOURCES,
-            fight, showFight);
+            fight, showFight, crystalLatch.latched().moduleName());
     }
 
-    /** I6: which combat modules you have active that the director does not control, not a fixed list. */
+    /**
+     * I6: which combat modules you have active that the director does not control, not a fixed list. The
+     * crystal aura it does not drive is one of them (crystal-aura++ spec P5).
+     */
     private List<String> yourActiveModules(Set<String> owned) {
         List<String> result = new ArrayList<>();
         for (ManagedModule managed : ManagedModules.ALL) {
             if (owned.contains(managed.name())) continue;
             Module module = byName(managed.name());
-            if (module != null && module.isActive()) result.add(managed.name());
+            if (module != null && module.isActive()) result.add(crystalLatch.resolve(managed.name()));
         }
+        String otherAura = crystalLatch.latched().other().moduleName();
+        Module other = Modules.get().get(otherAura);
+        if (other != null && other.isActive()) result.add(otherAura);
         for (String name : ALWAYS_YOURS) {
             Module module = byName(name);
             if (module != null && module.isActive()) result.add(name);

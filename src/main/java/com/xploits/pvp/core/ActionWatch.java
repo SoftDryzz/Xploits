@@ -200,11 +200,19 @@ public final class ActionWatch {
      * spend one and pick up two). It cannot be claimed that nothing is spent while the stack moves, so
      * it is not claimed.
      *
+     * <p><b>A module holding back is not idle either</b> (crystal-aura++ spec Q3, Q6). While
+     * {@code crystal-aura++} refuses because Meteor's aura is on, or its budget refuses every option that
+     * passed Meteor's checks, not placing is its answer, not a wall. A tick on which a module in a
+     * position to spend is holding resets its stack's count, as a moved stack does. It is narrow on
+     * purpose: a holding name that is not in a position to spend changes nothing, and when nothing passes
+     * Meteor's checks the module does not hold, so a real misconfiguration is still said.
+     *
      * @param snapshot the situation of this tick, for the target and for the inventory counts
      * @param wanted   the module names the plan of this tick wants on
      * @param active   the module names that are really on right now
+     * @param holding  the module names holding back on purpose this tick (catalog names)
      */
-    public List<Idle> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active) {
+    public List<Idle> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active, Set<String> holding) {
         List<Idle> newlyIdle = new ArrayList<>();
 
         for (Resource resource : WATCHED_RESOURCES) {
@@ -214,8 +222,9 @@ public final class ActionWatch {
 
             List<ManagedModule> eligible = eligibleFor(resource, snapshot, wanted, active);
             List<ManagedModule> previous = lastEligible.put(resource, eligible);
+            boolean held = eligible.stream().anyMatch(module -> holding.contains(module.name()));
 
-            if (eligible.isEmpty() || moved) {
+            if (eligible.isEmpty() || moved || held) {
                 idleTicks.remove(resource);
                 warned.remove(resource);
                 continue;
@@ -231,6 +240,11 @@ public final class ActionWatch {
             }
         }
         return List.copyOf(newlyIdle);
+    }
+
+    /** {@link #update(CombatSnapshot, Set, Set, Set)} with nothing holding back. */
+    public List<Idle> update(CombatSnapshot snapshot, Set<String> wanted, Set<String> active) {
+        return update(snapshot, wanted, active, Set.of());
     }
 
     /** The watched modules of that stack that were in a position to spend it this tick. */
@@ -286,18 +300,27 @@ public final class ActionWatch {
      * words, that the verdict is joint and why it cannot be split.
      */
     public static Msg reason(Idle idle) {
+        return reason(idle, CrystalModule.METEOR);
+    }
+
+    /**
+     * {@link #reason(Idle)} with the crystal aura auto-pvp drives: {@code crystal-aura} is named as the
+     * real module, with that module's suspects (crystal-aura++ spec §3.4).
+     */
+    public static Msg reason(Idle idle, CrystalModule crystal) {
         PvpText material = material(idle.resource());
         if (!idle.joint()) {
             ManagedModule module = idle.modules().getFirst();
-            return Msg.of(PvpText.IDLE_ALONE, "module", module.name(), "seconds", seconds(idle),
-                "material", material, "innocent", innocent(module), "suspects", suspects(module));
+            return Msg.of(PvpText.IDLE_ALONE, "module", crystal.resolve(module.name()), "seconds", seconds(idle),
+                "material", material, "innocent", innocent(module), "suspects", suspects(module, crystal));
         }
 
         List<String> names = new ArrayList<>();
         Object tails = null;
         for (ManagedModule module : idle.modules()) {
-            names.add(module.name());
-            Msg tail = Msg.of(PvpText.SUSPECTS_OF, "module", module.name(), "suspects", suspects(module));
+            names.add(crystal.resolve(module.name()));
+            Msg tail = Msg.of(PvpText.SUSPECTS_OF, "module", crystal.resolve(module.name()),
+                "suspects", suspects(module, crystal));
             tails = tails == null ? tail : Msg.of(PvpText.JOIN_SEMICOLON, "first", tails, "rest", tail);
         }
         return Msg.of(PvpText.IDLE_TOGETHER, "modules", join(names), "seconds", seconds(idle),
@@ -342,9 +365,9 @@ public final class ActionWatch {
     }
 
     /** Which settings to look at, without claiming the culprit is among them. */
-    private static PvpText suspects(ManagedModule module) {
+    private static PvpText suspects(ManagedModule module, CrystalModule crystal) {
         return switch (module.name()) {
-            case "crystal-aura" -> PvpText.SUSPECTS_CRYSTAL_AURA;
+            case "crystal-aura" -> crystal.suspects();
             case "auto-trap" -> PvpText.SUSPECTS_AUTO_TRAP;
             case "auto-web" -> PvpText.SUSPECTS_AUTO_WEB;
             case "auto-anvil" -> PvpText.SUSPECTS_AUTO_ANVIL;

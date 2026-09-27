@@ -15,6 +15,12 @@ class ModuleRoleTest {
     }
 
     @Test
+    void crystalAuraPlusPlusIsCrystalOffenseToo() {
+        assertEquals(ModuleRole.CRYSTAL_OFFENSE, ModuleRole.of("crystal-aura++"));
+        assertEquals(ModuleRole.OTHER, ModuleRole.of("crystal-aura+"), "only the exact name");
+    }
+
+    @Test
     void killAuraIsMeleeOffense() {
         assertEquals(ModuleRole.MELEE_OFFENSE, ModuleRole.of("kill-aura"));
     }

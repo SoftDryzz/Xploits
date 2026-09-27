@@ -6,6 +6,8 @@ import com.xploits.pvp.core.ManagedModules;
 /**
  * CHECK {@code autopvp-engages} (spec {@code 2026-09-25-ingame-bench}, §Scenarios): auto-pvp, turned on
  * with a player in reach, targets it and turns crystal-aura on; turned off, it turns crystal-aura off.
+ * With {@code crystal-module} on its default {@code meteor}, crystal-aura++ never turns on (crystal-aura++
+ * spec §4: the default behaves as in 0.6.2).
  *
  * <p>Standard loadout, recorder off, crystal-aura off at T0, profile {@code balanced}, a Still sparring.
  * Auto-pvp runs 10 s, then it is turned off and one tick passes.
@@ -45,6 +47,7 @@ final class AutoPvpEngages implements Scenario {
         int planned = 0;
         int auraOn = 0;
         int all = 0;
+        int plusPlusOn = 0;
         for (int i = 0; i < RUN_TICKS; i++) {
             bench.ticks(1);
             AutoPvpScene.Look look = scene.look(bench);
@@ -54,15 +57,19 @@ final class AutoPvpEngages implements Scenario {
             if (onSparring) targeted++;
             if (look.planEnablesAura()) planned++;
             if (look.auraOn()) auraOn++;
+            if (look.plusPlusOn()) plusPlusOn++;
             if (inFight && onSparring && look.planEnablesAura() && look.auraOn()) all++;
         }
         Bench.check(all > 0, "no tick had auto-pvp engaged on the sparring with crystal-aura planned and on (ticks: engaged "
             + engaged + ", targeted " + targeted + ", planned " + planned + ", crystal-aura on " + auraOn + ")");
+        Bench.check(plusPlusOn == 0, "crystal-aura++ was on for " + plusPlusOn + " ticks with crystal-module meteor");
 
         bench.onClient(client -> scene.autoPvp.disable());
         bench.ticks(1);
         Bench.check(!bench.fromClient(client -> AutoPvpScene.on(ManagedModules.CRYSTAL_AURA)),
             "crystal-aura is still on after auto-pvp was turned off");
+        Bench.check(!bench.fromClient(client -> AutoPvpScene.plusPlusOn()),
+            "crystal-aura++ is on after auto-pvp was turned off");
         bench.finish();
         return Metrics.none();
     }

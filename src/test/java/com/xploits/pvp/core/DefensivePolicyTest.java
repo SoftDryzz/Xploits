@@ -96,6 +96,48 @@ class DefensivePolicyTest {
             .contains(ManagedModules.SURROUND), "it is a defensive hole module");
     }
 
+    // --- task R3-13 fix 2: keep asking for surround when your hole has been breached (from the owner's
+    // real log: an enemy breaks one side of the hole, isInHole(false) reads false on that same tick, and
+    // surround stopped being requested exactly when the hole needed patching) ---
+
+    /** Not in a hole any more, breached or not, with the rest at the values that used to ask for surround. */
+    private static CombatSnapshot breached(boolean breached) {
+        return self(10, 0, false, true).withHoleBreached(breached);
+    }
+
+    @Test
+    void aBreachedHoleAsksForSurroundJustLikeBeingInOne() {
+        assertTrue(DefensivePolicy.modulesFor(CombatPosture.THREATENED, breached(true))
+            .contains(ManagedModules.SURROUND),
+            "selfInHole already reads false the tick the breach happens: without this, surround stops "
+                + "being requested on exactly the tick it is needed to patch the gap");
+    }
+
+    @Test
+    void withoutTheBreachFactThereIsNoSurroundOutsideTheHole() {
+        // What the adapter reports when the block was mined somewhere else, or long enough ago, or you
+        // walked off the block: none of that is this rule's business, it only reads the one fact.
+        assertFalse(DefensivePolicy.modulesFor(CombatPosture.THREATENED, breached(false))
+            .contains(ManagedModules.SURROUND));
+    }
+
+    @Test
+    void aBreachedHoleStillNeedsTheGroundAndStillHeightToAskForSurround() {
+        // The breach does not bypass the other two guards (§5, critical C2): they are ANDed with the
+        // whole (selfInHole || selfHoleBreached), not only with selfInHole.
+        assertFalse(DefensivePolicy.modulesFor(CombatPosture.THREATENED,
+                self(10, 0, false, false).withHoleBreached(true))
+            .contains(ManagedModules.SURROUND), "off the ground, breached or not, it still re-centers in a loop");
+        assertFalse(DefensivePolicy.modulesFor(CombatPosture.THREATENED,
+                breached(true).withSelfYChanged(true))
+            .contains(ManagedModules.SURROUND), "your height just moved: the same self-shutdown guard as selfInHole");
+    }
+
+    @Test
+    void aCalmPostureAsksForNothingEvenWhenBreached() {
+        assertTrue(DefensivePolicy.modulesFor(CombatPosture.CALM, breached(true)).isEmpty());
+    }
+
     @Test
     void surroundIsNotAskedForOnTheTickYouLandInTheHole() {
         // C2: Surround turns itself off with toggle-on-y-change (defaultValue(true)), and it checks it

@@ -46,6 +46,16 @@ public final class MissingModules {
     }
 
     /** The missing modules, in catalog order: what the director skips before anything else. */
+    /**
+     * Measures again, after the crystal aura behind the catalog's name changed mid-run (crystal-aura++
+     * spec P5). The same missing set keeps this object, so what was already said is not said again; a
+     * different one is a new measure, said once.
+     */
+    public MissingModules remeasure(Predicate<String> registered) {
+        MissingModules again = measure(registered);
+        return again.modules.equals(modules) ? this : again;
+    }
+
     public Set<ManagedModule> modules() {
         return modules;
     }

@@ -13,6 +13,9 @@ public enum PvpText implements MessageKey {
     SETTING_NOTIFY_SOUND,
     SETTING_USE_MODULE,
     SETTING_NEXT_PROFILE,
+    SETTING_CRYSTAL_MODULE,
+    /** Both crystal auras by name, for the texts fixed at startup that cannot know which one is driven. */
+    BOTH_CRYSTAL_AURAS,
     NOTHING,
     NONE,
     JOIN_COMMA,
@@ -27,6 +30,8 @@ public enum PvpText implements MessageKey {
     MODULE_MISSING,
     MODULE_MISSING_SKIP,
     TOTEM_FLOOR,
+    /** {@code TOTEM_FLOOR} for crystal-aura++ (task R3-13 fix 1): says both its settings are off. */
+    TOTEM_FLOOR_PLUS_PLUS,
     AURA_NO_CRYSTALS,
     SHORTAGE,
     SHORTAGE_SHARED,
@@ -45,6 +50,7 @@ public enum PvpText implements MessageKey {
     INNOCENT_AUTO_WEB,
     INNOCENT_DEFAULT,
     SUSPECTS_CRYSTAL_AURA,
+    SUSPECTS_CRYSTAL_AURA_PP,
     SUSPECTS_AUTO_TRAP,
     SUSPECTS_AUTO_WEB,
     SUSPECTS_AUTO_ANVIL,
@@ -62,6 +68,8 @@ public enum PvpText implements MessageKey {
     RELEASED,
     CRYSTAL_AURA_ALREADY_ON,
     ALREADY_ON,
+    /** Q4: the crystal aura auto-pvp does not drive is on; {@code {other}} and {@code {module}}. */
+    TWO_AURAS,
     OUT_OF_RESOURCES_NONE,
     OUT_OF_RESOURCES,
     OUT_OF_RESOURCES_ITEM,

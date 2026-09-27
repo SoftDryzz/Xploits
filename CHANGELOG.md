@@ -6,6 +6,33 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-28
+
+### Added
+
+- **`crystal-aura++`** (experimental) — Meteor's `crystal-aura` behaviour (same placing and breaking rules and
+  defaults) plus a self-damage budget that never lets your health (plus absorption) go below a
+  reserve. It counts every crystal that can still hurt you, already placed or on its way to
+  exploding, and works out the exact damage a hit would deal (Meteor rounds it down). Turn it on by
+  itself, or drive it from `auto-pvp`. Does nothing while Meteor's `crystal-aura` is on, and says so.
+  - `risk`: `Balanced` (keeps 3.5 health, default and recommended), `Safe` (keeps 5, experimental),
+    `Aggressive` (keeps 2, experimental), `Custom` (the `reserve` setting). Breaking one of your own
+    crystals must still leave at least 2.
+  - Measured with an in-game bench built for this release (the bench itself does not ship): it kept
+    your health above the reserve in every run, but deals less damage than Meteor's in some
+    situations. Known issues and recommended settings are in the README.
+- `auto-pvp`'s **`crystal-module`** setting: `meteor` (default) drives Meteor's `crystal-aura` exactly
+  as before; `xploits++` drives `crystal-aura++` instead.
+
+### Changed
+
+- With `crystal-module` set to `xploits++`, running out of totems no longer switches the aura off
+  while its self-budget is on: breaking the enemy's crystals is enough to keep you alive without one
+  in hand.
+- `auto-pvp` keeps asking for `surround` for a short while after a block of your hole has just been
+  broken, not only while the hole is still whole: Meteor's own `surround` refills the four sides,
+  never the block under you.
+
 ## [0.6.2] — 2026-09-26
 
 ### Changed

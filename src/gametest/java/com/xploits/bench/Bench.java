@@ -222,11 +222,12 @@ public final class Bench {
     }
 
     /**
-     * The common first steps of every run (§Run timeline, Arrange): difficulty normal, no natural
-     * regeneration, the player in survival and centred on its block, then the floor ({@link Arena#prepare}).
+     * The common first steps of every run (§Run timeline, Arrange): difficulty normal, natural regeneration
+     * as {@code regeneration} says (off but for the healing MEASUREs, {@link Scenario#naturalRegeneration}),
+     * the player in survival and centred on its block, then the floor ({@link Arena#prepare}).
      */
-    void prepare() {
-        arena.prepare();
+    void prepare(boolean regeneration) {
+        arena.prepare(regeneration);
     }
 
     /** This run's arena: pads, floors and loadouts. */

@@ -63,8 +63,8 @@ public final class DefensivePolicy {
     /**
      * What the posture asks for (§5). {@code CALM} asks for nothing; {@code THREATENED} asks for the
      * three {@code anti-} modules and the {@code hole-filler}, which cover specific ways of killing you
-     * without immobilizing you, and also {@code surround} <b>only</b> if you are in a hole, on the ground
-     * and with your height still.
+     * without immobilizing you, and also {@code surround} <b>only</b> if you are in a hole -or your hole
+     * was just breached, task R3-13 fix 2- on the ground and with your height still.
      *
      * <p>The three conditions of {@code surround} are its own, not decoration: with
      * {@code toggle-on-y-change} at {@code true} by default and a call to
@@ -79,7 +79,23 @@ public final class DefensivePolicy {
      * in the hole leaves you exactly there -on the ground, inside and with Y just changed-, the
      * posture asked for it, the ledger turned it on and the module turned itself off on the next tick.
      * That shutdown is indistinguishable from you turning it off, and that is why it had to stop being
-     * provoked. Nothing is lost: on those ticks the module would have turned itself off anyway.
+     * provoked. Nothing is lost: on those ticks the module would have turned itself off anyway. Both
+     * guards still hold with {@code selfHoleBreached} in the mix: it is the adapter's own fact and it
+     * never reads true together with a Y that just changed (its own definition requires your height to
+     * be still), so the AND here only ever narrows what {@code selfInHole} alone already asked for.
+     *
+     * <p><b>{@code selfHoleBreached}</b> (task R3-13 fix 2, from the owner's real fights: 21 of 47
+     * deaths had auto-pvp already refusing to fight before the fatal crystal): {@code selfInHole} alone
+     * ({@code PlayerUtils.isInHole(false)}) reads false the instant any one of the hole's five
+     * protecting blocks -four sides, one below- stops protecting you, which is exactly the tick an enemy
+     * has mined in and {@code surround} is needed to patch the gap, and exactly the tick it used to stop
+     * being requested. {@code selfHoleBreached} is true while you are still on that same feet block,
+     * still on the ground, with your height unchanged, for {@link CombatDirector#BREACH_MEMORY_TICKS}
+     * ticks after {@code selfInHole} was last true there, so {@code surround} keeps being asked for long
+     * enough to patch the breach instead of falling silent the moment it starts. Meteor's {@code Surround}
+     * only ever places the four horizontal neighbours (and their support blocks), never the one below you,
+     * so a breach on that side -the floor gone- cannot be patched by this rule either, only kept from
+     * silently dropping the request the way the other four sides already can be.
      */
     public static List<ManagedModule> modulesFor(CombatPosture posture, CombatSnapshot snapshot) {
         if (posture == CombatPosture.CALM) return List.of();
@@ -87,7 +103,8 @@ public final class DefensivePolicy {
         List<ManagedModule> modules = new ArrayList<>(List.of(
             ManagedModules.HOLE_FILLER, ManagedModules.ANTI_ANVIL,
             ManagedModules.ANTI_BED, ManagedModules.ANTI_ANCHOR));
-        if (snapshot.selfInHole() && snapshot.selfOnGround() && !snapshot.selfYChanged()) {
+        if ((snapshot.selfInHole() || snapshot.selfHoleBreached())
+            && snapshot.selfOnGround() && !snapshot.selfYChanged()) {
             modules.add(ManagedModules.SURROUND);
         }
         return List.copyOf(modules);

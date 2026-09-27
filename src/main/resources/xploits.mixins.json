@@ -5,7 +5,8 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "ChatHudMixin",
-    "LoggerPrintStreamMixin"
+    "LoggerPrintStreamMixin",
+    "XploitsInteractionInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

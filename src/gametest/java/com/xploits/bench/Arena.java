@@ -51,7 +51,7 @@ public final class Arena {
         EquipmentSlot.LEGS, EquipmentSlot.FEET);
 
     private final Bench bench;
-    /** F, the player's feet block; set by {@link #prepare()}. Never printed. */
+    /** F, the player's feet block; set by {@link #prepare(boolean)}. Never printed. */
     private BlockPos feet;
 
     Arena(Bench bench) {
@@ -61,19 +61,20 @@ public final class Arena {
     // --- Common preparation (§Run timeline, Arrange) ----------------------------------------------
 
     /**
-     * Difficulty normal, no natural regeneration, the player in survival and centred on its block; then F
-     * is taken, the arena's air is cleared and the floor is laid.
+     * Difficulty normal, natural regeneration on only when {@code regeneration} (the healing MEASUREs), the
+     * player in survival and centred on its block; then F is taken, the arena's air is cleared and the
+     * floor is laid.
      */
-    void prepare() {
+    void prepare(boolean regeneration) {
         // The command fails when the difficulty is already the one asked for (a new world's default).
         if (bench.fromServer(srv -> srv.getSaveProperties().getDifficulty()) != Difficulty.NORMAL) {
             bench.command("difficulty normal");
         }
-        bench.command("gamerule natural_health_regeneration false");
+        bench.command("gamerule natural_health_regeneration " + regeneration);
         bench.command("gamemode survival " + Bench.PLAYER);
         bench.command("execute at " + Bench.PLAYER + " align xz run tp " + Bench.PLAYER + " ~0.5 ~ ~0.5");
         boolean set = bench.fromServer(srv -> srv.getSaveProperties().getDifficulty() == Difficulty.NORMAL
-            && !srv.getOverworld().getGameRules().getValue(GameRules.NATURAL_HEALTH_REGENERATION));
+            && srv.getOverworld().getGameRules().getValue(GameRules.NATURAL_HEALTH_REGENERATION) == regeneration);
         if (!set) throw new BenchException("the difficulty or the regeneration rule did not change");
 
         String name = bench.player();
