@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-27
+
 ### Added
 
 - **`crystal-aura++`** — Meteor's `crystal-aura` behaviour (same placing and breaking rules and
