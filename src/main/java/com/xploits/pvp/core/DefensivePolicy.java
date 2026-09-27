@@ -92,7 +92,10 @@ public final class DefensivePolicy {
      * being requested. {@code selfHoleBreached} is true while you are still on that same feet block,
      * still on the ground, with your height unchanged, for {@link CombatDirector#BREACH_MEMORY_TICKS}
      * ticks after {@code selfInHole} was last true there, so {@code surround} keeps being asked for long
-     * enough to patch the breach instead of falling silent the moment it starts.
+     * enough to patch the breach instead of falling silent the moment it starts. Meteor's {@code Surround}
+     * only ever places the four horizontal neighbours (and their support blocks), never the one below you,
+     * so a breach on that side -the floor gone- cannot be patched by this rule either, only kept from
+     * silently dropping the request the way the other four sides already can be.
      */
     public static List<ManagedModule> modulesFor(CombatPosture posture, CombatSnapshot snapshot) {
         if (posture == CombatPosture.CALM) return List.of();

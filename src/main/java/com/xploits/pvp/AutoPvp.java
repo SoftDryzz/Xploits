@@ -13,6 +13,7 @@ import com.xploits.pvp.core.CrystalLatch;
 import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.DefensivePolicy;
 import com.xploits.pvp.core.FriendLedger;
+import com.xploits.pvp.core.HoleMemory;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.MissingModules;
@@ -313,16 +314,15 @@ public class AutoPvp extends XploitsModule {
      */
     private boolean yChangedLastTick;
     /**
-     * The feet block ({@code player.getBlockPos()}) of the last tick {@code selfInHole} was true, or
-     * {@code null} without a memory (task R3-13 fix 2). Together with {@link #holeMemoryTicks} it is
-     * what {@link #holeBreached} reads to tell {@code selfHoleBreached}: forgotten -set back to
-     * {@code null}- the moment you step off that block or your height changes, and by {@link
-     * #onActivate} and {@link #releaseAll}, which between them cover dying, changing world and
-     * auto-pvp deactivating.
+     * {@code selfHoleBreached}'s bookkeeping (task R3-13 fix 2), extracted into its own pure,
+     * unit-tested class in review round 1: this adapter only measures the world and feeds it plain
+     * values every tick ({@link #holeMemory}, {@link #ticks}), and forgets it -{@link
+     * HoleMemory#forget()}- from {@link #onActivate} and {@link #releaseAll}, which between them
+     * cover dying, changing world and auto-pvp deactivating.
      */
-    private BlockPos holeMemoryFeet;
-    /** Ticks since {@link #holeMemoryFeet} was last set; only meaningful while it is not {@code null}. */
-    private int holeMemoryTicks;
+    private final HoleMemory holeMemory = new HoleMemory();
+    /** The tick counter fed to {@link #holeMemory}; only the difference between two ticks matters. */
+    private long ticks;
     private SkippedAlly skippedAlly;
     /** Names of ours already announced in this activation: each one is said only once. */
     private final Set<String> announcedAllies = new LinkedHashSet<>();
@@ -356,8 +356,8 @@ public class AutoPvp extends XploitsModule {
         lastReported = CombatState.NO_COMBAT;
         lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
-        holeMemoryFeet = null;
-        holeMemoryTicks = 0;
+        holeMemory.forget();
+        ticks = 0;
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
@@ -691,7 +691,10 @@ public class AutoPvp extends XploitsModule {
         boolean movedNow = mc.player.lastY != mc.player.getY();
         boolean yChanged = movedNow || yChangedLastTick;
         yChangedLastTick = movedNow;
-        boolean holeBreached = holeBreached(inHole, movedNow);
+        // selfHoleBreached (task R3-13 fix 2): the adapter only measures the world -the feet block as
+        // a long, the same BlockPos.asLong() convention CandidateTracker uses- and hands it to
+        // HoleMemory, which is pure and carries every tick of judgement (its own tests: HoleMemoryTest).
+        boolean holeBreached = holeMemory.tick(++ticks, inHole, onGround, movedNow, mc.player.getBlockPos().asLong());
 
         if (target == null) {
             return new CombatSnapshot(false, 0, 0, 0, false, false,
@@ -710,34 +713,6 @@ public class AutoPvp extends XploitsModule {
             surroundSides(target), cityBlockDistance, protectedFromCrystals(target), target.isGliding(),
             mc.player.isGliding(), inventory.totems(), inventory.resources(),
             nameOf(target), hostiles, totalHealth, incomingDamage, inHole, onGround, yChanged, holeBreached, protectsYou);
-    }
-
-    /**
-     * {@code selfHoleBreached} (task R3-13 fix 2): remembers {@link #holeMemoryFeet}, the feet block of
-     * the last tick {@code selfInHole} was true, and answers whether you are breached right now -on that
-     * same block, not in a hole any more, within {@link CombatDirector#BREACH_MEMORY_TICKS} ticks of
-     * leaving it. Stepping off that block or moving vertically forgets the memory outright, which is what
-     * keeps a later, unrelated visit to the same coordinates from counting: without a real, continuous
-     * stay the "the hole under you was just breached" story does not hold.
-     *
-     * @param inHole   this tick's {@code PlayerUtils.isInHole(false)}
-     * @param movedNow whether your height changed on this very tick ({@code lastY != getY()}, the raw
-     *                 one-tick reading, not the two-tick {@code selfYChanged} the posture also needs)
-     */
-    private boolean holeBreached(boolean inHole, boolean movedNow) {
-        BlockPos feet = mc.player.getBlockPos();
-        if (inHole) {
-            holeMemoryFeet = feet;
-            holeMemoryTicks = 0;
-            return false;
-        }
-        if (holeMemoryFeet == null) return false;
-        if (movedNow || !feet.equals(holeMemoryFeet)) {
-            holeMemoryFeet = null;
-            return false;
-        }
-        holeMemoryTicks++;
-        return holeMemoryTicks <= CombatDirector.BREACH_MEMORY_TICKS;
     }
 
     /**
@@ -1062,8 +1037,7 @@ public class AutoPvp extends XploitsModule {
         lastReported = CombatState.NO_COMBAT;
         lastPosture = CombatPosture.CALM;
         yChangedLastTick = false;
-        holeMemoryFeet = null;
-        holeMemoryTicks = 0;
+        holeMemory.forget();
         skippedAlly = null;
         announcedAllies.clear();
         announcedNotes = Set.of();
