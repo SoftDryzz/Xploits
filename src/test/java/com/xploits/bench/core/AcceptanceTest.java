@@ -329,6 +329,30 @@ class AcceptanceTest {
         assertEquals(Result.PASS, rule(outcome, "S3").result());
     }
 
+    @Test
+    void s3KeepsTodaysRuleForCustomWhoseReserveIsAUserSetting() {
+        // CUSTOM's reserve is a player setting this pure core never sees (RiskLevel.CUSTOM's own field is
+        // NaN); the exception must never apply to it, whatever Meteor's lowest run is. Here it is 100, far
+        // above any fixed level's reserve, yet CUSTOM still gets today's S3 (judged, not skipped) exactly as
+        // no level at all: identical ++ shows no improvement, so it fails.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 16, 0, 100));
+        Outcome outcome = judge(same, same, RiskLevel.CUSTOM);
+        assertEquals(Result.FAIL, rule(outcome, "S3").result());
+    }
+
+    @Test
+    void s3sExceptionIsCheckedBeforeTheSelfDamageOneWhenBothWouldApply() {
+        // Meteor's self damage median (1.5) is below S3_FROM (2.0) AND its lowest run (4.0) clears
+        // Balanced's reserve (3.5): both NOT_APPLICABLE conditions independently hold. The reserve
+        // exception must be checked first, so its detail is the one that shows; swapping the two `if`s
+        // would still return NOT_APPLICABLE, only with the self_damage detail instead.
+        List<Map<String, Double>> same = three(run(20, 2, 1.0, 1.5, 0, 4.0));
+        Outcome outcome = judge(same, same, RiskLevel.BALANCED);
+        assertEquals(Result.NOT_APPLICABLE, rule(outcome, "S3").result());
+        assertEquals("Meteor never went below the reserve 3.50 (lowest 4.00): nothing to make safer",
+            rule(outcome, "S3").detail());
+    }
+
     // --- O1: damage dealt, never worse beyond max(1, 15 %) ------------------------------------------
 
     @Test

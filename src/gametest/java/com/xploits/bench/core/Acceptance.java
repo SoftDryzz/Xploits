@@ -193,7 +193,9 @@ public final class Acceptance {
     }
 
     private static Rule s3(Side capp, Side meteor, RiskLevel level) {
-        if (level != null) {
+        // CUSTOM has no fixed reserve to compare Meteor's lowest run against (its own is a player setting
+        // this pure core never sees); keep today's S3 for it, as for no level at all.
+        if (level != null && level != RiskLevel.CUSTOM) {
             double reserve = level.reserve(Double.NaN);
             double meteorLow = extreme(meteor, MIN_HEALTH, Math::min);
             if (meteorLow >= reserve) {
