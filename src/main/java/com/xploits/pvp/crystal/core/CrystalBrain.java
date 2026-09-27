@@ -697,7 +697,12 @@ public final class CrystalBrain {
     /**
      * A crystal first seen at {@code at} (the pre-tick at or before it appeared): ours if one of our
      * placements is still pending at its spot, which that crystal then settles; if the spot's placement has
-     * expired, a late own crystal, treated as foreign (Q2).
+     * expired, a late own crystal, treated as foreign (Q2) in every other way, but its own lateness is still a
+     * real landing sample (task R3-16 fix round 3): {@code at - firstTick} is how long it took, at least
+     * ({@code at} is only when we noticed it, never earlier than it actually appeared), so it is recorded as a
+     * lower bound on that crystal's own landing, never a foreign one's and never invented when there is no
+     * matching placement to measure from ({@link TargetWindows#landed} already routes anything past its
+     * ordinary ceiling into the outlier bucket fix round 2 reads, no further change needed there).
      */
     private Known appeared(CrystalSeen c, long at) {
         boolean ours = false;
@@ -713,9 +718,11 @@ public final class CrystalBrain {
         }
         if (!ours) {
             for (Iterator<Late> it = late.iterator(); it.hasNext(); ) {
-                if (it.next().pos == c.pos()) {
+                Late l = it.next();
+                if (l.pos == c.pos()) {
                     it.remove();
                     lateOwn++;
+                    windows.landed(at, at - l.firstTick);
                     break;
                 }
             }
@@ -730,7 +737,7 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, now));
+                late.add(new Late(p.pos, now, p.firstTick));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
@@ -760,7 +767,8 @@ public final class CrystalBrain {
      */
     private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime, long firstTick) {}
 
-    private record Late(long pos, long since) {}
+    /** A placement's own {@code firstTick} carried along, so a late-own crystal's own lateness can still be measured. */
+    private record Late(long pos, long since, long firstTick) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}

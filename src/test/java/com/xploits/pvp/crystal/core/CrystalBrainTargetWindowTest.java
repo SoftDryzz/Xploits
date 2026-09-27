@@ -219,14 +219,16 @@ class CrystalBrainTargetWindowTest {
     }
 
     @Test
-    void aLateOwnCrystalIsNotALanding() {
-        // Placed with no ping (pending for 5 pre-ticks) and seen 7 later: a late own crystal. Counted, it would make
-        // five landings with a slowest of 7, and k = 1 would hold (1 + 7 + 1 = 9 < 10).
+    void aLateOwnCrystalIsNowCountedAsALandingSample() {
+        // Placed with no ping (pending for 5 pre-ticks): a late own crystal, first noticed one pre-tick before
+        // it fires crystalAdded, so its own recorded lateness is 7 - 1 = 6. Fix round 3 (rereview-r3-16.md):
+        // unlike before, this now counts as a real landing sample. Five landings (3, 3, 3, 6, 3), slowest 6:
+        // k = 1 holds (1 + 6 + 1 = 8 < 10), where it used to be placed as BEST.
         Fight f = new Fight(DEFAULTS).land(3, 3, 3);
         f.land(7, 150, Map.of(ENEMY, RAW1), 0, false);
         f.opens(3);
         assertEquals(1, f.brain.lateOwnCrystals());
-        assertEquals(BEST, placedOn(f.spotsAt(1, 47.0)));
+        assertEquals(NEXT, placedOn(f.spotsAt(1, 47.0)));
     }
 
     @Test
@@ -553,6 +555,48 @@ class CrystalBrainTargetWindowTest {
     void withTheBudgetOffNoLandingIsLearnedForTheBoundEither() {
         Fight f = new Fight(METEOR).land(3, 3, 3, 3, 3);
         f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
+
+    // R3-16 fix round 3 (rereview-r3-16.md): a crystal that appears LATE (later than its own placement's
+    // pending window, max(5, ping + 2)) is a lower-threshold lag-spike signal that rounds 1-2 never read at
+    // all, since it never reaches the removal-based windows.landed() call (it is not "ours" there). appeared()
+    // now records its own lateness directly, the moment it is noticed — for a fresh (non-placedAgain)
+    // placement via Fight.land(d, id, raw, ping, false), that is exactly d - 1 pre-ticks (the last idle tick
+    // processed before crystalAdded fires, minus the tick the placement was first decided).
+
+    @Test
+    void aLateAppearanceRaisesTheBoundEvenWithTheDefaultPingNoInflatedPingNeeded() {
+        // The fixture's own ordinary ping (PENDING_PING, lifetime 32) - not round 2's LONG_LANDING_PING
+        // workaround: a crystal that does not appear until 41 ticks after its placement was first decided is
+        // late-own (well past the 32-tick pending window, but still inside the 20-tick late-own recognition
+        // window past that expiry: 41 - 1 - 32 = 8 < 20). Its own lateness, 41 - 1 = 40 ticks, now raises the
+        // bound on its own, without needing an artificially raised ping to make the landing register at all.
+        Fight f = new Fight(DEFAULTS);
+        f.land(41, 999, Map.of(ENEMY, RAW1), PENDING_PING, false);
+        assertEquals(1, f.brain.lateOwnCrystals());
+        assertEquals(40, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void anAppearanceWithinThePendingWindowIsStillOursNotLateOwn() {
+        // Regression guard for fix round 3 (the new Late.firstTick field, threaded from Pending.firstTick): a
+        // crystal that appears well inside its placement's pending window is still ours, not late-own, exactly
+        // as before this fix, and the ordinary landing bound still works.
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 3);
+        f.idle(f.next);
+        assertEquals(0, f.brain.lateOwnCrystals());
+        assertEquals(3, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void anUnmatchedForeignCrystalRecordsNoLandingEither() {
+        // A crystal we never placed: appeared() finds no match in pending or in late, so nothing is ever
+        // recorded — never inventing a landing sample for a crystal that was never ours to begin with.
+        Fight f = new Fight(DEFAULTS);
+        CrystalSeen foreign = withRaw(crystal(FOREIGN, 5, 8, 0), RAW1);
+        f.brain.preTick(DEFAULTS, tick(f.next).crystals(foreign).build());
+        assertEquals(0, f.brain.lateOwnCrystals());
         assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
     }
 }
