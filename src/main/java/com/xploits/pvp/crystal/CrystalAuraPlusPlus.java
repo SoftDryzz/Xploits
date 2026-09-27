@@ -68,7 +68,9 @@ import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
+import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
+import net.minecraft.network.packet.s2c.play.HealthUpdateS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -108,10 +110,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
  *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
  *   in-flight ledger;</li>
- *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
- *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt}, and the full
- *   hits on us to {@link CrystalBrain#selfHurt} (R3-15), before its break phase, so they count as read at the
- *   previous pre-tick;</li>
+ *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket} and {@code HealthUpdateS2CPacket}: on the
+ *   Netty thread, only queued, in arrival order; the next {@code TickEvent.Pre} hands the full hits on other
+ *   players to {@link CrystalBrain#targetHurt}, the full hits on us to {@link CrystalBrain#selfHurt}, and the
+ *   health updates to {@link CrystalBrain#healthUpdateReceived} (R3-15 fix round 2, in that same relative order),
+ *   before its break phase, so they count as read at the previous pre-tick;</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
@@ -438,10 +441,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Placements held back for a target's hurt window by brains replaced after a refusal, since activation. */
     private int deferredBefore;
     /**
-     * Damage packets received since the last pre-tick. Filled on the Netty thread ({@code PacketEvent.Receive} is
-     * posted there, before the packet is applied), read on the game thread.
+     * Damage and health-update packets received since the last pre-tick, in the order they arrived (R3-15, fix
+     * round 2: {@link CrystalBrain#confirmSelfHits} needs that relative order, never their values). Filled on the
+     * Netty thread ({@code PacketEvent.Receive} is posted there, before the packet is applied), read on the game
+     * thread.
      */
-    private final Queue<EntityDamageS2CPacket> damagePackets = new ConcurrentLinkedQueue<>();
+    private final Queue<Packet<?>> damagePackets = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -598,22 +603,32 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Netty thread: queue only, the world is not touched here. */
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
-        if (event.packet instanceof EntityDamageS2CPacket damage) damagePackets.add(damage);
+        if (event.packet instanceof EntityDamageS2CPacket || event.packet instanceof HealthUpdateS2CPacket) {
+            damagePackets.add(event.packet);
+        }
     }
 
     /**
-     * The full hits received since the last pre-tick, to the brain: the server sends this packet for full hits
-     * only, to every player tracking the one hurt (research-external M1), including the one hurt itself. A packet
-     * about us goes to {@link CrystalBrain#selfHurt} (R3-15: once its crystal's hit is certain to already be in
-     * health, the budget stops counting it); one about another player we see goes to {@link CrystalBrain#targetHurt},
-     * named as the targets are; one about an entity that is not us or a player we see is dropped. With
-     * {@code self-budget} off nothing is kept: only the budget reads either (a hurt window, or a confirmed self
-     * hit), and the brain forgets both at every pre-tick with it off, so neither survives a packet dropped here.
+     * The full hits and health updates received since the last pre-tick, to the brain, in the order they arrived
+     * (R3-15, fix round 2: {@link CrystalBrain#confirmSelfHits} needs that order, and only that, to know a
+     * crystal's hit is certain to already be in health — see its Javadoc for why). The server sends a full-hit
+     * packet to every player tracking the one hurt (research-external M1), including the one hurt itself: one about
+     * us goes to {@link CrystalBrain#selfHurt}; one about another player we see goes to
+     * {@link CrystalBrain#targetHurt}, named as the targets are; one about an entity that is not us or a player we
+     * see is dropped. A health-update packet is always about us (the server only ever sends our own to us) and
+     * goes to {@link CrystalBrain#healthUpdateReceived}, whatever value it carries. With {@code self-budget} off
+     * nothing is kept: only the budget reads any of this (a hurt window, or a confirmed self hit), and the brain
+     * forgets it all at every pre-tick with it off, so none of it survives a packet dropped here.
      */
     private void readDamagePackets(CrystalBrain b) {
         boolean keep = selfBudget.get();
-        for (EntityDamageS2CPacket damage; (damage = damagePackets.poll()) != null; ) {
+        for (Packet<?> packet; (packet = damagePackets.poll()) != null; ) {
             if (!keep) continue;
+            if (packet instanceof HealthUpdateS2CPacket) {
+                b.healthUpdateReceived();
+                continue;
+            }
+            EntityDamageS2CPacket damage = (EntityDamageS2CPacket) packet;
             if (mc.player != null && damage.entityId() == mc.player.getId()) {
                 b.selfHurt(damage.sourceDirectId());
                 continue;
