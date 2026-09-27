@@ -1,6 +1,7 @@
 package com.xploits.pvp.crystal;
 
 import com.xploits.XploitsAddon;
+import com.xploits.mixin.XploitsAbsorptionAccessor;
 import com.xploits.mixin.XploitsInteractionInvoker;
 import com.xploits.pvp.crystal.core.Action;
 import com.xploits.pvp.crystal.core.Candidate;
@@ -58,6 +59,7 @@ import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -70,6 +72,7 @@ import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.HealthUpdateS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
@@ -110,11 +113,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
  *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
  *   in-flight ledger;</li>
- *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket} and {@code HealthUpdateS2CPacket}: on the
- *   Netty thread, only queued, in arrival order; the next {@code TickEvent.Pre} hands the full hits on other
- *   players to {@link CrystalBrain#targetHurt}, the full hits on us to {@link CrystalBrain#selfHurt}, and the
- *   health updates to {@link CrystalBrain#healthUpdateReceived} (R3-15 fix round 2, in that same relative order),
- *   before its break phase, so they count as read at the previous pre-tick;</li>
+ *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}, {@code HealthUpdateS2CPacket} and
+ *   {@code EntityTrackerUpdateS2CPacket}: on the Netty thread, only queued, in arrival order; the next
+ *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt}, the full hits
+ *   on us to {@link CrystalBrain#selfHurt}, the health updates to {@link CrystalBrain#healthUpdateReceived}, and
+ *   our own absorption syncs to {@link CrystalBrain#absorptionUpdateReceived} (R3-15 fix rounds 2 and 3, in that
+ *   same relative order), before its break phase, so they count as read at the previous pre-tick;</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
@@ -441,10 +445,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Placements held back for a target's hurt window by brains replaced after a refusal, since activation. */
     private int deferredBefore;
     /**
-     * Damage and health-update packets received since the last pre-tick, in the order they arrived (R3-15, fix
-     * round 2: {@link CrystalBrain#confirmSelfHits} needs that relative order, never their values). Filled on the
-     * Netty thread ({@code PacketEvent.Receive} is posted there, before the packet is applied), read on the game
-     * thread.
+     * Damage, health-update and entity-tracker packets received since the last pre-tick, in the order they
+     * arrived (R3-15, fix round 2, extended fix round 3 for absorption: {@link CrystalBrain#confirmSelfHits}
+     * needs that relative order, never their values). Filled on the Netty thread ({@code PacketEvent.Receive} is
+     * posted there, before the packet is applied), read on the game thread.
      */
     private final Queue<Packet<?>> damagePackets = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
@@ -603,22 +607,31 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Netty thread: queue only, the world is not touched here. */
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
-        if (event.packet instanceof EntityDamageS2CPacket || event.packet instanceof HealthUpdateS2CPacket) {
+        if (event.packet instanceof EntityDamageS2CPacket || event.packet instanceof HealthUpdateS2CPacket
+            || event.packet instanceof EntityTrackerUpdateS2CPacket) {
             damagePackets.add(event.packet);
         }
     }
 
     /**
-     * The full hits and health updates received since the last pre-tick, to the brain, in the order they arrived
-     * (R3-15, fix round 2: {@link CrystalBrain#confirmSelfHits} needs that order, and only that, to know a
-     * crystal's hit is certain to already be in health — see its Javadoc for why). The server sends a full-hit
-     * packet to every player tracking the one hurt (research-external M1), including the one hurt itself: one about
-     * us goes to {@link CrystalBrain#selfHurt}; one about another player we see goes to
-     * {@link CrystalBrain#targetHurt}, named as the targets are; one about an entity that is not us or a player we
-     * see is dropped. A health-update packet is always about us (the server only ever sends our own to us) and
-     * goes to {@link CrystalBrain#healthUpdateReceived}, whatever value it carries. With {@code self-budget} off
-     * nothing is kept: only the budget reads any of this (a hurt window, or a confirmed self hit), and the brain
-     * forgets it all at every pre-tick with it off, so none of it survives a packet dropped here.
+     * The full hits, health updates and absorption syncs received since the last pre-tick, to the brain, in the
+     * order they arrived (R3-15, fix round 2, extended fix round 3 for absorption:
+     * {@link CrystalBrain#confirmSelfHits} needs that order, and only that, to know a crystal's hit is certain to
+     * already be in health — see its Javadoc for why). The server sends a full-hit packet to every player tracking
+     * the one hurt (research-external M1), including the one hurt itself: one about us goes to
+     * {@link CrystalBrain#selfHurt}, with whether we currently carry any absorption ({@code CrystalTick.health()}
+     * is health plus absorption, and a hit dealt while carrying some may need that channel's own confirmation
+     * too, not only health's); one about another player we see goes to {@link CrystalBrain#targetHurt}, named as
+     * the targets are; one about an entity that is not us or a player we see is dropped. A health-update packet is
+     * always about us (the server only ever sends our own to us) and goes to
+     * {@link CrystalBrain#healthUpdateReceived}, whatever value it carries. An entity-tracker packet goes to
+     * {@link CrystalBrain#absorptionUpdateReceived} only when it is about our own entity id <em>and</em> carries
+     * the {@code PlayerEntity.ABSORPTION_AMOUNT} tracked-data entry (rereview2-r3-15.md; opened by
+     * {@link XploitsAbsorptionAccessor}, since the field is private) — one for a different entity, or for us but
+     * without that entry (some other tracked value changed), is dropped: neither tells us anything about our own
+     * absorption having synced. With {@code self-budget} off nothing is kept: only the budget reads any of this (a
+     * hurt window, or a confirmed self hit), and the brain forgets it all at every pre-tick with it off, so none
+     * of it survives a packet dropped here.
      */
     private void readDamagePackets(CrystalBrain b) {
         boolean keep = selfBudget.get();
@@ -628,14 +641,33 @@ public class CrystalAuraPlusPlus extends XploitsModule {
                 b.healthUpdateReceived();
                 continue;
             }
+            if (packet instanceof EntityTrackerUpdateS2CPacket tracker) {
+                if (mc.player != null && tracker.id() == mc.player.getId() && carriesAbsorption(tracker)) {
+                    b.absorptionUpdateReceived();
+                }
+                continue;
+            }
             EntityDamageS2CPacket damage = (EntityDamageS2CPacket) packet;
             if (mc.player != null && damage.entityId() == mc.player.getId()) {
-                b.selfHurt(damage.sourceDirectId());
+                b.selfHurt(damage.sourceDirectId(), mc.player.getAbsorptionAmount() > 0);
                 continue;
             }
             if (!(mc.world.getEntityById(damage.entityId()) instanceof PlayerEntity player) || player == mc.player) continue;
             b.targetHurt(player.getUuidAsString(), damage.sourceDirectId());
         }
+    }
+
+    /**
+     * Whether this entity-tracker packet's synced values include {@code PlayerEntity.ABSORPTION_AMOUNT}
+     * (rereview2-r3-15.md, fix round 3): the tracked-data id {@link XploitsAbsorptionAccessor} opens matches one
+     * of {@link DataTracker.SerializedEntry#id()} in the packet's list, whatever else it also carries.
+     */
+    private static boolean carriesAbsorption(EntityTrackerUpdateS2CPacket tracker) {
+        int absorptionId = XploitsAbsorptionAccessor.xploits$absorptionAmount().id();
+        for (DataTracker.SerializedEntry<?> entry : tracker.trackedValues()) {
+            if (entry.id() == absorptionId) return true;
+        }
+        return false;
     }
 
     // Refusal

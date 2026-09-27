@@ -16,13 +16,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Task R3-15, fix round 2 (rereview-r3-15.md): once a full-hit self-damage packet naming a crystal has been
- * handed over ({@link CrystalBrain#selfHurt}), and a health-update packet has been handed over
- * ({@link CrystalBrain#healthUpdateReceived}) <em>after</em> it in the order they arrived, that crystal's hit is
- * certain to already be inside health (causal ordering, verified against the MC 1.21.11 yarn jar in the fix round
- * 2 report), and it leaves I for good. No health value, drop, baseline or fraction is read anywhere any more:
- * only relative order. Health is fixed at 20 throughout, since it plays no role in confirmation, only in whether a
- * probe spot's budget passes once a crystal is (or is not) excluded.
+ * Task R3-15, fix round 2 (rereview-r3-15.md), extended fix round 3 (rereview2-r3-15.md) for absorption: once a
+ * full-hit self-damage packet naming a crystal has been handed over ({@link CrystalBrain#selfHurt}), and a
+ * health-update packet has been handed over ({@link CrystalBrain#healthUpdateReceived}) <em>after</em> it in the
+ * order they arrived — and, only if absorption was present when the packet arrived, an absorption-tracker update
+ * ({@link CrystalBrain#absorptionUpdateReceived}) after it too, in either order relative to the health one — that
+ * crystal's hit is certain to already be inside health (causal ordering, verified against the MC 1.21.11 yarn jar
+ * in the fix round 2 and round 3 reports), and it leaves I for good. No health value, drop, baseline or fraction
+ * is read anywhere any more: only relative order. Health is fixed at 20 throughout, since it plays no role in
+ * confirmation, only in whether a probe spot's budget passes once a crystal is (or is not) excluded.
  *
  * <p>Reserve R = 5 ({@link Crystals#SAFE_DEFAULTS}). {@link #FIVE}, {@link #SIX} and {@link #SEVEN} each have
  * {@code budgetSelfDamage} 5, so with health 20 a probe spot's {@code budgetSelfDamage} X passes exactly when
@@ -81,7 +83,7 @@ class CrystalBrainConfirmedHitTest {
     @Test
     void xConfirmedOnlyAfterAHealthUpdateSequencedAfterItsPacketIsApplied() {
         CrystalBrain b = vanished(FIVE);
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         b.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
@@ -91,7 +93,7 @@ class CrystalBrainConfirmedHitTest {
     void receivedButNeverFollowedByAnAppliedUpdateKeepsItCounted() {
         // No number of pre-ticks changes this: there is no timeout here at all, only order.
         CrystalBrain b = vanished(FIVE);
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(0)).build()).isEmpty());
     }
@@ -107,7 +109,7 @@ class CrystalBrainConfirmedHitTest {
     void aHealthUpdateBeforeXsPacketKeepsItCountedUntilOneGenuinelyFollows() {
         CrystalBrain b = vanished(FIVE);
         b.healthUpdateReceived();
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         // The update came first: it could not have reflected a hit that had not even been dealt to us yet.
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
         // A later update, genuinely after the packet, does confirm it.
@@ -125,8 +127,8 @@ class CrystalBrainConfirmedHitTest {
         // drop attribution this update's drop could have been entirely the sword hit; with causal ordering the
         // sword hit is simply never matched to anything, so it changes nothing either way.
         CrystalBrain b = vanished(FIVE);
-        b.selfHurt(5);
-        b.selfHurt(54321); // the enemy player's entity id: not a known crystal
+        b.selfHurt(5, false);
+        b.selfHurt(54321, false); // the enemy player's entity id: not a known crystal
         b.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
@@ -138,8 +140,8 @@ class CrystalBrainConfirmedHitTest {
         // that confirms X, forms its own mark and does not interfere with X's: both end up confirmed, each on the
         // strength of the same later update following its own packet.
         CrystalBrain b = vanished(FIVE, SIX);
-        b.selfHurt(5);
-        b.selfHurt(6);
+        b.selfHurt(5, false);
+        b.selfHurt(6, false);
         b.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
@@ -152,24 +154,24 @@ class CrystalBrainConfirmedHitTest {
         // The first update, after only FIVE's packet, confirms FIVE alone: C = 10 (SIX, SEVEN still pending), so
         // a spot needing at most 2 still-counted crystals (refusedUnless(2)) passes.
         CrystalBrain partial = threeStaggered();
-        partial.selfHurt(5);
+        partial.selfHurt(5, false);
         partial.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             partial.preTick(SAFE_DEFAULTS, tick(5).health(20).candidates(refusedUnless(2)).build()));
         // Not over-confirmed: SIX and SEVEN's packets have not even arrived yet, so a spot needing at most 1
         // still-counted crystal (refusedUnless(1)) still refuses (true C = 10, more than 5 * 1).
         CrystalBrain partialStrict = threeStaggered();
-        partialStrict.selfHurt(5);
+        partialStrict.selfHurt(5, false);
         partialStrict.healthUpdateReceived();
         assertTrue(partialStrict.preTick(SAFE_DEFAULTS, tick(5).health(20).candidates(refusedUnless(1)).build()).isEmpty());
 
         // A second update, after SIX's and SEVEN's packets both arrived (in the same batch), confirms them
         // together: all three now excluded.
         CrystalBrain full = threeStaggered();
-        full.selfHurt(5);
+        full.selfHurt(5, false);
         full.healthUpdateReceived();
-        full.selfHurt(6);
-        full.selfHurt(7);
+        full.selfHurt(6, false);
+        full.selfHurt(7, false);
         full.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             full.preTick(SAFE_DEFAULTS, tick(5).health(20).candidates(refusedUnless(0)).build()));
@@ -180,8 +182,8 @@ class CrystalBrainConfirmedHitTest {
     @Test
     void staggeredCrystalsBothConfirmedByOneLaterUpdateAfterBothPackets() {
         CrystalBrain b = twoStaggered();
-        b.selfHurt(5);
-        b.selfHurt(6);
+        b.selfHurt(5, false);
+        b.selfHurt(6, false);
         b.healthUpdateReceived(); // arrives after both packets: safely confirms both together
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(0)).build()));
@@ -192,17 +194,101 @@ class CrystalBrainConfirmedHitTest {
         // Only FIVE confirms: C = 5 (SIX still pending, its packet not even arrived yet at the update). At most 1
         // still-counted crystal is enough (refusedUnless(1)).
         CrystalBrain b = twoStaggered();
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         b.healthUpdateReceived(); // SIX's packet has not arrived yet
-        b.selfHurt(6);
+        b.selfHurt(6, false);
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(1)).build()));
         // Not both: refusedUnless(0) (needs C = 0) still refuses, since SIX is still counted.
         CrystalBrain strict = twoStaggered();
-        strict.selfHurt(5);
+        strict.selfHurt(5, false);
         strict.healthUpdateReceived();
-        strict.selfHurt(6);
+        strict.selfHurt(6, false);
         assertTrue(strict.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(0)).build()).isEmpty());
+    }
+
+    // Absorption (fix round 3, rereview2-r3-15.md): CrystalTick.health() is health plus absorption, and
+    // absorption syncs on a separate packet, one server tick behind health's for the same hit; a crystal that
+    // carried absorption at hit time needs that packet's confirmation too, not only health's.
+
+    @Test
+    void absorptionZeroConfirmsOnTheHealthUpdateAloneJustAsBeforeThisFix() {
+        CrystalBrain b = vanished(FIVE);
+        b.selfHurt(5, false);
+        b.healthUpdateReceived();
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
+    }
+
+    @Test
+    void absorptionPresentIsNotConfirmedByTheHealthUpdateAlone() {
+        CrystalBrain b = vanished(FIVE);
+        b.selfHurt(5, true);
+        b.healthUpdateReceived();
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
+    }
+
+    @Test
+    void absorptionPresentConfirmsOnceBothHealthAndAbsorptionApplyAfterThePacketInEitherOrder() {
+        CrystalBrain healthThenAbsorption = vanished(FIVE);
+        healthThenAbsorption.selfHurt(5, true);
+        healthThenAbsorption.healthUpdateReceived();
+        healthThenAbsorption.absorptionUpdateReceived();
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            healthThenAbsorption.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
+
+        CrystalBrain absorptionThenHealth = vanished(SIX);
+        absorptionThenHealth.selfHurt(6, true);
+        absorptionThenHealth.absorptionUpdateReceived();
+        absorptionThenHealth.healthUpdateReceived();
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            absorptionThenHealth.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
+    }
+
+    @Test
+    void anAbsorptionUpdateBeforeXsPacketKeepsItCountedUntilOneGenuinelyFollows() {
+        CrystalBrain b = vanished(FIVE);
+        b.absorptionUpdateReceived(); // before the packet, same batch: cannot count toward it
+        b.selfHurt(5, true);
+        b.healthUpdateReceived();
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
+        // A later absorption update, genuinely after the packet, does complete the confirmation.
+        b.absorptionUpdateReceived();
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(0)).build()));
+    }
+
+    @Test
+    void anAbsorptionUpdateForAnotherEntityKeepsXCounted() {
+        // readDamagePackets only ever calls absorptionUpdateReceived() for an EntityTrackerUpdateS2CPacket that
+        // is both about our own entity id and carries the ABSORPTION_AMOUNT entry; one for a different entity
+        // (or for us, carrying some other tracked value) is dropped before it ever reaches the core, which is
+        // indistinguishable here from no absorption update having arrived at all yet.
+        CrystalBrain b = vanished(FIVE);
+        b.selfHurt(5, true);
+        b.healthUpdateReceived();
+        // No absorptionUpdateReceived() call: stands in for a tracker update filtered out for being about
+        // another entity (or not carrying absorption).
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
+    }
+
+    @Test
+    void theReviewersTenIntoEightAbsorptionTraceIsSafe() {
+        // rereview2-r3-15.md's hand trace: 8 HP of absorption up, X deals 10 damage (2 to raw health, up to 8 to
+        // absorption). Verified per-tick ordering: ServerWorld.tick's chunkSource step, which flushes entity-
+        // tracker data (including a changed ABSORPTION_AMOUNT), runs before the entities step, where
+        // ServerPlayerEntity.playerTick sends the health update — so the health update for a crystal's own hit
+        // is sent the same tick, while the absorption sync for that same hit is structurally a full server tick
+        // behind. Confirming on the health update alone would credit up to X's entire budgetSelfDamage as
+        // phantom headroom; this fix keeps X counted until the absorption sync genuinely follows too.
+        CrystalBrain b = vanished(FIVE);
+        b.selfHurt(5, true); // absorption (8 HP) present when the packet arrived
+        b.healthUpdateReceived(); // same tick: only the 2 raw HP is reflected here
+        assertTrue(b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()).isEmpty());
+        // One tick later, the absorption sync (the missing 8 HP) finally arrives: only now does X confirm.
+        b.absorptionUpdateReceived();
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(SAFE_DEFAULTS, tick(4).health(20).candidates(refusedUnless(0)).build()));
     }
 
     // Foreign crystals, on the same terms
@@ -218,7 +304,7 @@ class CrystalBrainConfirmedHitTest {
             b.preTick(SAFE_DEFAULTS, tick(1).health(20).crystals(crystal(5, 8, 5)).build()));
         b.attackSent();
         assertTrue(b.preTick(SAFE_DEFAULTS, tick(2).health(20).build()).isEmpty());
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         b.healthUpdateReceived();
         assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
             b.preTick(SAFE_DEFAULTS, tick(3).health(20).candidates(refusedUnless(0)).build()));
@@ -231,7 +317,7 @@ class CrystalBrainConfirmedHitTest {
         CrystalBrain b = new CrystalBrain();
         assertTrue(b.preTick(METEOR, tick(1).health(20).crystals(FIVE).build()).isEmpty());
         assertTrue(b.preTick(METEOR, tick(2).health(20).build()).isEmpty());
-        b.selfHurt(5);
+        b.selfHurt(5, false);
         b.healthUpdateReceived();
         // Still off at the next pre-tick: both events are dropped right here (forgetWindows, not confirmSelfHits).
         assertTrue(b.preTick(METEOR, tick(3).health(20).build()).isEmpty());
