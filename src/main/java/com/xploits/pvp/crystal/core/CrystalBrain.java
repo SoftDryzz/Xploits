@@ -40,7 +40,9 @@ import java.util.Set;
  *   <li>{@link #placed(long, int)} when a placement packet goes out, in the same client tick;</li>
  *   <li>{@link #crystalAdded} on {@code EntityAddedEvent} for an end crystal (ownership, then fast-break),
  *   and {@link #crystalRemoved} on {@code EntityRemovedEvent};</li>
- *   <li>{@link #targetHurt} for each full-hit damage packet on another player, before the next pre-tick.</li>
+ *   <li>{@link #targetHurt} for each full-hit damage packet on another player, before the next pre-tick;
+ *   {@link #selfHurt} for each full-hit damage packet on OUR player, before the next pre-tick (R3-15): once a
+ *   crystal's hit on us is certain to already be in health, the budget stops counting it.</li>
  * </ol>
  * {@link #preTick} does both phases on one set of facts.
  */
@@ -59,6 +61,14 @@ public final class CrystalBrain {
     public static final int UNKNOWN_LATENCY = -1;
     /** A damage packet with no direct source entity, for {@link #targetHurt}. */
     public static final int NO_SOURCE = -1;
+    /**
+     * R3-15: the fraction of a crystal's predicted {@code budgetSelfDamage} the health (plus absorption) must have
+     * dropped by, since just before its full-hit packet arrived, before that crystal's hit is certain enough to
+     * leave I for good ({@link #confirmSelfHits}). Below it, health could still be short of the hit (still
+     * regenerating from something else, or simply not yet synced), so the crystal keeps its full window exactly as
+     * before this fix.
+     */
+    public static final double CONFIRM_FRACTION = 0.8;
     /** Milliseconds in a tick. */
     private static final int TICK_MS = 50;
     /**
@@ -95,6 +105,21 @@ public final class CrystalBrain {
     private final TargetWindows windows = new TargetWindows();
     /** Full hits handed over since the last pre-tick; the next one counts them from the last. */
     private final List<ReadHit> hits = new ArrayList<>();
+    /** Source ids of full hits on us, handed over since the last pre-tick; the next one attributes them (R3-15). */
+    private final List<Integer> selfHits = new ArrayList<>();
+    /**
+     * Whether {@link #lastHealth}/{@link #lastTotems} hold a real pre-tick's reading: false before the first one
+     * tracked (activation, right after {@code self-budget} turns on, or after a skipped pre-tick), so nothing can
+     * be confirmed against them yet.
+     */
+    private boolean healthTracked;
+    /**
+     * Health (plus absorption) at the last pre-tick tracked: the baseline a newly arrived self-hit packet's
+     * crystal is confirmed against, and what a rise since is measured from ({@link #confirmSelfHits}).
+     */
+    private double lastHealth;
+    /** Totems carried at the last pre-tick tracked: fewer now means one popped, which invalidates this tick's drop. */
+    private int lastTotems;
     /**
      * The pre-tick the windows were last forgotten at: a crystal whose placement was first decided then or before is
      * not a landing ({@link TargetWindows#landed}), as the pre-ticks since it may not all have been counted.
@@ -184,8 +209,12 @@ public final class CrystalBrain {
         decided = null;
         // The hits read since the last pre-tick count from it, never later than they arrived. With the budget off
         // nothing is kept, so turning it on again never reuses a window that missed a hit in the meantime.
-        if (settings.selfBudget()) countHits(previous);
-        else forgetWindows();
+        if (settings.selfBudget()) {
+            countHits(previous);
+            confirmSelfHits(previous, tick);
+        } else {
+            forgetWindows();
+        }
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -313,6 +342,24 @@ public final class CrystalBrain {
     }
 
     /**
+     * A full hit on us, read since the last pre-tick (research-double-count.md, R3-15: the server sends this
+     * packet for full hits only, the same rule research-external M1 already established for hits on other
+     * players). Kept until the next pre-tick, which attributes it to {@code directSourceId}'s crystal, if we know
+     * one by that id (ours or not: a foreign crystal that hits us is confirmed on the same terms, exactly like
+     * {@link #targetHurt} does not filter by ownership either), with the health (plus absorption) just before the
+     * packet as the baseline its damage is confirmed against ({@link #confirmSelfHits}). A hit handed over while
+     * {@link #healthTracked} is false (before the first pre-tick, right after {@code self-budget} turns on, or
+     * after a skipped pre-tick) is dropped: with no trustworthy baseline, its crystal simply keeps its full window,
+     * exactly as before this fix.
+     *
+     * @param directSourceId the id of the entity that dealt the damage directly (the crystal for an explosion), or
+     *                        {@link #NO_SOURCE}
+     */
+    public void selfHurt(int directSourceId) {
+        selfHits.add(directSourceId);
+    }
+
+    /**
      * At the start of a pre-tick, before the crystals are updated: the hits handed over since {@code previous}
      * open or close the targets' windows as read at {@code previous}. Before the first pre-tick nothing is ours, so
      * they are dropped.
@@ -333,16 +380,88 @@ public final class CrystalBrain {
     }
 
     /**
+     * At the start of a pre-tick, before the crystals are updated (R3-15, research-double-count.md): self-hit
+     * packets handed over since {@code previous} are attributed to the crystal named in them, with the health
+     * (plus absorption) just before the packet ({@link #lastHealth}) as the baseline its damage is confirmed
+     * against. Then, unless health rose, or a totem popped, since the last pre-tick tracked (either makes this
+     * tick's drop impossible to attribute to any one crystal with confidence, so nothing is confirmed by it),
+     * every crystal with an unconfirmed packet whose observed drop since its baseline is at least
+     * {@link #CONFIRM_FRACTION} of its predicted {@code budgetSelfDamage} is confirmed: its hit is certain to
+     * already be inside the health read this pre-tick, so {@link #budget} leaves it out for good, never to be
+     * shared into S either ({@code selfHitConfirmed} is never undone once set). Several crystals whose packets
+     * arrived together (the same pre-tick) share one baseline and are confirmed only together, once the drop
+     * reaches the sum of their predicted damages: attributing it to just one of them on no more evidence than "a
+     * drop happened" would be a guess neither packet actually supports, so both stay counted until it does.
+     *
+     * <p>This only ever removes a crystal from I once its damage is certain to already be inside health: excluding
+     * it can only ever raise {@code health - C}, the placement or break check's left side, never lower it, so no
+     * placement or break that would have kept the reserve or the floor becomes one that would not have (the
+     * fix cannot itself cause health to go below either, only recognise sooner that it already has not).
+     */
+    private void confirmSelfHits(long previous, CrystalTick tick) {
+        if (healthTracked) {
+            for (int sourceId : selfHits) {
+                Known k = known.get(sourceId);
+                if (k != null && k.selfHitPacketTick == CrystalView.NEVER) {
+                    k.selfHitPacketTick = previous;
+                    k.healthBeforeHit = lastHealth;
+                }
+            }
+            boolean unreliable = tick.health() > lastHealth || tick.totems() < lastTotems;
+            if (!unreliable) confirmGroups(tick.health());
+        }
+        selfHits.clear();
+        healthTracked = true;
+        lastHealth = tick.health();
+        lastTotems = tick.totems();
+    }
+
+    /** Crystals whose self-hit packets arrived together (R3-15): grouped by that pre-tick, confirmed only as one. */
+    private void confirmGroups(double health) {
+        Map<Long, List<Known>> groups = new LinkedHashMap<>();
+        for (Known k : known.values()) {
+            if (k.selfHitPacketTick != CrystalView.NEVER && !k.selfHitConfirmed) {
+                groups.computeIfAbsent(k.selfHitPacketTick, t -> new ArrayList<>()).add(k);
+            }
+        }
+        for (List<Known> group : groups.values()) {
+            double required = CONFIRM_FRACTION * sumBudgetSelfDamage(group);
+            double drop = group.get(0).healthBeforeHit - health;
+            if (drop >= required) {
+                for (Known k : group) k.selfHitConfirmed = true;
+            }
+        }
+    }
+
+    private static double sumBudgetSelfDamage(List<Known> group) {
+        double sum = 0;
+        for (Known k : group) sum += k.seen.budgetSelfDamage();
+        return sum;
+    }
+
+    /**
      * Forgets every target's hurt window, and the hits handed over and not yet counted, and every landing learned,
-     * including those of the crystals placed until now and not yet gone. The adapter calls it when it skips a pre-tick
-     * while the client ticks on (the ticks since a hit or a placement would come out short, so a window could seem
-     * open after the server's has closed, and a crystal seem faster than it is); the brain does the same at every
-     * pre-tick with the budget off, so it learns nothing then.
+     * including those of the crystals placed until now and not yet gone; and, for the self-hit confirmation
+     * (R3-15), every self-hit packet handed over and not yet attributed, and the last health and totem count
+     * trusted as a baseline. The adapter calls it when it skips a pre-tick while the client ticks on (the ticks
+     * since a hit or a placement would come out short, so a window could seem open after the server's has closed,
+     * and a crystal seem faster than it is; a health baseline from before the gap could no longer be trusted
+     * either, for the same reason: the drop since it might include ticks nothing here saw). A crystal whose packet
+     * arrived but is not yet confirmed loses that attribution too, permanently (its explosion sends the packet at
+     * most once, so it simply keeps its full window from here on, exactly as before this fix: the same fallback as
+     * a packet lost outright). The brain does the same at every pre-tick with the budget off, so it learns nothing
+     * then. Crystals already confirmed stay confirmed: that is a fact about health already read, not about
+     * continuous tracking.
      */
     public void forgetWindows() {
         windows.clear();
         hits.clear();
         landingSince = now;
+        selfHits.clear();
+        healthTracked = false;
+        for (Known k : known.values()) {
+            if (!k.selfHitConfirmed) k.selfHitPacketTick = CrystalView.NEVER;
+        }
     }
 
     /**
@@ -636,7 +755,12 @@ public final class CrystalBrain {
     /** The same, leaving out the placement pending at {@code replacedSpot}, if any. */
     private SelfBudget budget(double health, Long replacedSpot) {
         List<CrystalView> views = new ArrayList<>(known.size());
-        for (Known k : known.values()) views.add(k.view(now));
+        for (Known k : known.values()) {
+            // A crystal whose hit on us is confirmed (R3-15, confirmSelfHits) is left out entirely, not merely
+            // re-shared into S: its damage is already inside the health read this pre-tick, so counting it here
+            // too would be the same double subtraction this fix exists to remove.
+            if (!k.selfHitConfirmed) views.add(k.view(now));
+        }
         List<Double> selfDamages = new ArrayList<>(pending.size());
         for (Pending p : pending) {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.budgetSelfDamage);
@@ -749,6 +873,12 @@ public final class CrystalBrain {
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
         boolean reportedGone;
+        /** R3-15: the pre-tick a full-hit self-damage packet naming this crystal was attributed, or {@link CrystalView#NEVER}. */
+        long selfHitPacketTick = CrystalView.NEVER;
+        /** R3-15: health (plus absorption) just before that packet, the baseline its damage is confirmed against. */
+        double healthBeforeHit;
+        /** R3-15: once true, this crystal's damage is certain to already be in health; never left I twice. */
+        boolean selfHitConfirmed;
 
         Known(CrystalSeen seen, boolean ours, long placedTick) {
             this.seen = seen;

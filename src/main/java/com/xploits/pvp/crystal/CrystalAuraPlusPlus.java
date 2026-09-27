@@ -109,8 +109,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
  *   in-flight ledger;</li>
  *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
- *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
- *   phase, so they count as read at the previous pre-tick;</li>
+ *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt}, and the full
+ *   hits on us to {@link CrystalBrain#selfHurt} (R3-15), before its break phase, so they count as read at the
+ *   previous pre-tick;</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
@@ -601,16 +602,22 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     }
 
     /**
-     * The full hits on other players received since the last pre-tick, to the brain: the server sends this packet
-     * for full hits only, to every player tracking the one hurt (research-external M1). The player is named as the
-     * targets are; a packet about us, or about an entity that is not a player we see, is dropped. With
-     * {@code self-budget} off nothing is kept: only the budget holds placements back for a hurt window, and the brain
-     * forgets its windows at every pre-tick with it off, so none survives a packet dropped here.
+     * The full hits received since the last pre-tick, to the brain: the server sends this packet for full hits
+     * only, to every player tracking the one hurt (research-external M1), including the one hurt itself. A packet
+     * about us goes to {@link CrystalBrain#selfHurt} (R3-15: once its crystal's hit is certain to already be in
+     * health, the budget stops counting it); one about another player we see goes to {@link CrystalBrain#targetHurt},
+     * named as the targets are; one about an entity that is not us or a player we see is dropped. With
+     * {@code self-budget} off nothing is kept: only the budget reads either (a hurt window, or a confirmed self
+     * hit), and the brain forgets both at every pre-tick with it off, so neither survives a packet dropped here.
      */
     private void readDamagePackets(CrystalBrain b) {
         boolean keep = selfBudget.get();
         for (EntityDamageS2CPacket damage; (damage = damagePackets.poll()) != null; ) {
             if (!keep) continue;
+            if (mc.player != null && damage.entityId() == mc.player.getId()) {
+                b.selfHurt(damage.sourceDirectId());
+                continue;
+            }
             if (!(mc.world.getEntityById(damage.entityId()) instanceof PlayerEntity player) || player == mc.player) continue;
             b.targetHurt(player.getUuidAsString(), damage.sourceDirectId());
         }
