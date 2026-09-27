@@ -40,13 +40,7 @@ import java.util.Set;
  *   <li>{@link #placed(long, int)} when a placement packet goes out, in the same client tick;</li>
  *   <li>{@link #crystalAdded} on {@code EntityAddedEvent} for an end crystal (ownership, then fast-break),
  *   and {@link #crystalRemoved} on {@code EntityRemovedEvent};</li>
- *   <li>{@link #targetHurt} for each full-hit damage packet on another player, before the next pre-tick;
- *   {@link #selfHurt} for each full-hit damage packet on OUR player, {@link #healthUpdateReceived} for each
- *   health-update packet, and {@link #absorptionUpdateReceived} for each entity-tracker packet carrying our
- *   absorption, all before the next pre-tick, in the order they arrived relative to each other (R3-15, fix round
- *   2, extended fix round 3 for absorption): once every update a crystal's own hit packet needs (always health;
- *   also absorption, if we carried any when the hit packet arrived) has been handed over this way, after it, that
- *   crystal's damage is certain to already be in health, and the budget stops counting it.</li>
+ *   <li>{@link #targetHurt} for each full-hit damage packet on another player, before the next pre-tick.</li>
  * </ol>
  * {@link #preTick} does both phases on one set of facts.
  */
@@ -101,13 +95,6 @@ public final class CrystalBrain {
     private final TargetWindows windows = new TargetWindows();
     /** Full hits handed over since the last pre-tick; the next one counts them from the last. */
     private final List<ReadHit> hits = new ArrayList<>();
-    /**
-     * Self-related events handed over since the last pre-tick, in the order they arrived relative to each other
-     * (R3-15, fix round 2, extended fix round 3 for absorption): a full-hit packet naming a crystal
-     * ({@link SelfHit}), a health-update packet ({@link HealthApplied}), or an absorption-tracker update
-     * ({@link AbsorptionApplied}). {@link #confirmSelfHits} walks them in this order once per pre-tick.
-     */
-    private final List<SelfEvent> selfEvents = new ArrayList<>();
     /**
      * The pre-tick the windows were last forgotten at: a crystal whose placement was first decided then or before is
      * not a landing ({@link TargetWindows#landed}), as the pre-ticks since it may not all have been counted.
@@ -197,12 +184,8 @@ public final class CrystalBrain {
         decided = null;
         // The hits read since the last pre-tick count from it, never later than they arrived. With the budget off
         // nothing is kept, so turning it on again never reuses a window that missed a hit in the meantime.
-        if (settings.selfBudget()) {
-            countHits(previous);
-            confirmSelfHits();
-        } else {
-            forgetWindows();
-        }
+        if (settings.selfBudget()) countHits(previous);
+        else forgetWindows();
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -330,50 +313,6 @@ public final class CrystalBrain {
     }
 
     /**
-     * A full hit on us, read since the last pre-tick (research-double-count.md, R3-15: the server sends this
-     * packet for full hits only, the same rule research-external M1 already established for hits on other
-     * players, and the same rule applies to a sword swing, fall damage or anything else, not only crystals). Kept
-     * until the next pre-tick, which attributes it to {@code directSourceId}'s crystal, if we know one by that id
-     * (ours or not: a foreign crystal that hits us is confirmed on the same terms, exactly like {@link #targetHurt}
-     * does not filter by ownership either); a source we do not know (a sword, an unwatched crystal) is simply not
-     * something {@link #confirmSelfHits} can ever mark as hit, so it never contributes anything a health or
-     * absorption update could confirm. See {@link #confirmSelfHits} for how this and {@link #healthUpdateReceived}
-     * / {@link #absorptionUpdateReceived} together decide when a crystal's hit is certain to already be in health.
-     *
-     * @param directSourceId    the id of the entity that dealt the damage directly (the crystal for an
-     *                          explosion), or {@link #NO_SOURCE}
-     * @param absorptionPresent whether our absorption was greater than zero at the moment this packet was handed
-     *                          over (fix round 3, rereview2-r3-15.md): {@code CrystalTick.health()} is health
-     *                          <em>plus</em> absorption, and absorption syncs on a separate packet from health
-     *                          (see {@link #confirmSelfHits}), so a hit dealt while carrying any needs that
-     *                          packet's confirmation too, not only a health update's
-     */
-    public void selfHurt(int directSourceId, boolean absorptionPresent) {
-        selfEvents.add(new SelfHit(directSourceId, absorptionPresent));
-    }
-
-    /**
-     * A health-update packet about us, read since the last pre-tick (fix round 2, rereview-r3-15.md: causal
-     * ordering, not drop attribution — see {@link #confirmSelfHits}). The adapter hands one over for every
-     * {@code HealthUpdateS2CPacket} received, whatever value it carries: only its position relative to
-     * {@link #selfHurt} calls matters here, never a number.
-     */
-    public void healthUpdateReceived() {
-        selfEvents.add(new HealthApplied());
-    }
-
-    /**
-     * An entity-tracker packet about us carrying the absorption entry, read since the last pre-tick (fix round 3,
-     * rereview2-r3-15.md — see {@link #confirmSelfHits}). The adapter hands one over for every
-     * {@code EntityTrackerUpdateS2CPacket} it recognises as both about us and containing the
-     * {@code PlayerEntity.ABSORPTION_AMOUNT} tracked-data entry; only its position relative to {@link #selfHurt}
-     * calls matters here, never the value it carries.
-     */
-    public void absorptionUpdateReceived() {
-        selfEvents.add(new AbsorptionApplied());
-    }
-
-    /**
      * At the start of a pre-tick, before the crystals are updated: the hits handed over since {@code previous}
      * open or close the targets' windows as read at {@code previous}. Before the first pre-tick nothing is ours, so
      * they are dropped.
@@ -394,132 +333,16 @@ public final class CrystalBrain {
     }
 
     /**
-     * At the start of a pre-tick, before the crystals are updated (fix round 2, rereview-r3-15.md; extended fix
-     * round 3, rereview2-r3-15.md): walks {@link #selfEvents}, in the order they were handed over, and marks a
-     * crystal confirmed — its hit certain to already be inside the health any pre-tick from now on reads, so
-     * {@link #budget} leaves it out for good ({@code selfHitConfirmed} is never undone once set) — once every
-     * event its own {@link SelfHit} needs has been found <em>after</em> it, in that same order: a
-     * {@link HealthApplied} always, and, only when {@link SelfHit#absorptionPresent()} was true, an
-     * {@link AbsorptionApplied} as well (either order between the two, both after the hit).
-     *
-     * <p>This replaces fix round 1's drop attribution entirely (no baseline, no fraction, no batches): attributing
-     * an observed health drop to a crystal was unsafe by construction, because nothing distinguished a drop that
-     * crystal caused from one anything else did (a sword hit, fall damage, an untracked source — rereview-r3-15.md's
-     * Critical finding). Causal ordering needs no such distinction. It relies on two verified facts (MC 1.21.11
-     * yarn build.3; see the R3-15 fix round 2 report for the exact bytecode):
-     * <ol>
-     *   <li>the server only ever sends a full-hit packet naming a crystal from inside the damage it deals
-     *   ({@code LivingEntity.damage}, research-external M1), and only ever sends a health-update packet from
-     *   {@code ServerPlayerEntity}'s own tick, reading {@code getHealth()} live at that moment; so any health
-     *   update the server sends after a crystal's hit packet must already reflect that hit, whatever else also
-     *   happened by then (regeneration, a totem pop, unrelated damage) — both packets travel the same connection,
-     *   which preserves send order as receive order;</li>
-     *   <li>a health-update packet is not <em>applied</em> to the client's own state on receipt: it is queued into
-     *   {@code MinecraftClient}'s {@code PacketApplyBatcher} on the network thread ({@code onHealthUpdate} →
-     *   {@code NetworkThreadUtils.forceMainThread}) and only actually applied when {@code MinecraftClient.render}
-     *   next calls {@code packetApplyBatcher.apply()} — which it does unconditionally, before it ever calls
-     *   {@code tick()} in that same render pass. So a {@link HealthApplied} event handed over here, following the
-     *   same "before this pre-tick's break phase" convention {@link #selfHurt} and {@link #targetHurt} already
-     *   use, is certain to have been applied well before this call: the adapter only ever sees it after at least
-     *   one full render pass (and typically far less), never fewer.</li>
-     * </ol>
-     *
-     * <p><b>Fix round 3: absorption travels a different packet, on a slower schedule.</b>
-     * {@code CrystalTick.health()} is documented, and read everywhere in the budget, as health <em>plus</em>
-     * absorption (Meteor's {@code EntityUtils.getTotalHealth}). A health-update packet never carries absorption
-     * (rereview2-r3-15.md, verified: {@code HealthUpdateS2CPacket} has exactly {@code health}/{@code food}/
-     * {@code saturation}); for a player specifically, absorption is a {@code DataTracker}-backed field
-     * ({@code PlayerEntity.ABSORPTION_AMOUNT}, not {@code LivingEntity}'s plain unsynced one), flushed by
-     * {@code EntityTrackerEntry.syncEntityData()} into an {@code EntityTrackerUpdateS2CPacket}. Verified per-tick
-     * ordering in {@code ServerWorld.tick()}: the chunk/entity-tracker flush step (which sends dirty tracked data,
-     * including a changed {@code ABSORPTION_AMOUNT}) runs <em>before</em> the entities step (where
-     * {@code ServerPlayerEntity.playerTick()} sends the health update) in every server tick — so a crystal's own
-     * hit, landing during the entities step, has its absorption change flushed only on the <em>next</em> tick's
-     * chunk step, one full tick after the health update for that same hit is sent. So a health update alone can
-     * be observed applied while up to the crystal's entire {@code budgetSelfDamage} is still sitting, unsynced,
-     * in the client's stale (too-high) absorption reading — confirming on health alone in that case would credit
-     * phantom headroom, exactly the double-exclude class this whole task exists to close. Requiring the
-     * absorption-carrying packet too, whenever absorption was present at hit time, closes it: both packets are
-     * applied through the identical {@code PacketApplyBatcher} mechanism (verified:
-     * {@code ClientPlayNetworkHandler.onEntityTrackerUpdate} calls the same
-     * {@code NetworkThreadUtils.forceMainThread(..., packetApplyBatcher)} as {@code onHealthUpdate}, applied by
-     * the same unconditional, before-{@code tick()} {@code packetApplyBatcher.apply()} call), so an
-     * {@link AbsorptionApplied} event handed over here is exactly as certain to already be applied as a
-     * {@link HealthApplied} one is.
-     *
-     * <p>If the player's absorption reads 0 when the hit packet arrives but the server's was actually still
-     * positive (a stale-low client read, e.g. the absorption-drop packet from an <em>earlier</em>, unrelated
-     * event has not synced yet either), this rule confirms on health alone — safely: a stale-<em>low</em> reading
-     * of absorption only ever makes {@code CrystalTick.health()} read <em>lower</em> than the truth, which can
-     * only make the budget more cautious, never less (the unsafe direction this whole finding is about is a
-     * stale-<em>high</em> reading, from absorption that has not yet dropped to reflect a hit already applied to
-     * health). If the player's absorption is genuinely 0 (the ordinary case), there is nothing on that channel to
-     * wait for, and this rule behaves exactly as fix round 2 did.
-     *
-     * <p>Together: once every event a crystal's {@link SelfHit} needs is observed after it, that crystal's damage
-     * is a settled fact of the health this brain reads from here on, not a magnitude to guess at. An unrelated
-     * {@link SelfHit} for a source that is not a known crystal id (a sword, an untracked crystal) is simply never
-     * matched to anything in {@link #known}, so it can neither block nor help any crystal's own confirmation;
-     * several crystals whose {@link SelfHit} events all precede the same {@link HealthApplied} (and, if any of
-     * them needed it, the same {@link AbsorptionApplied}) are all confirmed by them together, each independently
-     * justified by the same argument above.
-     */
-    private void confirmSelfHits() {
-        for (SelfEvent event : selfEvents) {
-            switch (event) {
-                case SelfHit hit -> {
-                    Known k = known.get(hit.sourceId());
-                    if (k != null && !k.selfHitConfirmed && !k.selfHitPacketArrived) {
-                        k.selfHitPacketArrived = true;
-                        k.needsAbsorptionSync = hit.absorptionPresent();
-                    }
-                }
-                case HealthApplied ignored -> {
-                    for (Known k : known.values()) {
-                        if (k.selfHitPacketArrived && !k.selfHitConfirmed) {
-                            k.healthSynced = true;
-                            if (!k.needsAbsorptionSync || k.absorptionSynced) k.selfHitConfirmed = true;
-                        }
-                    }
-                }
-                case AbsorptionApplied ignored -> {
-                    for (Known k : known.values()) {
-                        if (k.selfHitPacketArrived && k.needsAbsorptionSync && !k.selfHitConfirmed) {
-                            k.absorptionSynced = true;
-                            if (k.healthSynced) k.selfHitConfirmed = true;
-                        }
-                    }
-                }
-            }
-        }
-        selfEvents.clear();
-    }
-
-    /**
      * Forgets every target's hurt window, and the hits handed over and not yet counted, and every landing learned,
-     * including those of the crystals placed until now and not yet gone; and, for the self-hit confirmation (R3-15,
-     * fix round 2), every self-related event handed over and not yet walked, and every crystal's still-unconfirmed
-     * "packet arrived" mark. The adapter calls it when it skips a pre-tick while the client ticks on (the ticks
-     * since a hit or a placement would come out short, so a window could seem open after the server's has closed,
-     * and a crystal seem faster than it is); the brain does the same at every pre-tick with the budget off, so it
-     * learns nothing then. A crystal whose hit packet had arrived but was not yet confirmed simply goes back to
-     * having none: its explosion sends that packet at most once, so it keeps its full ordinary window from here on,
-     * the same fallback as a packet lost outright. Crystals already confirmed stay confirmed: that is a fact about
-     * health already read, not about continuous tracking.
+     * including those of the crystals placed until now and not yet gone. The adapter calls it when it skips a pre-tick
+     * while the client ticks on (the ticks since a hit or a placement would come out short, so a window could seem
+     * open after the server's has closed, and a crystal seem faster than it is); the brain does the same at every
+     * pre-tick with the budget off, so it learns nothing then.
      */
     public void forgetWindows() {
         windows.clear();
         hits.clear();
         landingSince = now;
-        selfEvents.clear();
-        for (Known k : known.values()) {
-            if (!k.selfHitConfirmed) {
-                k.selfHitPacketArrived = false;
-                k.needsAbsorptionSync = false;
-                k.healthSynced = false;
-                k.absorptionSynced = false;
-            }
-        }
     }
 
     /**
@@ -813,12 +636,7 @@ public final class CrystalBrain {
     /** The same, leaving out the placement pending at {@code replacedSpot}, if any. */
     private SelfBudget budget(double health, Long replacedSpot) {
         List<CrystalView> views = new ArrayList<>(known.size());
-        for (Known k : known.values()) {
-            // A crystal whose hit on us is confirmed (R3-15, confirmSelfHits) is left out entirely, not merely
-            // re-shared into S: its damage is already inside the health read this pre-tick, so counting it here
-            // too would be the same double subtraction this fix exists to remove.
-            if (!k.selfHitConfirmed) views.add(k.view(now));
-        }
+        for (Known k : known.values()) views.add(k.view(now));
         List<Double> selfDamages = new ArrayList<>(pending.size());
         for (Pending p : pending) {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.budgetSelfDamage);
@@ -920,27 +738,6 @@ public final class CrystalBrain {
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}
 
-    /**
-     * One self-related event handed over by {@link #selfHurt}, {@link #healthUpdateReceived} or
-     * {@link #absorptionUpdateReceived} (R3-15, fix round 2, then round 3 for absorption).
-     */
-    private sealed interface SelfEvent permits SelfHit, HealthApplied, AbsorptionApplied {}
-
-    /**
-     * A full-hit packet on us naming this direct source, handed over by {@link #selfHurt}, with whether
-     * absorption was present (rereview2-r3-15.md, fix round 3) at the moment the adapter handed it over.
-     */
-    private record SelfHit(int sourceId, boolean absorptionPresent) implements SelfEvent {}
-
-    /** A health-update packet on us, handed over by {@link #healthUpdateReceived}. */
-    private record HealthApplied() implements SelfEvent {}
-
-    /**
-     * An entity-tracker packet on us carrying the absorption entry, handed over by
-     * {@link #absorptionUpdateReceived} (fix round 3).
-     */
-    private record AbsorptionApplied() implements SelfEvent {}
-
     /** What we know of one crystal: the latest measurement and what we did to it. */
     private static final class Known {
         CrystalSeen seen;
@@ -952,25 +749,6 @@ public final class CrystalBrain {
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
         boolean reportedGone;
-        /**
-         * R3-15 (fix round 2): whether a full-hit self-damage packet naming this crystal has been walked by
-         * {@link #confirmSelfHits}, not yet confirmed.
-         */
-        boolean selfHitPacketArrived;
-        /**
-         * R3-15, fix round 3 (rereview2-r3-15.md): whether absorption was present when the packet above arrived,
-         * so this crystal needs an {@link AbsorptionApplied} event too, not only a {@link HealthApplied} one,
-         * before it can be confirmed: {@code CrystalTick.health()} is health <em>plus</em> absorption, and a hit
-         * dealt while carrying absorption may have landed partly or wholly there, which a health-update packet
-         * alone never reflects.
-         */
-        boolean needsAbsorptionSync;
-        /** Whether a {@link HealthApplied} event has been walked after this crystal's packet arrived. */
-        boolean healthSynced;
-        /** Whether an {@link AbsorptionApplied} event has been walked after this crystal's packet arrived. */
-        boolean absorptionSynced;
-        /** R3-15: once true, this crystal's damage is certain to already be in health; never left I twice. */
-        boolean selfHitConfirmed;
 
         Known(CrystalSeen seen, boolean ours, long placedTick) {
             this.seen = seen;

@@ -6,7 +6,6 @@
   "client": [
     "ChatHudMixin",
     "LoggerPrintStreamMixin",
-    "XploitsAbsorptionAccessor",
     "XploitsInteractionInvoker"
   ],
   "injectors": {
