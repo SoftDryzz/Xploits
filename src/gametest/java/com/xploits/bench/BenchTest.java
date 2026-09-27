@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The bench's only entrypoint (spec {@code 2026-09-25-ingame-bench}). It runs the scenarios asked for,
@@ -37,7 +38,8 @@ import java.util.Map;
  * <p>Which scenarios it plays is the run's {@link Profile} (R3-9): the everyday run by default, the full run
  * with {@code -Pbench.full}, the named ones with {@code -Pbench.only}. A {@code ca-*} MEASURE is served from
  * the Meteor cache ({@link MeteorCache}) while its key matches, and cached again whenever it is measured DONE;
- * {@code -Pbench.fresh} measures every one of them again.
+ * {@code -Pbench.fresh} measures every one of them again, and so does {@code -Pbench.verifySettle}, which must
+ * verify Meteor's settle shortcut too ({@link MeteorCache#bypass}).
  *
  * <p>Nothing it prints carries a position: names, statuses and bench-written messages only. An
  * exception from outside the bench is described by its class alone.
@@ -82,8 +84,10 @@ public class BenchTest implements FabricClientGameTest {
             config.only(), Scenarios.judged(), profile);
         LOG.info("[bench] {}: {} scenario(s) selected, {} to play, {} skipped; the baseline has {} scenario(s)",
             profile.label(), selected.size(), played.size(), selected.size() - played.size(), baseline.size());
-        MeteorCache.Key cacheKey = cacheKey(config);
-        if (Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE)) {
+        boolean verifySettle = Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE);
+        Optional<String> bypass = MeteorCache.bypass(config.fresh(), verifySettle);
+        MeteorCache.Key cacheKey = cacheKey(config, bypass);
+        if (verifySettle) {
             LOG.info("[bench] settle verification on: a settled crystal-aura run runs on to its full length and is checked");
         }
         // Every planned scenario is in the report from the start, PENDING: a client that stops mid-bench
@@ -97,7 +101,7 @@ public class BenchTest implements FabricClientGameTest {
             long start = System.nanoTime();
             String key = cacheKey != null && cacheable(scenario) ? cacheKey.of(scenario.name()) : null;
             Path cacheFile = key == null ? null : MeteorCache.file(cacheFolder, scenario.name());
-            if (key != null && !config.fresh()) {
+            if (key != null && bypass.isEmpty()) {
                 MeteorCache.Lookup lookup = MeteorCache.read(cacheFile, scenario.name(), key, scenario.runs());
                 if (lookup.hit()) {
                     report.cached(scenario, lookup.entry().runs(), lookup.entry().measured());
@@ -108,7 +112,7 @@ public class BenchTest implements FabricClientGameTest {
                 }
                 LOG.info("[bench] {}: measured, not served from the Meteor cache ({})", scenario.name(), lookup.miss());
             } else if (key != null) {
-                LOG.info("[bench] {}: measured, not served from the Meteor cache (-Pbench.fresh)", scenario.name());
+                LOG.info("[bench] {}: measured, not served from the Meteor cache ({})", scenario.name(), bypass.get());
             }
             for (int i = 1; i <= scenario.runs(); i++) {
                 Run run = runOnce(ctx, scenario, config.out());
@@ -130,30 +134,28 @@ public class BenchTest implements FabricClientGameTest {
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
     }
 
-    /**
-     * Only Meteor's own MEASUREs, {@code ca-*}, are cached: no CHECK (not even {@code capp-budget-off-parity},
-     * which plays Meteor's aura inside) and no crystal-aura++ scenario.
-     */
+    /** Only Meteor's own MEASUREs, {@code ca-*}, are cached ({@link MeteorCache#cacheable}). */
     static boolean cacheable(Scenario scenario) {
-        return scenario.kind() == Scenario.Kind.MEASURE && scenario.name().startsWith("ca-") && scenario.risk().isEmpty()
-            && scenario.compareWith().isEmpty();
+        return MeteorCache.cacheable(scenario.kind() == Scenario.Kind.MEASURE, scenario.name(), scenario.risk().isPresent(),
+            scenario.compareWith().isPresent());
     }
 
     /**
      * The Meteor cache's key over the Meteor jar the game loaded, the Minecraft version, and the project files
      * that can change what Meteor does in the bench ({@link MeteorCache#inputs}: {@code src/gametest}, the build
-     * files, the mixin configs and their packages); null, which leaves the cache off and every {@code ca-*} measured, when any of them
-     * cannot be read. Computed with {@code -Pbench.fresh} too: what that run measures is cached again.
+     * files, the mixin configs and their packages, the recorder); null, which leaves the cache off and every
+     * {@code ca-*} measured, when any of them cannot be read. Computed when the run bypasses the cache too
+     * ({@code bypass}): what that run measures is cached again.
      */
-    private static MeteorCache.Key cacheKey(Config config) {
+    private static MeteorCache.Key cacheKey(Config config, Optional<String> bypass) {
         try {
             if (config.project() == null) throw new BenchException("xploits.bench.project is not set");
             Path jar = meteorJar();
             MeteorCache.Key key = MeteorCache.Key.of(Files.readAllBytes(jar), version("minecraft"),
                 MeteorCache.inputs(config.project()));
-            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {}, src/gametest, the build files and the mixins{}",
-                jar.getFileName(),
-                version("minecraft"), config.fresh() ? "; -Pbench.fresh measures every ca-* again" : "");
+            LOG.info("[bench] Meteor cache on: keyed on {}, Minecraft {}, src/gametest, the build files, the mixins and"
+                + " the recorder{}", jar.getFileName(), version("minecraft"),
+                bypass.map(flag -> "; " + flag + " measures every ca-* again").orElse(""));
             return key;
         } catch (IOException | RuntimeException e) {
             LOG.warn("[bench] Meteor cache off, every ca-* is measured: {}", describe(e));

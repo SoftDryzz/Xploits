@@ -21,19 +21,23 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The Meteor cache (R3-9). Meteor's crystal-aura gives the same numbers run after run, so once a {@code ca-*}
- * MEASURE has finished DONE its runs' metrics are kept in {@code build/bench/meteor-cache/<scenario>.json},
- * under a {@link Key} over what can change them: the bytes of Meteor's jar on the game's classpath, the
- * Minecraft version, the project files of {@link #inputs} (the bench, the build files, the mixins; by sorted
- * path, with their bytes) and the scenario's name. A release re-measures Meteor anyway ({@link ReleaseGate}). The next run serves them instead of playing the scenario, but only while the key
- * still matches: a missing file, another key, or a file that cannot be read as one is a miss
- * ({@link Lookup}), and the scenario is measured again. Reading never throws. Pure: no game class.
+ * The Meteor cache (R3-9). Meteor's crystal-aura gives nearly the same numbers run after run, so once a
+ * {@code ca-*} MEASURE ({@link #cacheable}) has finished DONE its runs' metrics are kept in
+ * {@code build/bench/meteor-cache/<scenario>.json}, under a {@link Key} over what can change them: the bytes of
+ * Meteor's jar on the game's classpath, the Minecraft version, the project files of {@link #inputs} (the bench,
+ * the build files, the mixins, the recorder; by sorted path, with their bytes) and the scenario's name.
+ *
+ * <p>The next run serves them instead of playing the scenario, unless it asks for fresh results or verifies the
+ * settle shortcut ({@link #bypass}), and only while the key still matches: a missing file, another key, or a
+ * file that cannot be read as one is a miss ({@link Lookup}), and the scenario is measured again. Reading never
+ * throws. A release re-measures Meteor anyway ({@link ReleaseGate}). Pure: no game class.
  */
 public final class MeteorCache {
     /** The cache file's own format. */
@@ -168,6 +172,11 @@ public final class MeteorCache {
     private static final String BENCH = "src/gametest";
     private static final String RESOURCES = "src/main/resources";
     private static final String MAIN_JAVA = "src/main/java";
+    /**
+     * The addon code a {@code ca-*} run measures Meteor with: the recorder counts Meteor's {@code self_damage} and
+     * {@code self_pops}. Every file under it is hashed, sub-packages included.
+     */
+    public static final List<String> INSTRUMENTS = List.of(MAIN_JAVA + "/com/xploits/pvp/recorder");
     private static final Pattern PACKAGE = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
 
     /**
@@ -176,9 +185,10 @@ public final class MeteorCache {
      * (the bench itself), the {@link #BUILD_FILES} that exist (the versions of everything the game loads), every
      * mixin config under {@code src/main/resources}, and every Java file under each of their {@code package}s in
      * {@code src/main/java}, sub-packages included (the addon's mixins reach into Minecraft, and so into what
-     * Meteor sees). The rest of the addon is left out on purpose: crystal-aura++ is off in every {@code ca-*} run,
-     * and hashing it would re-measure Meteor on every crystal-aura++ change, which would defeat the cache. A
-     * missing {@code src/gametest}, or a mixin package that is not a Java package name, is an error.
+     * Meteor sees), and every file of the {@link #INSTRUMENTS} (the recorder, which measures Meteor). The rest of
+     * the addon is left out on purpose: crystal-aura++ is off in every {@code ca-*} run, and hashing it would
+     * re-measure Meteor on every crystal-aura++ change, which would defeat the cache. A missing
+     * {@code src/gametest}, or a mixin package that is not a Java package name, is an error.
      */
     public static SortedMap<String, byte[]> inputs(Path project) throws IOException {
         SortedMap<String, byte[]> files = new TreeMap<>();
@@ -186,6 +196,10 @@ public final class MeteorCache {
         for (String name : BUILD_FILES) {
             Path file = project.resolve(name);
             if (Files.isRegularFile(file)) files.put(name, Files.readAllBytes(file));
+        }
+        for (String folder : INSTRUMENTS) {
+            Path root = project.resolve(folder);
+            if (Files.isDirectory(root)) sources(root).forEach((path, bytes) -> files.put(folder + "/" + path, bytes));
         }
         Path resources = project.resolve(RESOURCES);
         if (!Files.isDirectory(resources)) return files;
@@ -231,6 +245,30 @@ public final class MeteorCache {
         boolean lists = List.of("mixins", "client", "server").stream()
             .anyMatch(name -> root.get(name) != null && root.get(name).isJsonArray());
         return pkg != null && lists ? new MixinConfig(pkg) : MixinConfig.NOT_ONE;
+    }
+
+    /** The prefix of Meteor's own MEASUREs, the only scenarios the cache keeps. */
+    public static final String METEOR_PREFIX = "ca-";
+
+    /**
+     * Whether a scenario may be served from the cache: only Meteor's own MEASUREs, {@code ca-*}, with no
+     * crystal-aura++ level and no twin to be judged against. Never a CHECK, not even
+     * {@code capp-budget-off-parity}, which plays Meteor's aura inside; never crystal-aura++'s {@code capp-*};
+     * never {@code defense-attacker}.
+     */
+    public static boolean cacheable(boolean measure, String name, boolean hasRisk, boolean hasCompare) {
+        return measure && name.startsWith(METEOR_PREFIX) && !hasRisk && !hasCompare;
+    }
+
+    /**
+     * Why this run measures every {@code ca-*} instead of serving it, or empty when it may serve them:
+     * {@code -Pbench.fresh} asks for it, and {@code -Pbench.verifySettle} must verify Meteor's settle shortcut
+     * too, which a served scenario never runs. What such a run measures is cached again all the same.
+     */
+    public static Optional<String> bypass(boolean fresh, boolean verifySettle) {
+        if (fresh) return Optional.of("-Pbench.fresh");
+        if (verifySettle) return Optional.of("-Pbench.verifySettle");
+        return Optional.empty();
     }
 
     /** {@code <folder>/<scenario>.json}. */

@@ -24,10 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The Meteor cache (R3-9): Meteor's crystal-aura gives the same numbers run after run, so a {@code ca-*}
- * MEASURE's runs are kept under a key over everything that could change them (Meteor's jar, the Minecraft
- * version, every bench source, the scenario's name) and served again only while that key still matches. A
- * missing, stale or broken file is a miss, never a crash.
+ * The Meteor cache (R3-9): Meteor's crystal-aura gives nearly the same numbers run after run, so a {@code ca-*}
+ * MEASURE's runs are kept under a key over what can change them (Meteor's jar, the Minecraft version, the bench's
+ * sources, the build files, the addon's mixins and its recorder, the scenario's name) and served again only while
+ * that key still matches and the run neither asks for fresh results nor verifies the settle shortcut. A missing,
+ * stale or broken file is a miss, never a crash. Only Meteor's own MEASUREs are ever cached.
  */
 class MeteorCacheTest {
     private static final byte[] METEOR = bytes("meteor jar bytes");
@@ -173,6 +174,8 @@ class MeteorCacheTest {
         put(project, "src/main/java/com/xploits/mixin/inner/Deep.java", "class Deep {}");
         put(project, "src/main/java/com/xploits/pvp/crystal/CrystalAuraPlusPlus.java", "class CrystalAuraPlusPlus {}");
         put(project, "src/main/java/com/xploits/mixinlike/NotAMixin.java", "class NotAMixin {}");
+        put(project, "src/main/java/com/xploits/pvp/recorder/FightRecorder.java", "class FightRecorder {}");
+        put(project, "src/main/java/com/xploits/pvp/recorder/core/DamageLedger.java", "class DamageLedger {}");
     }
 
     private static String projectKey(Path project) throws IOException {
@@ -191,6 +194,8 @@ class MeteorCacheTest {
                 "src/gametest/resources/fabric.mod.json",
                 "src/main/java/com/xploits/mixin/ChatHudMixin.java",
                 "src/main/java/com/xploits/mixin/inner/Deep.java",
+                "src/main/java/com/xploits/pvp/recorder/FightRecorder.java",
+                "src/main/java/com/xploits/pvp/recorder/core/DamageLedger.java",
                 "src/main/resources/xploits.mixins.json"),
             List.copyOf(MeteorCache.inputs(project).keySet()));
     }
@@ -244,6 +249,19 @@ class MeteorCacheTest {
     }
 
     @Test
+    void theKeyChangesWithTheRecorder(@TempDir Path project) throws IOException {
+        // The recorder measures Meteor's self_damage and self_pops: a change to how it counts must re-measure Meteor,
+        // or the ca-* numbers and the capp-* numbers they are judged against would follow two different rules.
+        project(project);
+        String before = projectKey(project);
+        put(project, "src/main/java/com/xploits/pvp/recorder/core/DamageLedger.java", "class DamageLedger { int totem; }");
+        String core = projectKey(project);
+        assertNotEquals(before, core);
+        put(project, "src/main/java/com/xploits/pvp/recorder/FightRecorder.java", "class FightRecorder { int changed; }");
+        assertNotEquals(core, projectKey(project));
+    }
+
+    @Test
     void theMixinPackagesComeFromTheConfigs(@TempDir Path project) throws IOException {
         // Never a hard-coded package: a second config with its own package brings that package in.
         project(project);
@@ -275,6 +293,34 @@ class MeteorCacheTest {
     void aProjectWithoutTheBenchIsAnError(@TempDir Path project) throws IOException {
         put(project, "build.gradle.kts", "x");
         assertThrows(IOException.class, () -> MeteorCache.inputs(project));
+    }
+
+    // Which scenarios, and when (fix round 2)
+
+    @Test
+    void onlyMeteorsOwnMeasuresAreCacheable() {
+        assertTrue(MeteorCache.cacheable(true, "ca-still", false, false));
+        assertTrue(MeteorCache.cacheable(true, "ca-above-regen", false, false));
+        // capp-budget-off-parity plays Meteor's aura inside, but it is a CHECK: always played.
+        assertFalse(MeteorCache.cacheable(false, "capp-budget-off-parity", false, false));
+        assertFalse(MeteorCache.cacheable(false, "ca-still", false, false));
+        // crystal-aura++'s MEASUREs: a level and a Meteor twin.
+        assertFalse(MeteorCache.cacheable(true, "capp-still", true, true));
+        assertFalse(MeteorCache.cacheable(true, "capp-balanced-still-regen", true, true));
+        // Not Meteor's crystal-aura, whatever else it plays.
+        assertFalse(MeteorCache.cacheable(true, "defense-attacker", false, false));
+        // A ca- name with a level or a twin is not Meteor's own scenario.
+        assertFalse(MeteorCache.cacheable(true, "ca-still", true, false));
+        assertFalse(MeteorCache.cacheable(true, "ca-still", false, true));
+    }
+
+    @Test
+    void aFreshOrSettleVerifyingRunNeverServesTheCache() {
+        // -Pbench.verifySettle must verify Meteor's settle shortcut too: a cached ca-* would never run it.
+        assertEquals(java.util.Optional.empty(), MeteorCache.bypass(false, false));
+        assertEquals(java.util.Optional.of("-Pbench.fresh"), MeteorCache.bypass(true, false));
+        assertEquals(java.util.Optional.of("-Pbench.verifySettle"), MeteorCache.bypass(false, true));
+        assertTrue(MeteorCache.bypass(true, true).isPresent());
     }
 
     // The file

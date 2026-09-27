@@ -74,8 +74,9 @@ loom.runs.named("clientGameTest") {
     if (project.hasProperty("bench.full")) property("xploits.bench.full", "true")
     // R3-9: Meteor's ca-* results are served from build/bench/meteor-cache while its key matches: Meteor's jar,
     // the Minecraft version, every file under src/gametest, the build files (this one, settings.gradle.kts,
-    // gradle.properties, gradle/libs.versions.toml), the mixin configs and their packages' Java files, and the
-    // scenario (MeteorCache.inputs). -Pbench.fresh measures them again, and a release needs it (benchVerify).
+    // gradle.properties, gradle/libs.versions.toml), the mixin configs and their packages' Java files, the
+    // recorder, and the scenario (MeteorCache.inputs). -Pbench.fresh measures them again, and a release needs it
+    // (benchVerify); -Pbench.verifySettle measures them again too.
     if (project.hasProperty("bench.fresh")) property("xploits.bench.fresh", "true")
     property("xploits.bench.project", projectDir.absolutePath)
 }
