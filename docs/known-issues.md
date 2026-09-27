@@ -134,6 +134,68 @@ The window asks for its size with a sequence Windows Terminal honors. If you set
 conhost, selecting text freezes the window for as long as the selection lasts; the game does not
 notice, because they only talk through files.
 
+### `crystal-aura++` deals less damage than Meteor's above, below and while you move
+
+**Symptom:** with the opponent 3 blocks above or below you, Balanced deals about 6 % less damage than
+Meteor's `crystal-aura` and takes the first totem about 0.5 s later; while you walk in circles, about
+30 % less damage.
+
+**What happens.** To keep the reserve while you move, the budget judges each crystal at the worst spot
+you could reach before it explodes. That spot includes a jump, is taken as fully exposed, and at the
+start of a fight assumes a whole second of movement until it has learned how long its crystals take to
+land. Above or below you, the edge of the platform or the pit shields you, but the budget does not
+count that shield at those extra spots, so it holds back crystals that were safe.
+
+**Consequence:** less damage than needed; never less safety (the reserve held in every bench run).
+
+**What to do.** If you prefer Meteor's damage there, set `auto-pvp`'s `crystal-module` to `meteor`.
+
+**Pending fix:** 0.7.1 — size the caution from how far you really move, and take the real exposure into
+account.
+
+### `crystal-aura++` takes the first totem later against an opponent who moves around you
+
+**Symptom:** against an opponent who circles or dodges, Balanced takes the first totem 0.4 to 0.75 s
+later than Meteor (3.5 s later if you also dodge), with about the same total damage.
+
+**What happens.** Every spot around a moving opponent is close to you, so each crystal hurts you a lot,
+and the reserve refuses the ones that would take you below it. This is the reserve doing its job:
+Meteor's `crystal-aura` gets there sooner by taking you down to 0.4 health.
+
+**What to do.** Nothing, if you want the floor. `Aggressive` (experimental) keeps 2 instead of 3.5.
+
+### `crystal-aura++` may place nothing when the opponent is right on top of you
+
+**Symptom:** at 1–2 blocks the aura goes quiet.
+
+**What happens.** Meteor's `max-damage` (6 by default: no crystal may deal you more than 6) still
+applies, and up close almost every spot deals you more than that.
+
+**What to do.** With `self-budget` on, raising `max-damage` lets the reserve be the limit instead.
+
+**Pending fix:** 0.7.1 — with the budget on, the reserve replaces `max-damage`.
+
+### `crystal-aura++` brakes a little more than it needs to after a hit lands
+
+**What happens.** A crystal that has already hit you is still counted for a few ticks, because your
+health can reach the client late; with network delay the hit is often already in your health by then,
+so it counts twice. The attempt to stop counting it earlier was withdrawn before 0.7.0: it let health go
+below the reserve on the bench.
+
+**Consequence:** a few crystals refused that were safe. Never less safety.
+
+**Pending fix:** stop counting a crystal only once the client has really applied the health update that
+contains its hit.
+
+### Two narrow gaps in how far `crystal-aura++` assumes you can move
+
+**What happens.** A lag spike that delays one of your crystals by more than about 1.3 s is not
+recognised as yours, so it does not widen the caution the way a shorter spike does. And the worst-spot
+check looks at eight directions around you, so a crystal exactly between two of them is judged a few
+percent closer to safe than it is. Neither showed up on the bench.
+
+**Pending fix:** widen the late-crystal window and aim a point at each crystal's direction.
+
 ---
 
 ## Unmeasured calibrations
@@ -147,6 +209,9 @@ the way, it is a candidate for adjusting.
 | Expiry of the measured consumption | factor ×1 over its own evidence | It can expire early at the start of the flight and take long on long flights |
 | Coverage floor | 95 % | First value with no data behind it. The first hour of real flight will probably move it |
 | Area cap | 4,000,000 chunks | Crossing of three bounds: how long it would take to fly, not getting in the way of normal use, and what it costs to cover |
+| `crystal-aura++` reserves | Safe 5, Balanced 3.5, Aggressive 2 | Measured on the bench against a fake opponent that never attacks; not yet in real fights |
+| Target cooldown margin | 0.5 raw damage | A crystal is held only if it cannot beat the target's last hit by this much; the client overshoots that hit by about 3.5 on average |
+| Learning how long crystals take to land | 5 samples, 1-tick margin, 1 s until learned, lag spikes up to 5 s | Chosen to never underestimate; the 1 s start is what makes it cautious while you move |
 
 ---
 
@@ -200,3 +265,7 @@ Things that are implemented and reasoned through but that **nobody has seen work
 - Whether the server sends chunks at the rate the lane planning assumes.
 - Whether 6b6t sends the contents of shulkers inside chests (it decides half of the design of
   `stash-keeper`).
+- How `crystal-aura++` does against an opponent who attacks you back, with golden apples, or with
+  several enemies at once: the bench does not measure any of these yet.
+- Whether `auto-pvp`'s surround request right after a hole block is broken is fast enough against instant
+  mining on a real server.
