@@ -119,7 +119,7 @@ class CrystalBrainBudgetTest {
         // Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so it stays. Meteor would break it (4 < 5.5), so
         // by Meteor's rule it stops placing, and the budget does not change that. Here it is measured beyond
         // the hazard radius so S does not hold it and the budget alone would let the spot through
-        // (5.5 - 0 - 0 = 5.5 >= 5): only the one-at-a-time rule says no.
+        // (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): only the one-at-a-time rule says no.
         CrystalSeen mine = crystal(1, 8, 4);
         CrystalBrain b = new CrystalBrain();
         long t = own(b, 1, mine);
@@ -271,7 +271,8 @@ class CrystalBrainBudgetTest {
 
     @Test
     void aPendingPlacementCountsUntilItsCrystalAppearsAndThenOnlyTheCrystalCounts() {
-        // Meteor would place self 5 at health 12 (5 < 12); the pending placement is in S: 12 - 5 - 5 = 2 < 5.
+        // Meteor would place self 5 at health 12 (5 < 12); the pending placement is in S: 12 - 5 - 5 = 2 < 3.5
+        // (DEFAULTS's Balanced reserve).
         CrystalBrain b = new CrystalBrain();
         assertPlaces(9, b.preTick(DEFAULTS, tick(1).candidates(spot(9, 8, 5)).build()));
         b.placed(9, 0);
@@ -305,8 +306,8 @@ class CrystalBrainBudgetTest {
     @Test
     void aCrystalPlacedTwiceAtOneSpotCountsOnce() {
         // The crystal appears (dealing nothing, so it stops no placement). Only it counts in S:
-        // 15 - 5 - 5 = 5 >= 5, as after a single placement. Two pending entries would leave one behind:
-        // 15 - 10 - 5 = 0.
+        // 15 - 5 - 5 = 5 >= 3.5 (DEFAULTS's Balanced reserve), as after a single placement. Two pending
+        // entries would leave one behind: 15 - 10 - 5 = 0.
         CrystalSeen appeared = crystal(1, 9, 0, 5);
 
         CrystalBrain twice = placedTwice();
@@ -337,8 +338,8 @@ class CrystalBrainBudgetTest {
 
     @Test
     void aSpotStillPendingIsNotCountedAgainstItself() {
-        // Health 12 with self 5 pending on 9: spot 8 (the best) would leave 12 - 5 - 5 = 2 < 5; placing on 9
-        // again replaces the pending one, 12 - 0 - 5 = 7.
+        // Health 12 with self 5 pending on 9: spot 8 (the best) would leave 12 - 5 - 5 = 2 < 3.5 (DEFAULTS's
+        // Balanced reserve); placing on 9 again replaces the pending one, 12 - 0 - 5 = 7.
         CrystalBrain b = new CrystalBrain();
         assertPlaces(9, b.preTick(DEFAULTS, tick(1).health(12).candidates(spot(9, 8, 5)).build()));
         b.placed(9, 0);

@@ -75,8 +75,9 @@ class CrystalBrainTieBreakTest {
 
     @Test
     void fallbackSkipsATiedPairTheBudgetRefusesForTheNextSaferSpot() {
-        // Health 6, reserve 5: the tied top spots (self 5) each leave 6 - 0 - 5 = 1 < 5, over epsilon (0.5),
-        // so both are refused. A lower-damage, much safer spot (self 1) leaves 6 - 0 - 1 = 5, allowed.
+        // Health 6, reserve 3.5 (Balanced, DEFAULTS): the tied top spots (self 5) each leave 6 - 0 - 5 = 1 < 3.5,
+        // over epsilon (0.5), so both are refused. A lower-damage, much safer spot (self 1) leaves 6 - 0 - 1 = 5,
+        // allowed.
         Candidate high1 = withBudget(spot(1, 10.0, 0), 5);
         Candidate high2 = withBudget(spot(2, 10.0, 0), 5);
         Candidate safer = withBudget(spot(3, 8.0, 0), 1);

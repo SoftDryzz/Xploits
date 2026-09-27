@@ -128,13 +128,43 @@ class ScenarioSelectionTest {
      */
     private static final String SCENARIOS_FINGERPRINT = "9a56d6f1ede16c8488d23b0374ad0fd64403c4d4b419376b9f6ffc5e3995fa23";
 
+    /**
+     * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},
+     * {@code plusPlus}, {@code healing}, {@code movingSelf}) are what actually set each scenario's {@code
+     * measure} kind, {@code risk} level and {@code compareWith} twin: this mirror hardcodes their result, so
+     * a change to what those factories wire up would not touch {@code Scenarios.java} and would slip past
+     * {@link #SCENARIOS_FINGERPRINT} alone.
+     */
+    private static final String CRYSTAL_AURA_MEASURE_FINGERPRINT =
+        "2ce1566bab72b0a87204cb03ebe2acf7896ee89dd88e035f53e21b731af8425e";
+
+    /**
+     * SHA-256 of {@code RiskLevel.java}, same normalization (R3-17). This mirror derives its {@code
+     * capp-<level>-} names from the enum's constant names ({@link RiskLevel#name()}, lowercased, mirroring
+     * {@code Scenarios.java} and this file's own scenario builder) and hardcodes which levels are
+     * experimental ({@link #theEverydayRunSkipsSafeAndAggressiveOnly}: Safe and Aggressive); a renamed,
+     * reordered or added level would change what the real bench runs without touching either
+     * {@code Scenarios.java} or {@code CrystalAuraMeasure.java}.
+     */
+    private static final String RISK_LEVEL_FINGERPRINT =
+        "70a251df43ab0daa93fcd26608ca55a7ecf657429a8226f325c1be372f21f4df";
+
     @Test
     void theMirrorFollowsScenarios() throws IOException, NoSuchAlgorithmException {
-        Path file = Path.of("src", "gametest", "java", "com", "xploits", "bench", "Scenarios.java");
+        assertFingerprint(SCENARIOS_FINGERPRINT,
+            Path.of("src", "gametest", "java", "com", "xploits", "bench", "Scenarios.java"));
+        assertFingerprint(CRYSTAL_AURA_MEASURE_FINGERPRINT,
+            Path.of("src", "gametest", "java", "com", "xploits", "bench", "CrystalAuraMeasure.java"));
+        assertFingerprint(RISK_LEVEL_FINGERPRINT,
+            Path.of("src", "main", "java", "com", "xploits", "pvp", "crystal", "core", "RiskLevel.java"));
+    }
+
+    /** One file's SHA-256, line endings normalized, checked against {@code expected}. */
+    private static void assertFingerprint(String expected, Path file) throws IOException, NoSuchAlgorithmException {
         String text = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
         String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
             .digest(text.getBytes(StandardCharsets.UTF_8)));
-        assertEquals(SCENARIOS_FINGERPRINT, fingerprint,
-            "Scenarios.java changed: bring ScenarioSelectionTest's mirror up to date, then its fingerprint");
+        assertEquals(expected, fingerprint,
+            file + " changed: bring ScenarioSelectionTest's mirror up to date, then its fingerprint");
     }
 }
