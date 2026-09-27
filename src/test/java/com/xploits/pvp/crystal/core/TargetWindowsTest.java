@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 
 import static com.xploits.pvp.crystal.core.Crystals.HANDS;
@@ -112,51 +113,68 @@ class TargetWindowsTest {
         assertFalse(w.landsInside(0, 0));
     }
 
-    // recentOutlier() (task R3-16 fix round 1): a too-slow landing must not simply vanish
+    // recentOutlier() (task R3-16): a too-slow landing must not simply vanish, and (fix round 2) must widen
+    // a safety bound by its own measured length, not just mark that one happened
 
     @Test
     void withNoLandingAtAllThereIsNoRecentOutlier() {
-        assertFalse(new TargetWindows().recentOutlier(0));
+        assertTrue(new TargetWindows().recentOutlier(0).isEmpty());
     }
 
     @Test
     void anOrdinaryLandingIsNeverAnOutlier() {
         TargetWindows w = landings(0, 3, 3, 3, 3, 3, 20);
-        assertFalse(w.recentOutlier(0), "20 is still an ordinary sample, not an outlier");
+        assertTrue(w.recentOutlier(0).isEmpty(), "20 is still an ordinary sample, not an outlier");
     }
 
     @Test
-    void aLandingPastTheCeilingMarksARecentOutlierWithoutBecomingASample() {
-        TargetWindows w = landings(0, 3, 3, 3, 3, 3, 25);
-        assertTrue(w.recentOutlier(0));
-        // Unchanged from before this fix: the outlier still never joins the ordinary samples.
+    void aLandingPastTheCeilingReportsItsOwnMagnitudeWithoutBecomingASample() {
+        TargetWindows w = landings(0, 3, 3, 3, 3, 3, 40);
+        assertEquals(OptionalInt.of(40), w.recentOutlier(0));
+        // Unchanged: the outlier still never joins the ordinary samples.
         assertTrue(w.landsInside(5, 0), "the bound is still 3, from the five ordinary samples");
+    }
+
+    @Test
+    void aLandingPastTheSanityCapReadsAsTheCapNotItsRawLength() {
+        TargetWindows w = new TargetWindows();
+        w.landed(0, 150);
+        assertEquals(OptionalInt.of(TargetWindows.LANDING_OUTLIER_CAP_TICKS), w.recentOutlier(0));
+    }
+
+    @Test
+    void theLargestOutlierInTheWindowWinsNotJustTheMostRecentOne() {
+        TargetWindows w = new TargetWindows();
+        w.landed(10, 40);
+        w.landed(50, 25);
+        // Both still within 200 ticks of 60: the larger of the two, 40, even though it is not the latest.
+        assertEquals(OptionalInt.of(40), w.recentOutlier(60));
     }
 
     @Test
     void aRecentOutlierAgesOutAfterTheSameWindowAsAnOrdinarySample() {
         TargetWindows w = new TargetWindows();
-        w.landed(100, 25);
-        assertTrue(w.recentOutlier(300), "200 ticks old and still counts");
-        assertFalse(w.recentOutlier(301), "201 ticks old, one past the window");
+        w.landed(100, 40);
+        assertEquals(OptionalInt.of(40), w.recentOutlier(300), "200 ticks old and still counts");
+        assertTrue(w.recentOutlier(301).isEmpty(), "201 ticks old, one past the window");
     }
 
     @Test
     void expiringAlsoForgetsAnAgedOutOutlier() {
         TargetWindows w = new TargetWindows();
-        w.landed(100, 25);
+        w.landed(100, 40);
         w.expire(300);
-        assertTrue(w.recentOutlier(300));
+        assertEquals(OptionalInt.of(40), w.recentOutlier(300));
         w.expire(301);
-        assertFalse(w.recentOutlier(301));
+        assertTrue(w.recentOutlier(301).isEmpty());
     }
 
     @Test
     void clearingForgetsARecentOutlierToo() {
         TargetWindows w = new TargetWindows();
-        w.landed(0, 25);
+        w.landed(0, 40);
         w.clear();
-        assertFalse(w.recentOutlier(0));
+        assertTrue(w.recentOutlier(0).isEmpty());
     }
 
     @Test

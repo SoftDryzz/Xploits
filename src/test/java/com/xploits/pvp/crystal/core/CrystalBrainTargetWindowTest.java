@@ -484,39 +484,69 @@ class CrystalBrainTargetWindowTest {
         assertEquals(6, f.brain.landingTicksBound());
     }
 
+    /**
+     * {@link #PENDING_PING} (30) only keeps a placement pending for {@code max(5, 30 + 2)} = 32 ticks
+     * (Meteor's own {@code placing} window, Q2): a landing this long or longer needs its own ping at least
+     * that big, or the crystal expires to a late-own (foreign) one before it ever "lands" at all. Long enough
+     * for every outlier this test class uses (up to 150).
+     */
+    private static final int LONG_LANDING_PING = 150;
+
     @Test
-    void anOutlierLandingNeverSetsTheBoundAndIsNotCountedEither() {
-        // The 25 is dropped outright as an ordinary sample (TargetWindowsTest): only four real samples remain,
-        // so the fallback still applies, exactly as withFewerThanFiveLandingsTheBoundIsStillTheFallback above
-        // (it also marks a recent outlier, but that floors the bound at the same fallback value here, so it is
-        // not visible in this particular case — see the next test for where it is).
-        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 25);
+    void anOutlierLandingNeverBecomesAnOrdinarySampleButStillRaisesTheBoundByItsOwnLength() {
+        // The 40 is dropped outright as an ordinary sample (TargetWindowsTest): only four ordinary samples
+        // remain, so the learned part alone would still be the fallback (fewer than five). Fix round 2: the
+        // outlier's own magnitude, 40, still raises the bound past that fallback.
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3);
+        f.land(40, 999, Map.of(ENEMY, RAW1), LONG_LANDING_PING, false);
         f.idle(f.next);
-        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+        assertEquals(40, f.brain.landingTicksBound());
     }
 
     @Test
-    void anOutlierAfterFiveNormalSamplesRaisesTheBoundToTheCeiling() {
-        // review-r3-16.md's Important #2 repro: five ordinary landings of 3 first (establishing a small bound
-        // on their own), then a real 25-tick landing (a lag spike). The bound must rise to the documented
-        // ceiling, not stay at 3 as if the lag spike had never happened.
+    void anOutlierAfterFiveNormalSamplesRaisesTheBoundToItsOwnMagnitude() {
+        // review-r3-16.md's Important #2 repro, fix round 2: five ordinary landings of 3 first (establishing a
+        // small bound on their own), then a real 40-tick landing (a lag spike). The bound must rise to 40, the
+        // outlier's own measured length, not merely up to the documented ceiling and not stay at 3 as if the
+        // lag spike had never happened.
         Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 3);
         f.idle(f.next);
         f.next++;
         assertEquals(3, f.brain.landingTicksBound(), "established first: the bound from the five samples alone");
-        f.land(25, 999, Map.of(ENEMY, RAW1), PENDING_PING, false);
+        f.land(40, 999, Map.of(ENEMY, RAW1), LONG_LANDING_PING, false);
         f.idle(f.next);
-        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+        assertEquals(40, f.brain.landingTicksBound());
     }
 
     @Test
-    void agedOutLandingsFallBackToTheDocumentedBound() {
+    void anOutlierPastTheSanityCapRaisesTheBoundOnlyToTheCap() {
+        // A 150-tick landing (far past anything the game itself could plausibly produce) still raises the
+        // bound, but only to the named sanity cap, not to 150 verbatim.
         Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 3);
         f.idle(f.next);
         f.next++;
+        f.land(150, 999, Map.of(ENEMY, RAW1), LONG_LANDING_PING, false);
+        f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_OUTLIER_CAP_TICKS, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void onceTheOutlierAgesOutTheBoundGoesBackToTheLearnedValue() {
+        // An early 40-tick lag spike (at pre-tick 1, seen gone and stamped at pre-tick 41), then five ordinary
+        // landings of 3 established afterward (the last stamped at pre-tick 57): while both are fresh the
+        // outlier wins (40 > 3). By pre-tick 245 the outlier is 204 ticks old (aged out, > 200) but the oldest
+        // ordinary sample is exactly 200 ticks old (still counts, per TargetWindowsTest's own boundary), so the
+        // bound reads only the ordinary samples' 3 again.
+        Fight f = new Fight(DEFAULTS);
+        f.land(40, 999, Map.of(ENEMY, RAW1), LONG_LANDING_PING, false);
+        f.idle(f.next);
+        f.next++;
+        f.land(3, 3, 3, 3, 3);
+        f.idle(f.next);
+        f.next++;
+        assertEquals(40, f.brain.landingTicksBound(), "the outlier still wins while both are fresh");
+        f.idleUntil(246);
         assertEquals(3, f.brain.landingTicksBound());
-        f.idleUntil(f.next + 250);
-        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
     }
 
     @Test

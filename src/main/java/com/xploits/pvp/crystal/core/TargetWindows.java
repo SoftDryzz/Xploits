@@ -49,20 +49,26 @@ public final class TargetWindows {
     public static final int LANDING_SAMPLE_MAX_AGE = 200;
     /** A landing slower than this is an outlier: it is left out, not counted as this. */
     public static final int LANDING_SAMPLE_MAX_TICKS = 20;
+    /**
+     * A sanity cap on how far a single lag-spike landing can widen a safety bound (task R3-16 fix round 2):
+     * named so an implausibly slow landing (a stall far past anything the game itself could produce) still
+     * counts as a large, finite bound rather than being read verbatim, but is still never simply ignored.
+     */
+    public static final int LANDING_OUTLIER_CAP_TICKS = 100;
 
     /** The last full hit on each target. */
     private final Map<String, Hit> last = new HashMap<>();
     /** Our crystals' latest landings, oldest first, at most {@link #LANDING_SAMPLES}. */
     private final ArrayDeque<Landing> landings = new ArrayDeque<>();
     /**
-     * Whether a landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} has been seen, and when, for {@link
-     * #recentOutlier} (task R3-16 fix round 1): {@link #landed} still leaves it out of {@link #landings} and
-     * {@link #slowestLanding} (a real lag spike must never count as one of the ordinary samples the hurt-window
-     * hold needs {@link #LANDING_MIN_SAMPLES} of, nor stretch {@link #LANDING_SAMPLES}' recency), but a safety
-     * bound reading this class must still know one happened, not read the same as if it never had.
+     * Our crystals' too-slow landings (task R3-16 fix round 2), for {@link #recentOutlier}: {@link #landed}
+     * leaves these out of {@link #landings} and {@link #slowestLanding} entirely (a real lag spike must never
+     * count as one of the ordinary samples the hurt-window hold needs {@link #LANDING_MIN_SAMPLES} of, nor
+     * stretch {@link #LANDING_SAMPLES}' recency), but a safety bound reading this class must still know how
+     * slow one actually was, not merely that one happened. Aged out the same way as {@link #landings}, never
+     * capped by count: a lag spike is rare enough on its own that this stays small.
      */
-    private boolean outlierSeen;
-    private long lastOutlierAt;
+    private final ArrayDeque<Landing> outliers = new ArrayDeque<>();
 
     /**
      * A full hit on {@code target}, read at pre-tick {@code tick}. It replaces the one before.
@@ -81,13 +87,14 @@ public final class TargetWindows {
     /**
      * One of our crystals, first seen gone at pre-tick {@code at}, {@code ticks} pre-ticks after the one that first
      * decided to place it. A landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} is left out of the ordinary
-     * samples (it still marks {@link #recentOutlier}); past {@link #LANDING_SAMPLES} the oldest is forgotten.
+     * samples entirely, kept instead for {@link #recentOutlier} (capped at {@link #LANDING_OUTLIER_CAP_TICKS}, so
+     * an implausibly large {@code ticks} still stores a sane, finite value); past {@link #LANDING_SAMPLES} the
+     * oldest ordinary sample is forgotten.
      */
     public void landed(long at, long ticks) {
         if (ticks < 0) throw new IllegalArgumentException("landing " + ticks);
         if (ticks > LANDING_SAMPLE_MAX_TICKS) {
-            outlierSeen = true;
-            lastOutlierAt = at;
+            outliers.addLast(new Landing(at, (int) Math.min(ticks, LANDING_OUTLIER_CAP_TICKS)));
             return;
         }
         landings.addLast(new Landing(at, (int) ticks));
@@ -137,34 +144,41 @@ public final class TargetWindows {
     }
 
     /**
-     * Whether a landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} (task R3-16 fix round 1: a lag spike, not
-     * an ordinary sample) has been seen within {@link #LANDING_SAMPLE_MAX_AGE} ticks of pre-tick {@code now}: a
-     * safety bound reading only {@link #slowestLanding} would otherwise never learn a too-slow landing happened
-     * at all, since {@link #landed} deliberately leaves it out of the ordinary samples. Kept to the same age
-     * window as an ordinary sample, so an outlier from long ago does not linger forever.
+     * The largest too-slow landing (task R3-16 fix round 2: a lag spike, not an ordinary sample, {@link
+     * #LANDING_OUTLIER_CAP_TICKS} at most) still within {@link #LANDING_SAMPLE_MAX_AGE} ticks of pre-tick
+     * {@code now}; empty when none is. A safety bound reading only {@link #slowestLanding} would otherwise
+     * never learn a too-slow landing happened at all, since {@link #landed} deliberately leaves it out of the
+     * ordinary samples — and reading only THAT one happened, not how slow, would still understate how far a
+     * genuine lag spike could have let you move. Kept to the same age window as an ordinary sample, so an
+     * outlier from long ago does not linger forever.
      */
-    boolean recentOutlier(long now) {
-        return outlierSeen && now - lastOutlierAt <= LANDING_SAMPLE_MAX_AGE;
+    OptionalInt recentOutlier(long now) {
+        int worst = -1;
+        for (Landing l : outliers) {
+            if (now - l.at > LANDING_SAMPLE_MAX_AGE) continue;
+            worst = Math.max(worst, l.ticks);
+        }
+        return worst < 0 ? OptionalInt.empty() : OptionalInt.of(worst);
     }
 
     /**
      * Forgets the hits whose window is over at pre-tick {@code now}, none of which could hold anything back, the
-     * landings too old to count, and an outlier too old to still mark {@link #recentOutlier}.
+     * landings too old to count, and an outlier too old to still count for {@link #recentOutlier}.
      */
     public void expire(long now) {
         last.values().removeIf(hit -> now - hit.tick >= HURT_WINDOW_TICKS);
         landings.removeIf(l -> now - l.at > LANDING_SAMPLE_MAX_AGE);
-        if (outlierSeen && now - lastOutlierAt > LANDING_SAMPLE_MAX_AGE) outlierSeen = false;
+        outliers.removeIf(l -> now - l.at > LANDING_SAMPLE_MAX_AGE);
     }
 
     /**
-     * Forgets every hit and every landing, including a remembered outlier: after a gap in the pre-ticks, or
+     * Forgets every hit and every landing, including every remembered outlier: after a gap in the pre-ticks, or
      * while the budget is off, neither the windows nor the time a crystal takes are known.
      */
     public void clear() {
         last.clear();
         landings.clear();
-        outlierSeen = false;
+        outliers.clear();
     }
 
     /** Whether a hit on this target is still remembered (tests). */

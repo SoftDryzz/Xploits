@@ -364,13 +364,20 @@ public final class CrystalBrain {
      * <p>Fix round 1 (review-r3-16.md): a landing slower than that ceiling (a lag spike) is exactly the one
      * {@link TargetWindows#landed} leaves out of the samples this reads, by design, for the hurt-window hold
      * this method does not serve. Left alone, that outlier would simply vanish here too, never raising this
-     * bound past whatever the ordinary, faster samples already established. {@link
-     * TargetWindows#recentOutlier} floors this at the ceiling whenever one is still within the landings'
-     * own age window, so a real lag spike is never silently treated as if it had not happened.
+     * bound past whatever the ordinary, faster samples already established.
+     *
+     * <p>Fix round 2: flooring at the ceiling was not enough — a lag spike genuinely slower than the ceiling
+     * must widen this bound to at least its own length, not just up to it, since this bound is safety-critical
+     * (unlike the hurt-window hold {@link TargetWindows} was originally built for, where undershooting only
+     * loses value). {@link TargetWindows#recentOutlier} reports the largest such landing still within the
+     * landings' own age window, capped only at {@link TargetWindows#LANDING_OUTLIER_CAP_TICKS} so an
+     * implausibly slow one is still a large, finite bound rather than being read verbatim; this method takes
+     * the larger of that and the ordinary learned bound, so an outlier can only ever raise this, never lower
+     * it below what the ordinary samples alone would already give.
      */
     public int landingTicksBound() {
-        if (windows.recentOutlier(now)) return TargetWindows.LANDING_SAMPLE_MAX_TICKS;
-        return windows.slowestLanding(now).orElse(TargetWindows.LANDING_SAMPLE_MAX_TICKS);
+        int learned = windows.slowestLanding(now).orElse(TargetWindows.LANDING_SAMPLE_MAX_TICKS);
+        return Math.max(learned, windows.recentOutlier(now).orElse(0));
     }
 
     /** An attack packet went out (Q1: Meteor counts it there, line 891, not when it decides). */
