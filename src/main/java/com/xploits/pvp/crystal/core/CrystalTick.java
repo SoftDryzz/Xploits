@@ -30,7 +30,9 @@ import java.util.function.Predicate;
  * @param pingTicks         your ping in ticks, rounded up ({@link CrystalBrain#pingTicks});
  *                          {@link CrystalBrain#UNKNOWN_PING_TICKS} when unknown. No decision reads it: the hurt-window
  *                          hold learns how long our crystals take from our own crystals ({@link TargetWindows}), with
- *                          the network's delay inside, and the pending lifetime takes its ping in
+ *                          the network's delay inside on the assumption both packet kinds are noticed with the same,
+ *                          near-zero extra latency (what the in-game bench's simulated ping measures, not a real
+ *                          connection's jitter) — see {@link TargetWindows}; the pending lifetime takes its ping in
  *                          {@link CrystalBrain#placed}
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,

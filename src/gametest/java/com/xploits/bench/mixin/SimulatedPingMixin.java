@@ -39,6 +39,13 @@ import java.util.concurrent.TimeUnit;
  * submission id, so messages that arrived in order are always re-fired in that same order, and none is ever
  * dropped, only delayed (requirement 2).
  *
+ * <p>At disconnect or world close this mixin adds no {@code channelInactive} handling, so a message whose
+ * delay has not yet elapsed still fires on the executor (the queue itself drops nothing), but into a
+ * torn-down pipeline, where firing it does nothing: in effect it is dropped with the channel. That matches
+ * Fabric's own client-gametest framework, which already abandons in-flight packets without waiting for them
+ * at disconnect ({@code MinecraftMixin.onDisconnectCancelTasks}, the same reset behind the
+ * {@code NetworkSynchronizer} disable below) — not a failure mode this mixin adds on top of it.
+ *
  * <p><b>Verified: needs Fabric's own network synchronizer disabled too.</b> The client-gametest framework
  * blocks each frame until every packet it saw sent has been handled on the netty thread within 10 s
  * ({@code NetworkSynchronizer.waitForPacketHandlers}), an assumption this mixin breaks on purpose. Left on,

@@ -88,6 +88,24 @@ shipped jar does not change), and `./gradlew build` never opens a window or runs
   a pass or fail. Judging those numbers against the baseline, or against what a change should improve, is
   for whoever reads the report.
 
+**Every MEASURE run.** After T0 and after every tick the server tops the end-crystal stack in hotbar slot 0
+back up to `CrystalRefill.FULL` (64), for whichever aura is under test, so a run never runs out of crystals
+and ammunition never decides a number (R3-7); the crystals a run's refills added are logged once per run,
+never a metric.
+
+**The settle cut (R3-6).** A run can also end before its nominal 30 s: with natural regeneration off (the
+scenario's setting and the world's `natural_health_regeneration` rule, read at T0, must agree) and a static
+sparring script, once `Settle.SETTLE_TICKS` (60 ticks, 3 s) pass in a row with no end crystal in the world, no
+placement or attack packet sent, neither player's health plus absorption changing, no sparring pop, and the
+aura under test's own longest timer that could still fire under that bound — Meteor's every setting is reset
+to default for the run (only `pause-on-lag` turned off), so its delays and internal timers are fixed at 20
+ticks or fewer and the bench feeds 0 for it; crystal-aura++'s is its pending placement's lifetime, which
+follows the ping and is fed every tick — nothing left in the run can change, so it ends there with the
+numbers it would have had at 30 s, in one log line. A `-regen` scenario (natural regeneration on) can never settle this
+way, since it fails the regeneration-off condition alone. `-Pbench.verifySettle` does not cut a settled run
+short: it snapshots the metrics at the first settled tick, runs on to the nominal length anyway, and fails
+the scenario if the final metrics differ from that snapshot or the run stops looking settled before the end.
+
 `./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
 cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you
 want to keep it, because the next run erases it. There are two profiles:
@@ -192,6 +210,16 @@ measured in this run (use -Pbench.full)`. None of these lines ever fails the bui
 also has a risk table: for each `ca-X`, the median damage dealt and min health of Meteor's aura and of
 crystal-aura++ at each level, side by side (a dash for a level that did not run).
 
+**Moving-player scenarios (R3-14).** After the four fight situations above, `self-circle` and `self-strafe`
+run the same way (`ca-<s>-regen`, `capp-<s>-regen`, `capp-balanced-<s>-regen`, `capp-aggressive-<s>-regen`,
+healing always on) but also move OUR OWN player, with real client movement (the same per-tick packet an
+actual player's own movement would send, not a teleport): self-circle walks a circle around our start block
+while the sparring (`Still`) stands still; self-strafe zig-zags sideways while the sparring (`Circler`)
+circles. Because our own player never stands still, `Settle` treats both as never static, whatever the
+sparring's own script says, so they always run their full nominal length. Their log also gives the distance
+our player actually walked and how far the server's and the client's own copies of it end up apart (log only,
+never a metric): no rubber-banding is expected beyond what the simulated ping's own travel time explains.
+
 **The simulated ping (R3-12).** On the integrated server the server's tick and the client's tick start in the
 same millisecond, so a few microseconds of client work (crystal-aura++'s exact-damage raycasts, say) decide
 whether a placement is taken this server tick or the next; a real network's latency makes that race irrelevant.
@@ -227,6 +255,16 @@ messages" (seen on a real run: a 100 ms ping in the still arena survived two sce
 third once the timeout was actually reached). Fabric's own log line for that error names the fix, and the run
 config sets it unconditionally: `-Dfabric.client.gametest.disableNetworkSynchronizer=true`. A scenario with no
 simulated ping installs no extra pipeline handler and was never at risk from this either way.
+
+**This disable is JVM-wide, for the whole bench, not just the scenarios that simulate a ping.** Fabric reads
+the property into a `static final` once, at class load (`TestSystemProperties.DISABLE_NETWORK_SYNCHRONIZER`),
+and one JVM runs every scenario of a profile in one `BenchTest.runTest` call, so there is no way to turn the
+synchronizer off only for the runs that install the delay handler and leave it on for the rest. Every other
+scenario that reads client state right after a tick — the recorder CHECKs, `panel`, `profile-defensive`,
+`autopvp-anti-resources`, `defense-attacker` and the rest — therefore also runs without the synchronizer's
+"every sent packet already handled on the netty thread" guarantee, even though none of them install a delay
+handler themselves; the everyday and full runs have not shown this cause a flaky result, but it is a real,
+permanent change to what every scenario can rely on, not only the four scenarios the ping was designed for.
 
 The CHECK `capp-budget-off-parity` is different: it does block a release. It runs Meteor's crystal-aura and
 crystal-aura++ with `self-budget` off in turns on the still arena, 3 runs each, and fails when a median of

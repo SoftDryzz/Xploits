@@ -22,8 +22,11 @@ import net.minecraft.util.math.Vec3d;
  * player's own movement leaves behind for that packet to carry. {@code updatePosition} (not {@code
  * refreshPositionAndAngles},
  * which is for a teleport: it also resets the render-interpolation state) is the one used for an ordinary
- * per-tick move; it recomputes the hitbox too ({@code Entity.setPosition}, which it calls), so the aura's own
- * raycasts see our feet exactly where this puts them.
+ * per-tick move; it recomputes the hitbox too ({@code Entity.setPosition}, which it calls). During a jump arc
+ * the client's own physics (gravity, ground collision) can still nudge Y or on-ground within the same tick
+ * after this runs, so a raycast is not guaranteed to see our feet at exactly {@code x}/{@code y}/{@code z}; what
+ * is guaranteed is that it is the same for both auras, since Meteor's CrystalAura and crystal-aura++ raycast the
+ * same entity state on the same tick.
  */
 final class SelfCircleMotion implements SelfMotion {
     @Override

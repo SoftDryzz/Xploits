@@ -18,10 +18,13 @@ import java.util.OptionalInt;
  * <p>Whether a crystal placed now lands inside a window is learned from our own crystals (research-offense-gap:
  * the fastest landing is not a bound). {@link CrystalBrain} hands over each landing: the pre-ticks from the one
  * that first decided to place a crystal of ours to the first one that found it gone. The hit's packet and the
- * crystal's removal both reach us over the same connection, so the network's delay is inside that count and no ping
- * is added to it. A crystal placed now lands, as we see it, the slowest recent landing later; it is inside the window
- * only while that is under {@link #HURT_WINDOW_TICKS} from the hit, with {@link #LANDING_MARGIN} to spare. With
- * fewer than {@link #LANDING_MIN_SAMPLES} landings known, nothing lands surely inside.
+ * crystal's removal both reach us over the same connection, so the network's delay is inside that count and no
+ * separate ping term is added to it — on the assumption that both are noticed the same tick they arrive, with no
+ * extra, uneven delay between the two kinds of packet. That is what the in-game bench's simulated ping measures
+ * (a fixed, symmetric delay); a real connection's jitter or per-packet handling could notice one kind later than
+ * the other and is not covered. A crystal placed now lands, as we see it, the slowest recent landing later; it is
+ * inside the window only while that is under {@link #HURT_WINDOW_TICKS} from the hit, with {@link #LANDING_MARGIN}
+ * to spare. With fewer than {@link #LANDING_MIN_SAMPLES} landings known, nothing lands surely inside.
  *
  * <p>{@link CrystalBrain} feeds it the full hits, in pre-ticks, and asks it about each spot it would place on.
  * The ticks are the brain's pre-tick numbers; a hit read between two pre-ticks carries the earlier one, which is
