@@ -486,9 +486,25 @@ class CrystalBrainTargetWindowTest {
 
     @Test
     void anOutlierLandingNeverSetsTheBoundAndIsNotCountedEither() {
-        // The 25 is dropped outright (TargetWindowsTest): only four real samples remain, so the fallback
-        // still applies, exactly as withFewerThanFiveLandingsTheBoundIsStillTheFallback above.
+        // The 25 is dropped outright as an ordinary sample (TargetWindowsTest): only four real samples remain,
+        // so the fallback still applies, exactly as withFewerThanFiveLandingsTheBoundIsStillTheFallback above
+        // (it also marks a recent outlier, but that floors the bound at the same fallback value here, so it is
+        // not visible in this particular case — see the next test for where it is).
         Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 25);
+        f.idle(f.next);
+        assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
+    }
+
+    @Test
+    void anOutlierAfterFiveNormalSamplesRaisesTheBoundToTheCeiling() {
+        // review-r3-16.md's Important #2 repro: five ordinary landings of 3 first (establishing a small bound
+        // on their own), then a real 25-tick landing (a lag spike). The bound must rise to the documented
+        // ceiling, not stay at 3 as if the lag spike had never happened.
+        Fight f = new Fight(DEFAULTS).land(3, 3, 3, 3, 3);
+        f.idle(f.next);
+        f.next++;
+        assertEquals(3, f.brain.landingTicksBound(), "established first: the bound from the five samples alone");
+        f.land(25, 999, Map.of(ENEMY, RAW1), PENDING_PING, false);
         f.idle(f.next);
         assertEquals(TargetWindows.LANDING_SAMPLE_MAX_TICKS, f.brain.landingTicksBound());
     }

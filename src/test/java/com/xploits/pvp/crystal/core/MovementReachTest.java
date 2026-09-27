@@ -9,75 +9,86 @@ import static com.xploits.pvp.crystal.core.MovementReach.Offset;
 import static com.xploits.pvp.crystal.core.MovementReach.RING_POINTS;
 import static com.xploits.pvp.crystal.core.MovementReach.offsets;
 import static com.xploits.pvp.crystal.core.MovementReach.worstRawDamage;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Task R3-16: the worst-case self damage reads every position you could reach before a crystal explodes,
  * never only where you stand right now. Every number here is exact in binary, so each boundary is the real
- * one.
+ * one. Fix round 1 (review-r3-16.md): the ring and the projection are checked at both your current height and
+ * a jump's, and the class never throws on any input.
  */
 class MovementReachTest {
     private static final double EPS = 1e-9;
+    /** With a nonzero speed and landing ticks: 1 current + 1 projected + RING_POINTS ring points, per height. */
+    private static final int MOVING_BLOCK_SIZE = 2 + RING_POINTS;
 
     // offsets()
 
     @Test
-    void standingStillGivesJustTheThreeFixedPoints() {
+    void standingStillGivesTheFourFixedPoints() {
         List<Offset> points = offsets(0, 0, 5);
-        assertEquals(3, points.size(), "current, projected (same point) and the jump point; no ring at radius 0");
+        assertEquals(4, points.size(), "current and projected (same point), at both heights; no ring at radius 0");
         assertEquals(new Offset(0, 0, 0), points.get(0));
         assertEquals(new Offset(0, 0, 0), points.get(1));
         assertEquals(new Offset(0, JUMP_HEIGHT, 0), points.get(2));
+        assertEquals(new Offset(0, JUMP_HEIGHT, 0), points.get(3));
     }
 
     @Test
     void zeroLandingTicksCollapsesEvenAMovingPlayerToTheFixedPoints() {
         List<Offset> points = offsets(2, 3, 0);
-        assertEquals(3, points.size());
+        assertEquals(4, points.size());
         assertEquals(new Offset(0, 0, 0), points.get(1), "projected 0 ticks away is still here");
+        assertEquals(new Offset(0, JUMP_HEIGHT, 0), points.get(3), "same, at jump height");
     }
 
     @Test
-    void movingProjectsForwardByVelocityTimesLandingTicks() {
+    void movingProjectsForwardByVelocityTimesLandingTicksAtBothHeights() {
         List<Offset> points = offsets(1.5, -0.5, 4);
         assertEquals(new Offset(6.0, 0, -2.0), points.get(1));
+        assertEquals(new Offset(6.0, JUMP_HEIGHT, -2.0), points.get(MOVING_BLOCK_SIZE + 1));
     }
 
     @Test
-    void theRingHasTheDocumentedNumberOfPointsAtSpeedTimesLandingTicks() {
+    void theRingHasTheDocumentedNumberOfPointsAtSpeedTimesLandingTicksAtBothHeights() {
         List<Offset> points = offsets(1, 0, 4);
-        // current, projected, RING_POINTS ring points, jump.
-        assertEquals(3 + RING_POINTS, points.size());
+        // (current, projected, RING_POINTS ring points) at each of the two heights.
+        assertEquals(2 * MOVING_BLOCK_SIZE, points.size());
         double radius = 1.0 * 4;
-        // Ring points start right after the projected point, index 2.
-        assertEquals(radius, points.get(2).dx(), EPS);
-        assertEquals(0.0, points.get(2).dz(), EPS);
-        // Evenly spaced: every ring point sits exactly on the circle of that radius.
-        for (int i = 0; i < RING_POINTS; i++) {
-            Offset o = points.get(2 + i);
-            assertEquals(radius, Math.hypot(o.dx(), o.dz()), EPS, "ring point " + i);
-            assertEquals(0.0, o.dy(), "the ring is horizontal");
+        for (double h : new double[] {0, JUMP_HEIGHT}) {
+            int base = h == 0 ? 0 : MOVING_BLOCK_SIZE;
+            // Ring points start right after the projected point, index 2 in each height's block.
+            assertEquals(radius, points.get(base + 2).dx(), EPS, "height " + h);
+            assertEquals(0.0, points.get(base + 2).dz(), EPS, "height " + h);
+            for (int i = 0; i < RING_POINTS; i++) {
+                Offset o = points.get(base + 2 + i);
+                assertEquals(radius, Math.hypot(o.dx(), o.dz()), EPS, "height " + h + " ring point " + i);
+                assertEquals(h, o.dy(), "ring point " + i + " stays on its own height's horizontal plane");
+            }
         }
     }
 
     @Test
-    void theJumpPointIsAlwaysLastAndOnlyVertical() {
+    void everyPointInTheFirstBlockIsAtGroundHeightAndTheSecondAtJumpHeight() {
         List<Offset> points = offsets(3, 4, 6);
-        Offset jump = points.get(points.size() - 1);
-        assertEquals(new Offset(0, JUMP_HEIGHT, 0), jump);
+        for (int i = 0; i < MOVING_BLOCK_SIZE; i++) assertEquals(0.0, points.get(i).dy(), "point " + i);
+        for (int i = MOVING_BLOCK_SIZE; i < 2 * MOVING_BLOCK_SIZE; i++) {
+            assertEquals(JUMP_HEIGHT, points.get(i).dy(), "point " + i);
+        }
     }
 
     @Test
-    void negativeLandingTicksIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> offsets(0, 0, -1));
+    void negativeLandingTicksIsTreatedAsZeroNotRejected() {
+        assertEquals(offsets(1, 1, 0), offsets(1, 1, -5));
     }
 
     @Test
-    void nonFiniteVelocityIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> offsets(Double.NaN, 0, 5));
-        assertThrows(IllegalArgumentException.class, () -> offsets(0, Double.POSITIVE_INFINITY, 5));
+    void nonFiniteVelocityIsTreatedAsZeroNotRejected() {
+        assertDoesNotThrow(() -> offsets(Double.NaN, Double.POSITIVE_INFINITY, 5));
+        assertEquals(offsets(0, 0, 5), offsets(Double.NaN, Double.POSITIVE_INFINITY, 5));
+        assertEquals(offsets(0, 0, 5), offsets(Double.NEGATIVE_INFINITY, Double.NaN, 5));
     }
 
     // worstRawDamage()
@@ -123,7 +134,33 @@ class MovementReachTest {
     }
 
     @Test
+    void theRingAndTheJumpCombineForACrystalNeitherAloneWouldFind() {
+        // Fix round 1 (review-r3-16.md Important #2): a crystal both off to the side (only the ring toward +z
+        // reaches it, our velocity is along +x) AND 1 block up. Neither "ring at ground height" nor "jump in
+        // place" alone is the true worst case; only riding the ring while also at jump height is.
+        double speed = 1.0;
+        long ticks = 4;
+        double radius = speed * ticks;
+        float worst = worstRawDamage(0, 1, 6, speed, 0, ticks);
+
+        double combined = Math.hypot(1 - JUMP_HEIGHT, 6 - radius);
+        double ringOnlyAtGround = Math.hypot(1, 6 - radius);
+        double jumpOnlyInPlace = Math.hypot(1 - JUMP_HEIGHT, 6);
+        assertEquals(ExplosionMath.rawDamage(combined, 1.0), worst, 1e-6);
+        assertTrue(worst > ExplosionMath.rawDamage(ringOnlyAtGround, 1.0), "the ring alone, at ground height, understates it");
+        assertTrue(worst > ExplosionMath.rawDamage(jumpOnlyInPlace, 1.0), "jumping in place alone understates it");
+    }
+
+    @Test
     void beyondReachTheWorstIsStillZero() {
         assertEquals(0f, worstRawDamage(50, 0, 0, 0, 0, 5));
+    }
+
+    @Test
+    void worstRawDamageNeverThrowsOnNonFiniteOrNegativeInput() {
+        assertDoesNotThrow(() -> worstRawDamage(4, 0, 0, Double.NaN, Double.POSITIVE_INFINITY, -5));
+        // Non-finite/negative velocity and landing ticks are all treated as "not moving": the same result as
+        // the explicit zero-velocity, zero-ticks call.
+        assertEquals(worstRawDamage(4, 0, 0, 0, 0, 0), worstRawDamage(4, 0, 0, Double.NaN, Double.POSITIVE_INFINITY, -5));
     }
 }

@@ -54,6 +54,15 @@ public final class TargetWindows {
     private final Map<String, Hit> last = new HashMap<>();
     /** Our crystals' latest landings, oldest first, at most {@link #LANDING_SAMPLES}. */
     private final ArrayDeque<Landing> landings = new ArrayDeque<>();
+    /**
+     * Whether a landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} has been seen, and when, for {@link
+     * #recentOutlier} (task R3-16 fix round 1): {@link #landed} still leaves it out of {@link #landings} and
+     * {@link #slowestLanding} (a real lag spike must never count as one of the ordinary samples the hurt-window
+     * hold needs {@link #LANDING_MIN_SAMPLES} of, nor stretch {@link #LANDING_SAMPLES}' recency), but a safety
+     * bound reading this class must still know one happened, not read the same as if it never had.
+     */
+    private boolean outlierSeen;
+    private long lastOutlierAt;
 
     /**
      * A full hit on {@code target}, read at pre-tick {@code tick}. It replaces the one before.
@@ -71,12 +80,16 @@ public final class TargetWindows {
 
     /**
      * One of our crystals, first seen gone at pre-tick {@code at}, {@code ticks} pre-ticks after the one that first
-     * decided to place it. A landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} is left out; past
-     * {@link #LANDING_SAMPLES} the oldest is forgotten.
+     * decided to place it. A landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} is left out of the ordinary
+     * samples (it still marks {@link #recentOutlier}); past {@link #LANDING_SAMPLES} the oldest is forgotten.
      */
     public void landed(long at, long ticks) {
         if (ticks < 0) throw new IllegalArgumentException("landing " + ticks);
-        if (ticks > LANDING_SAMPLE_MAX_TICKS) return;
+        if (ticks > LANDING_SAMPLE_MAX_TICKS) {
+            outlierSeen = true;
+            lastOutlierAt = at;
+            return;
+        }
         landings.addLast(new Landing(at, (int) ticks));
         if (landings.size() > LANDING_SAMPLES) landings.removeFirst();
     }
@@ -124,21 +137,34 @@ public final class TargetWindows {
     }
 
     /**
-     * Forgets the hits whose window is over at pre-tick {@code now}, none of which could hold anything back, and the
-     * landings too old to count.
+     * Whether a landing slower than {@link #LANDING_SAMPLE_MAX_TICKS} (task R3-16 fix round 1: a lag spike, not
+     * an ordinary sample) has been seen within {@link #LANDING_SAMPLE_MAX_AGE} ticks of pre-tick {@code now}: a
+     * safety bound reading only {@link #slowestLanding} would otherwise never learn a too-slow landing happened
+     * at all, since {@link #landed} deliberately leaves it out of the ordinary samples. Kept to the same age
+     * window as an ordinary sample, so an outlier from long ago does not linger forever.
+     */
+    boolean recentOutlier(long now) {
+        return outlierSeen && now - lastOutlierAt <= LANDING_SAMPLE_MAX_AGE;
+    }
+
+    /**
+     * Forgets the hits whose window is over at pre-tick {@code now}, none of which could hold anything back, the
+     * landings too old to count, and an outlier too old to still mark {@link #recentOutlier}.
      */
     public void expire(long now) {
         last.values().removeIf(hit -> now - hit.tick >= HURT_WINDOW_TICKS);
         landings.removeIf(l -> now - l.at > LANDING_SAMPLE_MAX_AGE);
+        if (outlierSeen && now - lastOutlierAt > LANDING_SAMPLE_MAX_AGE) outlierSeen = false;
     }
 
     /**
-     * Forgets every hit and every landing: after a gap in the pre-ticks, or while the budget is off, neither the
-     * windows nor the time a crystal takes are known.
+     * Forgets every hit and every landing, including a remembered outlier: after a gap in the pre-ticks, or
+     * while the budget is off, neither the windows nor the time a crystal takes are known.
      */
     public void clear() {
         last.clear();
         landings.clear();
+        outlierSeen = false;
     }
 
     /** Whether a hit on this target is still remembered (tests). */

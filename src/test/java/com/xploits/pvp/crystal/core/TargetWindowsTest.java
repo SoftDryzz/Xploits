@@ -112,6 +112,53 @@ class TargetWindowsTest {
         assertFalse(w.landsInside(0, 0));
     }
 
+    // recentOutlier() (task R3-16 fix round 1): a too-slow landing must not simply vanish
+
+    @Test
+    void withNoLandingAtAllThereIsNoRecentOutlier() {
+        assertFalse(new TargetWindows().recentOutlier(0));
+    }
+
+    @Test
+    void anOrdinaryLandingIsNeverAnOutlier() {
+        TargetWindows w = landings(0, 3, 3, 3, 3, 3, 20);
+        assertFalse(w.recentOutlier(0), "20 is still an ordinary sample, not an outlier");
+    }
+
+    @Test
+    void aLandingPastTheCeilingMarksARecentOutlierWithoutBecomingASample() {
+        TargetWindows w = landings(0, 3, 3, 3, 3, 3, 25);
+        assertTrue(w.recentOutlier(0));
+        // Unchanged from before this fix: the outlier still never joins the ordinary samples.
+        assertTrue(w.landsInside(5, 0), "the bound is still 3, from the five ordinary samples");
+    }
+
+    @Test
+    void aRecentOutlierAgesOutAfterTheSameWindowAsAnOrdinarySample() {
+        TargetWindows w = new TargetWindows();
+        w.landed(100, 25);
+        assertTrue(w.recentOutlier(300), "200 ticks old and still counts");
+        assertFalse(w.recentOutlier(301), "201 ticks old, one past the window");
+    }
+
+    @Test
+    void expiringAlsoForgetsAnAgedOutOutlier() {
+        TargetWindows w = new TargetWindows();
+        w.landed(100, 25);
+        w.expire(300);
+        assertTrue(w.recentOutlier(300));
+        w.expire(301);
+        assertFalse(w.recentOutlier(301));
+    }
+
+    @Test
+    void clearingForgetsARecentOutlierToo() {
+        TargetWindows w = new TargetWindows();
+        w.landed(0, 25);
+        w.clear();
+        assertFalse(w.recentOutlier(0));
+    }
+
     @Test
     void aHitFromOurCrystalSwallowsWhatDoesNotBeatItByTheMargin() {
         TargetWindows w = trained();

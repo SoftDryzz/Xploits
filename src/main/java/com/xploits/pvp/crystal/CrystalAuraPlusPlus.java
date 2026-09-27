@@ -456,8 +456,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private Vec3d lastFeetPos;
     /**
      * Your horizontal velocity this pre-tick, in blocks/tick, from how far your feet moved since the last one
-     * (task R3-16): {@link #horizontalVelocity}, set once per pre-tick, read by {@link #exactSelfDamage} for
-     * every crystal and spot measured this tick and by {@link #onEntityAdded}'s fast-break measurement.
+     * (task R3-16): {@link #horizontalVelocity}, set once per pre-tick while {@code self-budget} is on (fix
+     * round 1: {@link Vec3d#ZERO} otherwise, nothing reads it either way then), read by {@link
+     * #exactSelfDamage} for every crystal and spot measured this tick and by {@link #onEntityAdded}'s
+     * fast-break measurement.
      */
     private Vec3d velocityThisTick = Vec3d.ZERO;
     /**
@@ -491,6 +493,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // A position from before this activation says nothing about how fast you are moving now.
         lastFeetPos = null;
         velocityThisTick = Vec3d.ZERO;
+        // Fix round 1 (review-r3-16.md Minor): worstCaseExtraNanos()/worstCaseExtraCalls() are documented as
+        // "since activation"; before this they quietly accumulated for the whole client session instead.
+        worstCaseNanos = 0;
+        worstCaseCalls = 0;
         refusingNow();
     }
 
@@ -568,7 +574,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         ClientPlayerEntity p = mc.player;
         Vec3d feet = p.getEntityPos();
         eyePos = new Vec3d(feet.x, feet.y + p.getEyeHeight(p.getPose()), feet.z);
-        velocityThisTick = horizontalVelocity(feet);
+        // Fix round 1 (review-r3-16.md Minor): only while self-budget is on does anything read this, matching
+        // exactSelfDamage's own budget-off skip; this still costs only two subtractions when it does run.
+        velocityThisTick = selfBudget.get() ? horizontalVelocity(feet) : Vec3d.ZERO;
 
         List<TargetView> seen = measureTargets();
         List<CrystalSeen> standing = new ArrayList<>();
@@ -640,11 +648,22 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * {@code Entity.updatePosition} directly and never touch that field (task-r3-14-report.md); a real
      * player's velocity leaves the same trace in its own position either way. Zero on the first pre-tick
      * measured, or right after an activation ({@link #onActivate}): nothing is known to move from yet.
+     *
+     * <p><b>Fix round 1 (review-r3-16.md Critical):</b> a NaN or infinite feet position (a broken or
+     * spoofing server) used to flow through {@link MovementReach#offsets} safely, exactly like every other
+     * odd server value {@link ServerValues}'s own class javadoc designs against; post-R3-16 it reached a
+     * throwing check there instead, and nothing between this method and the {@code TickEvent.Pre} dispatch
+     * (Meteor's Orbit {@code EventBus}) catches exceptions, so it could crash the client. A non-finite delta
+     * is sanitised here, back to {@link Vec3d#ZERO} — no movement, the same safe reading a first tick or a
+     * fresh activation already gives.
      */
     private Vec3d horizontalVelocity(Vec3d feet) {
         Vec3d last = lastFeetPos;
         lastFeetPos = feet;
-        return last == null ? Vec3d.ZERO : new Vec3d(feet.x - last.x, 0, feet.z - last.z);
+        if (last == null) return Vec3d.ZERO;
+        double dx = feet.x - last.x;
+        double dz = feet.z - last.z;
+        return Double.isFinite(dx) && Double.isFinite(dz) ? new Vec3d(dx, 0, dz) : Vec3d.ZERO;
     }
 
     /** Netty thread: queue only, the world is not touched here. */

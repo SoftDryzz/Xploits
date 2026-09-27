@@ -360,8 +360,16 @@ public final class CrystalBrain {
      * TargetWindows#LANDING_SAMPLE_MAX_TICKS} while too few are known yet to trust. That constant is already
      * the ceiling {@link TargetWindows} itself discards a landing past, so no landing it would otherwise have
      * learned from is ever underestimated by falling back to it.
+     *
+     * <p>Fix round 1 (review-r3-16.md): a landing slower than that ceiling (a lag spike) is exactly the one
+     * {@link TargetWindows#landed} leaves out of the samples this reads, by design, for the hurt-window hold
+     * this method does not serve. Left alone, that outlier would simply vanish here too, never raising this
+     * bound past whatever the ordinary, faster samples already established. {@link
+     * TargetWindows#recentOutlier} floors this at the ceiling whenever one is still within the landings'
+     * own age window, so a real lag spike is never silently treated as if it had not happened.
      */
     public int landingTicksBound() {
+        if (windows.recentOutlier(now)) return TargetWindows.LANDING_SAMPLE_MAX_TICKS;
         return windows.slowestLanding(now).orElse(TargetWindows.LANDING_SAMPLE_MAX_TICKS);
     }
 
