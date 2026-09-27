@@ -14,46 +14,133 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Task R3-3: {@link TargetWindows} alone (the landing condition, the margin, the last hit per target) and the
- * values it is fed with: the exact raw per target on {@link Candidate} and {@link CrystalSeen}, the ping on
+ * Tasks R3-3 and R3-11: {@link TargetWindows} alone (the landing condition learned from our own crystals' landings,
+ * the margin, the last hit per target) and the values it is fed with: the exact raw per target on {@link Candidate} and {@link CrystalSeen}, the ping on
  * {@link CrystalTick}, and {@link ServerValues#targetRaw}. Values exact in binary, so each boundary is the
  * real one.
  */
 class TargetWindowsTest {
     private static final String T = "t";
 
+    /** A window with five landings of 2 measured at tick 0: a crystal placed now lands inside it up to 6 ticks on. */
+    private static TargetWindows trained() {
+        TargetWindows w = new TargetWindows();
+        for (int i = 0; i < TargetWindows.LANDING_MIN_SAMPLES; i++) w.landed(0, 2);
+        return w;
+    }
+
+    private static TargetWindows landings(long at, int... ticks) {
+        TargetWindows w = new TargetWindows();
+        for (int t : ticks) w.landed(at, t);
+        return w;
+    }
+
     @Test
-    void theLandingIsSurelyInsideOnlyBelowTheWindow() {
+    void theConstantsAreTheBriefs() {
         assertEquals(10, TargetWindows.HURT_WINDOW_TICKS);
-        assertEquals(2, TargetWindows.LANDING_SLACK_TICKS);
         assertEquals(0.5, TargetWindows.RAW_MARGIN);
-        assertTrue(TargetWindows.landsInside(7, 0));
-        assertFalse(TargetWindows.landsInside(8, 0));
-        assertTrue(TargetWindows.landsInside(1, 3));
-        assertFalse(TargetWindows.landsInside(2, 3));
-        assertFalse(TargetWindows.landsInside(0, CrystalBrain.UNKNOWN_PING_TICKS));
+        assertEquals(20, TargetWindows.LANDING_SAMPLES);
+        assertEquals(5, TargetWindows.LANDING_MIN_SAMPLES);
+        assertEquals(1, TargetWindows.LANDING_MARGIN);
+        assertEquals(200, TargetWindows.LANDING_SAMPLE_MAX_AGE);
+        assertEquals(20, TargetWindows.LANDING_SAMPLE_MAX_TICKS);
+    }
+
+    @Test
+    void theLandingIsSurelyInsideOnlyBelowTheWindowWithTheSlowestLandingAndTheMargin() {
+        // Five landings of 3: 5 + 3 + 1 = 9 < 10, 6 + 3 + 1 = 10.
+        TargetWindows w = landings(0, 3, 3, 3, 3, 3);
+        assertTrue(w.landsInside(5, 0));
+        assertFalse(w.landsInside(6, 0));
+    }
+
+    @Test
+    void withFewerThanFiveLandingsNothingLandsSurelyInside() {
+        assertFalse(new TargetWindows().landsInside(0, 0));
+        assertFalse(landings(0, 3, 3, 3, 3).landsInside(0, 0));
+        assertTrue(landings(0, 3, 3, 3, 3, 3).landsInside(0, 0));
+    }
+
+    @Test
+    void theSlowestLandingSetsTheBound() {
+        // 2, 2, 2, 2, 6: 2 + 6 + 1 = 9 < 10, 3 + 6 + 1 = 10.
+        TargetWindows w = landings(0, 2, 2, 2, 2, 6);
+        assertTrue(w.landsInside(2, 0));
+        assertFalse(w.landsInside(3, 0));
+    }
+
+    @Test
+    void onlyTheLastTwentyLandingsCount() {
+        TargetWindows w = landings(0, 9);
+        for (int i = 0; i < 19; i++) w.landed(0, 2);
+        // Twenty landings, the 9 among them: 0 + 9 + 1 = 10.
+        assertFalse(w.landsInside(0, 0));
+        // The twenty-first pushes the 9 out: 6 + 2 + 1 = 9 < 10.
+        w.landed(0, 2);
+        assertTrue(w.landsInside(6, 0));
+    }
+
+    @Test
+    void aLandingOlderThanTwoHundredTicksNoLongerCounts() {
+        TargetWindows w = new TargetWindows();
+        for (long at = 100; at < 105; at++) w.landed(at, 3);
+        // At 300 the first is 200 ticks old and still counts; at 301 it is 201 and four remain.
+        assertTrue(w.landsInside(5, 300));
+        assertFalse(w.landsInside(5, 301));
+        w.expire(300);
+        assertTrue(w.landsInside(5, 300));
+        w.expire(301);
+        assertFalse(w.landsInside(5, 300));
+    }
+
+    @Test
+    void aLandingSlowerThanTwentyTicksIsIgnoredNotClamped() {
+        // 20 still counts (0 + 20 + 1 is not under 10); 21 and 25 are left out, so the bound stays 3.
+        TargetWindows kept = landings(0, 3, 3, 3, 3, 3, 20);
+        assertFalse(kept.landsInside(0, 0));
+        for (int outlier : new int[] {21, 25}) {
+            TargetWindows w = landings(0, 3, 3, 3, 3, 3, outlier);
+            assertTrue(w.landsInside(5, 0), "outlier " + outlier);
+            assertFalse(landings(0, 3, 3, 3, 3, outlier).landsInside(0, 0), "outlier " + outlier + " as the fifth");
+        }
+    }
+
+    @Test
+    void clearingForgetsTheLandings() {
+        TargetWindows w = trained();
+        w.clear();
+        assertFalse(w.landsInside(0, 0));
     }
 
     @Test
     void aHitFromOurCrystalSwallowsWhatDoesNotBeatItByTheMargin() {
+        TargetWindows w = trained();
+        w.fullHit(T, 10, OptionalDouble.of(47.5));
+        assertTrue(w.swallows(T, 47.0, 12));
+        assertTrue(w.swallows(T, 1.0, 12));
+        assertFalse(w.swallows(T, 47.25, 12));
+        assertFalse(w.swallows("someone else", 1.0, 12));
+        // 6 + 2 + 1 = 9 < 10; 7 + 2 + 1 = 10.
+        assertTrue(w.swallows(T, 47.0, 16));
+        assertFalse(w.swallows(T, 47.0, 17));
+    }
+
+    @Test
+    void withNoLandingMeasuredNothingIsSwallowed() {
         TargetWindows w = new TargetWindows();
         w.fullHit(T, 10, OptionalDouble.of(47.5));
-        assertTrue(w.swallows(T, 47.0, 12, 0));
-        assertTrue(w.swallows(T, 1.0, 12, 0));
-        assertFalse(w.swallows(T, 47.25, 12, 0));
-        assertFalse(w.swallows("someone else", 1.0, 12, 0));
-        assertFalse(w.swallows(T, 47.0, 18, 0));
+        assertFalse(w.swallows(T, 1.0, 11));
     }
 
     @Test
     void onlyTheLastHitCounts() {
-        TargetWindows w = new TargetWindows();
+        TargetWindows w = trained();
         w.fullHit(T, 10, OptionalDouble.of(47.5));
         w.fullHit(T, 11, OptionalDouble.empty());
-        assertFalse(w.swallows(T, 1.0, 12, 0));
+        assertFalse(w.swallows(T, 1.0, 12));
         w.fullHit(T, 12, OptionalDouble.of(20));
-        assertTrue(w.swallows(T, 19.5, 13, 0));
-        assertFalse(w.swallows(T, 19.75, 13, 0));
+        assertTrue(w.swallows(T, 19.5, 13));
+        assertFalse(w.swallows(T, 19.75, 13));
     }
 
     @Test
@@ -68,13 +155,13 @@ class TargetWindowsTest {
 
     @Test
     void clearingForgetsEveryHit() {
-        TargetWindows w = new TargetWindows();
+        TargetWindows w = trained();
         w.fullHit(T, 10, OptionalDouble.of(47.5));
         w.fullHit("u", 10, OptionalDouble.of(47.5));
         w.clear();
         assertFalse(w.remembers(T));
         assertFalse(w.remembers("u"));
-        assertFalse(w.swallows(T, 1.0, 11, 0));
+        assertFalse(w.swallows(T, 1.0, 11));
     }
 
     @Test
@@ -82,8 +169,8 @@ class TargetWindowsTest {
         TargetWindows w = new TargetWindows();
         assertThrows(IllegalArgumentException.class, () -> w.fullHit(T, 1, OptionalDouble.of(Double.NaN)));
         assertThrows(IllegalArgumentException.class, () -> w.fullHit(T, 1, OptionalDouble.of(-1)));
-        assertThrows(IllegalArgumentException.class, () -> w.swallows(T, Double.NaN, 1, 0));
-        assertThrows(IllegalArgumentException.class, () -> w.swallows(T, 1, 1, -1));
+        assertThrows(IllegalArgumentException.class, () -> w.swallows(T, Double.NaN, 1));
+        assertThrows(IllegalArgumentException.class, () -> w.landed(1, -1));
         assertThrows(NullPointerException.class, () -> w.fullHit(null, 1, OptionalDouble.empty()));
     }
 

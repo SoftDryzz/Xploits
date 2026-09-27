@@ -95,8 +95,11 @@ public final class CrystalBrain {
     private final TargetWindows windows = new TargetWindows();
     /** Full hits handed over since the last pre-tick; the next one counts them from the last. */
     private final List<ReadHit> hits = new ArrayList<>();
-    /** This pre-tick's ping in ticks, from its facts. */
-    private int pingTicks = UNKNOWN_PING_TICKS;
+    /**
+     * The pre-tick the windows were last forgotten at: a crystal whose placement was first decided then or before is
+     * not a landing ({@link TargetWindows#landed}), as the pre-ticks since it may not all have been counted.
+     */
+    private long landingSince = NO_TICK;
     private int deferred;
     /** The placement decided this tick, until the adapter says it was sent. */
     private Placement decided;
@@ -196,13 +199,14 @@ public final class CrystalBrain {
         for (Known k : known.values()) {
             if (k.removedTick == CrystalView.NEVER && (k.reportedGone || !listed.contains(k.seen.id()))) {
                 k.removedTick = now;
+                // One of ours, gone while known: how long it took, from the first decision to place it to now.
+                if (k.ours && k.placedTick > landingSince) windows.landed(now, now - k.placedTick);
             }
         }
         known.values().removeIf(k -> k.removedTick != CrystalView.NEVER
             && now - k.removedTick >= SelfBudget.DISAPPEARANCE_WINDOW);
         expirePending();
         windows.expire(now);
-        pingTicks = tick.pingTicks();
 
         rotated = false;
         // Meteor counts on without bound; past the delay the count no longer matters, so it stops there.
@@ -329,13 +333,16 @@ public final class CrystalBrain {
     }
 
     /**
-     * Forgets every target's hurt window, and the hits handed over and not yet counted. The adapter calls it when it
-     * skips a pre-tick while the client ticks on (the ticks since a hit would come out short, so a window could
-     * seem open after the server's has closed); the brain does the same at every pre-tick with the budget off.
+     * Forgets every target's hurt window, and the hits handed over and not yet counted, and every landing learned,
+     * including those of the crystals placed until now and not yet gone. The adapter calls it when it skips a pre-tick
+     * while the client ticks on (the ticks since a hit or a placement would come out short, so a window could seem
+     * open after the server's has closed, and a crystal seem faster than it is); the brain does the same at every
+     * pre-tick with the budget off, so it learns nothing then.
      */
     public void forgetWindows() {
         windows.clear();
         hits.clear();
+        landingSince = now;
     }
 
     /**
@@ -356,16 +363,21 @@ public final class CrystalBrain {
      * at its spot or for max(5, ping + 2) ticks, whichever comes first (Q2). It replaces whatever was pending,
      * or remembered as late, at that spot, as Meteor overwrites its placing spot and timer (lines 1054-1057):
      * Meteor places on the same base every tick until the crystal arrives, and only one crystal can come of
-     * it.
+     * it. That crystal's landing still counts from the first of those placements: a placement the server missed is
+     * what made it slower.
      *
      * @param pingTicks your ping in ticks, rounded up; {@link #UNKNOWN_PING_TICKS} when unknown
      */
     public void placed(long pos, int pingTicks) {
         if (decided == null || decided.pos != pos) throw new IllegalStateException("that placement was not decided this tick");
         if (pingTicks < 0) throw new IllegalArgumentException("ping " + pingTicks);
+        long first = now;
+        for (Pending p : pending) {
+            if (p.pos == pos) first = p.firstTick;
+        }
         pending.removeIf(p -> p.pos == pos);
         late.removeIf(l -> l.pos == pos);
-        pending.add(new Pending(pos, decided.budgetSelfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN)));
+        pending.add(new Pending(pos, decided.budgetSelfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN), first));
         decided = null;
     }
 
@@ -588,7 +600,7 @@ public final class CrystalBrain {
         for (String target : targets) {
             if (!(damage.getOrDefault(target, 0.0) > 0)) continue;
             Double raw = exactRaw.get(target);
-            if (raw == null || !windows.swallows(target, raw, now, pingTicks)) return false;
+            if (raw == null || !windows.swallows(target, raw, now)) return false;
             hurtsOne = true;
         }
         return hurtsOne;
@@ -662,11 +674,13 @@ public final class CrystalBrain {
      */
     private Known appeared(CrystalSeen c, long at) {
         boolean ours = false;
+        long placedTick = CrystalView.NEVER;
         for (Iterator<Pending> it = pending.iterator(); it.hasNext(); ) {
             Pending p = it.next();
             if (p.pos == c.pos() && at - p.tick < p.lifetime) {
                 it.remove();
                 ours = true;
+                placedTick = p.firstTick;
                 break;
             }
         }
@@ -679,7 +693,7 @@ public final class CrystalBrain {
                 }
             }
         }
-        Known k = new Known(c, ours);
+        Known k = new Known(c, ours, placedTick);
         known.put(c.id(), k);
         return k;
     }
@@ -713,7 +727,11 @@ public final class CrystalBrain {
     /** A placement decided this tick, with the self damage the budget counts for it. */
     private record Placement(long pos, double budgetSelfDamage) {}
 
-    private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime) {}
+    /**
+     * A placement pending: {@code tick} starts its lifetime; {@code firstTick} is the first of the placements on that
+     * base since the last crystal came of one, which its crystal's landing counts from.
+     */
+    private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime, long firstTick) {}
 
     private record Late(long pos, long since) {}
 
@@ -724,15 +742,18 @@ public final class CrystalBrain {
     private static final class Known {
         CrystalSeen seen;
         final boolean ours;
+        /** For one of ours, the pre-tick that first decided its placement; {@link CrystalView#NEVER} otherwise. */
+        final long placedTick;
         int attempts;
         long attackedTick = CrystalView.NEVER;
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
         boolean reportedGone;
 
-        Known(CrystalSeen seen, boolean ours) {
+        Known(CrystalSeen seen, boolean ours, long placedTick) {
             this.seen = seen;
             this.ours = ours;
+            this.placedTick = placedTick;
         }
 
         boolean live() {

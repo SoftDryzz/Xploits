@@ -27,9 +27,11 @@ import java.util.function.Predicate;
  * @param candidates        the places a crystal could go, in {@code BlockIterator} order (ties go to the
  *                          first found); empty for {@link CrystalBrain#breakPhase}, which is measured
  *                          before the scan
- * @param pingTicks         your ping in ticks, rounded up ({@link CrystalBrain#pingTicks}); {@link TargetWindows}
- *                          counts two of them from a hit to a crystal placed now landing.
- *                          {@link CrystalBrain#UNKNOWN_PING_TICKS} when unknown, which never holds a spot back
+ * @param pingTicks         your ping in ticks, rounded up ({@link CrystalBrain#pingTicks});
+ *                          {@link CrystalBrain#UNKNOWN_PING_TICKS} when unknown. No decision reads it: the hurt-window
+ *                          hold learns how long our crystals take from our own crystals ({@link TargetWindows}), with
+ *                          the network's delay inside, and the pending lifetime takes its ping in
+ *                          {@link CrystalBrain#placed}
  */
 public record CrystalTick(long tick, double health, int totems, boolean usingItem, boolean mining,
                           boolean lagging, boolean pauseModuleActive, Hands hands, List<TargetView> targets,

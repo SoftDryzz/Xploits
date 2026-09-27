@@ -585,9 +585,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     }
 
     /**
-     * A pre-tick the brain does not get while the client ticks on. The ticks since a target's hit would then come
-     * out short, so every window is forgotten (the cautious reading: nothing is held back), with the packets read
-     * so far.
+     * A pre-tick the brain does not get while the client ticks on. The ticks since a target's hit, or since one of
+     * our placements, would then come out short, so every window and every landing learned is forgotten (the cautious
+     * reading: nothing is held back until enough landings are measured again), with the packets read so far.
      */
     private void skipPreTick() {
         damagePackets.clear();
