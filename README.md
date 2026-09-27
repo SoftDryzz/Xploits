@@ -3,7 +3,7 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Nine modules, each switched on separately.
+other anarchy servers. Ten modules, each switched on separately.
 
 The core idea: **no module does half a job without saying so**. If it cannot deliver what it
 promises, it refuses and tells you which setting to change — instead of doing something similar and
@@ -52,7 +52,7 @@ Worth knowing, because these are **your** modules that the addon turns on, turns
 
 | Who | What it touches | How |
 |---|---|---|
-| `auto-pvp` | `crystal-aura`, `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it |
+| `auto-pvp` | The crystal aura `crystal-module` selects — Meteor's `crystal-aura` by default, Xploits' own `crystal-aura++` with `xploits++` — plus `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it. It never touches the aura `crystal-module` did not select |
 | `auto-pvp` | Your **Meteor friends list** | Adds your people while it is on, so the five combat modules do not attack them either. When turned off it removes **only the ones it added** |
 | `auto-pvp` | `crystal-aura`'s `anti-suicide` setting | It only **reads** it, to know whether it can trust Meteor not to kill you with your own crystal |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
@@ -62,7 +62,7 @@ All of this, with the detail of what persists and what can go wrong, in [Securit
 
 ---
 
-## The nine modules
+## The ten modules
 
 ### `auto-travel` — fly somewhere without leaving an arrow pointing at your base
 
@@ -163,6 +163,15 @@ string, and needs string to place it; by default it acts only while you are in a
 (`only-in-hole`). Meteor 1.21.11 ships no `anti-anchor` module (the class is there, but it is not
 registered): `auto-pvp` says so once when turned on and does not use it.
 
+**`crystal-module` picks which crystal aura `auto-pvp` drives**: `meteor` (default) drives Meteor's
+`crystal-aura` exactly as before; `xploits++` drives Xploits' own `crystal-aura++` instead — see
+below. With `xploits++`, running out of totems no longer turns the aura off while its self-budget is
+still on: breaking the enemy's crystals is enough to keep you alive without one in hand.
+
+`auto-pvp` also keeps asking for `surround` for a short while after a block of your hole has just been
+broken, not only while the hole is still whole: Meteor's own `surround` refills the four sides, never
+the block under you, so this closes a gap it used to miss.
+
 **Style profiles change auto-pvp's own values and which of the ten modules it may use** — never the
 inner settings of a module it turns on (`crystal-aura`, `surround`...). Three are built in and
 always available, plus up to 20 of your own:
@@ -180,6 +189,56 @@ hand — a slider or a `use-*` toggle — marks the active profile as modified (
 `profile save` it. The `next-profile` key cycles through them, built-in first, then yours; it fires
 on release, with `auto-pvp` on and not while typing in a text field — with it off, use
 `.xploits pvp profile use`.
+
+### `crystal-aura++` — crystal-aura with a floor under your health
+
+Meteor's `crystal-aura` behaviour — the same placing and breaking rules, the same defaults — plus a
+self-damage budget that never lets your health (plus absorption) drop below a reserve. It counts every
+crystal that can still hurt you, already placed or on its way to exploding, and works out the exact
+damage a hit would deal (Meteor rounds it down).
+
+**Use it from `auto-pvp`'s `crystal-module` setting** (`meteor` default | `xploits++`), or turn
+`crystal-aura++` on by itself. **It does nothing while Meteor's `crystal-aura` is on** — two auras
+would fight over the same crystals — and says so.
+
+**`risk`** sets how much health the budget keeps in reserve: **Balanced** (keeps 3.5, the default and
+recommended), **Safe** (keeps 5, experimental), **Aggressive** (keeps 2, experimental) and **Custom**
+(the `reserve` setting). Breaking one of your own crystals must still leave you at least 2, whatever
+`risk` says.
+
+**What it adds on top of Meteor:**
+
+- Works out the exact damage a placement would deal, instead of rounding it down.
+- Between two spots that would deal the target the same damage, picks the one that hurts you less.
+- Does not place a crystal the target's own damage cooldown would swallow — only when it is sure.
+- Keeps the reserve while you move, by assuming the worst spot you could reach before the crystal
+  explodes.
+
+**Measured** (in-game bench, 2026-09-27; a fake opponent that never attacks; 100 ms simulated ping;
+unlimited crystals; natural health regeneration only where noted; median of 3 runs of 30 s; "lowest" is
+the lowest health seen across those 3 runs, out of 20). Damage dealt / your lowest health, Balanced
+against Meteor's `crystal-aura`:
+
+| Situation | Meteor | Balanced |
+|---|---|---|
+| Opponent standing still | 30 / 3.4 | 30 / 3.5 |
+| Opponent circling | 20 / 3.9 | 20 / 3.9 |
+| Standing still, with regeneration | 40 / 0.2 | 40.8 / 3.5 |
+| Circling, with regeneration | 29.9 / 0.6 | 28.8 / 4.4 |
+| Opponent 3 blocks higher | 296 / 18.8 | 304 / 18.8 |
+| Opponent 3 blocks lower | 287 / 18.8 | 298 / 18.8 |
+| Opponent coming and going | 36 / 0.2 | 39 / 3.6 |
+| Opponent dodging sideways | 30 / 1.8 | 31 / 3.5 |
+| You walking in circles | 40 / 0.4 | 29 / 7.2 |
+| You dodging, opponent circling | 30 / 0.3 | 27 / 3.9 |
+
+**Known limits:**
+
+- Against an opponent who moves around you, Balanced takes the first totem 0.3 to 0.6 s later than
+  Meteor: it refuses a crystal that would take you below 3.5.
+- While **you** move it is deliberately more cautious — less damage, and the first totem later.
+- Not measured yet: an opponent who attacks you back, golden apples, several enemies at once.
+- Safe and Aggressive are experimental.
 
 ### `fight-recorder` — record every fight and work out why you died
 
@@ -380,6 +439,26 @@ The most common:
 - **"It rejects me and I do not know why."** The message gives the setting, its current value and
   what to set it to. If it sends you to a setting that does not exist under that name, **that one is
   our bug**.
+
+---
+
+## Coming soon
+
+- **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
+  that keeps a health reserve.
+- **Next, in a 0.7.x:** an attack mode for `crystal-aura++`, `Maximum` — places crystals even when
+  they would do little damage, keeps placing up close with the reserve as its only limit, drops
+  obsidian when there is no spot to place on, an easier face-place, and an optional aggressive finish:
+  take damage, or even pop your own totem if you are holding one, when the crystal is sure to kill the
+  opponent — it still never lets you die. Also tighter tuning while you move.
+- **Then, a full fight:** self-protection first — notice the instant your hole is being mined and
+  patch it at once, and decide what to do if a crystal is already sitting in the gap; respawn anchors,
+  both attacking with them and a defence of our own, since Meteor's `anti-anchor` is not in this
+  build; smarter webs; beds in the Nether and the End; and all of it tested in every situation — you
+  in the open, in a hole, trapped, underground or moving; the opponent above you, below you, standing
+  still, dodging or attacking; golden apples; several enemies at once.
+- **Later:** more `++` modules wherever Meteor's own fall short, and the fight director tuned against
+  recorded real fights.
 
 ---
 
