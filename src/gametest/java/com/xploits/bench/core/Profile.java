@@ -34,6 +34,15 @@ public enum Profile {
         return full ? FULL : EVERYDAY;
     }
 
+    /** The profile whose {@link #id()} is {@code id} (task A5, {@link ReportMerge}: reads a report's own
+     * {@code profile} field back into a {@link Profile}). */
+    public static Profile fromId(String id) {
+        for (Profile profile : values()) {
+            if (profile.id.equals(id)) return profile;
+        }
+        throw new IllegalArgumentException("not a bench profile id: " + id);
+    }
+
     /**
      * Whether this run plays a scenario.
      *

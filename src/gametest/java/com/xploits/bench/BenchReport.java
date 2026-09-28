@@ -25,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -68,9 +69,6 @@ public final class BenchReport {
             return this == FAIL || this == ERROR || this == PENDING;
         }
     }
-
-    /** What the comparisons' summary is called: every comparison is crystal-aura++ against crystal-aura. */
-    static final String COMPARE_LABEL = "capp";
 
     /** The value of the report's {@code hygiene} field once the scan found nothing. */
     public static final String HYGIENE_CLEAN = "clean";
@@ -123,6 +121,23 @@ public final class BenchReport {
      * it found none. The report's {@code hygiene} field is absent, {@value #HYGIENE_CLEAN}, or these lines.
      */
     private List<String> hygiene;
+
+    /**
+     * Task A5: {@code -Pbench.shard=k/n} metadata, null for a normal (unsharded) run — every field below stays
+     * out of the JSON entirely in that case, so a plain run's report is byte-for-byte what it always was.
+     * {@link com.xploits.bench.core.ReportMerge} reads these fields back from each shard's own report to
+     * rebuild one report identical in shape and meaning to an unsharded run's: {@code canonicalOrder} restores
+     * the scenario order this shard's own selection was cut from, and {@code judged} (this report's own
+     * {@link #judged} field, unfiltered) lets the merge compute the recommendation the same way a single run
+     * does, without needing the game-only {@code Scenarios} class outside the client that measured it.
+     */
+    private String shardLabel;
+    private String commit;
+    private Boolean treeClean;
+    private Boolean freshFlag;
+    private Integer pingFlag;
+    private Boolean verifySettleFlag;
+    private List<String> canonicalOrder;
 
     private final class Entry {
         final Scenario scenario;
@@ -273,19 +288,11 @@ public final class BenchReport {
      * no scenario that ran is judged against another.
      */
     public Optional<String> compareSummary() {
-        Map<Verdict, Integer> counts = new LinkedHashMap<>();
-        for (Verdict verdict : Verdict.values()) counts.put(verdict, 0);
-        boolean any = false;
-        for (Entry e : scenarios.values()) {
-            Optional<Outcome> outcome = e.compare();
-            if (outcome.isEmpty()) continue;
-            any = true;
-            counts.merge(outcome.get().verdict(), 1, Integer::sum);
-        }
-        if (!any) return Optional.empty();
-        List<String> parts = new ArrayList<>();
-        counts.forEach((verdict, n) -> parts.add(n + " " + verdict.name()));
-        return Optional.of(COMPARE_LABEL + ": " + String.join(" / ", parts));
+        List<Verdict> verdicts = new ArrayList<>();
+        for (Entry e : scenarios.values()) e.compare().ifPresent(outcome -> verdicts.add(outcome.verdict()));
+        // Task A5: the same tally com.xploits.bench.core.ReportMerge uses for the merged report's own compare
+        // line, so a sharded run's summary is worked out identically to an unsharded one's.
+        return verdicts.isEmpty() ? Optional.empty() : Optional.of(Recommendation.compareSummaryLine(verdicts));
     }
 
     /**
@@ -338,6 +345,30 @@ public final class BenchReport {
      */
     public void hygiene(List<String> hits) {
         hygiene = List.copyOf(hits);
+    }
+
+    /**
+     * Task A5: marks this report as one shard's own ({@code -Pbench.shard=k/n}), so {@link
+     * com.xploits.bench.core.ReportMerge} can check it agrees with the others and restore the unsharded
+     * scenario order and recommendation.
+     *
+     * @param label          {@code "k/n"}
+     * @param commit         the commit this shard ran (every shard must share it)
+     * @param treeClean      whether the worktree this shard ran in was clean
+     * @param fresh          {@code -Pbench.fresh}
+     * @param pingMs         the round trip this run's crystal-aura MEASUREs played over
+     * @param verifySettle   {@code -Pbench.verifySettle}
+     * @param canonicalOrder every scenario this shard was cut from, in the unsharded (Scenarios.all()) order
+     */
+    public void shard(String label, String commit, boolean treeClean, boolean fresh, int pingMs, boolean verifySettle,
+                      List<String> canonicalOrder) {
+        this.shardLabel = Objects.requireNonNull(label, "label");
+        this.commit = Objects.requireNonNull(commit, "commit");
+        this.treeClean = treeClean;
+        this.freshFlag = fresh;
+        this.pingFlag = pingMs;
+        this.verifySettleFlag = verifySettle;
+        this.canonicalOrder = List.copyOf(canonicalOrder);
     }
 
     /**
@@ -438,6 +469,20 @@ public final class BenchReport {
         root.addProperty("difficulty", "normal");
         root.addProperty("only", only);
         root.addProperty("profile", profile.id());
+        if (shardLabel != null) {
+            root.addProperty("shard", shardLabel);
+            root.addProperty("commit", commit);
+            root.addProperty("tree_clean", treeClean);
+            root.addProperty("fresh", freshFlag);
+            root.addProperty("ping", pingFlag);
+            root.addProperty("verify_settle", verifySettleFlag);
+            JsonArray order = new JsonArray();
+            canonicalOrder.forEach(order::add);
+            root.add("canonical_order", order);
+            JsonObject judgedJson = new JsonObject();
+            judged.forEach((name, level) -> judgedJson.addProperty(name, level.name()));
+            root.add("judged", judgedJson);
+        }
         JsonArray list = new JsonArray();
         for (Entry e : scenarios.values()) {
             JsonObject s = new JsonObject();

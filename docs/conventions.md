@@ -258,6 +258,30 @@ The delay is added by a bench-only Fabric mixin (`src/gametest/java/com/xploits/
 no bench class), on `ClientConnection.addFlowControlHandler`: that method runs once for the client's own
 connection and once for the server's connection to that same player, so delaying both symmetrically gives a
 round trip with no special case for any one packet kind — keep-alives included the same as any other packet.
+
+**Sharded runs, several clients at once (task A5).** `bench/parallel.ps1` (PowerShell 7) plays the bench as up
+to 4 Minecraft clients at once and merges their reports into one, to cut the wall time on a machine that can
+run several clients comfortably: `bench/parallel.ps1 -Shards 4 -Full -Fresh` for a release, the same flags as
+always otherwise (`-Full`, `-Fresh`, `-Only`, `-Ping`, `-VerifySettle`, `-UpdateBaseline`). It refuses on a
+dirty tree (every shard plays the committed HEAD), runs shard 1 in the current worktree and shards 2..n each
+in their own detached worktree `.worktrees/bench-shard-<k>` (created or reset to HEAD; never the main
+worktree, never committed or pushed from), copies the Meteor cache into each shard first and the new entries
+back after, then hands every shard's report to the `benchMerge` Gradle task. `-Pbench.shard=k/n`
+(`1 <= k <= n <= 4`) picks which slice of the selection one client plays: `ShardPlan` (`bench/core`, pure)
+partitions the scenarios so a compare group — a Meteor scenario together with every scenario judged against
+it — is never split, balanced by an estimated duration (each item's runs times its time limit plus a fixed
+per-run overhead for a fresh world's creation and teardown); `n = 1` plays exactly what today's plain run
+does. `ReportMerge` (`bench/core`, pure) then turns the `n` shard reports into ONE, indistinguishable in
+shape and meaning from a single client's: scenarios in the unsharded order, and the `compare` and
+`recommendation` lines worked out by the same code a single run uses. It refuses, with a clear reason,
+unless every shard agrees on the commit, the versions and the flags it ran, every `k` of the same `n` is
+present exactly once, every scenario appears exactly once, and every shard's own hygiene is clean; if a
+shard's client itself fails, `bench/parallel.ps1` keeps the other shards' reports, names the failed one, and
+never attempts a merge (a partial merge never passes the gate). `benchVerify` and the release gate then run
+on the merged report exactly as they do on a plain run's, and `-Pbench.updateBaseline` is applied once, after
+the merge, from the complete report (never by an individual shard, since shards 2..n's own `bench/baseline.json`
+lives in a disposable worktree). **A release may use a sharded run only with `-Pbench.full -Pbench.fresh` and
+a clean merged gate — the same rule as always, just checked once, on the merged report.**
 **Verified:** the bench always plays through an integrated server, whose one player is always its host, and
 vanilla's `isHost` check (`IntegratedServer.isHost`, matched by profile name) makes
 `ServerCommonNetworkHandler.baseTick` skip sending the host a keep-alive at all — so the player-list latency

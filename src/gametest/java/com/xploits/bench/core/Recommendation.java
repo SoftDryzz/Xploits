@@ -93,4 +93,18 @@ public record Recommendation(RiskLevel level, boolean yes, int accepted, int app
         return LABEL + " " + level + ": " + (yes ? "YES" : "NO") + " (" + accepted + " of " + applicable + " applicable"
             + (notApplicable > 0 ? "; " + notApplicable + " not applicable" : "") + ")";
     }
+
+    /**
+     * {@code capp: n ACCEPT / m REJECT / k INCOMPLETE / j NOT_APPLICABLE}: every verdict counted, in
+     * {@link Verdict}'s own order. Used by a single run's report and by {@link ReportMerge} alike, so the
+     * merged report's top-line summary is worked out the same way a single run's is (task A5).
+     */
+    public static String compareSummaryLine(List<Verdict> verdicts) {
+        Map<Verdict, Integer> counts = new EnumMap<>(Verdict.class);
+        for (Verdict verdict : Verdict.values()) counts.put(verdict, 0);
+        for (Verdict verdict : verdicts) counts.merge(verdict, 1, Integer::sum);
+        List<String> parts = new ArrayList<>();
+        counts.forEach((verdict, n) -> parts.add(n + " " + verdict.name()));
+        return LABEL + ": " + String.join(" / ", parts);
+    }
 }

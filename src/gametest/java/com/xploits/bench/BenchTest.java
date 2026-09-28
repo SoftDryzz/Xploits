@@ -56,9 +56,18 @@ public class BenchTest implements FabricClientGameTest {
      * ({@link Scenario#simulatesPing}); {@code -Pbench.ping} overrides {@link PingDelay#BENCH_PING_MS}.
      */
     record Config(Path out, Path baseline, List<String> only, boolean updateBaseline, boolean full, boolean fresh,
-                  Path project, int pingMs) {
+                  Path project, int pingMs, Shard shard) {
         Profile profile() {
             return Profile.of(full, !only.isEmpty());
+        }
+
+        /**
+         * Task A5: {@code -Pbench.shard=k/n} — this client plays shard {@code k} of {@code n}
+         * ({@link com.xploits.bench.core.ShardPlan}) of the selection, and its report records {@code commit}
+         * and {@code treeClean} so {@link com.xploits.bench.core.ReportMerge} can check every shard ran the
+         * same code.
+         */
+        record Shard(int k, int n, String commit, boolean treeClean) {
         }
 
         static Config fromSystemProperties() {
@@ -73,7 +82,7 @@ public class BenchTest implements FabricClientGameTest {
             return new Config(Path.of(out), baseline == null ? null : Path.of(baseline), names,
                 Boolean.getBoolean("xploits.bench.update-baseline"), Boolean.getBoolean("xploits.bench.full"),
                 Boolean.getBoolean("xploits.bench.fresh"), project == null || project.isBlank() ? null : Path.of(project),
-                PingDelay.effective(pingOverride()));
+                PingDelay.effective(pingOverride()), shardFromSystemProperties());
         }
 
         /** The Gradle property {@code -Pbench.ping}, or null when it was not passed. */
@@ -86,20 +95,53 @@ public class BenchTest implements FabricClientGameTest {
                 throw new AssertionError("xploits.bench.ping is not a number: " + value);
             }
         }
+
+        /** {@code -Pbench.shard=k/n}, or null when this run is not sharded. */
+        private static Shard shardFromSystemProperties() {
+            String label = System.getProperty("xploits.bench.shard");
+            if (label == null || label.isBlank()) return null;
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)/(\\d+)").matcher(label.strip());
+            if (!m.matches()) throw new AssertionError("xploits.bench.shard is not k/n: " + label);
+            int k = Integer.parseInt(m.group(1));
+            int n = Integer.parseInt(m.group(2));
+            if (n < 1 || n > com.xploits.bench.core.ShardPlan.MAX_SHARDS || k < 1 || k > n) {
+                throw new AssertionError("xploits.bench.shard must be 1 <= k <= n <= "
+                    + com.xploits.bench.core.ShardPlan.MAX_SHARDS + ": " + label);
+            }
+            String commit = System.getProperty("xploits.bench.commit");
+            if (commit == null || commit.isBlank()) {
+                throw new AssertionError("xploits.bench.commit is not set: required with -Pbench.shard");
+            }
+            return new Shard(k, n, commit, Boolean.getBoolean("xploits.bench.tree-clean"));
+        }
     }
 
     @Override
     public void runTest(ClientGameTestContext ctx) {
         Config config = Config.fromSystemProperties();
         Profile profile = config.profile();
-        List<Scenario> selected = select(Scenarios.all(), config.only());
+        List<Scenario> canonical = select(Scenarios.all(), config.only());
+        List<Scenario> selected = canonical;
+        // Task A5: -Pbench.shard=k/n cuts the canonical (unsharded) selection down to this client's own
+        // slice, never splitting a compare group (ShardPlan); the report keeps the full canonical order too,
+        // so ReportMerge can put every shard's scenarios back where an unsharded run would have them.
+        if (config.shard() != null) {
+            selected = shardOf(canonical, config.shard());
+        }
         List<Scenario> played = selected.stream().filter(s -> BenchReport.plays(profile, s)).toList();
         Baseline baseline = loadBaseline(config.baseline());
         BenchReport report = new BenchReport(version("xploits"), version("meteor-client"), config.out(), baseline,
             config.only(), Scenarios.judged(), profile);
+        boolean verifySettle = Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE);
+        if (config.shard() != null) {
+            Config.Shard shard = config.shard();
+            report.shard(shard.k() + "/" + shard.n(), shard.commit(), shard.treeClean(), config.fresh(), config.pingMs(),
+                verifySettle, canonical.stream().map(Scenario::name).toList());
+            LOG.info("[bench] shard {}/{}: {} of the {} canonical scenario(s), commit {}, tree {}",
+                shard.k(), shard.n(), selected.size(), canonical.size(), shard.commit(), shard.treeClean() ? "clean" : "dirty");
+        }
         LOG.info("[bench] {}: {} scenario(s) selected, {} to play, {} skipped; the baseline has {} scenario(s)",
             profile.label(), selected.size(), played.size(), selected.size() - played.size(), baseline.size());
-        boolean verifySettle = Boolean.getBoolean(CrystalAuraMeasure.VERIFY_SETTLE);
         Optional<String> bypass = MeteorCache.bypass(config.fresh(), verifySettle);
         MeteorCache.Key cacheKey = cacheKey(config, bypass);
         if (verifySettle) {
@@ -292,6 +334,19 @@ public class BenchTest implements FabricClientGameTest {
             if (!selected.contains(match)) selected.add(match);
         }
         return selected;
+    }
+
+    /**
+     * Task A5: {@code canonical}, cut down to shard {@code shard.k()} of {@code shard.n()}
+     * ({@link com.xploits.bench.core.ShardPlan}), in {@code canonical}'s own order.
+     */
+    private static List<Scenario> shardOf(List<Scenario> canonical, Config.Shard shard) {
+        List<com.xploits.bench.core.ShardPlan.Item> items = canonical.stream()
+            .map(s -> new com.xploits.bench.core.ShardPlan.Item(s.name(), s.runs(), s.seconds(), s.compareWith().orElse(null)))
+            .toList();
+        java.util.Set<String> names = new java.util.HashSet<>(
+            com.xploits.bench.core.ShardPlan.shard(items, shard.k(), shard.n()));
+        return canonical.stream().filter(s -> names.contains(s.name())).toList();
     }
 
     private static void write(BenchReport report) {
