@@ -238,6 +238,16 @@ public final class Sparring extends FakePlayer {
     }
 
     /**
+     * Task A2+ requirement 6 ("escape"): totems left in total, offhand plus spare — {@link Integer#MAX_VALUE}
+     * outside fight mode, where {@link #totemsSpare} never runs out and the offhand always refills.
+     */
+    public int totemsLeft() {
+        if (!fightMode) return Integer.MAX_VALUE;
+        boolean inHand = getOffHandStack().isOf(Items.TOTEM_OF_UNDYING);
+        return totemsSpare + (inHand ? 1 : 0);
+    }
+
+    /**
      * The counters, with the first pop as ticks after {@code t0Tick} (-1 when it has not popped, or when
      * T0 has not come).
      */
