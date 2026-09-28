@@ -14,6 +14,7 @@ import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.ExplosionMath;
+import com.xploits.pvp.crystal.core.HealthTrust;
 import com.xploits.pvp.crystal.core.MovementReach;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
@@ -57,6 +58,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityStatuses;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.decoration.EndCrystalEntity;
@@ -70,6 +72,7 @@ import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -416,6 +419,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         .build()
     );
 
+    private final Setting<Boolean> finishingBlow = sgSafety.add(new BoolSetting.Builder()
+        .name(CrystalSetting.FINISHING_BLOW.id())
+        .description(Texts.startupText(CrystalSetting.FINISHING_BLOW.text()))
+        .defaultValue(true)
+        .visible(() -> selfBudget.get())
+        .build()
+    );
+
     private final Setting<Double> reserve = sgSafety.add(new DoubleSetting.Builder()
         .name(CrystalSetting.RESERVE.id())
         .description(Texts.startupText(CrystalSetting.RESERVE.text()))
@@ -447,6 +458,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * posted there, before the packet is applied), read on the game thread.
      */
     private final Queue<EntityDamageS2CPacket> damagePackets = new ConcurrentLinkedQueue<>();
+    /**
+     * Entity-status packets received since the last pre-tick (task B0a: totem pops, status {@code
+     * USE_TOTEM_OF_UNDYING}), the same way as {@link #damagePackets}: filled on the Netty thread, read on the
+     * game thread, where {@code mc.world} is safe to read.
+     */
+    private final Queue<EntityStatusS2CPacket> statusPackets = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -486,6 +503,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         lateOwnBefore = 0;
         deferredBefore = 0;
         damagePackets.clear();
+        statusPackets.clear();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -504,6 +522,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onDeactivate() {
         forgetTick();
         damagePackets.clear();
+        statusPackets.clear();
         lastRotationPos = null;
         refusal.update(false);
     }
@@ -593,9 +612,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             pingTicks());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
-        // Before the break phase, and the order matters: the brain counts the hits handed over before a pre-tick
-        // from the previous one. Handed over after it, they would count from this one, a tick short.
+        // Before the break phase, and the order matters: the brain counts the hits (and the pops, task B0a)
+        // handed over before a pre-tick from the previous one. Handed over after it, they would count from
+        // this one, a tick short.
         readDamagePackets(b);
+        readStatusPackets(b);
         b.breakPhase(settings, measured).ifPresent(a -> execute(a, crystals::get));
         if (b.wantsPlacement()) scan(b, tick);
     }
@@ -638,6 +659,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      */
     private void skipPreTick() {
         damagePackets.clear();
+        statusPackets.clear();
         brain.forgetWindows();
     }
 
@@ -670,6 +692,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
         if (event.packet instanceof EntityDamageS2CPacket damage) damagePackets.add(damage);
+        else if (event.packet instanceof EntityStatusS2CPacket status) statusPackets.add(status);
     }
 
     /**
@@ -685,6 +708,22 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             if (!keep) continue;
             if (!(mc.world.getEntityById(damage.entityId()) instanceof PlayerEntity player) || player == mc.player) continue;
             b.targetHurt(player.getUuidAsString(), damage.sourceDirectId());
+        }
+    }
+
+    /**
+     * The totem pops on other players received since the last pre-tick, to the brain (task B0a, spec Amendment
+     * 2026-09-28): the entity-status packet with status {@code USE_TOTEM_OF_UNDYING} (35, verified in the yarn
+     * 1.21.11 jar's {@code net.minecraft.entity.EntityStatuses}). A packet about us, or about an entity that is
+     * not a player we see, is dropped. With {@code self-budget} off nothing is kept: {@link HealthTrust} is
+     * never read then.
+     */
+    private void readStatusPackets(CrystalBrain b) {
+        boolean keep = selfBudget.get();
+        for (EntityStatusS2CPacket status; (status = statusPackets.poll()) != null; ) {
+            if (!keep || status.getStatus() != EntityStatuses.USE_TOTEM_OF_UNDYING) continue;
+            if (!(status.getEntity(mc.world) instanceof PlayerEntity player) || player == mc.player) continue;
+            b.targetPopped(player.getUuidAsString());
         }
     }
 
@@ -743,6 +782,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             .pauseHealth(pauseHealth.get())
             .risk(risk.get())
             .selfBudget(selfBudget.get())
+            .finishingBlow(finishingBlow.get())
             .reserve(reserve.get())
             .safeSelfDamage(safeSelfDamage.get())
             .build();
@@ -897,6 +937,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return ServerValues.ownHealth(mc.player.getHealth(), mc.player.getAbsorptionAmount());
     }
 
+    /**
+     * Every totem of undying carried, anywhere in the inventory (task B0a fix round 1: half of condition a,
+     * with {@link CrystalTick.Hands#totemInHand}). {@code InvUtils.find} sums {@code stack.getCount()} over
+     * every slot from 0 to {@code PlayerInventory.size()} (verified in both jars: {@code find}/{@code
+     * find(Predicate, int, int)} in the Meteor sources jar; {@code PlayerInventory.size()} in the yarn
+     * 1.21.11 jar is {@code main.size()} (36, hotbar included, so the main hand is in range) plus {@code
+     * EQUIPMENT_SLOTS.size()}, whose range includes {@code OFF_HAND_SLOT}), so this already counts a totem in
+     * either hand along with every other one carried.
+     */
     private int totems() {
         return InvUtils.find(Items.TOTEM_OF_UNDYING).count();
     }
@@ -936,7 +985,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             main == Items.BOW || off == Items.BOW,
             ServerValues.amplifier(weakness != null, weakness == null ? 0 : weakness.getAmplifier()),
             ServerValues.amplifier(strength != null, strength == null ? 0 : strength.getAmplifier()),
-            mainBreaks, hotbarBreaks || mainBreaks);
+            mainBreaks, hotbarBreaks || mainBreaks,
+            main == Items.TOTEM_OF_UNDYING || off == Items.TOTEM_OF_UNDYING);
     }
 
     /** Meteor's {@code isValidWeaknessItem} (lines 877-879). */

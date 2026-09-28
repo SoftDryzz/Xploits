@@ -293,6 +293,37 @@ class SelfBudgetTest {
         assertEquals(Reason.FOREIGN_CRYSTAL, b.breakAllowed(enemy).reason());
     }
 
+    // worstCaseWithoutCrystal() (task B0a, condition c of the finishing-blow override)
+
+    @Test
+    void worstCaseWithoutCrystalSubtractsItsOwnShareWhereverItWasCounted() {
+        CrystalView standing = standing(1, 4, true);
+        CrystalView inFlight = attacked(2, 6, NOW);
+        SelfBudget b = budget(20, List.of(standing, inFlight));
+
+        assertEquals(10.0, b.worstCase(), 0.0);
+        assertEquals(6.0, b.worstCaseWithoutCrystal(standing, NOW), 0.0, "standing's own 4 removed");
+        assertEquals(4.0, b.worstCaseWithoutCrystal(inFlight, NOW), 0.0, "in-flight's own 6 removed");
+    }
+
+    @Test
+    void worstCaseWithoutCrystalIsUnchangedForOneNotCountedAtAll() {
+        CrystalView beyond = at(standing(1, 4, true), 12.5);
+        SelfBudget b = budget(20, List.of(beyond));
+
+        assertEquals(0.0, b.worstCase(), 0.0);
+        assertEquals(0.0, b.worstCaseWithoutCrystal(beyond, NOW), 0.0);
+    }
+
+    @Test
+    void worstCaseWithoutCrystalNeverMutatesTheBudget() {
+        CrystalView standing = standing(1, 4, true);
+        SelfBudget b = budget(20, List.of(standing));
+
+        b.worstCaseWithoutCrystal(standing, NOW);
+        assertEquals(4.0, b.worstCase(), 0.0, "a second, independent reading: the budget itself is untouched");
+    }
+
     @Test
     void aCrystalThatIsGoneCannotBeBroken() {
         CrystalView c = gone(1, 5, CrystalView.NEVER, NOW);

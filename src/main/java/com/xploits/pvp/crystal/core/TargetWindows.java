@@ -117,6 +117,17 @@ public final class TargetWindows {
     }
 
     /**
+     * Whether {@code target} has a hurt window open right now, opened by one of our crystals (task B0a): its
+     * last full hit was ours, and the server still ignores, for {@link #HURT_WINDOW_TICKS}, any hit that does
+     * not beat it. A finishing-grade crystal must never fall inside one, since the window would swallow or cut
+     * its damage: the kill or the totem pop it is meant to deliver might not actually land.
+     */
+    public boolean openByUs(String target, long now) {
+        Hit hit = last.get(target);
+        return hit != null && hit.ourRaw.isPresent() && now - hit.tick < HURT_WINDOW_TICKS;
+    }
+
+    /**
      * Whether a crystal placed at pre-tick {@code now} lands surely inside a window that opened {@code ticksSince}
      * ticks ago: at least {@link #LANDING_MIN_SAMPLES} landings known, and
      * {@code ticksSince + slowest + }{@link #LANDING_MARGIN}{@code  < }{@link #HURT_WINDOW_TICKS}, where
