@@ -51,4 +51,11 @@ public final class ComposedFight implements Script {
         base.tick(sparring, tick);
         for (FightBehaviour behaviour : behaviours) behaviour.tick(sparring, tick);
     }
+
+    /** Task A2 fix round 1: delegates to the base script — the only part of a composed fight that can leave
+     * something pending (A2's {@link CrystalAttack}); none of the {@link FightBehaviour}s do. */
+    @Override
+    public void close() {
+        base.close();
+    }
 }

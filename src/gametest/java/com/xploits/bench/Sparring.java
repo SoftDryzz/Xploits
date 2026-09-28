@@ -55,6 +55,9 @@ public final class Sparring extends FakePlayer {
     private double rawDamage;
     /** The bench tick of the last {@link #step}; a hit comes during the server tick after it. */
     private int lastStepTick;
+    /** Task A2 fix round 1: whether {@link Script#close()} has run yet — at most once, from whichever of
+     * {@link #step} or {@link #despawn} gets there first. */
+    private boolean scriptClosed;
 
     private Sparring(ServerWorld world, Script script, Arena arena, boolean fightMode) {
         super(world, new GameProfile(UUID.randomUUID(), NAME));
@@ -139,8 +142,11 @@ public final class Sparring extends FakePlayer {
         EnchantmentHelper.applyLocationBasedEffects(world, stack, this, slot);
     }
 
-    /** Removes the sparring from the world and from every client's tab list. */
+    /** Removes the sparring from the world and from every client's tab list. Task A2 fix round 1: a safety
+     * net, closing the script first if {@link #step} never got the chance to (any reason a run ends with
+     * something still pending besides the sparring's own death, e.g. the time limit). */
     void despawn(MinecraftServer srv) {
+        closeScriptOnce();
         discard();
         srv.getPlayerManager().sendToAll(new PlayerRemoveS2CPacket(List.of(getUuid())));
     }
@@ -190,6 +196,11 @@ public final class Sparring extends FakePlayer {
     /**
      * One bench tick: the hurt cooldowns count down, the status effects run, then the script. Returns
      * true when the sparring is dead (counted once in {@link Stats#deaths}): the run is then ERROR.
+     *
+     * <p>Task A2 fix round 1: when the sparring is already dead here — its death happened earlier in this
+     * same server tick, before this step ran — {@link #script}'s own {@link Script#tick} never runs again to
+     * notice it, so this is the one place that ever will: {@link Script#close()} runs here instead, once, the
+     * first tick that death is observed.
      */
     boolean step(int benchTick, int sinceT0, ServerPlayerEntity player) {
         lastStepTick = benchTick;
@@ -198,12 +209,22 @@ public final class Sparring extends FakePlayer {
             if (hurtTime > 0) hurtTime--;
             tickStatusEffects();
             script.tick(this, new Script.Tick(getEntityWorld(), player, arena, sinceT0));
+        } else {
+            closeScriptOnce();
         }
         if (isDead()) {
             deaths++;
             return true;
         }
         return false;
+    }
+
+    /** Task A2 fix round 1: {@link Script#close()}, at most once total across {@link #step} and
+     * {@link #despawn}, whichever calls it first. */
+    private void closeScriptOnce() {
+        if (scriptClosed) return;
+        scriptClosed = true;
+        script.close();
     }
 
     // --- Moving, for the scripts ---------------------------------------------------------------------

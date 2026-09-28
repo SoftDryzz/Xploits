@@ -6,38 +6,33 @@ import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Task A2+ requirement 1: each tick, breaks any end crystal within {@value AutobreakRange#AUTOBREAK_RANGE}
  * of the opponent that is not its own — like a real client's autobreak, this also protects a crystal it is
- * mid-cycle on placing for its own attack. "Its own" is never read from A2's {@link CrystalAttack} (this
- * class must not touch its private state, and does not need to): the caller composing this behaviour already
- * knows which cells its own attack, if any, was built with (the same {@code candidateCells} list it passed to
- * {@code CrystalAttack}'s constructor), and passes the same list here — a crystal standing exactly on one of
- * those cells' positions is treated as the opponent's own, whatever spawned it.
+ * mid-cycle on placing for its own attack.
+ *
+ * <p>Fix round 1 (review-a2.md, Important #3): "its own" is read by identity — the exact entity A2's
+ * {@link CrystalAttack#pendingCrystal()} is tracking, when this behaviour is given that attack — never by
+ * matching a candidate cell's position. Position matching wrongly protected ANY crystal standing on one of
+ * those cells, including a foreign one (e.g. our own aura's) that happened to land there; identity cannot make
+ * that mistake, since a foreign crystal is never the same Java object as the attack's own pending one, whatever
+ * position it is at.
  */
 public final class Autobreak implements FightBehaviour {
-    /** Own-cell position matching tolerance: crystals spawn exactly on a cell's centre, never this far off. */
-    private static final double OWN_CELL_TOLERANCE_SQUARED = 1e-3;
-
-    private final List<Vec3i> ownAttackCells;
+    /** {@code null}: no crystal near the opponent is ever treated as its own. */
+    private final CrystalAttack ownAttack;
     private int broken;
 
     /** No crystal near the opponent is ever treated as its own (it runs no attack of its own alongside this). */
     public Autobreak() {
-        this(List.of());
+        this(null);
     }
 
-    /**
-     * @param ownAttackCells the cell offsets (from F) the opponent's own attack, if any, places crystals on —
-     *                       the same list the caller built that attack with
-     */
-    public Autobreak(List<Vec3i> ownAttackCells) {
-        this.ownAttackCells = List.copyOf(ownAttackCells);
+    /** @param ownAttack the opponent's own attack running alongside this behaviour, if any: its
+     *                   {@link CrystalAttack#pendingCrystal()} is never broken. {@code null} if it runs none. */
+    public Autobreak(CrystalAttack ownAttack) {
+        this.ownAttack = ownAttack;
     }
 
     @Override
@@ -46,22 +41,14 @@ public final class Autobreak implements FightBehaviour {
         Vec3d at = sparring.getEntityPos();
         double reach = AutobreakRange.AUTOBREAK_RANGE;
         Box box = new Box(at.x - reach, at.y - reach, at.z - reach, at.x + reach, at.y + reach, at.z + reach);
-        List<Vec3d> ownPositions = ownCellPositions(tick.arena());
+        EndCrystalEntity own = ownAttack == null ? null : ownAttack.pendingCrystal();
         for (EndCrystalEntity crystal : world.getEntitiesByClass(EndCrystalEntity.class, box, Entity::isAlive)) {
-            Vec3d crystalPos = crystal.getEntityPos();
-            double distance = at.distanceTo(crystalPos);
-            boolean ownCrystal = ownPositions.stream().anyMatch(p -> p.squaredDistanceTo(crystalPos) < OWN_CELL_TOLERANCE_SQUARED);
-            if (AutobreakRange.shouldBreak(distance, ownCrystal)) {
+            double distance = at.distanceTo(crystal.getEntityPos());
+            if (AutobreakRange.shouldBreak(distance, crystal == own)) {
                 crystal.damage(world, world.getDamageSources().playerAttack(sparring), 1f);
                 broken++;
             }
         }
-    }
-
-    private List<Vec3d> ownCellPositions(Arena arena) {
-        List<Vec3d> positions = new ArrayList<>();
-        for (Vec3i cell : ownAttackCells) positions.add(arena.standingAt(cell.up()));
-        return positions;
     }
 
     /** Crystals broken so far. Server thread. */

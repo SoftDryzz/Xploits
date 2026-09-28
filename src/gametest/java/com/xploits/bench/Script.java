@@ -38,6 +38,22 @@ public interface Script {
     }
 
     /**
+     * Task A2 fix round 1 (review-a2.md, Important #2): resolves anything the script left pending — called
+     * exactly once, whether the run ends normally, the target dies (which {@link #tick} can still see and
+     * react to itself, since the sparring stays alive), or the sparring itself dies. The last case is why this
+     * exists as its own hook rather than being left to {@link #tick}: {@code Sparring.step} only calls
+     * {@code tick} while the sparring is alive, checked before that same tick's own death could have just
+     * happened, so a script's {@code tick} can never be the one to notice its own combatant just died — proven
+     * in-game (review-a2.md fix round 1 probe B: a pending crystal was left live, spawned but never resolved,
+     * when the sparring died mid-cycle, exactly because {@code tick} was never called again to see it).
+     * {@code Sparring} calls this both promptly (the tick the sparring's own death is first observed) and, as
+     * a safety net, at teardown (any other reason a run stops with something still pending, e.g. the time
+     * limit) — safe to call twice, and most scripts leave nothing pending and do not override it.
+     */
+    default void close() {
+    }
+
+    /**
      * The state a script sees each tick. {@code sinceT0} is -1 before T0, then 1 on the first tick after
      * it; a script waits for T0 before it moves or attacks.
      */

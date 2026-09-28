@@ -42,6 +42,13 @@ import java.util.Locale;
  * <p>Fairness (task A2 requirement 4): this class never reads any crystal-aura module's state, settings or
  * budget — only vanilla world/entity state and the candidate cells it was built with — so the same behaviour
  * faces whichever aura is under test.
+ *
+ * <p>Fix round 1 (review-a2.md, Important #2): a crystal already spawned when either combatant dies, with its
+ * hit still pending, is never left live and unresolved — {@link #tick} abandons it (discards it, or counts it
+ * as {@link #brokenFirst()} if our aura had already removed it) the moment either death shows up, rather than
+ * silently doing nothing for the rest of that cycle. {@link #pendingCrystal()} (Important #3) lets a composed
+ * behaviour recognise this exact crystal by identity, not by matching a candidate cell's position — the fix for
+ * {@code Autobreak} wrongly protecting a foreign crystal that happened to land on one of the same cells.
  */
 public final class CrystalAttack implements Script {
     /** Which level {@code candidateCells} was built for (task A2 requirement 1); purely descriptive — the
@@ -61,6 +68,7 @@ public final class CrystalAttack implements Script {
     private int spawned;
     private int brokenFirst;
     private int explosions;
+    private int abandoned;
 
     /**
      * @param mode           descriptive only (see {@link Mode}); logged in {@link #name()}
@@ -100,7 +108,13 @@ public final class CrystalAttack implements Script {
     @Override
     public void tick(Sparring sparring, Tick tick) {
         sparring.face(tick.player());
-        Phase phase = CrystalAttackPace.phaseAt(tick.sinceT0(), !sparring.isDead(), !tick.player().isDead());
+        boolean sparringAlive = !sparring.isDead();
+        boolean targetAlive = !tick.player().isDead();
+        if (crystal != null && CrystalAttackPace.shouldAbandon(sparringAlive, targetAlive)) {
+            abandon();
+            return;
+        }
+        Phase phase = CrystalAttackPace.phaseAt(tick.sinceT0(), sparringAlive, targetAlive);
         if (phase == Phase.SPAWN) {
             spawn(sparring, tick);
         } else if (phase == Phase.HIT) {
@@ -154,6 +168,33 @@ public final class CrystalAttack implements Script {
         crystal = null;
     }
 
+    /**
+     * Task A2 fix round 1 (review-a2.md, Important #2, verified in-game: probe B): the sparring itself died —
+     * {@code Sparring.step} will never call {@link #tick} again to notice it, so this is the only chance left
+     * to resolve a pending crystal. Delegates to the same {@link #abandon()} {@link #tick} itself uses for the
+     * target-dies-mid-cycle case, so both paths keep the identical accounting.
+     */
+    @Override
+    public void close() {
+        if (crystal != null) abandon();
+    }
+
+    /**
+     * Fix round 1 (review-a2.md, Important #2): the fight ended mid-cycle — either combatant died between
+     * this crystal's spawn and its hit — so it is resolved here instead, without exploding it: our aura may
+     * still have broken it first, which counts the same as it always would ({@link #brokenFirst()}); otherwise
+     * it is discarded outright and counted separately ({@link #abandoned()}), never left live in the world.
+     */
+    private void abandon() {
+        if (crystal.isRemoved()) {
+            brokenFirst++;
+        } else {
+            crystal.discard();
+            abandoned++;
+        }
+        crystal = null;
+    }
+
     // --- Counters (task A2 requirement 2) -----------------------------------------------------------
 
     /** Crystals spawned so far. Server thread. */
@@ -161,7 +202,8 @@ public final class CrystalAttack implements Script {
         return spawned;
     }
 
-    /** Of the crystals spawned, how many our aura broke before the hit tick. Server thread. */
+    /** Of the crystals spawned, how many our aura broke before the hit tick (or before the fight ended, if it
+     * ended first). Server thread. */
     public int brokenFirst() {
         return brokenFirst;
     }
@@ -169,5 +211,23 @@ public final class CrystalAttack implements Script {
     /** Explosions this behaviour caused. Server thread. */
     public int explosions() {
         return explosions;
+    }
+
+    /** Fix round 1: crystals discarded, unexploded, because the fight ended before their hit tick came.
+     * {@code spawned() == explosions() + brokenFirst() + abandoned()} always. Server thread. */
+    public int abandoned() {
+        return abandoned;
+    }
+
+    /**
+     * Fix round 1 (review-a2.md, Important #3): the crystal currently spawned and awaiting its hit, or
+     * {@code null} while none is pending. Lets a composed behaviour (e.g. {@code Autobreak}) recognise this
+     * exact crystal as the opponent's own by identity rather than by matching a candidate cell's position —
+     * position matching wrongly protects a foreign crystal (e.g. our own aura's) that lands on the same cell.
+     * Read-only: the caller must not damage, discard or move the entity through this reference — this class
+     * alone owns its lifecycle. Server thread.
+     */
+    public EndCrystalEntity pendingCrystal() {
+        return crystal;
     }
 }

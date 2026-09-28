@@ -85,6 +85,28 @@ class CrystalAttackPaceTest {
         assertEquals(Phase.NONE, CrystalAttackPace.phaseAt(hitTick, false, false));
     }
 
+    // --- Abandon (fix round 1) -------------------------------------------------------------------------
+
+    @Test
+    void nothingIsAbandonedWhileBothAreAlive() {
+        assertEquals(false, CrystalAttackPace.shouldAbandon(true, true));
+    }
+
+    @Test
+    void abandonWhenTheSparringIsDead() {
+        assertEquals(true, CrystalAttackPace.shouldAbandon(false, true));
+    }
+
+    @Test
+    void abandonWhenTheTargetIsDead() {
+        assertEquals(true, CrystalAttackPace.shouldAbandon(true, false));
+    }
+
+    @Test
+    void abandonWhenBothAreDead() {
+        assertEquals(true, CrystalAttackPace.shouldAbandon(false, false));
+    }
+
     // --- Cell choice ----------------------------------------------------------------------------------
 
     @Test

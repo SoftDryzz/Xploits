@@ -49,6 +49,22 @@ public final class CrystalAttackPace {
     }
 
     /**
+     * Fix round 1 (review-a2.md, Important #2): whether a pending crystal — already spawned, not yet
+     * resolved by a hit — must be abandoned this tick rather than left waiting for a {@link Phase#HIT} that
+     * will never come. {@link #phaseAt} returns {@link Phase#NONE} for the rest of a cycle the instant
+     * either combatant is no longer alive, which silently skips the {@link Phase#HIT} that would otherwise
+     * have resolved an already-spawned crystal — left live and uncounted, breaking
+     * {@code spawned == explosions + brokenFirst}. The adapter calls this before {@link #phaseAt}, and only
+     * when it already has a pending crystal to resolve; it is the same {@code !sparringAlive || !targetAlive}
+     * condition {@link #phaseAt} itself checks, named and tested on its own so the caller does not have to
+     * infer it from {@code phaseAt} returning {@link Phase#NONE} (which also, and indistinguishably, means
+     * "nothing to do this tick" the rest of the time).
+     */
+    public static boolean shouldAbandon(boolean sparringAlive, boolean targetAlive) {
+        return !sparringAlive || !targetAlive;
+    }
+
+    /**
      * The index of the candidate cell whose raw damage to us is highest; ties keep the first in the list
      * (task A2 requirement 1, deterministic).
      *
