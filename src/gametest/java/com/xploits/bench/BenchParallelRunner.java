@@ -98,25 +98,39 @@ public final class BenchParallelRunner {
         Path mdFile = outFolder.resolve("report-" + version + ".md");
         write(merged, jsonFile, mdFile);
 
-        // The same two-pass hygiene scan BenchTest.hygiene() runs on a live report: scan what was just
-        // written, record it, then scan once more in case the marker line itself looked like a position.
-        List<String> hits = Hygiene.scan(outFolder);
+        // Same order as BenchTest.runTest (updateBaseline, then hygiene(), never the reverse): -Pbench.updateBaseline
+        // must run BEFORE the hygiene scan below, which also reads baselineFile, so a baseline this run just wrote
+        // is covered by that same scan — never written unscanned (the project's hard "no coordinates anywhere" rule).
+        if (updateBaseline) updateBaseline(merged, baselineFile);
+
+        // The same two-pass hygiene scan BenchTest.hygiene() runs on a live report: scan what was just written
+        // (report-<version>.json/.md AND, like BenchTest.scan(), bench/baseline.json when it exists) and record
+        // it, then scan once more in case the marker line itself looked like a position.
+        List<String> hits = scan(outFolder, baselineFile);
         merged.put("hygiene", hits.isEmpty() ? BenchReport.HYGIENE_CLEAN : hits);
         write(merged, jsonFile, mdFile);
         if (hits.isEmpty()) {
-            hits = Hygiene.scan(outFolder);
+            hits = scan(outFolder, baselineFile);
             if (!hits.isEmpty()) {
                 merged.put("hygiene", hits);
                 write(merged, jsonFile, mdFile);
             }
         }
 
-        if (updateBaseline) updateBaseline(merged, baselineFile);
-
         System.out.println("bench: merged " + shardFiles.size() + " shard(s) into " + jsonFile.getFileName());
         if (!hits.isEmpty()) {
             for (String hit : hits) System.err.println("bench: hygiene: " + hit + " looks like a position");
         }
+    }
+
+    /** {@link Hygiene#scan(Path)} over {@code outFolder}, plus {@code baselineFile} itself when it exists —
+     * the same two-source scan {@code BenchTest.scan(Config)} runs for a plain run. */
+    private static List<String> scan(Path outFolder, Path baselineFile) throws IOException {
+        List<String> hits = new ArrayList<>(Hygiene.scan(outFolder));
+        if (baselineFile != null && Files.isRegularFile(baselineFile)) {
+            hits.addAll(Hygiene.scanFile(baselineFile, "baseline.json"));
+        }
+        return hits;
     }
 
     private static void write(Map<String, Object> merged, Path jsonFile, Path mdFile) throws IOException {

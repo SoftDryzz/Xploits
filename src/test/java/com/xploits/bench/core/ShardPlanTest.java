@@ -120,6 +120,50 @@ class ShardPlanTest {
         assertTrue(busiest <= total / 2, "n=4's busiest shard (" + busiest + " s) should be well under the total (" + total + " s)");
     }
 
+    /**
+     * Proves the "largest first" (LPT) ordering the javadoc claims, not just the weaker
+     * max-min &le; biggest-group bound {@link #aSaneBalanceOnTheRealScenarioList} checks (which holds for
+     * any group order, so a mutation dropping the sort would not fail it). Groups B, C and D (20 s each)
+     * come before the 60 s group A in the input; LPT visits A first regardless of input order, landing it
+     * alone on shard 1 while B, C and D share shard 2 (60/60, perfectly balanced). Visiting groups in the
+     * given order instead would put B then A on shard 1 (80 s) and leave only C and D on shard 2 (40 s) — a
+     * different, and worse, split. The two orders produce different shard *contents*, not just different
+     * totals, so this pins down the sort itself.
+     */
+    @Test
+    void groupsAreAssignedLargestFirst() {
+        List<Item> items = List.of(
+            new Item("B", 1, 0, null),
+            new Item("C", 1, 0, null),
+            new Item("A", 3, 0, null),
+            new Item("D", 1, 0, null));
+        Map<Integer, List<String>> plan = ShardPlan.plan(items, 2);
+        assertEquals(List.of("A"), plan.get(1));
+        assertEquals(List.of("B", "C", "D"), plan.get(2));
+    }
+
+    /**
+     * More shards than compare groups (e.g. a small {@code -Pbench.only} selection with {@code -Pbench.shards
+     * = 4}): {@code plan} still returns one list per shard 1..n, the extra ones empty, and no scenario is
+     * lost. The runner does not skip an empty shard — it still launches a full client for it, which plays
+     * nothing and writes a valid, hygiene-clean, zero-scenario report (wasteful, but harmless: {@code
+     * ReportMerge} does not require every shard to contribute at least one scenario, only that every
+     * scenario of the selection appears in exactly one — see {@code ReportMergeTest}).
+     */
+    @Test
+    void moreShardsThanGroupsLeavesTheExtraOnesEmpty() {
+        // ca-still and capp-still are one compare group (capp-still's compareWith is ca-still): only one
+        // group for 4 shards, so three of them get nothing.
+        List<Item> items = List.of(meteor("ca-still"), capp("capp-still", "ca-still"));
+        Map<Integer, List<String>> plan = ShardPlan.plan(items, 4);
+        assertEquals(4, plan.size());
+        List<String> nonEmpty = plan.values().stream().filter(names -> !names.isEmpty())
+            .flatMap(List::stream).toList();
+        assertEquals(Set.of("ca-still", "capp-still"), Set.copyOf(nonEmpty));
+        long emptyShards = plan.values().stream().filter(List::isEmpty).count();
+        assertEquals(3, emptyShards);
+    }
+
     private static long secondsOf(List<Item> items, List<String> names) {
         Set<String> wanted = Set.copyOf(names);
         return items.stream().filter(i -> wanted.contains(i.name())).mapToLong(Item::estimatedSeconds).sum();

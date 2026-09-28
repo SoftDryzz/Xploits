@@ -172,6 +172,23 @@ class ReportMergeTest {
     }
 
     @Test
+    void aShardWithNoScenariosMergesFine() {
+        // More shards than compare groups (ShardPlanTest.moreShardsThanGroupsLeavesTheExtraOnesEmpty): the
+        // runner still launches a full client for the extra shard, which plays nothing and writes a valid,
+        // hygiene-clean report with an empty scenarios list. The merge must accept it: it does not require
+        // every shard to contribute at least one scenario, only that every scenario of the selection appears
+        // in exactly one.
+        List<String> order = List.of("panel");
+        Map<String, Object> shard1 = report(1, 2, List.of(scenario("panel", "PASS", null)), order, Map.of());
+        Map<String, Object> emptyShard2 = report(2, 2, List.of(), order, Map.of());
+        ReportMerge.Result result = ReportMerge.merge(List.of(shard1, emptyShard2));
+        assertTrue(result.ok(), result.refusal());
+        @SuppressWarnings("unchecked")
+        List<Map<String, ?>> scenarios = (List<Map<String, ?>>) (List<?>) result.report().get("scenarios");
+        assertEquals(List.of("panel"), scenarios.stream().map(s -> s.get("name")).toList());
+    }
+
+    @Test
     void theHygieneFieldIsNeverInTheMergedReport() {
         // The caller scans the files it writes and adds hygiene itself, the same as a live run's own two-pass scan.
         ReportMerge.Result result = ReportMerge.merge(twoShardsSplitByPair());

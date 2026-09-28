@@ -223,6 +223,15 @@ tasks.register<JavaExec>("benchMerge") {
     val version = project.version.toString()
     val outFolder = benchOut.get().asFile
     val baselineFile = file("bench/baseline.json").absolutePath
+    // The same stale-report guard runClientGameTest's own doFirst has (line ~119): without it, a refused
+    // merge (BenchParallelRunner exits 1 before writing anything) would leave shard 1's own earlier, partial
+    // report-<version>.json/.md on disk for the finalizing benchVerify to read and summarise as if it were
+    // current — exactly the "a partial merge never passes the gate" case the brief rules out, just with a
+    // misleading console instead of a wrong exit code. Never touches meteor-cache/.
+    doFirst {
+        delete(outFolder.resolve("report-$version.json"))
+        delete(outFolder.resolve("report-$version.md"))
+    }
     // -Pbench.updateBaseline here, never on the individual shard runs (bench/parallel.ps1 never passes it
     // down to them): a shard only sees its own slice of the scenarios, and shards 2..n's own baseline.json
     // lives in a disposable worktree, so only updating it once, here, from the complete merged report, is
