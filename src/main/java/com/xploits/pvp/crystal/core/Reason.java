@@ -21,5 +21,11 @@ public enum Reason {
     /** Weakness would stop the attack: swap to an item that hurts the crystal first (lines 826-838). */
     ANTI_WEAKNESS,
     /** Meteor's crystal-aura is on, so crystal-aura++ does nothing (spec §2, Q3); the adapter says this. */
-    METEOR_AURA_ON
+    METEOR_AURA_ON,
+    /**
+     * Task B0a: a finishing-grade crystal (kills the target or pops his totem) placed or broken through the
+     * override, past what {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code
+     * pause-health} would otherwise allow, only while a totem backs it.
+     */
+    FINISHING_BLOW
 }

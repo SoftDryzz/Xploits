@@ -105,7 +105,7 @@ class ServerValuesTest {
         assertEquals(2, ServerValues.amplifier(true, 2));
         assertEquals(0, ServerValues.amplifier(true, -5));
         assertDoesNotThrow(() -> new CrystalTick.Hands(true, true, false, false, false,
-            ServerValues.amplifier(true, Integer.MIN_VALUE), ServerValues.amplifier(true, -1), false, false));
+            ServerValues.amplifier(true, Integer.MIN_VALUE), ServerValues.amplifier(true, -1), false, false, false));
     }
 
     @Test

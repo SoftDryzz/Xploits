@@ -214,8 +214,9 @@ class MeteorParityPropertyTest {
             boolean main = inHotbar && r.nextDouble() < 0.5;
             boolean off = inHotbar && r.nextDouble() < 0.25;
             boolean mainBreaks = r.nextDouble() < 0.5;
+            // The budget is always off here (settings(), below): finishing-blow never reads this either way.
             return new CrystalTick.Hands(inHotbar, main, off, r.nextDouble() < 0.15, r.nextDouble() < 0.1,
-                effect(), effect(), mainBreaks, mainBreaks || r.nextDouble() < 0.6);
+                effect(), effect(), mainBreaks, mainBreaks || r.nextDouble() < 0.6, r.nextDouble() < 0.5);
         }
 
         private int effect() {

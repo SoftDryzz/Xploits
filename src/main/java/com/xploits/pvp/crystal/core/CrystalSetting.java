@@ -36,6 +36,7 @@ public enum CrystalSetting {
     PAUSE_HEALTH("pause-health", Group.PAUSE),
     RISK("risk", Group.SAFETY),
     SELF_BUDGET("self-budget", Group.SAFETY),
+    FINISHING_BLOW("finishing-blow", Group.SAFETY),
     RESERVE("reserve", Group.SAFETY),
     SAFE_SELF_DAMAGE("safe-self-damage", Group.SAFETY);
 

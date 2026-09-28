@@ -26,21 +26,28 @@ final class Crystals {
      */
     static final CrystalSettings SAFE_DEFAULTS = DEFAULTS.toBuilder().risk(RiskLevel.SAFE).build();
 
-    /** End crystals in the main hand, a weapon elsewhere in the hotbar, no effects. */
+    /** End crystals in the main hand, a weapon elsewhere in the hotbar, no effects, no totem. */
     static final CrystalTick.Hands HANDS = hands(true, true, false);
 
     static CrystalTick.Hands hands(boolean crystalsInHotbar, boolean mainHand, boolean offhand) {
         return new CrystalTick.Hands(crystalsInHotbar, mainHand, offhand, false, false,
-            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, false, true);
+            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, false, true, false);
     }
 
     static CrystalTick.Hands with(CrystalTick.Hands h, boolean gapple, boolean bow) {
         return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), gapple, bow,
-            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened());
+            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened(), h.totemInHand());
     }
 
     static CrystalTick.Hands weakened(int weakness, int strength, boolean mainHandBreaks, boolean hotbarBreaks) {
-        return new CrystalTick.Hands(true, true, false, false, false, weakness, strength, mainHandBreaks, hotbarBreaks);
+        return new CrystalTick.Hands(true, true, false, false, false, weakness, strength, mainHandBreaks, hotbarBreaks, false);
+    }
+
+    /** The same hands, with (or without) a totem of undying in the main hand too (task B0a). */
+    static CrystalTick.Hands withTotem(CrystalTick.Hands h, boolean totemInHand) {
+        return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), h.gappleInHand(),
+            h.bowInHand(), h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened(),
+            totemInHand);
     }
 
     static TargetView enemy() {

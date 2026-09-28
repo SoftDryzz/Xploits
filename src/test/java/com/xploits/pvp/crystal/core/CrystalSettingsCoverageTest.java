@@ -6,8 +6,10 @@ import com.xploits.pvp.crystal.core.Decision.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static com.xploits.pvp.crystal.core.CrystalBrainFinishingBlowTest.trustedEnemy;
 import static com.xploits.pvp.crystal.core.CrystalBrainParityTest.assertBreaks;
 import static com.xploits.pvp.crystal.core.CrystalBrainParityTest.assertNothing;
 import static com.xploits.pvp.crystal.core.CrystalBrainParityTest.assertPlaces;
@@ -24,6 +26,7 @@ import static com.xploits.pvp.crystal.core.CrystalSetting.FACE_PLACE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.FACE_PLACE_DURABILITY;
 import static com.xploits.pvp.crystal.core.CrystalSetting.FACE_PLACE_HEALTH;
 import static com.xploits.pvp.crystal.core.CrystalSetting.FAST_BREAK;
+import static com.xploits.pvp.crystal.core.CrystalSetting.FINISHING_BLOW;
 import static com.xploits.pvp.crystal.core.CrystalSetting.MAX_DAMAGE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.MIN_DAMAGE;
 import static com.xploits.pvp.crystal.core.CrystalSetting.NO_BOW_SWITCH;
@@ -56,6 +59,7 @@ import static com.xploits.pvp.crystal.core.Crystals.spot;
 import static com.xploits.pvp.crystal.core.Crystals.tick;
 import static com.xploits.pvp.crystal.core.Crystals.weakened;
 import static com.xploits.pvp.crystal.core.Crystals.with;
+import static com.xploits.pvp.crystal.core.Crystals.withTotem;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -657,6 +661,29 @@ class CrystalSettingsCoverageTest {
             // 7 - 5.5 = 1.5 < 2: refused with the budget, broken without it.
             assertEquals(s.selfBudget(), fast.isEmpty(), s.toString());
         }
+    }
+
+    @Test
+    @Covers(FINISHING_BLOW)
+    void finishingBlowOffRefusesWhatTheOverrideWouldOtherwiseAllow() {
+        // Task B0a: a trusted, finishing-grade target (predicted damage past 1.25x its reported health), a
+        // totem in hand, and a spot the ordinary reserve alone would refuse (health 3, Balanced's 3.5).
+        CrystalSettings low = DEFAULTS.toBuilder().minDamage(1).build();
+        CrystalBrain on = new CrystalBrain();
+        long t = trustedEnemy(on, 1);
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), on.preTick(low,
+            tick(t).health(3).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .candidates(spot(3000L, Map.of(ENEMY, 6.0), 1)).build()));
+
+        CrystalSettings off = low.toBuilder().finishingBlow(false).build();
+        CrystalBrain b = new CrystalBrain();
+        long t2 = trustedEnemy(b, 1);
+        assertNothing(b.preTick(off, tick(t2).health(3).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+            .candidates(spot(3000L, Map.of(ENEMY, 6.0), 1)).build()));
+    }
+
+    private static void assertDecision(Decision expected, List<Action> actions) {
+        assertEquals(expected, only(actions).decision());
     }
 
     // risk (R2-5): the level moves the reserve R and nothing else.

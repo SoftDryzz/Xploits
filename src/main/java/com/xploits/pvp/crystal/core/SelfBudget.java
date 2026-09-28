@@ -197,4 +197,21 @@ public final class SelfBudget {
         double others = inFlight - inFlightById.getOrDefault(crystal.id(), 0.0);
         return health - others - crystal.budgetSelfDamage() >= FLOOR ? Verdict.ALLOWED : Verdict.REFUSED_FLOOR;
     }
+
+    /**
+     * C without one crystal's own share of it (task B0a, condition c of the finishing-blow override:
+     * "nothing else we can see could take the totem first"): the same {@link #worstCase()}, minus {@code
+     * crystal}'s own contribution, wherever this budget counted it (I or S, {@link #shareOf}); unchanged if it
+     * was not counted at all (beyond {@link #HAZARD_RADIUS}). Never changes {@code crystal}'s own
+     * classification, and never mutates this budget: a second, independent reading of the same worst case.
+     *
+     * @param crystal the crystal being broken through the override, or (P4, fast-break) one this budget has
+     *                 not seen; a place asks this differently, of the budget it already builds excluding the
+     *                 spot's own pending placement ({@link #worstCase()} on that one)
+     * @param now      the pre-tick this budget was built for
+     */
+    public double worstCaseWithoutCrystal(CrystalView crystal, long now) {
+        Objects.requireNonNull(crystal, "crystal");
+        return shareOf(crystal, now) == Share.NOT_COUNTED ? worstCase() : worstCase() - crystal.budgetSelfDamage();
+    }
 }

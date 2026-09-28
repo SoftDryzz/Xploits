@@ -229,6 +229,41 @@ class TargetWindowsTest {
         assertFalse(w.swallows(T, 1.0, 11));
     }
 
+    // openByUs() (task B0a): a hurt window opened by one of our crystals, for the finishing-grade check
+
+    @Test
+    void openByUsIsTrueOnlyWhileOurLastHitsWindowHasNotExpired() {
+        TargetWindows w = new TargetWindows();
+        assertFalse(w.openByUs(T, 0), "nothing hit yet");
+        w.fullHit(T, 10, OptionalDouble.of(47.5));
+        assertTrue(w.openByUs(T, 10), "the same tick, still open");
+        assertTrue(w.openByUs(T, 19));
+        assertFalse(w.openByUs(T, 20), "the window is exactly HURT_WINDOW_TICKS long");
+    }
+
+    @Test
+    void openByUsIsFalseWhenTheLastHitWasNotOurs() {
+        TargetWindows w = new TargetWindows();
+        w.fullHit(T, 10, OptionalDouble.empty());
+        assertFalse(w.openByUs(T, 10));
+    }
+
+    @Test
+    void openByUsIsFalseForAnotherTarget() {
+        TargetWindows w = new TargetWindows();
+        w.fullHit(T, 10, OptionalDouble.of(47.5));
+        assertFalse(w.openByUs("someone else", 10));
+    }
+
+    @Test
+    void aLaterForeignHitClosesWhatOursOpened() {
+        TargetWindows w = new TargetWindows();
+        w.fullHit(T, 10, OptionalDouble.of(47.5));
+        assertTrue(w.openByUs(T, 10));
+        w.fullHit(T, 11, OptionalDouble.empty());
+        assertFalse(w.openByUs(T, 11));
+    }
+
     @Test
     void oddValuesAreRefused() {
         TargetWindows w = new TargetWindows();

@@ -99,10 +99,14 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
      *                               ({@code DamageUtils.getAttackDamage > 0}, lines 833, 877-879)
      * @param hotbarBreaksWeakened   some item in the hands or hotbar does ({@code InvUtils.findInHotbar},
      *                               line 835)
+     * @param totemInHand            a totem of undying in either hand now (task B0a, spec Amendment
+     *                               2026-09-28): condition a of the finishing-blow override, kept in one place
+     *                               so tightening it later (e.g. requiring a spare totem too) is a one-line
+     *                               change ({@link CrystalBrain}'s own {@code finishingBlowPossible})
      */
     public record Hands(boolean crystalsInHotbar, boolean mainHandCrystals, boolean offhandCrystals,
                         boolean gappleInHand, boolean bowInHand, int weaknessAmplifier, int strengthAmplifier,
-                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened) {
+                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened, boolean totemInHand) {
         /** The effect is not active. */
         public static final int NO_EFFECT = -1;
 
