@@ -462,4 +462,117 @@ class CrystalBrainFinishingBlowTest {
         assertTrue(b.crystalAdded(noFastBreak, crystal(980, 3000L, 6.0, 0.0), 3, withTotem(HANDS, true)).isEmpty());
         assertEquals(Set.of(980), b.finishingCrystalIds());
     }
+
+    // Task F1 (owner's decision 2026-09-29): the near-death stall task-f1-report.md diagnosed in the
+    // capp-balanced-near-death bench run, reproduced here as a pure test with the run's own exact numbers,
+    // then unstuck by the finishing-blow override (or, when it cannot take it, by the gate/budget fixes in
+    // CrystalBrain.placeGateOpen and SelfBudget.placeAllowed — see CrystalBrainBudgetTest and
+    // CrystalSettingsCoverageTest for those two pieces in isolation).
+
+    /** Meteor's own predicted self damage for the run's one crystal, all 3 runs, byte-identical. */
+    private static final double F1_METEOR_SELF = 5.41439962387085;
+    /** The budget's exact self damage for the same crystal (never below Meteor's own, {@link Damage#budgetSelf}). */
+    private static final double F1_BUDGET_SELF = 5.542044639587402;
+
+    /**
+     * Places the exact crystal the bench run measured: accepted at high health (20, {@code C = 0}, comfortably
+     * WITHIN_BUDGET) and only confirmed standing once health has already dropped to 6 — the run's own
+     * timeline (an ordinary health drop between the placement decision and the crystal landing; F1's own
+     * report ruled out any self-damage measurement drift between the two). No totem in hand at the moment it
+     * appears, matching the run exactly: fast-break tries and is refused, BELOW_FLOOR
+     * (6 - 0 - 5.542044639587402 = 0.457955360412598 < FLOOR 2.0), the same verdict the run's own log
+     * recorded. Deals 20 to ENEMY (finishing-grade once ENEMY is trusted and reported at 4 or less, margin
+     * 1.25 x 4 = 5): this is the run's own crystal, the one that would end the fight if only it could be
+     * broken.
+     *
+     * @return the next free pre-tick, with the crystal standing, ours, deadlocked exactly as the run showed it
+     */
+    private static long placeTheStuckCrystal(CrystalBrain b, long t, long pos, int id) {
+        assertDecision(Decision.place(pos, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(20).targets(player(ENEMY, 3, 20))
+                .candidates(Crystals.withBudget(spot(pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF)).build()));
+        b.placed(pos, 0);
+        CrystalSeen stuck = Crystals.withBudget(crystal(id, pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF);
+        assertTrue(b.crystalAdded(stuck, 6, HANDS).isEmpty());
+        return t + 1;
+    }
+
+    private static CrystalSeen stuckCrystal(int id, long pos) {
+        return Crystals.withBudget(crystal(id, pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF);
+    }
+
+    @Test
+    void f1TheStuckCrystalIsBrokenByTheOverrideWhenATotemBacksItAndTheTargetIsTrusted() {
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        long t2 = placeTheStuckCrystal(b, t, 9000L, 9500);
+
+        // Trusted, finishing-grade (20 >= 1.25 x 4), a totem in hand plus a spare (condition a), nothing else
+        // in flight (condition b) and the floor holding without this crystal's own share (condition c, since
+        // it is the only crystal in the world): the override breaks it. Ordinary tier 1 still refuses first
+        // (BELOW_FLOOR, the same 0.457955360412598 < FLOOR as fast-break already found) — only tier 2 succeeds.
+        assertDecision(Decision.breakCrystal(9500, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(t2).health(6).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .crystals(stuckCrystal(9500, 9000L)).build()));
+    }
+
+    @Test
+    void f1TheGateStaysShutWhileTheOverrideWouldStillTakeIt() {
+        // The mirror image of the two "no" cases below: everything the override needs still holds, but
+        // breaking is paused this tick (so breakBest cannot act on it, and it never becomes "waiting") —
+        // the gate must keep waiting on it exactly as it always did, since we really would break it given the
+        // chance. Without this, the "yes" test above alone cannot tell the difference: once the override
+        // actually breaks a crystal, that same crystal is "waiting" (breakDamage 0) by the time placeGateOpen
+        // runs later in the very same tick, so its own gate decision that tick is never actually exercised.
+        CrystalSettings pausedBreak = LOW_MIN_DAMAGE.toBuilder().pauseOnUse(CrystalSettings.PauseMode.BREAK).build();
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        long t2 = placeTheStuckCrystal(b, t, 9010L, 9510);
+
+        assertNothing(b.preTick(pausedBreak, tick(t2).health(6).usingItem().hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).crystals(stuckCrystal(9510, 9010L))
+            .candidates(spot(9011L, 6.0, 0)).build()));
+    }
+
+    @Test
+    void f1WithOnlyOneTotemTheOverrideRefusesButTheGateOpensAndAHarmlessSpotIsPlaced() {
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        long t2 = placeTheStuckCrystal(b, t, 9001L, 9501);
+        CrystalSeen stuck = stuckCrystal(9501, 9001L);
+
+        // Trusted and finishing-grade, but only one totem (no spare): condition a refuses the override, the
+        // same as the ordinary budget already did. Nothing happens this tick — exactly the bench run's own
+        // stall, still reproduced here.
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t2).health(6).hands(withTotem(HANDS, true)).totems(1)
+            .targets(player(ENEMY, 3, 4)).crystals(stuck).build()));
+
+        // What ++ does next (owner's decision 2026-09-29, piece a + b): the gate no longer waits forever on a
+        // crystal neither the budget nor the override will ever break here, and a genuinely harmless new spot
+        // (self exactly 0) is placed even though the stuck crystal alone already leaves less than the reserve
+        // AND the floor (6 - 5.542044639587402 = 0.457955360412598, under both 3.5 and 2.0) — no totem needed
+        // for this one, since it costs us nothing by construction.
+        assertDecision(Decision.place(9002L, Reason.SAFE_SELF_DAMAGE), b.preTick(LOW_MIN_DAMAGE,
+            tick(t2 + 1).health(6).targets(player(ENEMY, 3, 4)).crystals(stuck)
+                .candidates(spot(9002L, 6.0, 0)).build()));
+    }
+
+    @Test
+    void f1WhenTheTargetIsNotTrustedTheOverrideRefusesButTheGateOpensAndAHarmlessSpotIsPlaced() {
+        // No trustedEnemy() at all here: ENEMY's reported health is never confirmed.
+        CrystalBrain b = new CrystalBrain();
+        long t2 = placeTheStuckCrystal(b, 1, 9003L, 9503);
+        CrystalSeen stuck = stuckCrystal(9503, 9003L);
+
+        // A totem plus a spare is not enough by itself: untrusted, this crystal is never finishing-grade, so
+        // neither tier of the override is even reached — the same stall as the run.
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t2).health(6).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).crystals(stuck).build()));
+
+        // What ++ does next: the same as the other "no" case — the gate opens, and a harmless new spot goes
+        // through despite the stuck crystal alone already blowing the reserve and the floor.
+        assertDecision(Decision.place(9004L, Reason.SAFE_SELF_DAMAGE), b.preTick(LOW_MIN_DAMAGE,
+            tick(t2 + 1).health(6).targets(player(ENEMY, 3, 4)).crystals(stuck)
+                .candidates(spot(9004L, 6.0, 0)).build()));
+    }
 }

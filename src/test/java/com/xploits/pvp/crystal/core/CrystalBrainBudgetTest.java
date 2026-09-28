@@ -115,18 +115,35 @@ class CrystalBrainBudgetTest {
     }
 
     @Test
-    void aCrystalTheBudgetWillNotBreakStillBlocksPlacement() {
-        // Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so it stays. Meteor would break it (4 < 5.5), so
-        // by Meteor's rule it stops placing, and the budget does not change that. Here it is measured beyond
-        // the hazard radius so S does not hold it and the budget alone would let the spot through
-        // (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): only the one-at-a-time rule says no.
+    void aCrystalTheBudgetWillNeverBreakNoLongerBlocksPlacement() {
+        // Task F1 (owner's decision 2026-09-29, task-f1-report.md): this test used to be named
+        // "aCrystalTheBudgetWillNotBreakStillBlocksPlacement" and asserted the opposite (assertNothing) —
+        // the exact deadlock the near-death bench run diagnosed (F1 phase 1): Meteor's one-at-a-time gate
+        // (lines 921-924) closes for any own crystal it would break, even one the budget will refuse forever
+        // and no override ever takes; with nothing else ever removing that crystal, the whole aura stalled
+        // for the rest of the fight. Waiting for "our turn to break it first" is not real one-at-a-time
+        // discipline once we already know, with certainty, that turn will never come.
+        //
+        // Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so the budget refuses to break it (BELOW_FLOOR),
+        // and with no totem in hand the finishing-blow override does not take it either — so the gate no
+        // longer waits on it. Meteor would break it (4 < 5.5): only our own budget's refusal is why it stays
+        // standing, and that refusal itself is untouched (still verified below). Here it is measured beyond
+        // the hazard radius so S does not hold it either, and the budget alone already lets the harmless spot
+        // through (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): the gate was the only thing saying no.
         CrystalSeen mine = crystal(1, 8, 4);
         CrystalBrain b = new CrystalBrain();
         long t = own(b, 1, mine);
 
-        assertNothing(b.preTick(DEFAULTS, tick(t).health(5.5).crystals(at(mine, 12.5)).candidates(spot(9, 8, 0)).build()));
-        assertTrue(b.holding());
-        assertEquals(Decision.none(Reason.BELOW_FLOOR), b.lastDecision());
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(DEFAULTS, tick(t).health(5.5).crystals(at(mine, 12.5)).candidates(spot(9, 8, 0)).build()));
+        assertFalse(b.holding());
+
+        // The floor promise on the standing crystal itself is untouched: breaking it is still refused.
+        CrystalBrain stillRefused = new CrystalBrain();
+        long t2 = own(stillRefused, 1, mine);
+        assertNothing(stillRefused.preTick(DEFAULTS, tick(t2).health(5.5).crystals(mine).build()));
+        assertTrue(stillRefused.holding());
+        assertEquals(Decision.none(Reason.BELOW_FLOOR), stillRefused.lastDecision());
     }
 
     @Test

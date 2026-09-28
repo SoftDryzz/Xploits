@@ -788,13 +788,41 @@ public final class CrystalBrain {
             if (settings.noBowSwitch() && hands.bowInHand()) return false;
         } else if (!hands.mainHandCrystals() && !hands.offhandCrystals()) return false;
 
-        // One at a time, by Meteor's rules and not the budget's (lines 921-924): a crystal the budget will not
-        // let us break still stops us adding another.
+        // One at a time, by Meteor's rules (lines 921-924) — but only for as long as we might actually act on
+        // it (task F1, owner's decision 2026-09-29, task-f1-report.md): once our own budget refuses the break
+        // and the finishing-blow override will not take it either, we know, with certainty, that we will
+        // never intentionally break this crystal ourselves right now — waiting for "our turn to break it
+        // first" is then a dead end, not real one-at-a-time discipline, and would otherwise stall the rest of
+        // the fight behind a crystal that will stand forever. Budget off: unchanged, Meteor parity — there is
+        // no budget or override to consult, so every crystal Meteor would break still stops placing, exactly
+        // as before.
+        SelfBudget gateBudget = null;
         for (CrystalSeen c : tick.crystals()) {
             Known k = known.get(c.id());
-            if (k != null && k.live() && breakDamage(k, tick.health()) > 0) return false;
+            if (k == null || !k.live() || breakDamage(k, tick.health()) <= 0) continue;
+            if (!settings.selfBudget()) return false;
+            if (gateBudget == null) gateBudget = budget(tick.health());
+            if (gateBudget.breakAllowed(k.view(now)).allowed()) return false;
+            if (settings.finishingBlow() && overrideWouldTakeItNow(k, tick, gateBudget)) return false;
         }
         return true;
+    }
+
+    /**
+     * Whether the finishing-blow override would break {@code k} right now (task F1, owner's decision
+     * 2026-09-29): the same conditions {@link #breakFinishing}'s tier 2 checks for one crystal — ours,
+     * finishing-grade, a totem in hand plus a spare (condition a, {@link #totemBacksIt}), no other override
+     * crystal pending, late or known (condition b, {@link #overrideAvailable}) and the floor holding without
+     * this crystal's own share (condition c, {@link SelfBudget#worstCaseWithoutCrystal}). Read-only: used only
+     * by {@link #placeGateOpen} to decide whether its one-at-a-time rule should still wait on this crystal,
+     * never to act on it itself — {@link #breakBest}/{@link #breakFinishing} are still what actually break it.
+     */
+    private boolean overrideWouldTakeItNow(Known k, CrystalTick tick, SelfBudget budget) {
+        if (!k.ours || !totemBacksIt(tick.hands())) return false;
+        if (!(breakDamageIgnoringSelfDamage(k) > 0)) return false;
+        if (!isFinishingGrade(k.seen.targetDamage())) return false;
+        if (!overrideAvailable(k.seen.id(), null)) return false;
+        return budget.health() - budget.worstCaseWithoutCrystal(k.view(now), now) >= SelfBudget.FLOOR;
     }
 
     /**

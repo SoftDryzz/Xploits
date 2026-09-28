@@ -744,13 +744,24 @@ class CrystalSettingsCoverageTest {
         assertNothing(past.preTick(level(RiskLevel.AGGRESSIVE), tick(1).health(6.99).candidates(spot(1, 6, 5)).build()));
         assertEquals(Reason.OVER_RESERVE, past.lastDecision().reason());
         assertTrue(past.holding());
-        // Under the floor safe mode cannot help either: a harmless spot must still leave F. (pause-health 0,
-        // so Meteor's own pause does not decide it.) Health 2.25 with a crystal of self 0.5 standing: 1.75 left.
-        CrystalBrain floor = new CrystalBrain();
+        // Under the floor safe mode cannot help a spot with any self damage of its own, however small: it
+        // must still leave F. (pause-health 0, so Meteor's own pause does not decide it.) Health 2.25 with a
+        // crystal of self 0.5 standing: 1.75 left, and a tiny-but-nonzero spot still needs the floor.
+        CrystalBrain low1 = new CrystalBrain();
         CrystalSettings low = level(RiskLevel.AGGRESSIVE).toBuilder().pauseHealth(0).build();
-        assertNothing(floor.preTick(low, tick(1).health(2.25).crystals(crystal(2, 1, 0.5)).candidates(spot(1, 6, 0)).build()));
-        assertEquals(Reason.BELOW_FLOOR, floor.lastDecision().reason());
+        assertNothing(low1.preTick(low, tick(1).health(2.25).crystals(crystal(2, 1, 0.5))
+            .candidates(spot(1, 6, Math.nextUp(0.0))).build()));
+        assertEquals(Reason.BELOW_FLOOR, low1.lastDecision().reason());
         assertPlaces(1, once(low, tick(1).health(2.5).crystals(crystal(2, 1, 0.5)).candidates(spot(1, 6, 0))));
+
+        // Task F1 (owner's decision 2026-09-29): a spot whose own self damage is exactly zero is the one
+        // exception — it cannot make an already-blown worst case any worse, so it is placed even under the
+        // floor, unlike the tiny-but-nonzero spot just above at the very same health and standing crystal.
+        CrystalBrain floor = new CrystalBrain();
+        Action floorAction = only(floor.preTick(low, tick(1).health(2.25).crystals(crystal(2, 1, 0.5))
+            .candidates(spot(1, 6, 0)).build()));
+        assertEquals(Kind.PLACE, floorAction.decision().kind());
+        assertEquals(Reason.SAFE_SELF_DAMAGE, floorAction.decision().reason());
     }
 
     @Test

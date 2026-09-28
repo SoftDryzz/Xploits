@@ -176,11 +176,19 @@ public final class SelfBudget {
      * passed Meteor's checks: allowed if it leaves the reserve ({@code health - C - budgetSelfDamage >= R});
      * otherwise, in safe mode, if the {@code budgetSelfDamage} is tiny and it still leaves the floor
      * ({@code budgetSelfDamage <= epsilon} and {@code health - C - budgetSelfDamage >= F}).
+     *
+     * <p>Task F1 (owner's decision 2026-09-29): a spot whose {@code budgetSelfDamage} is exactly zero is
+     * always allowed once the reserve is already unreachable, even below the floor — placing it cannot make
+     * {@code C} any worse than it already is, and refusing it only because some existing crystal (one we may
+     * never be able to break, {@link CrystalBrain#placeGateOpen}) has already eaten past the floor helps
+     * nothing. This is exact-zero only, never an epsilon: any {@code budgetSelfDamage > 0}, however small,
+     * keeps today's rule (the safe-mode branch below, gated by {@code safeSelfDamage}).
      */
     public Verdict placeAllowed(double budgetSelfDamage) {
         Damage.check(budgetSelfDamage, "budget self damage");
         double left = health - worstCase() - budgetSelfDamage;
         if (left >= reserve) return Verdict.ALLOWED;
+        if (budgetSelfDamage == 0.0) return Verdict.ALLOWED_SAFE;
         if (budgetSelfDamage > safeSelfDamage) return Verdict.REFUSED_RESERVE;
         return left >= FLOOR ? Verdict.ALLOWED_SAFE : Verdict.REFUSED_FLOOR;
     }
