@@ -17,4 +17,16 @@ public interface FightBehaviour {
 
     /** One bench tick, after the composed script's own. */
     void tick(Sparring sparring, Script.Tick tick);
+
+    /**
+     * Task A3: resolves anything this behaviour left pending across ticks — the {@link Script#close()} this
+     * interface's own {@code tick} signature already mirrors, called by {@link ComposedFight#close()} on
+     * every behaviour in its list, not only its base script. Needed once a behaviour can itself leave
+     * something pending (A2's {@link CrystalAttack}, which task A3 also made a {@link FightBehaviour} so
+     * {@code exchange} can compose it alongside a different base that provides movement): without this,
+     * {@link ComposedFight#close()} forwarding only to its base would never reach a {@code CrystalAttack}
+     * composed as a behaviour instead. Most behaviours leave nothing pending and do not override it.
+     */
+    default void close() {
+    }
 }

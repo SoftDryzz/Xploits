@@ -49,8 +49,13 @@ import java.util.Locale;
  * silently doing nothing for the rest of that cycle. {@link #pendingCrystal()} (Important #3) lets a composed
  * behaviour recognise this exact crystal by identity, not by matching a candidate cell's position — the fix for
  * {@code Autobreak} wrongly protecting a foreign crystal that happened to land on one of the same cells.
+ *
+ * <p>Task A3: also implements {@link FightBehaviour} (its {@code tick}/{@code build} already have that
+ * interface's exact signatures, so no method needed to change), so a fight can compose the attack alongside a
+ * different base {@link Script} that provides movement (e.g. {@code exchange}'s strafing) instead of the
+ * attack always having to be the base itself (as {@code hole-standoff} and {@code near-death} still use it).
  */
-public final class CrystalAttack implements Script {
+public final class CrystalAttack implements Script, FightBehaviour {
     /** Which level {@code candidateCells} was built for (task A2 requirement 1); purely descriptive — the
      * geometry itself is entirely the caller's choice of offsets. */
     public enum Mode {

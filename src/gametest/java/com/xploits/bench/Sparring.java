@@ -269,6 +269,18 @@ public final class Sparring extends FakePlayer {
     }
 
     /**
+     * Task A3 ({@code near-death}, base variant): strips every totem — the offhand emptied, no spares left —
+     * so the sparring's next lethal hit is a real kill through vanilla's own damage handling, not a pop
+     * ({@link #damage} only pops while {@link #totemsLeft()} would be positive). Fight mode only, and meant
+     * to be called once, before T0, right after {@link #spawn}.
+     */
+    void disarmTotem() {
+        if (!fightMode) throw new BenchException("disarmTotem is fight-mode only");
+        setStackInHand(Hand.OFF_HAND, ItemStack.EMPTY);
+        totemsSpare = 0;
+    }
+
+    /**
      * The counters, with the first pop as ticks after {@code t0Tick} (-1 when it has not popped, or when
      * T0 has not come).
      */

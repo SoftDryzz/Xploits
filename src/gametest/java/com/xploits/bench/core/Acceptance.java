@@ -37,6 +37,24 @@ import java.util.function.DoubleBinaryOperator;
  * The margins are the bench's noise floors for those metrics; the safety rules S1 and S2's first half
  * have none: they must never be worse.
  *
+ * <p>Task A3: a pair of the fight scenarios (detected from the runs themselves, whichever side has any —
+ * only a fight's runs ever carry {@code result}) is judged by three rules instead, over the same {@value
+ * #RUNS} DONE runs a side needs:
+ * <table>
+ *   <caption>Fight acceptance rules</caption>
+ *   <tr><th>Rule</th><th>What must hold</th><th>Over</th></tr>
+ *   <tr><td>F1</td><td>{@code result} (++ must not lose where Meteor wins): ++'s median &ge; Meteor's
+ *   &mdash; win 1 &gt; draw 0 &gt; loss -1, no margin (one of three exact values, not a continuous
+ *   quantity)</td><td>medians</td></tr>
+ *   <tr><td>F2</td><td>{@code net_pops} &ge; Meteor's &minus; 1</td><td>medians</td></tr>
+ *   <tr><td>F3</td><td>every ++ run's {@code min_health_after_own_hit} &ge; the risk level's own reserve
+ *   ({@code after == 0}, {@code MinHealthAfterOwnHit}'s own lethal-hit convention, always fails this against
+ *   any real reserve); NOT_APPLICABLE without a fixed level, or when no run took a hit from its own
+ *   crystal</td><td>the lowest of every run's value</td></tr>
+ * </table>
+ * The same before-the-rules order applies (death, gaps, never-placed), and {@link Recommendation}'s levels
+ * already fold a fight pair in like any other, since it reads verdicts, not which rules produced them.
+ *
  * <p>Before the rules: our player dying in a ++ run is a REJECT (Q5), whatever else. Otherwise either
  * side not DONE, not run in this invocation, without exactly {@value #RUNS} runs, or with a run that lacks
  * a metric the judgement reads, is INCOMPLETE, never ACCEPT (P6). Then a pair where neither side placed a
@@ -64,6 +82,26 @@ public final class Acceptance {
     public static final List<String> METRICS = List.of(DAMAGE_DEALT, SPARRING_POPS, FIRST_POP_S, NO_POP_RUNS,
         SELF_DAMAGE, SELF_POPS, MIN_HEALTH, PLACEMENTS_PER_S);
 
+    // Task A3: the fight scenarios' own metric names (FightMeasureRun), distinct from the metrics above.
+    /** 1 win (the sparring died first), -1 loss (we died), 0 draw (the time limit). */
+    public static final String RESULT = "result";
+    /** {@code pops_dealt - pops_taken}. */
+    public static final String NET_POPS = "net_pops";
+    /**
+     * The lowest health plus absorption right after a hit from one of our own crystals, over the run; absent
+     * in a run where we took none. {@code 0} is DamageLedger's pre-existing lethal-hit convention (a SELF hit
+     * that pops or kills us), never a real low-but-surviving value — see {@code MinHealthAfterOwnHit}'s Javadoc.
+     */
+    public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
+    /**
+     * Every metric a fight pair's judgement requires present in each run ({@link #RESULT}, {@link #NET_POPS});
+     * {@link #PLACEMENTS_PER_S} still decides whether the pair applies at all, and
+     * {@link #MIN_HEALTH_AFTER_OWN_HIT} is only in a run that took a hit from its own crystal, so neither is
+     * required here (the same way {@link #FIRST_POP_S} is not required in {@link #METRICS}).
+     */
+    public static final List<String> FIGHT_METRICS = List.of(RESULT, NET_POPS, DAMAGE_DEALT, SELF_DAMAGE, MIN_HEALTH,
+        PLACEMENTS_PER_S);
+
     /** S2: no ++ run's min health below the budget's floor F less half a point. */
     public static final double LOWEST_MIN_HEALTH = SelfBudget.FLOOR - 0.5;
     /** S2's median margin, and S3's min-health alternative: the {@code min_health} noise floor. */
@@ -78,6 +116,8 @@ public final class Acceptance {
     public static final double FIRST_POP_FLOOR = 0.25;
     /** The share of Meteor's value a margin grows to when it is larger than the floor. */
     public static final int SHARE_PERCENT = 15;
+    /** F2: the {@code net_pops} noise floor. */
+    public static final double NET_POPS_MARGIN = 1.0;
 
     /**
      * NOT_APPLICABLE: neither side placed a crystal in any run, so the arena measured nothing about either
@@ -138,29 +178,54 @@ public final class Acceptance {
      */
     public static Outcome judge(Side capp, Side meteor, RiskLevel level) {
         if (capp.died()) return new Outcome(Verdict.REJECT, "our player died in a " + capp.scenario() + " run", List.of());
+        // Task A3: a fight pair (FightMeasureRun's own metrics: result, net_pops, ...) is judged by F1-F3
+        // instead of the S/O rules above, which the old scenarios keep exactly as before. Detected from the
+        // runs themselves (whichever side has any) rather than from a parameter, so this stays the one entry
+        // point BenchReport already calls for every compared pair.
+        boolean fight = isFight(capp, meteor);
+        List<String> metrics = fight ? FIGHT_METRICS : METRICS;
         for (Side side : List.of(capp, meteor)) {
-            String gap = gap(side);
+            String gap = gap(side, metrics);
             if (gap != null) return new Outcome(Verdict.INCOMPLETE, gap, List.of());
         }
         if (neverPlaced(capp) && neverPlaced(meteor)) {
             return new Outcome(Verdict.NOT_APPLICABLE,
                 "neither " + capp.scenario() + " nor " + meteor.scenario() + " placed a crystal in any run", List.of());
         }
-        List<Rule> rules = List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
-            o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
+        List<Rule> rules = fight
+            ? List.of(f1(capp, meteor), f2(capp, meteor), f3(capp, level))
+            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
+                o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
         if (failed.isEmpty()) return new Outcome(Verdict.ACCEPT, null, rules);
         return new Outcome(Verdict.REJECT, "failed: " + String.join(", ", failed), rules);
     }
 
+    /**
+     * Whether this pair is a fight scenario (task A3): read from whichever side has a run, since only a
+     * fight's runs ever carry {@link #RESULT}. Both sides of a judged pair are always the same kind (a
+     * {@code ca-<fight>}/{@code capp-<fight>} pair, or an old-style pair, never a mix), so the first run found
+     * on either side settles it; when neither side ran at all the kind is moot, since {@link #gap} then
+     * returns "did not run" before either metric list is ever consulted.
+     */
+    private static boolean isFight(Side capp, Side meteor) {
+        for (Side side : List.of(capp, meteor)) {
+            if (!side.runs().isEmpty()) return side.runs().getFirst().containsKey(RESULT);
+        }
+        return false;
+    }
+
     /** Why this side cannot be judged, or null when it can. */
-    private static String gap(Side side) {
+    private static String gap(Side side, List<String> metrics) {
         if (side.status() == null) return side.scenario() + " did not run in this invocation";
         if (!DONE.equals(side.status())) return side.scenario() + " is " + side.status();
         if (side.runs().size() != RUNS) return side.scenario() + " has " + side.runs().size() + " DONE runs, not " + RUNS;
         for (Map<String, Double> run : side.runs()) {
-            for (String metric : METRICS) {
-                if (metric.equals(FIRST_POP_S)) continue;
+            for (String metric : metrics) {
+                // FIRST_POP_S (old scenarios) and MIN_HEALTH_AFTER_OWN_HIT (fight scenarios) are each only
+                // ever in one metric list, but the check is unconditional so neither list has to remember to
+                // repeat it: both are optional per run (absent when nothing to report), never a gap.
+                if (metric.equals(FIRST_POP_S) || metric.equals(MIN_HEALTH_AFTER_OWN_HIT)) continue;
                 Double value = run.get(metric);
                 if (value == null || !Double.isFinite(value)) return "a run of " + side.scenario() + " has no " + metric;
             }
@@ -246,6 +311,48 @@ public final class Acceptance {
         double limit = theirsMedian + margin(theirsMedian, FIRST_POP_FLOOR);
         return new Rule("O4", Kind.OFFENSE, pass(oursMedian <= limit),
             "median " + FIRST_POP_S + ": ++ " + n(oursMedian) + ", Meteor " + n(theirsMedian) + ", needs <= " + n(limit));
+    }
+
+    // --- Task A3: the fight rules (F1 result, F2 net_pops, F3 the reserve) ---------------------------
+
+    /** F1: {@code result}, median, ++ must not lose where Meteor wins — read generally as "never worse"
+     * (win 1 &gt; draw 0 &gt; loss -1), the order the categorical value's own definition gives it. No margin:
+     * it is one of three exact values, not a continuous quantity. */
+    private static Rule f1(Side capp, Side meteor) {
+        double ours = median(capp, RESULT);
+        double theirs = median(meteor, RESULT);
+        return new Rule("F1", Kind.OFFENSE, pass(ours >= theirs),
+            "median " + RESULT + ": ++ " + n(ours) + ", Meteor " + n(theirs) + ", needs >= " + n(theirs));
+    }
+
+    /** F2: {@code net_pops}, median, not worse than Meteor's beyond the noise margin. */
+    private static Rule f2(Side capp, Side meteor) {
+        double theirs = median(meteor, NET_POPS);
+        return atLeast("F2", capp, NET_POPS, theirs, theirs - NET_POPS_MARGIN);
+    }
+
+    /**
+     * F3 (safety): every ++ run's {@code min_health_after_own_hit} must be at least the level's own reserve —
+     * our own crystals must never take us below what the level promises, whatever the opponent does to us
+     * meanwhile. {@code 0} (a lethal own hit, {@code MinHealthAfterOwnHit}'s own convention) always fails this
+     * against any real reserve. NOT_APPLICABLE without a fixed level (no level at all, or CUSTOM, a player
+     * setting this pure core never sees — the same exception {@link #s3} makes), and when no run of the side
+     * ever took a hit from its own crystal (nothing here for the reserve to have protected).
+     */
+    private static Rule f3(Side capp, RiskLevel level) {
+        if (level == null || level == RiskLevel.CUSTOM) {
+            return new Rule("F3", Kind.SAFETY, Result.NOT_APPLICABLE,
+                "no fixed reserve to check for " + (level == null ? "no risk level" : level));
+        }
+        List<Double> values = present(capp, MIN_HEALTH_AFTER_OWN_HIT);
+        if (values.isEmpty()) {
+            return new Rule("F3", Kind.SAFETY, Result.NOT_APPLICABLE,
+                "no run of " + capp.scenario() + " took a hit from its own crystal");
+        }
+        double reserve = level.reserve(Double.NaN);
+        double lowest = values.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        return new Rule("F3", Kind.SAFETY, pass(lowest >= reserve),
+            "lowest run " + MIN_HEALTH_AFTER_OWN_HIT + ": ++ " + n(lowest) + ", needs >= " + n(reserve) + " (" + level + ")");
     }
 
     private static Rule atLeast(String id, Side capp, String metric, double theirs, double limit) {

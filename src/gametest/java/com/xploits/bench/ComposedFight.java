@@ -52,10 +52,25 @@ public final class ComposedFight implements Script {
         for (FightBehaviour behaviour : behaviours) behaviour.tick(sparring, tick);
     }
 
-    /** Task A2 fix round 1: delegates to the base script — the only part of a composed fight that can leave
-     * something pending (A2's {@link CrystalAttack}); none of the {@link FightBehaviour}s do. */
+    /**
+     * Task A2 fix round 1, extended by task A3: the base script's own {@link Script#close()}, then every
+     * behaviour's {@link FightBehaviour#close()} in the same order they tick — needed since task A3 lets a
+     * behaviour itself be the kind of thing that leaves something pending (A2's {@link CrystalAttack},
+     * composed as a behaviour in {@code exchange} instead of the base there), not only the base.
+     */
     @Override
     public void close() {
         base.close();
+        for (FightBehaviour behaviour : behaviours) behaviour.close();
+    }
+
+    /** The base script, read-only (task A3: for counter logging after a run — see {@link Fights}). */
+    Script base() {
+        return base;
+    }
+
+    /** The composed behaviours, read-only, in tick order (task A3: for counter logging after a run). */
+    List<FightBehaviour> behaviours() {
+        return behaviours;
     }
 }
