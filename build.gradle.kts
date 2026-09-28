@@ -89,6 +89,13 @@ loom.runs.named("clientGameTest") {
         property("xploits.bench.shard", it.toString())
         property("xploits.bench.commit", gitCommit())
         property("xploits.bench.tree-clean", gitTreeClean().toString())
+        // A cap only for a sharded client, never the plain single-client run: measured, not guessed — a
+        // short two-scenario probe run (ca-still, capp-balanced-still) peaked at ~2.1 GB working set on this
+        // machine; 3 GB leaves real headroom for a longer shard's many scenarios while keeping 4 clients at
+        // once (12 GB) far under the 64 GB available. Window, render and fps options are left at the
+        // gametest run's own defaults, since BenchTest.keepFullFrameRate is the only one of those that could
+        // change a measurement, and it already runs unconditionally.
+        vmArg("-Xmx3G")
     }
     // R3-12: Fabric's own client-gametest NetworkSynchronizer assumes every packet is handled on the netty
     // thread almost at once and blocks each frame until it is (waitForPacketHandlers, 10 s timeout); the

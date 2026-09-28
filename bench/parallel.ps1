@@ -109,10 +109,9 @@ if (Test-Path $CacheSrc) {
 }
 
 # Launch all n clients at the same time; each logs to its own file so a hung one can be told apart from one
-# still working. -Xmx3G per client: measured on this machine (i9-14900KF, 64 GB) comfortably running four
-# gametest clients at once without swapping; window/render/fps options are left at the gametest run's own
-# defaults (BenchTest.keepFullFrameRate already disables the AFK cap, the only one that could change a
-# measurement) since nothing else here is touched.
+# still working. The -Xmx3G heap cap and every other JVM/window option live in build.gradle.kts
+# (loom.runs.named("clientGameTest"), gated on -Pbench.shard so a plain single-client run is untouched) —
+# not here, so a shard launched by hand (./gradlew runClientGameTest -Pbench.shard=k/n) gets it too.
 $LogDir = Join-Path $RepoRoot "build\bench-shard-logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Procs = @()
@@ -122,9 +121,14 @@ for ($k = 1; $k -le $Shards; $k++) {
     $Log = Join-Path $LogDir "shard-$k.log"
     $ErrLog = Join-Path $LogDir "shard-$k.err.log"
     Write-Host "bench: launching shard $k/$Shards in $Dir (log: $Log)"
+    # Hidden, not just minimized: a minimized console is still a visible, closeable window, and closing it
+    # sends the gradlew process CTRL_CLOSE and kills the shard (confirmed: an owner closing what looked like
+    # 4 leftover empty consoles took out all 4 shards mid-run). Hidden has no window to close by mistake.
+    # Only the Minecraft client's own window (a separate top-level window the JVM creates later, not this
+    # console) stays visible, since the gametest needs it.
     $Proc = Start-Process -FilePath (Join-Path $Dir "gradlew.bat") `
         -ArgumentList (@("runClientGameTest") + $KFlags) `
-        -WorkingDirectory $Dir -RedirectStandardOutput $Log -RedirectStandardError $ErrLog -PassThru -WindowStyle Minimized
+        -WorkingDirectory $Dir -RedirectStandardOutput $Log -RedirectStandardError $ErrLog -PassThru -WindowStyle Hidden
     $Procs += [PSCustomObject]@{ K = $k; Dir = $Dir; Process = $Proc; Log = $Log }
 }
 

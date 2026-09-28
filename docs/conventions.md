@@ -282,6 +282,12 @@ on the merged report exactly as they do on a plain run's, and `-Pbench.updateBas
 the merge, from the complete report (never by an individual shard, since shards 2..n's own `bench/baseline.json`
 lives in a disposable worktree). **A release may use a sharded run only with `-Pbench.full -Pbench.fresh` and
 a clean merged gate — the same rule as always, just checked once, on the merged report.**
+
+Each shard's own gradlew process runs with a hidden console (`-Pbench.shard` also caps its heap at `-Xmx3G`,
+measured on the owner's machine at roughly 2 GB for a short two-scenario run, so 3 GB is real headroom, not a
+guess): closing what looks like an empty leftover console window sends that process CTRL_CLOSE and kills the
+shard, so `bench/parallel.ps1` never shows one. Only the Minecraft client's own window (separate from the
+console, opened later by the JVM) stays visible for each shard, since the gametest needs it.
 **Verified:** the bench always plays through an integrated server, whose one player is always its host, and
 vanilla's `isHost` check (`IntegratedServer.isHost`, matched by profile name) makes
 `ServerCommonNetworkHandler.baseTick` skip sending the host a keep-alive at all — so the player-list latency
