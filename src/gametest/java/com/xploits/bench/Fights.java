@@ -70,12 +70,29 @@ final class Fights {
     }
 
     /**
-     * {@code near-death} (for B0's finishing blow): open floor, 3 blocks apart, the opponent attacking our
-     * feet (A2's {@link CrystalAttack} alone — no autobreak, spot blocking or escape). {@link FightMeasure}'s
-     * {@code startingLow} sets both players' starting health and the opponent's totem before T0; identical for
-     * the {@code near-death}/{@code near-death-totem} variants, which differ only in that setup, not the script.
+     * {@code near-death} (no totem, for B0's finishing blow — fix round 1, review-a3.md finding 1): open
+     * floor, 3 blocks apart, a stationary, non-attacking opponent ({@link PassiveTarget}) on its own obsidian
+     * pad, facing us. Passive on purpose: with an attacking opponent (this fight's original build), our aura's
+     * own ordinary foreign-crystal defence — breaking the opponent's incoming attack crystal, which still
+     * explodes — reached and killed the totem-less, 6-HP opponent standing 3 blocks away as a side effect,
+     * with {@code placements_per_s == 0}: both auras "won" identically without ever choosing to place or break
+     * a crystal against the opponent itself. A passive opponent takes that shortcut away, so the win has to
+     * come from our aura's own placement/break decision, which is what B0's finishing blow needs this fight to
+     * measure. {@link FightMeasure#startingLow(boolean) startingLow(false)} still sets both players' starting
+     * health and strips the opponent's totem before T0.
      */
     static Script nearDeath() {
+        return new PassiveTarget(new Vec3i(3, 0, 0));
+    }
+
+    /**
+     * {@code near-death-totem} (kept as originally built — review-a3.md finding 1 found no problem with it):
+     * the opponent keeps attacking our feet (A2's {@link CrystalAttack} alone — no autobreak, spot blocking or
+     * escape) and, unlike {@code near-death}, keeps its totem ({@link FightMeasure#startingLow(boolean)
+     * startingLow(true)}): real placement activity on both sides (8 pops dealt, nonzero placements/s), so this
+     * variant needed no fix.
+     */
+    static Script nearDeathTotem() {
         Vec3i anchor = new Vec3i(3, 0, 0);
         return new CrystalAttack(CrystalAttack.Mode.FEET, anchor, FEET_CELLS);
     }

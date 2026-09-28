@@ -14,6 +14,14 @@ class SpotBlockPaceTest {
         assertEquals(4.5, SpotBlockPace.REACH);
     }
 
+    /** Fix round 1 (review-a3.md finding 2): the candidate spot's support block is one level below the
+     * opponent's own feet block, the same level the arena's floor sits at — not the opponent's own feet level,
+     * which is open air in every fight (a height bug: the check could never find an obsidian/bedrock base). */
+    @Test
+    void theSupportBlockIsOneLevelBelowTheOpponentsFeet() {
+        assertEquals(1, SpotBlockPace.SUPPORT_BELOW);
+    }
+
     @Test
     void firstDueAtBlockEveryThenEveryBlockEveryAfter() {
         assertFalse(SpotBlockPace.dueAt(0));

@@ -157,7 +157,7 @@ class ScenarioSelectionTest {
      * real {@code Scenarios.all()} (task A3: the real fights added, last, city between the two
      * {@code addRealFights} groups; every earlier scenario's name, kind, level and twin unchanged).
      */
-    private static final String SCENARIOS_FINGERPRINT = "332992b411b21778019194cece86d363f1c23347379000e3b898191bba9ef525";
+    private static final String SCENARIOS_FINGERPRINT = "03d1a36aef4836ab8d028f23abdabe1edcef799bfc769f7e09200ad15ccd1504";
 
     /**
      * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},

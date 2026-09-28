@@ -12,6 +12,13 @@ public final class SpotBlockPace {
     public static final int BLOCK_EVERY = 20;
     /** Candidate spots farther than this from the opponent are out of its reach (Meteor's place range). */
     public static final double REACH = 4.5;
+    /**
+     * Fix round 1 (review-a3.md finding 2): how many levels below the opponent's own feet block a candidate
+     * spot's support block sits. The opponent's feet block itself is open air in every fight (the arena clears
+     * it; only the floor, one level down, is obsidian or bedrock), so a candidate spot's support — the block a
+     * crystal placed there would rest on — is at that floor level, not at the opponent's own feet level.
+     */
+    public static final int SUPPORT_BELOW = 1;
 
     private SpotBlockPace() {
     }

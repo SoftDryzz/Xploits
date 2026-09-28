@@ -76,7 +76,7 @@ public final class Scenarios {
     /** {@code near-death} and its {@code near-death-totem} variant: the real fights that run after {@code city}. */
     private static final List<RealFight> FIGHTS_AFTER_CITY = List.of(
         new RealFight("near-death", Fights::nearDeath, false),
-        new RealFight("near-death-totem", Fights::nearDeath, true));
+        new RealFight("near-death-totem", Fights::nearDeathTotem, true));
 
     public static List<Scenario> all() {
         CrystalAuraMeasure caStill = CrystalAuraMeasure.meteor("ca-still", Still::new);

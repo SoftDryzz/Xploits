@@ -23,6 +23,12 @@ import java.util.List;
  * for the raw formula), the highest one chosen by A2's own {@link CrystalAttackPace#chooseCell} (ties keep the
  * first, in the candidate order below: east, west, south, north). Does nothing when it has no free spot within
  * reach that tick.
+ *
+ * <p>Fix round 1 (review-a3.md finding 2): the candidate spot's support block is read at
+ * {@link SpotBlockPace#SUPPORT_BELOW} level(s) below the opponent's own feet block — the opponent's feet
+ * block itself is always open air (the arena clears it), so checking it for obsidian/bedrock could never
+ * find one, in any fight; {@code exchange}, the only fight that composes this behaviour, went unaware every
+ * run before this fix.
  */
 public final class SpotBlock implements FightBehaviour {
     private static final List<Direction> SIDES = List.of(Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.NORTH);
@@ -38,7 +44,10 @@ public final class SpotBlock implements FightBehaviour {
         List<BlockPos> free = new ArrayList<>();
         List<Double> rawDamage = new ArrayList<>();
         for (Direction side : SIDES) {
-            BlockPos base = feet.offset(side);
+            // Fix round 1 (review-a3.md finding 2): the opponent's own feet block is open air (the arena
+            // clears it); the candidate spot's support — the block a crystal placed there would rest on — is
+            // SpotBlockPace.SUPPORT_BELOW level(s) down, at the floor's own level, not at feet height.
+            BlockPos base = feet.down(SpotBlockPace.SUPPORT_BELOW).offset(side);
             if (!isValidSpot(world, base, at)) continue;
             Vec3d top = base.up().toBottomCenterPos();
             double distance = at.distanceTo(top);
