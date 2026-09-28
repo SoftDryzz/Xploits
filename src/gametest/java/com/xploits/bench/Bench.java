@@ -65,6 +65,8 @@ public final class Bench {
     private int ticksUsed;
     private Sparring sparring;
     private int sparringVisibleAfter = -1;
+    /** Task A1 requirement 3: set once the sparring dies in fight mode ({@link #spawnForFight}). */
+    private boolean sparringDied;
     private int t0Tick = -1;
     private String player;
     /** The fight files there were at T0. */
@@ -245,16 +247,38 @@ public final class Bench {
      * despawns it.
      */
     public Sparring spawn(Script script) {
+        return spawn(script, false);
+    }
+
+    /**
+     * Task A1 requirement 3 (opt-in): like {@link #spawn}, but the sparring's own death does not end the
+     * run as ERROR ({@link #sparringDied()} instead) — fight mode gives it that death as an outcome. The
+     * sparring itself is spawned in fight mode too ({@link Sparring#spawn(net.minecraft.server.MinecraftServer,
+     * ServerPlayerEntity, Arena, Script, boolean)}: the fight armour and {@value Arena#FIGHT_TOTEMS} totems).
+     */
+    public Sparring spawnForFight(Script script) {
+        return spawn(script, true);
+    }
+
+    /** Whether the sparring died during this run; fight mode only ({@link #spawnForFight}) reads it. */
+    public boolean sparringDied() {
+        return sparringDied;
+    }
+
+    private Sparring spawn(Script script, boolean fightMode) {
         if (sparring != null) throw new BenchException("a run has one sparring partner");
         String name = player();
-        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script));
+        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script, fightMode));
         sparring = spawned;
         atDespawn(() -> onServer(srv -> spawned.despawn(srv)));
         everyTick(() -> {
             int now = ticksUsed;
             int since = sinceT0();
             boolean dead = fromServer(srv -> spawned.step(now, since, Arena.player(srv, name)));
-            if (dead) throw new BenchException("sparring died");
+            if (dead) {
+                if (fightMode) sparringDied = true;
+                else throw new BenchException("sparring died");
+            }
         });
         for (int i = 1; i <= SPARRING_VISIBLE_TICKS; i++) {
             ticks(1);

@@ -106,6 +106,29 @@ way, since it fails the regeneration-off condition alone. `-Pbench.verifySettle`
 short: it snapshots the metrics at the first settled tick, runs on to the nominal length anyway, and fails
 the scenario if the final metrics differ from that snapshot or the run stops looking settled before the end.
 
+**Fight mode (opt-in, task A1).** A scenario can opt into a more realistic crystal fight instead of the
+standard loadout: `Arena.fightLoadout()` gives our player netherite Protection IV on the helmet, chestplate
+and boots plus Blast Protection IV on the leggings (unbreakable, like the standard loadout; armour breaking
+stays out of scope for the bench either way) and `Arena.FIGHT_TOTEMS` (8) totems in total, offhand plus
+spare; `Sparring.spawn(..., true)` wears the same armour and gives the sparring the same 8 totems, instead
+of refilling its offhand forever — it dies for real once it takes a lethal hit with none left. In fight
+mode our own death and the sparring's end the run with a `result` (1 win, -1 loss, 0 draw at the time
+limit) instead of ERROR, and add `pops_dealt`, `pops_taken`, `net_pops`, `first_pop_taken_s` and
+`min_health_after_own_hit` (our health plus absorption right after each hit from one of our own crystals,
+the lowest over the run — what the self-budget's reserve promises even while the opponent is also hitting
+us) to the metric table alongside the usual `damage_dealt`, `self_damage`, `min_health` and
+`placements_per_s`; these are new `Metrics` keys that only a fight-mode run puts, and the report and
+`Acceptance` already tolerate a metric being absent (old scenarios) or present (new) since both read the
+metric table by name. 32 ticks after each totem pop of either player — the 1.6 s an enchanted golden apple
+takes to eat — the bench applies its effects server-side: Absorption IV, Regeneration II and Resistance I,
+identical for both players and both auras (documented simplification: it does not tie up the eater's hands
+for those ticks, and it leaves out Fire Resistance, which a real notch apple also gives but which never
+matters with no fire in these fights). A pop while effects are already pending re-arms the delay from
+itself; a death cancels whatever is pending. A fight-mode run is never static by definition (either player
+could still act, or die, until the time limit), so it never takes the settle cut above. The standard
+loadout, the sparring's forever-refilling totem and today's death-is-ERROR handling are all still the
+default: a scenario that does not opt in keeps 0.7.0's behaviour and numbers exactly.
+
 `./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
 cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you
 want to keep it, because the next run erases it. There are two profiles:

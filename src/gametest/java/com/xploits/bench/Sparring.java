@@ -41,6 +41,11 @@ public final class Sparring extends FakePlayer {
 
     private final Script script;
     private final Arena arena;
+    /** Task A1 requirement 2 (opt-in): whether this sparring has only {@value Arena#FIGHT_TOTEMS} totems
+     * in total instead of refilling forever. */
+    private final boolean fightMode;
+    /** Fight mode only: spare totems left besides the one in the offhand; meaningless otherwise. */
+    private int totemsSpare;
 
     private int pops;
     /** The bench tick of the first pop; -1 until it pops. */
@@ -51,24 +56,43 @@ public final class Sparring extends FakePlayer {
     /** The bench tick of the last {@link #step}; a hit comes during the server tick after it. */
     private int lastStepTick;
 
-    private Sparring(ServerWorld world, Script script, Arena arena) {
+    private Sparring(ServerWorld world, Script script, Arena arena, boolean fightMode) {
         super(world, new GameProfile(UUID.randomUUID(), NAME));
         this.script = script;
         this.arena = arena;
+        this.fightMode = fightMode;
     }
 
     /**
      * Builds the script's blocks, then spawns the sparring at the script's spawn point, facing the
-     * player: unbreakable netherite with blast protection IV, an offhand totem, full health, no effects.
-     * The tab entry goes out before the entity, so the client never sees a player without one.
+     * player: unbreakable netherite with blast protection IV, an offhand totem that refills forever, full
+     * health, no effects. The tab entry goes out before the entity, so the client never sees a player
+     * without one.
      */
     static Sparring spawn(MinecraftServer srv, ServerPlayerEntity player, Arena arena, Script script) {
+        return spawn(srv, player, arena, script, false);
+    }
+
+    /**
+     * Task A1 requirement 1 and 2 (opt-in): {@code fightMode} wears the fight armour
+     * ({@link Arena#fightArmour}) instead of the standard one, and starts with
+     * {@value Arena#FIGHT_TOTEMS} totems in total — the offhand one plus {@link #totemsSpare} spare —
+     * instead of refilling forever ({@link #damage}).
+     */
+    static Sparring spawn(MinecraftServer srv, ServerPlayerEntity player, Arena arena, Script script, boolean fightMode) {
         ServerWorld world = srv.getOverworld();
         script.build(arena, world);
-        Sparring sparring = new Sparring(world, script, arena);
-        for (EquipmentSlot slot : Arena.armourSlots()) sparring.wear(world, slot, Arena.armour(srv.getRegistryManager(), slot));
+        Sparring sparring = new Sparring(world, script, arena, fightMode);
+        sparring.totemsSpare = fightMode ? Arena.FIGHT_TOTEMS - 1 : Integer.MAX_VALUE;
+        for (EquipmentSlot slot : Arena.armourSlots()) {
+            ItemStack piece = fightMode ? Arena.fightArmour(srv.getRegistryManager(), slot) : Arena.armour(srv.getRegistryManager(), slot);
+            sparring.wear(world, slot, piece);
+        }
+        // Full explosion knockback resistance only comes from 4x Blast Protection IV (the standard loadout);
+        // the fight loadout wears it on the leggings alone (task A1 requirement 1), so that part of the
+        // check does not apply to it.
         if (sparring.getArmor() != FULL_ARMOUR || sparring.getAttributeValue(EntityAttributes.ARMOR_TOUGHNESS) != FULL_TOUGHNESS
-            || sparring.getAttributeValue(EntityAttributes.EXPLOSION_KNOCKBACK_RESISTANCE) < 1) {
+            || (!fightMode && sparring.getAttributeValue(EntityAttributes.EXPLOSION_KNOCKBACK_RESISTANCE) < 1)) {
             throw new BenchException("the sparring's armour did not take effect");
         }
         sparring.setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
@@ -125,7 +149,12 @@ public final class Sparring extends FakePlayer {
 
     /**
      * A pop is a hit after which the offhand totem is gone (the totem is used after
-     * {@link #applyDamage}); it is counted and the totem refilled at once, inside this same call.
+     * {@link #applyDamage}); it is counted, and the totem refilled at once, inside this same call. Outside
+     * fight mode the refill is unconditional, as before; in fight mode (task A1 requirement 2) it only
+     * happens while {@link #totemsSpare} is left, so the sparring's totems run out after
+     * {@value Arena#FIGHT_TOTEMS}: the next lethal hit with no totem in the offhand then kills it for real,
+     * through vanilla's own damage handling (nothing here needs to detect that death itself; {@link #step}
+     * already reads {@link #isDead()}).
      */
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
@@ -134,7 +163,10 @@ public final class Sparring extends FakePlayer {
         if (hadTotem && !getOffHandStack().isOf(Items.TOTEM_OF_UNDYING)) {
             pops++;
             if (firstPopTick < 0) firstPopTick = lastStepTick + 1;
-            setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+            if (!fightMode || totemsSpare > 0) {
+                if (fightMode) totemsSpare--;
+                setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+            }
         }
         return damaged;
     }

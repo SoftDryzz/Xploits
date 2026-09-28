@@ -22,6 +22,21 @@ public final class Metrics {
     public static final String MIN_HEALTH = "min_health";
     public static final String PLACEMENTS_PER_S = "placements_per_s";
     public static final String DAMAGE_TAKEN = "damage_taken";
+    // Task A1 requirement 3: fight-mode-only metrics; old scenarios never put them, and Report/Acceptance
+    // (Metrics.TABLE-driven) already tolerate a metric's absence, so no other code needed a change for that.
+    /** 1 win (the sparring died first), -1 loss (we died), 0 draw (the time limit). */
+    public static final String RESULT = "result";
+    /** The sparring's pops this run. */
+    public static final String POPS_DEALT = "pops_dealt";
+    /** Our own pops this run. */
+    public static final String POPS_TAKEN = "pops_taken";
+    /** {@code pops_dealt - pops_taken}. */
+    public static final String NET_POPS = "net_pops";
+    /** Seconds from T0 to our first pop; absent when we never popped. */
+    public static final String FIRST_POP_TAKEN_S = "first_pop_taken_s";
+    /** The lowest health plus absorption right after a hit from one of our own crystals; absent when we
+     * took none. */
+    public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
 
     /** Which way a metric gets better. */
     public enum Better {
@@ -45,7 +60,13 @@ public final class Metrics {
         new Definition(SELF_POPS, Better.LOWER, 1, false),
         new Definition(MIN_HEALTH, Better.HIGHER, 1.0, false),
         new Definition(PLACEMENTS_PER_S, Better.HIGHER, 0.3, false),
-        new Definition(DAMAGE_TAKEN, Better.LOWER, 1.0, false));
+        new Definition(DAMAGE_TAKEN, Better.LOWER, 1.0, false),
+        new Definition(RESULT, Better.HIGHER, 0, false),
+        new Definition(POPS_DEALT, Better.HIGHER, 1, false),
+        new Definition(POPS_TAKEN, Better.LOWER, 1, false),
+        new Definition(NET_POPS, Better.HIGHER, 1, false),
+        new Definition(FIRST_POP_TAKEN_S, Better.LOWER, 0.25, false),
+        new Definition(MIN_HEALTH_AFTER_OWN_HIT, Better.HIGHER, 1.0, false));
 
     private static final Map<String, Definition> BY_NAME = TABLE.stream()
         .collect(Collectors.toUnmodifiableMap(Definition::name, Function.identity()));
