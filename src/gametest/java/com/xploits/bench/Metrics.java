@@ -61,6 +61,10 @@ public final class Metrics {
         new Definition(MIN_HEALTH, Better.HIGHER, 1.0, false),
         new Definition(PLACEMENTS_PER_S, Better.HIGHER, 0.3, false),
         new Definition(DAMAGE_TAKEN, Better.LOWER, 1.0, false),
+        // RESULT is categorical (-1/0/1: loss/draw/win), not a continuous quantity with a real margin; HIGHER
+        // and a 0 floor just give it a sane median/min/max ordering (win > draw > loss) for the report table
+        // to sort by, not a claim that "higher" or "0 margin" mean anything the way they do for the other
+        // metrics (fix round 1, minor finding 4).
         new Definition(RESULT, Better.HIGHER, 0, false),
         new Definition(POPS_DEALT, Better.HIGHER, 1, false),
         new Definition(POPS_TAKEN, Better.LOWER, 1, false),

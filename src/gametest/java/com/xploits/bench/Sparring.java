@@ -88,12 +88,17 @@ public final class Sparring extends FakePlayer {
             ItemStack piece = fightMode ? Arena.fightArmour(srv.getRegistryManager(), slot) : Arena.armour(srv.getRegistryManager(), slot);
             sparring.wear(world, slot, piece);
         }
+        // getArmor()/ARMOR_TOUGHNESS come from the netherite pieces alone, whichever enchantment they carry.
         // Full explosion knockback resistance only comes from 4x Blast Protection IV (the standard loadout);
         // the fight loadout wears it on the leggings alone (task A1 requirement 1), so that part of the
-        // check does not apply to it.
+        // check does not apply to it — fight mode instead verifies the actual enchantment levels below
+        // (task A1 fix round 1), the same check the player's own fightLoadout() makes.
         if (sparring.getArmor() != FULL_ARMOUR || sparring.getAttributeValue(EntityAttributes.ARMOR_TOUGHNESS) != FULL_TOUGHNESS
             || (!fightMode && sparring.getAttributeValue(EntityAttributes.EXPLOSION_KNOCKBACK_RESISTANCE) < 1)) {
             throw new BenchException("the sparring's armour did not take effect");
+        }
+        if (fightMode && !Arena.hasFightArmourEnchantments(srv.getRegistryManager(), sparring)) {
+            throw new BenchException("the sparring's fight armour is not Protection IV plus Blast Protection IV on the leggings");
         }
         sparring.setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         sparring.clearStatusEffects();

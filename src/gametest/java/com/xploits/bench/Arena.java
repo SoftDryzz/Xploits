@@ -9,6 +9,7 @@ import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
@@ -221,15 +222,7 @@ public final class Arena {
             inventory.setStack(0, new ItemStack(Items.END_CRYSTAL, 64));
             inventory.setStack(1, new ItemStack(Items.OBSIDIAN, 64));
         });
-        boolean armoured = bench.fromServer(srv -> {
-            ServerPlayerEntity player = player(srv, name);
-            RegistryEntry<Enchantment> protection = protection(srv.getRegistryManager());
-            RegistryEntry<Enchantment> blast = blastProtection(srv.getRegistryManager());
-            boolean legs = EnchantmentHelper.getLevel(blast, player.getEquippedStack(EquipmentSlot.LEGS)) == 4;
-            boolean others = List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.FEET).stream()
-                .allMatch(slot -> EnchantmentHelper.getLevel(protection, player.getEquippedStack(slot)) == 4);
-            return legs && others;
-        });
+        boolean armoured = bench.fromServer(srv -> hasFightArmourEnchantments(srv.getRegistryManager(), player(srv, name)));
         if (!armoured) throw new BenchException("the fight loadout's armour is not Protection IV plus Blast Protection IV on the leggings");
         awaitClient(player -> holds(player, spare + 1, Items.TOTEM_OF_UNDYING)
             && holds(player, 64, Items.END_CRYSTAL) && holds(player, 64, Items.OBSIDIAN)
@@ -297,6 +290,24 @@ public final class Arena {
     /** Verified in the yarn 1.21.11 jar (javap): {@code Enchantments.PROTECTION} is a real registry key. */
     private static RegistryEntry<Enchantment> protection(DynamicRegistryManager registries) {
         return registries.getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.PROTECTION);
+    }
+
+    /**
+     * Task A1 fix round 1: whether {@code entity} actually wears the fight loadout's enchantments —
+     * Protection IV on the helmet, chestplate and boots, Blast Protection IV on the leggings — on every
+     * slot. {@code getArmor()} and armour toughness come from the netherite pieces alone and cannot tell
+     * Protection from Blast Protection, so this is the only real verification of which enchantment landed;
+     * shared by {@link #fightLoadout} (our player) and
+     * {@link Sparring#spawn(net.minecraft.server.MinecraftServer, ServerPlayerEntity, Arena, Script,
+     * boolean) the sparring's fight-mode spawn}, so neither can silently pass with broken armour.
+     */
+    static boolean hasFightArmourEnchantments(DynamicRegistryManager registries, LivingEntity entity) {
+        RegistryEntry<Enchantment> protection = protection(registries);
+        RegistryEntry<Enchantment> blast = blastProtection(registries);
+        boolean legs = EnchantmentHelper.getLevel(blast, entity.getEquippedStack(EquipmentSlot.LEGS)) == 4;
+        boolean others = List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.FEET).stream()
+            .allMatch(slot -> EnchantmentHelper.getLevel(protection, entity.getEquippedStack(slot)) == 4);
+        return legs && others;
     }
 
     /** The real player on the server, by name. */
