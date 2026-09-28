@@ -22,9 +22,11 @@ import java.util.Set;
  * hurt windows ({@link TargetWindows}), and nothing else. Every action it returns is one Meteor would also allow
  * in the same state; the budget only refuses, and never for breaking a crystal we did not place, and a hurt
  * window only holds a placement back, never a break. The one exception (task B0a, spec Amendment
- * 2026-09-28): a finishing-grade crystal (kills the target or pops his totem, {@link #FINISH_MARGIN}) may go
- * through past {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code pause-health}, only
- * while a totem of undying backs it and at most one such crystal at a time ({@link Reason#FINISHING_BLOW}).
+ * 2026-09-28; condition a tightened fix round 1, owner's decision 2026-09-29): a finishing-grade crystal
+ * (kills the target or pops his totem, {@link #FINISH_MARGIN}) may go through past {@code max-damage},
+ * {@code anti-suicide}, the reserve, the floor or {@code pause-health}, only while a totem of undying backs it
+ * (one in hand AND a spare — it may never spend the last one), and at most one such crystal at a time
+ * ({@link Reason#FINISHING_BLOW}).
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -126,6 +128,11 @@ public final class CrystalBrain {
 
     /** The hands read at HIGH: Meteor's switch rules and the placing hand use them (lines 693-694). */
     private CrystalTick.Hands hands;
+    /**
+     * The totems carried, read at HIGH (task B0a fix round 1): half of condition a of the finishing-blow
+     * override, together with {@code hands.totemInHand()} ({@link #totemBacksIt}).
+     */
+    private int totems;
     private Action breakAction;
     private Action placeAction;
     /** Meteor's doPlace passed its checks up to the scan this pre-tick (lines 903-924). */
@@ -250,6 +257,7 @@ public final class CrystalBrain {
 
         findTargets(tick.targets());
         hands = tick.hands();
+        totems = tick.totems();
         asked = 0;
         allowed = 0;
         firstRefusal = null;
@@ -279,9 +287,12 @@ public final class CrystalBrain {
      * at its spot (ownership first, Q2), then fast-break may attack it at once. Fast-break needs damage
      * above {@code min-damage} (never the face-place minimum), and checks no pause, no timer and not the
      * {@code break} setting; it uses the previous pre-tick's targets. The budget reads {@code health} as
-     * it is now (P4). Task B0a: if the ordinary checks refuse it, the finishing-blow override may still fast-break
-     * it (tier 2 only — a fast-break never runs while paused, so tier 1's own pause carve-out does not apply
-     * here; see {@link #breakFinishing}).
+     * it is now (P4). Task B0a: if the ordinary checks refuse it, the finishing-blow override may still
+     * fast-break it (tier 2 only, {@link #fastBreakOverride}; see {@link #breakFinishing} for the same tiers
+     * at a pre-tick's own break phase). Fast-break itself has never read any of the settings-level pauses at
+     * all, not even {@code pause-health} (pre-existing, Meteor's own design (line 740), unrelated to this
+     * task) — so, unlike {@link #breakBest}/{@link #placeGateOpen}, there is no pause-health carve-out to
+     * apply here: neither the ordinary nor the override path is ever paused by it.
      *
      * @param settings the settings now: Meteor reads them live here (lines 740-742 and {@code getBreakDamage}),
      *                 so a change made since the last pre-tick already applies
@@ -332,12 +343,12 @@ public final class CrystalBrain {
     /**
      * Tier 2 of the finishing blow, fast-break included (task B0a): the same checks as {@link #breakFinishing}'s
      * override tier, for this one crystal — Meteor's max-damage and anti-suicide skipped (never the other
-     * rules), finishing-grade, condition a (a totem in hand now), condition b (no other override crystal
+     * rules), finishing-grade, condition a (a totem in hand now and a spare, {@link #totemBacksIt}), condition b (no other override crystal
      * pending, standing, attacked or within the disappearance window, excluding this crystal itself) and
      * condition c (nothing else we can see could take the totem first).
      */
     private Optional<Action> fastBreakOverride(Known k, double health, CrystalTick.Hands hands) {
-        if (!k.ours || !hands.totemInHand()) return Optional.empty();
+        if (!k.ours || !totemBacksIt(hands)) return Optional.empty();
         float damage = breakDamageIgnoringSelfDamage(k);
         if (!(damage > settings.minDamage()) || !isFinishingGrade(k.seen.targetDamage())) return Optional.empty();
         if (!overrideAvailable(k.seen.id(), null)) return Optional.empty();
@@ -604,13 +615,31 @@ public final class CrystalBrain {
     }
 
     /**
-     * Condition a of the finishing-blow override (task B0a), the cheap pre-check: {@code self-budget} and
-     * {@code finishing-blow} on, and a totem of undying in either hand now. Kept in one place ({@link
-     * CrystalTick.Hands#totemInHand}, read only here and in {@link #placeFinishing}/{@link #breakFinishing}/
-     * {@link #fastBreakOverride}) so tightening it later (e.g. requiring a spare totem too) is a one-line change.
+     * Condition a of the finishing-blow override (task B0a; tightened fix round 1, owner's decision
+     * 2026-09-29): a totem of undying in either hand now, AND at least one more carried besides — the
+     * override may never spend the last totem. {@link CrystalTick#totems} already counts the whole inventory,
+     * hands included (verified in the adapter: {@code InvUtils.find} sums every slot, 0 to the inventory's own
+     * size, so the totem in hand is already inside that count), so "one more besides the one in hand" is
+     * simply {@code totems >= 2}. Kept in one place: {@code hands.totemInHand()} and {@link #totems} are read
+     * together only here — by the pause-health pre-check ({@link #finishingBlowPossible}) and every tier-2 /
+     * fast-break-override decision point ({@link #placeFinishing}, {@link #breakFinishing}, {@link
+     * #fastBreakOverride}) — so tightening or loosening condition a further is a one-line change.
+     *
+     * <p>{@code hands} is a parameter, not always {@link #hands}: fast-break ({@link #crystalAdded}) reads its
+     * hands fresh, its own parameter, the same way Meteor's own anti-weakness does there; {@link #totems} is
+     * only as fresh as the last full pre-tick even then, the same as every other fact fast-break does not
+     * re-measure (e.g. the targets it measures against, {@code fastBreakMeasuresAgainstThePreviousPreTicksTargets}).
+     */
+    private boolean totemBacksIt(CrystalTick.Hands hands) {
+        return hands.totemInHand() && totems >= 2;
+    }
+
+    /**
+     * The cheap pre-check for the finishing-blow override (task B0a): {@code self-budget} and {@code
+     * finishing-blow} on, and condition a ({@link #totemBacksIt}) already holds.
      */
     private boolean finishingBlowPossible(CrystalTick.Hands hands) {
-        return settings.selfBudget() && settings.finishingBlow() && hands.totemInHand();
+        return settings.selfBudget() && settings.finishingBlow() && totemBacksIt(hands);
     }
 
     // Break
@@ -691,8 +720,8 @@ public final class CrystalBrain {
      * them back for its own pick, since only tier 2 (the override) may bypass them. Among the finishing-grade
      * crystals of ours: tier 1's normal-budget pick, by damage, unless {@code healthPausedOnly} (then only the
      * override may act, since an ordinary break stays paused); else tier 2's override pick, gated by a totem
-     * in hand (condition a), no other override crystal in flight (condition b) and the floor holding without
-     * this crystal's own share (condition c). Empty when neither: the caller's unchanged loop, over
+     * in hand plus a spare (condition a), no other override crystal in flight (condition b) and the floor
+     * holding without this crystal's own share (condition c). Empty when neither: the caller's unchanged loop, over
      * Meteor-gated candidates, decides as before.
      */
     private Optional<Action> breakFinishing(CrystalTick tick, List<Scored<Known>> overrideAble, boolean healthPausedOnly) {
@@ -712,7 +741,7 @@ public final class CrystalBrain {
             }
         }
 
-        if (!tick.hands().totemInHand()) return Optional.empty();
+        if (!totemBacksIt(tick.hands())) return Optional.empty();
         SelfBudget budget = budget(tick.health());
         for (Scored<Known> s : finishing) {
             if (!overrideAvailable(s.item.seen.id(), null)) continue;
@@ -821,8 +850,8 @@ public final class CrystalBrain {
      * anti-suicide back for its own pick, since only tier 2 (the override) may bypass them. Among the
      * finishing-grade spots (never one a target's hurt window would swallow): tier 1's normal-budget pick, by
      * damage, unless {@code healthPausedOnly} (then only the override may act); else tier 2's override pick,
-     * gated by a totem in hand (condition a), no other override crystal in flight at that spot (condition b)
-     * and the floor holding without this spot's own pending placement there (condition c). Empty when neither.
+     * gated by a totem in hand plus a spare (condition a), no other override crystal in flight at that spot
+     * (condition b) and the floor holding without this spot's own pending placement there (condition c). Empty when neither.
      */
     private Optional<Action> placeFinishing(double health, List<Candidate> candidates, boolean healthPausedOnly) {
         double minimum = minimumDamage();
@@ -854,7 +883,7 @@ public final class CrystalBrain {
             }
         }
 
-        if (!hands.totemInHand()) return Optional.empty();
+        if (!totemBacksIt(hands)) return Optional.empty();
         for (Scored<Candidate> s : finishing) {
             long pos = s.item.pos();
             if (!overrideAvailable(null, pos)) continue;
@@ -908,10 +937,20 @@ public final class CrystalBrain {
 
     /**
      * Condition b of the finishing-blow override (task B0a): no other crystal of ours that went through it is
-     * pending, standing, attacked or within the disappearance window — at most one at a time, since a totem
-     * saves one lethal hit and a second would kill. Excludes the very crystal or spot under decision now:
-     * re-breaking a crystal we placed through the override, or re-placing at a spot whose own pending
-     * placement we are replacing (Meteor overwrites it, {@link #placed}), is not "another" one.
+     * pending, late (Q2: its placement expired but it has not yet appeared or fully vanished, fix round 1),
+     * standing, attacked or within the disappearance window — at most one at a time, since a totem saves one
+     * lethal hit and a second would kill. Excludes the very crystal or spot under decision now: re-breaking a
+     * crystal we placed through the override, or re-placing at a spot whose own pending or late placement we
+     * are replacing (Meteor overwrites it, {@link #placed}), is not "another" one.
+     *
+     * <p>Fix round 1 (review-b0a.md): a pending override placement that expired (Q2) without its crystal
+     * appearing used to vanish from every check here the moment {@link #expirePending} moved it from
+     * {@link #pending} to {@link #late} — freeing the slot for a second override crystal while the first, a
+     * real crystal that may still detonate near us under lag or a high ping, was still a live, uncounted
+     * threat. {@link Late#override} closes that gap: the slot stays blocked for as long as the placement is
+     * remembered at all, in whichever of {@link #pending}, {@link #late} or {@link #known} it currently lives
+     * in (its own aging-out rules — the pending lifetime, {@link #LATE_OWN_WINDOW}, or {@link
+     * SelfBudget#DISAPPEARANCE_WINDOW} once it is known and gone — are exactly when it is finally forgotten).
      *
      * @param excludeCrystalId the id of the crystal being broken now, or {@code null} for a place
      * @param excludeSpot      the spot being placed on now, or {@code null} for a break
@@ -920,6 +959,10 @@ public final class CrystalBrain {
         for (Pending p : pending) {
             if (excludeSpot != null && p.pos == excludeSpot) continue;
             if (p.override) return false;
+        }
+        for (Late l : late) {
+            if (excludeSpot != null && l.pos == excludeSpot) continue;
+            if (l.override) return false;
         }
         for (Known k : known.values()) {
             if (excludeCrystalId != null && k.seen.id() == excludeCrystalId) continue;
@@ -1000,12 +1043,21 @@ public final class CrystalBrain {
     /**
      * A crystal first seen at {@code at} (the pre-tick at or before it appeared): ours if one of our
      * placements is still pending at its spot, which that crystal then settles; if the spot's placement has
-     * expired, a late own crystal, treated as foreign (Q2) in every other way, but its own lateness is still a
-     * real landing sample (task R3-16 fix round 3): {@code at - firstTick} is how long it took, at least
-     * ({@code at} is only when we noticed it, never earlier than it actually appeared), so it is recorded as a
-     * lower bound on that crystal's own landing, never a foreign one's and never invented when there is no
-     * matching placement to measure from ({@link TargetWindows#landed} already routes anything past its
-     * ordinary ceiling into the outlier bucket fix round 2 reads, no further change needed there).
+     * expired, a late own crystal, treated as foreign (Q2) in every other way — {@code ours} stays {@code
+     * false}, exactly as before this task — but its own lateness is still a real landing sample (task R3-16
+     * fix round 3): {@code at - firstTick} is how long it took, at least ({@code at} is only when we noticed
+     * it, never earlier than it actually appeared), so it is recorded as a lower bound on that crystal's own
+     * landing, never a foreign one's and never invented when there is no matching placement to measure from
+     * ({@link TargetWindows#landed} already routes anything past its ordinary ceiling into the outlier bucket
+     * fix round 2 reads, no further change needed there).
+     *
+     * <p>Fix round 1 (review-b0a.md): a late-own crystal placed through the finishing-blow override is the one
+     * exception to "treated as foreign in every other way" — {@link Late#override} still carries onto {@link
+     * Known#overrideMark} (checked and confirmed deliberately: only {@code overrideMark}, not {@code ours}
+     * itself, which Q2's own foreign treatment must keep false; {@link #overrideAvailable}'s known-loop reads
+     * only {@code overrideMark}, never {@code ours}, so this alone is enough to keep condition b's "one at a
+     * time" counting it once it is known, continuing the block {@link Late#override} already gave it while it
+     * was only late).
      */
     private Known appeared(CrystalSeen c, long at) {
         boolean ours = false;
@@ -1028,6 +1080,7 @@ public final class CrystalBrain {
                     it.remove();
                     lateOwn++;
                     windows.landed(at, at - l.firstTick);
+                    override = l.override;
                     break;
                 }
             }
@@ -1043,7 +1096,7 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, now, p.firstTick));
+                late.add(new Late(p.pos, now, p.firstTick, p.override));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
@@ -1074,8 +1127,14 @@ public final class CrystalBrain {
      */
     private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime, long firstTick, boolean override) {}
 
-    /** A placement's own {@code firstTick} carried along, so a late-own crystal's own lateness can still be measured. */
-    private record Late(long pos, long since, long firstTick) {}
+    /**
+     * A placement's own {@code firstTick} carried along, so a late-own crystal's own lateness can still be
+     * measured; {@code override} (task B0a fix round 1) carried from {@link Pending#override}, so condition
+     * b's "one at a time" keeps blocking while an override crystal's placement has expired (Q2) but its
+     * crystal has not yet been confirmed gone: neither appeared (still in {@link #late}, see
+     * {@link #overrideAvailable}) nor its own {@link #LATE_OWN_WINDOW} elapsed with nothing appearing.
+     */
+    private record Late(long pos, long since, long firstTick, boolean override) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}

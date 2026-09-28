@@ -106,6 +106,17 @@ class HealthTrustTest {
     }
 
     @Test
+    void nonFiniteHealthForcesUntrustedEvenWithAPopInTheSameSpan() {
+        // Task B0a review round 1 (minor): the two checks overlap; bad health must still win, never merely
+        // "unchanged" the way an ordinary pop alone leaves it.
+        HealthTrust h = new HealthTrust();
+        h.judge(T, D, 20, 17.5, false);
+        assertTrue(h.trusted(T), "established first");
+        h.judge(T, D, Double.NaN, 17.5, true);
+        assertFalse(h.trusted(T), "odd health wins the overlap with a pop, forcing untrusted");
+    }
+
+    @Test
     void theLatestJudgedHitDecides() {
         HealthTrust h = new HealthTrust();
         h.judge(T, D, 20, 17.5, false); // trusted

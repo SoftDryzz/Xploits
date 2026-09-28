@@ -22,7 +22,9 @@ import java.util.Set;
  *
  * <p>A non-finite or negative reported health (a hostile server) never throws and is never left unchanged:
  * the target becomes untrusted outright, the same cautious reading {@link ServerValues} and {@link
- * MovementReach} give a broken game value elsewhere in this core.
+ * MovementReach} give a broken game value elsewhere in this core. That check runs before the pop check
+ * ({@link #judge}), so it wins the overlap of the two: a pop alongside odd health still forces untrusted,
+ * never merely "unchanged" the way an ordinary pop alone leaves it (task B0a review round 1, minor).
  */
 public final class HealthTrust {
     /** {@code d} below this is not a measured hit: too small a crystal to judge a drop from. */
@@ -38,7 +40,9 @@ public final class HealthTrust {
     }
 
     /**
-     * Judges one full hit on {@code target}.
+     * Judges one full hit on {@code target}. Bad health (see the class javadoc) is checked first and wins over
+     * a pop in the same span: {@code popped} true does not rescue an odd {@code before}/{@code now} back to
+     * "unchanged", it is still forced untrusted.
      *
      * @param d       the predicted damage of the crystal that dealt it, or any value below
      *                {@link #TRUST_MIN_DAMAGE} (including one that is not a valid number) when it was not one

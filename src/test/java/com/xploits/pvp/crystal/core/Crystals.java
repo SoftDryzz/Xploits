@@ -9,8 +9,10 @@ import java.util.Set;
  * Test shortcut to build what {@link CrystalBrain} is fed, giving only what a test is about and leaving the
  * rest at neutral values: one enemy at 3 blocks with full health and no armour that could wear out, you
  * at full health holding end crystals in the main hand with a weapon elsewhere in the hotbar, no effects,
- * no pause, crystals within break range at 3 blocks. Every number is exact in binary, so each boundary is
- * the real one.
+ * no pause, crystals within break range at 3 blocks, 2 totems carried (task B0a fix round 1: enough for
+ * condition a's "one in hand plus a spare" whenever a test also puts one in hand with {@link #withTotem}; a
+ * test after the last one in hand needs none). Every number is exact in binary, so each boundary is the real
+ * one.
  */
 final class Crystals {
     private Crystals() {}
@@ -153,7 +155,8 @@ final class Crystals {
     static final class Tick {
         private final long n;
         private double health = 20;
-        private int totems;
+        /** Task B0a fix round 1: enough for condition a's spare, whenever a test also puts one in hand. */
+        private int totems = 2;
         private boolean usingItem;
         private boolean mining;
         private boolean lagging;

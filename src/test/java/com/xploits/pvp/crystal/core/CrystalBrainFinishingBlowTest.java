@@ -125,6 +125,29 @@ class CrystalBrainFinishingBlowTest {
     }
 
     @Test
+    void placingThroughTheOverrideNeverSpendsTheLastTotem() {
+        // Owner's decision 2026-09-29: a totem in hand is not enough by itself, the override may never spend
+        // the last one; a spare is needed too. Not paused (6.5), so the cheap pre-check never runs: the tier
+        // itself must enforce this. Self 100 (past max-damage): only the override could ever place it.
+        CrystalBrain oneInHandNoSpare = new CrystalBrain();
+        long t = trustedEnemy(oneInHandNoSpare, 1);
+        assertNothing(oneInHandNoSpare.preTick(LOW_MIN_DAMAGE, tick(t).health(6.5).hands(withTotem(HANDS, true))
+            .totems(1).targets(player(ENEMY, 3, 4)).candidates(spot(3000L, Map.of(ENEMY, 6.0), 100)).build()));
+
+        CrystalBrain oneInHandOneSpare = new CrystalBrain();
+        long t2 = trustedEnemy(oneInHandOneSpare, 1);
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), oneInHandOneSpare.preTick(LOW_MIN_DAMAGE,
+            tick(t2).health(6.5).hands(withTotem(HANDS, true)).totems(2).targets(player(ENEMY, 3, 4))
+                .candidates(spot(3000L, Map.of(ENEMY, 6.0), 100)).build()));
+
+        // Two totems carried, neither in hand: still refused (condition a needs both halves, not the count alone).
+        CrystalBrain twoNotInHand = new CrystalBrain();
+        long t3 = trustedEnemy(twoNotInHand, 1);
+        assertNothing(twoNotInHand.preTick(LOW_MIN_DAMAGE, tick(t3).health(6.5).totems(2)
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3000L, Map.of(ENEMY, 6.0), 100)).build()));
+    }
+
+    @Test
     void breakingThroughTheOverrideAlsoNeedsATotemInHandCheckedFreshEachTime() {
         // Review focus 2: whatever placed the crystal, breaking it through the override is judged again now.
         CrystalBrain withTotemBrain = new CrystalBrain();
@@ -354,13 +377,74 @@ class CrystalBrainFinishingBlowTest {
         assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(3).hands(withTotem(HANDS, true))
             .targets(player(ENEMY, 3, 4)).candidates(spot(3001L, Map.of(ENEMY, 6.0), 1)).build()));
 
-        // Once the pending placement itself expires (Q2, unrelated to forgetWindows), the tag frees up.
-        for (long idle = t + 2; idle < t + CrystalBrain.PENDING_MIN_TICKS + 1; idle++) {
+        // The pending placement itself expires (Q2): fix round 1, the tag now stays blocked through the late
+        // window too (the crystal may still appear and detonate near us), so this alone does not free it.
+        long expiredAt = t + CrystalBrain.PENDING_MIN_TICKS;
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(expiredAt).health(3).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3002L, Map.of(ENEMY, 6.0), 1)).build()));
+        // A second skipped pre-tick, now that it is late rather than pending: still does not touch the tag.
+        b.forgetWindows();
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(expiredAt + 1).health(3).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3003L, Map.of(ENEMY, 6.0), 1)).build()));
+
+        // Only once the late window itself elapses with nothing ever appearing does the tag free up.
+        for (long idle = expiredAt + 2; idle < expiredAt + CrystalBrain.LATE_OWN_WINDOW; idle++) {
             b.preTick(LOW_MIN_DAMAGE, tick(idle).health(3).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4)).build());
         }
-        assertDecision(Decision.place(3002L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
-            tick(t + CrystalBrain.PENDING_MIN_TICKS + 1).health(3).hands(withTotem(HANDS, true))
-                .targets(player(ENEMY, 3, 4)).candidates(spot(3002L, Map.of(ENEMY, 6.0), 1)).build()));
+        assertDecision(Decision.place(3004L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(expiredAt + CrystalBrain.LATE_OWN_WINDOW).health(3).hands(withTotem(HANDS, true))
+                .targets(player(ENEMY, 3, 4)).candidates(spot(3004L, Map.of(ENEMY, 6.0), 1)).build()));
+    }
+
+    /**
+     * The literal scenario the review found (task B0a review round 1, Important): an override placement's
+     * pending window expires (Q2) without its crystal appearing, then the crystal appears late (lag or a high
+     * ping) — a second override must stay refused throughout, and only once the first crystal is gone and the
+     * disappearance window has passed does the slot free.
+     */
+    @Test
+    void aLateArrivingOverrideCrystalKeepsBlockingASecondOneUntilItIsGoneAndTheDisappearanceWindowPasses() {
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(6.5).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .candidates(spot(3000L, Map.of(ENEMY, 6.0), 100)).build()));
+        b.placed(3000L, 0); // lifetime max(5, 0 + 2) = 5
+
+        // The pending placement expires (Q2) with its crystal never appearing yet: a second override refused.
+        long expiredAt = t + CrystalBrain.PENDING_MIN_TICKS;
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(expiredAt).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3001L, Map.of(ENEMY, 6.0), 100)).build()));
+
+        // Still within the late window (20 ticks): a third spot stays refused too.
+        long appearsAt = expiredAt + 5;
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(appearsAt).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3002L, Map.of(ENEMY, 6.0), 100)).build()));
+
+        // It now appears, late: still ours enough to keep blocking (fix round 1), even though Q2 treats it as
+        // foreign in every other way (fast-break disabled here so that is not itself what refuses the 4th spot).
+        CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+        assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, 4.0, 100), 6.5, withTotem(HANDS, true)).isEmpty());
+        assertEquals(1, b.lateOwnCrystals());
+        assertEquals(Set.of(950), b.finishingCrystalIds());
+
+        // Known now (not late any more): a fourth spot still refused, via Known.overrideMark this time.
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(appearsAt + 1).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).crystals(crystal(950, 3000L, 4.0, 100))
+            .candidates(spot(3003L, Map.of(ENEMY, 6.0), 100)).build()));
+
+        // Removed; three more pre-ticks (the disappearance window) still refuse, the fourth finally succeeds.
+        b.crystalRemoved(950);
+        long removedAt = appearsAt + 2;
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(removedAt).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3004L, Map.of(ENEMY, 6.0), 100)).build()));
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(removedAt + 1).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3005L, Map.of(ENEMY, 6.0), 100)).build()));
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(removedAt + 2).health(6.5).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3006L, Map.of(ENEMY, 6.0), 100)).build()));
+        assertDecision(Decision.place(3007L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(removedAt + 3).health(6.5).hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .candidates(spot(3007L, Map.of(ENEMY, 6.0), 100)).build()));
     }
 
     // Review focus 5: the override crystals' ids are readable

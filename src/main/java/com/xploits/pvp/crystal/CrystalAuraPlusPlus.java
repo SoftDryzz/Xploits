@@ -937,6 +937,15 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return ServerValues.ownHealth(mc.player.getHealth(), mc.player.getAbsorptionAmount());
     }
 
+    /**
+     * Every totem of undying carried, anywhere in the inventory (task B0a fix round 1: half of condition a,
+     * with {@link CrystalTick.Hands#totemInHand}). {@code InvUtils.find} sums {@code stack.getCount()} over
+     * every slot from 0 to {@code PlayerInventory.size()} (verified in both jars: {@code find}/{@code
+     * find(Predicate, int, int)} in the Meteor sources jar; {@code PlayerInventory.size()} in the yarn
+     * 1.21.11 jar is {@code main.size()} (36, hotbar included, so the main hand is in range) plus {@code
+     * EQUIPMENT_SLOTS.size()}, whose range includes {@code OFF_HAND_SLOT}), so this already counts a totem in
+     * either hand along with every other one carried.
+     */
     private int totems() {
         return InvUtils.find(Items.TOTEM_OF_UNDYING).count();
     }

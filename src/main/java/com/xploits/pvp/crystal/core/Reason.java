@@ -25,7 +25,8 @@ public enum Reason {
     /**
      * Task B0a: a finishing-grade crystal (kills the target or pops his totem) placed or broken through the
      * override, past what {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code
-     * pause-health} would otherwise allow, only while a totem backs it.
+     * pause-health} would otherwise allow, only while a totem backs it — one in hand and a spare (fix round 1,
+     * owner's decision 2026-09-29: it never spends the last one).
      */
     FINISHING_BLOW
 }
