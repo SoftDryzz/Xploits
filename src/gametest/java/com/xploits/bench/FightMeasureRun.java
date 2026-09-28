@@ -13,13 +13,14 @@ import java.util.List;
 import java.util.OptionalDouble;
 
 /**
- * A fight-mode run (task A1, opt-in): unlike {@link MeasureRun}, our death and the sparring's death end the
- * run with a {@code result} instead of ERROR (requirement 3), both players carry
+ * A fight-mode run (task A1, opt-in): unlike {@link MeasureRun}, our own loss and the sparring's (death, or
+ * running out of totems — task A4 requirement 1, {@link com.xploits.bench.core.FightResult#outOfTotems})
+ * end the run with a {@code result} instead of ERROR (requirement 3), both players carry
  * {@value Arena#FIGHT_TOTEMS} totems (requirement 1 and 2), and every pop of either player schedules the
  * enchanted golden apple's effects {@value com.xploits.bench.core.GappleSchedule#DELAY_TICKS} ticks later
- * (requirement 4). It runs the scenario's nominal length, or stops early the tick either player dies,
+ * (requirement 4). It runs the scenario's nominal length, or stops early the tick either side loses,
  * whichever comes first — a fight in progress is never static, so it never settles ({@code Settle}
- * requirement 5): there is always a chance our own death, the sparring's, or the next pop is still ahead.
+ * requirement 5): there is always a chance our own loss, the sparring's, or the next pop is still ahead.
  *
  * <p>Pop detection is event-based, read once per bench tick rather than by polling the offhand stack (fix
  * round 1): our own pops come from {@link FightRecorder#live()}'s {@code yourPops}, the same live count the
@@ -56,6 +57,8 @@ final class FightMeasureRun {
     private final GappleSchedule sparringGapple = new GappleSchedule();
     private int placementsAtT0;
     private int nominalSeconds;
+    /** Crystal placement packets sent from T0 to the close; set once, at {@link #finish}. */
+    private int placementsSent;
 
     FightMeasureRun(Bench bench, Class<? extends Module> underTest) {
         this.bench = bench;
@@ -68,18 +71,27 @@ final class FightMeasureRun {
         });
     }
 
-    /** How the fight ended. */
+    /**
+     * How the fight ended: a real death, or a side using up its last totem (task A4 requirement 1) while
+     * still alive — both count as that side having lost.
+     */
     enum End {
-        WE_DIED, SPARRING_DIED, TIME_UP
+        WE_DIED, WE_OUT_OF_TOTEMS, SPARRING_DIED, SPARRING_OUT_OF_TOTEMS, TIME_UP
     }
 
     /** One run's outcome: how it ended ({@link End}), and the metrics task A1 requirement 3 lists. */
     record Outcome(End end, Metrics metrics) {
     }
 
+    /** Crystal placement packets sent from T0 to the close (task A4 requirement 2, log only): valid only
+     * after {@link #play} returns. */
+    int placementsSent() {
+        return placementsSent;
+    }
+
     /**
-     * T0, then up to {@code nominalTicks} more ticks, stopping the instant either player dies. Returns the
-     * outcome and the metrics.
+     * T0, then up to {@code nominalTicks} more ticks, stopping the instant either side loses (task A4
+     * requirement 1: a real death, or running out of totems). Returns the outcome and the metrics.
      */
     Outcome play(int nominalTicks) {
         if (bench.fromClient(client -> Modules.get().get(underTest).isActive())) {
@@ -124,6 +136,12 @@ final class FightMeasureRun {
             return End.WE_DIED;
         }
         minHealth = Math.min(minHealth, us[0]);
+        // Task A4 requirement 1: our own totem supply is the fight loadout's fixed FIGHT_TOTEMS (Arena);
+        // once every one is used we have lost, whether or not a real lethal hit ever lands before the time
+        // limit. We are still alive here (the totem just saved us), so the gapple schedule stays armed.
+        if (FightResult.outOfTotems(popsTaken, Arena.FIGHT_TOTEMS)) {
+            return End.WE_OUT_OF_TOTEMS;
+        }
 
         int sparringPopsNow = bench.sparringStats().pops();
         if (sparringPopsNow > lastSparringPops) {
@@ -133,6 +151,9 @@ final class FightMeasureRun {
         if (bench.sparringDied()) {
             sparringGapple.death();
             return End.SPARRING_DIED;
+        }
+        if (FightResult.outOfTotems(sparringPopsNow, Arena.FIGHT_TOTEMS)) {
+            return End.SPARRING_OUT_OF_TOTEMS;
         }
 
         if (ourGapple.due(tick)) {
@@ -162,12 +183,13 @@ final class FightMeasureRun {
             throw new BenchException("pops_taken counted " + popsTaken + " live but the closed record(s) counted "
                 + recordedSelfPops);
         }
-        int result = FightResult.result(end == End.WE_DIED, end == End.SPARRING_DIED);
+        int result = FightResult.result(end == End.WE_DIED || end == End.WE_OUT_OF_TOTEMS,
+            end == End.SPARRING_DIED || end == End.SPARRING_OUT_OF_TOTEMS);
         int popsDealt = sparring.pops();
         int netPops = FightResult.netPops(popsDealt, popsTaken);
         List<FightRecord.DamageEvent> damage = records.stream().flatMap(r -> r.damage().stream()).toList();
         OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage);
-        int placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
+        placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 
         Metrics metrics = new Metrics()
             .put(Metrics.RESULT, result)
