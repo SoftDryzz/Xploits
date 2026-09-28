@@ -1,4 +1,6 @@
 import java.net.URLClassLoader
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 plugins {
     alias(libs.plugins.fabric.loom)
@@ -223,21 +225,30 @@ tasks.register<JavaExec>("benchMerge") {
     val version = project.version.toString()
     val outFolder = benchOut.get().asFile
     val baselineFile = file("bench/baseline.json").absolutePath
-    // The same stale-report guard runClientGameTest's own doFirst has (line ~119): without it, a refused
-    // merge (BenchParallelRunner exits 1 before writing anything) would leave shard 1's own earlier, partial
-    // report-<version>.json/.md on disk for the finalizing benchVerify to read and summarise as if it were
-    // current — exactly the "a partial merge never passes the gate" case the brief rules out, just with a
-    // misleading console instead of a wrong exit code. Never touches meteor-cache/.
+    val finalJson = outFolder.resolve("report-$version.json")
+    val finalMd = outFolder.resolve("report-$version.md")
+    // Shard 1 always runs in this worktree, so its own live report is written to the exact path the merged
+    // report also belongs at (report-<version>.json/.md) — the same stale-report guard runClientGameTest's
+    // own doFirst has cannot simply delete that path first, or there would be nothing left for shard 1's own
+    // input (this failed a real smoke run before this fix: "shard report missing"). Instead, shard 1's fresh
+    // report is staged aside first (renamed, not copied: no leftover duplicate to go stale itself), which
+    // both frees the final path — so a refused merge (BenchParallelRunner exits 1 before writing anything)
+    // leaves NOTHING at report-<version>.json/.md for the finalizing benchVerify to misread as current,
+    // exactly the "a partial merge never passes the gate" case the brief rules out — and gives BenchParallelRunner
+    // a stable, private path to read shard 1's data from. Never touches meteor-cache/.
+    val shard1Staging = outFolder.resolve("report-$version-shard1.json")
+    val shard1StagingMd = outFolder.resolve("report-$version-shard1.md")
     doFirst {
-        delete(outFolder.resolve("report-$version.json"))
-        delete(outFolder.resolve("report-$version.md"))
+        delete(shard1Staging, shard1StagingMd)
+        if (finalJson.isFile) Files.move(finalJson.toPath(), shard1Staging.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        if (finalMd.isFile) Files.move(finalMd.toPath(), shard1StagingMd.toPath(), StandardCopyOption.REPLACE_EXISTING)
     }
     // -Pbench.updateBaseline here, never on the individual shard runs (bench/parallel.ps1 never passes it
     // down to them): a shard only sees its own slice of the scenarios, and shards 2..n's own baseline.json
     // lives in a disposable worktree, so only updating it once, here, from the complete merged report, is
     // correct (task A5 requirement 3).
     val updateBaseline = project.hasProperty("bench.updateBaseline")
-    val shardFiles = mutableListOf(outFolder.resolve("report-$version.json").absolutePath)
+    val shardFiles = mutableListOf(shard1Staging.absolutePath)
     for (k in 2..n) {
         shardFiles += file("../bench-shard-$k/build/bench/report-$version.json").absolutePath
     }
