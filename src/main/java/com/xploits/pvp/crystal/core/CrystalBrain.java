@@ -521,6 +521,19 @@ public final class CrystalBrain {
         return finishingCrystalKinds().keySet();
     }
 
+    /**
+     * The crystals of ours still remembered, late own ones included ({@code Known.mine}), each with whether we
+     * attacked it ourselves (read-only, for the bench: a hit on us from one of these is ours for the reserve
+     * rules even when the opponent's autobreak set it off).
+     */
+    public Map<Integer, Boolean> ownCrystals() {
+        Map<Integer, Boolean> own = new LinkedHashMap<>();
+        for (Known k : known.values()) {
+            if (k.mine) own.put(k.seen.id(), k.attackedTick != CrystalView.NEVER);
+        }
+        return Map.copyOf(own);
+    }
+
     /** The ids among {@link #finishingCrystalIds} that we attacked (task T2, read-only, for the bench). */
     public Set<Integer> finishingCrystalsAttacked() {
         Set<Integer> ids = new HashSet<>();

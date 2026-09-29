@@ -862,4 +862,70 @@ class AcceptanceTest {
         Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.SAFE);
         for (Rule r : outcome.rules()) assertFalse(PositionLike.in(r.detail()), r.detail());
     }
+
+    // --- Task C2 (M5): pop-grade finishing hits are zero at Safe, Balanced and Custom -----------------------
+
+    private static final List<RiskLevel> STRICT_LEVELS = List.of(RiskLevel.SAFE, RiskLevel.BALANCED, RiskLevel.CUSTOM);
+
+    private static Map<String, Double> withPopHit(Map<String, Double> base, double healthAfter, double totems) {
+        Map<String, Double> m = new HashMap<>(base);
+        m.put(Acceptance.FINISHING_POP_HITS, 1.0);
+        m.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        m.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, totems);
+        return m;
+    }
+
+    @Test
+    void s4FailsOnAPopGradeHitAtSafeBalancedCustomAndWithoutALevel() {
+        for (RiskLevel level : STRICT_LEVELS) {
+            assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 6.0, 3.0), goodRun()), three(meteorRun()), level, "S4"),
+                "S4 at " + level);
+        }
+        assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 6.0, 3.0), goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4AcceptsAPopGradeHitAtAggressiveOnlyAtTheFloorOrAbove() {
+        assertEquals(Result.PASS, result(List.of(goodRun(), withPopHit(goodRun(), 2.0, 2.0), goodRun()), three(meteorRun()),
+            RiskLevel.AGGRESSIVE, "S4"));
+        // A regression of the Aggressive gate (a blow below the floor) still fails the bench.
+        assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 1.9, 2.0), goodRun()), three(meteorRun()),
+            RiskLevel.AGGRESSIVE, "S4"));
+    }
+
+    @Test
+    void s4WithoutAPopGradeHitPassesAtEveryLevel() {
+        for (RiskLevel level : RiskLevel.values()) {
+            assertEquals(Result.PASS, result(three(goodRun()), three(meteorRun()), level, "S4"), "S4 at " + level);
+        }
+    }
+
+    private static Result f4At(Map<String, Double> one, RiskLevel level) {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), one, cappFightWin());
+        return rule(judge(capp, threeFights(meteorFightWin()), level), "F4").result();
+    }
+
+    @Test
+    void f4FailsOnAPopGradeHitAtSafeBalancedCustomAndWithoutALevel() {
+        for (RiskLevel level : STRICT_LEVELS) {
+            assertEquals(Result.FAIL, f4At(withPopHit(cappFightWin(), 6.0, 3.0), level), "F4 at " + level);
+        }
+        List<Map<String, Double>> capp = List.of(cappFightWin(), withPopHit(cappFightWin(), 6.0, 3.0), cappFightWin());
+        assertEquals(Result.FAIL, rule(judge(capp, threeFights(meteorFightWin())), "F4").result());
+    }
+
+    @Test
+    void f4AcceptsAPopGradeHitAtAggressiveOnlyWithoutAViolation() {
+        assertEquals(Result.PASS, f4At(withPopHit(cappFightWin(), 2.0, 2.0), RiskLevel.AGGRESSIVE));
+        Map<String, Double> violated = withPopHit(cappFightWin(), 1.5, 2.0);
+        violated.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 1.0);
+        assertEquals(Result.FAIL, f4At(violated, RiskLevel.AGGRESSIVE));
+    }
+
+    @Test
+    void f4WithoutAPopGradeHitPassesAtEveryLevel() {
+        for (RiskLevel level : RiskLevel.values()) {
+            assertEquals(Result.PASS, f4At(finishingRun(3.0, 3.0, null), level), "F4 at " + level);
+        }
+    }
 }

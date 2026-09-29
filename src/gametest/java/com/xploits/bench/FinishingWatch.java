@@ -1,11 +1,13 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.FinishingTracker;
+import com.xploits.bench.core.OwnHits;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.FinishKind;
 import com.xploits.pvp.recorder.core.FightRecord;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightRecord.DamageEvent;
+import com.xploits.pvp.recorder.core.HitSource;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 
 import java.lang.reflect.Field;
@@ -32,13 +34,20 @@ final class FinishingWatch {
     private int totems = -1;
     private int trustedTicks;
     private int firstTrustedTick = -1;
+    /** Task C2 (I2): every crystal of ours seen so far (sticky: the brain forgets a crystal soon after it is gone). */
+    private final Set<Integer> ownIds = new HashSet<>();
+    /** The ones among {@link #ownIds} that we attacked ourselves. */
+    private final Set<Integer> ownAttacked = new HashSet<>();
+    /** The ones among {@link #ownIds} seen gone from the world without an attack of ours (log only). */
+    private final Set<Integer> ownGoneUnattacked = new HashSet<>();
 
     FinishingWatch(Bench bench, boolean plusPlus) {
         this.bench = bench;
         this.plusPlus = plusPlus;
     }
 
-    private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, int totems, int trusted, long recorderTick) {
+    private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, int totems, int trusted, long recorderTick,
+                        Map<Integer, Boolean> own, Set<Integer> ownPresent) {
     }
 
     private int lastTrusted;
@@ -50,6 +59,8 @@ final class FinishingWatch {
             Set<Integer> attacked = Set.of();
             Set<Integer> present = new HashSet<>();
             int trusted = 0;
+            Map<Integer, Boolean> own = Map.of();
+            Set<Integer> ownPresent = new HashSet<>();
             if (plusPlus) {
                 CrystalAuraPlusPlus module = Modules.get().get(CrystalAuraPlusPlus.class);
                 marked = module.finishingCrystalKinds();
@@ -58,13 +69,26 @@ final class FinishingWatch {
                     if (client.world != null && client.world.getEntityById(id) != null) present.add(id);
                 }
                 trusted = module.trustedTargets();
+                own = module.ownCrystals();
+                for (Integer id : own.keySet()) {
+                    if (client.world != null && client.world.getEntityById(id) != null) ownPresent.add(id);
+                }
             }
             return new Read(marked, present, attacked, client.player == null ? 0 : Arena.totemsCarried(client.player), trusted,
-                plusPlus ? recorderTick(Modules.get().get(FightRecorder.class)) : 0);
+                plusPlus ? recorderTick(Modules.get().get(FightRecorder.class)) : 0, own, ownPresent);
         });
         if (plusPlus) {
             tracker.observe(read.marked(), read.present(), read.attacked(), health, read.totems(), read.recorderTick());
             lastTrusted = read.trusted();
+            for (Map.Entry<Integer, Boolean> e : read.own().entrySet()) {
+                ownIds.add(e.getKey());
+                if (e.getValue()) ownAttacked.add(e.getKey());
+            }
+            for (Integer id : ownIds) {
+                if (!read.ownPresent().contains(id) && !ownAttacked.contains(id) && !read.own().getOrDefault(id, false)) {
+                    ownGoneUnattacked.add(id);
+                }
+            }
             if (read.trusted() > 0) {
                 trustedTicks++;
                 if (firstTrustedTick < 0) firstTrustedTick = bench.sinceT0();
@@ -119,9 +143,45 @@ final class FinishingWatch {
         return records.stream().flatMap(r -> r.damage().stream()).toList();
     }
 
+    /**
+     * Task C2 (I2): the events among {@code damage} that are ours for the reserve rules: the recorder's own
+     * attribution plus every hit whose direct source was a crystal we placed, even one the opponent's autobreak
+     * set off ({@link OwnHits}). Without crystal-aura++ under test only the recorder's attribution is known.
+     */
+    Set<Integer> ownIndexes(List<DamageEvent> damage) {
+        // Meteor's runs too: the placed cells come from the packets sent, whichever module sent them.
+        List<HitSource> sources = bench.fromClient(client -> Modules.get().get(FightRecorder.class).hitSources());
+        Set<Long> cells = bench.fromClient(client -> PlacementCounter.get().placedCells());
+        return OwnHits.indexes(damage, sources, ownIds, cells);
+    }
+
+    /** Health lost to hits that are ours ({@link #ownIndexes}), finishing hits included. */
+    double ownDamage(List<FightRecord> records) {
+        List<DamageEvent> damage = events(records);
+        double sum = 0;
+        for (int i : ownIndexes(damage)) sum += damage.get(i).before() - damage.get(i).after();
+        return sum;
+    }
+
+    /** How many hits on us came from a crystal of ours that the recorder blamed on someone else (log only). */
+    int ownHitsBlamedElsewhere(List<FightRecord> records) {
+        List<DamageEvent> damage = events(records);
+        Set<Integer> self = OwnHits.selfIndexes(damage);
+        return (int) ownIndexes(damage).stream().filter(i -> !self.contains(i)).count();
+    }
+
+    /**
+     * How many crystals of ours went gone without an attack of ours (log only). An upper bound of what the
+     * opponent broke, and blind to a crystal broken in the tick it appeared (never sampled).
+     */
+    int ownCrystalsGoneUnattacked() {
+        return (int) ownGoneUnattacked.stream().filter(id -> !ownAttacked.contains(id)).count();
+    }
+
     /** The blows among what was watched, given the closed records' events ({@link FinishingTracker#resolve}). */
     FinishingTracker.Resolution resolve(List<FightRecord> records) {
-        return tracker.resolve(events(records));
+        List<DamageEvent> damage = events(records);
+        return tracker.resolve(damage, ownIndexes(damage));
     }
 
     /**
@@ -132,7 +192,7 @@ final class FinishingWatch {
     double ordinaryMinHealth(List<FightRecord> records, double raw) {
         if (!plusPlus) return raw;
         List<DamageEvent> damage = events(records);
-        FinishingTracker.Resolution r = tracker.resolve(damage);
+        FinishingTracker.Resolution r = tracker.resolve(damage, ownIndexes(damage));
         double min = tracker.minHealthOutside(r.blows()).orElse(Double.POSITIVE_INFINITY);
         min = Math.min(min, FinishingTracker.ordinaryEventMin(damage, r).orElse(Double.POSITIVE_INFINITY));
         return Double.isFinite(min) ? min : raw;

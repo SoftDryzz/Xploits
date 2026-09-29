@@ -331,4 +331,18 @@ class FinishingTrackerTest {
         Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 1.5, 1.5, 1.5}).resolve(damage);
         assertEquals(OptionalDouble.of(1.0), FinishingTracker.ordinaryEventMin(damage, r));
     }
+
+    // --- Task C2 (I2): an event of ours by its crystal, whoever the recorder blamed -------------------------
+
+    @Test
+    void anAutobrokenFinishingBlowIsStillABlowAndIsExcludedByEvent() {
+        FinishingTracker t = blowOf(pop(7), new double[] {6, 6, 5, 5}, new int[] {3, 3, 3, 3});
+        DamageEvent sparring = new DamageEvent(3, DamageKind.CRYSTAL, AttackerKind.PLAYER, "sparring", 6, 5, false);
+        // As the recorder gave it (the sparring's), it is no blow of ours ...
+        assertEquals(0, t.resolve(List.of(sparring)).count());
+        // ... once the crystal's id says it is ours, it is, and it is left out of the reserve rules.
+        Resolution r = t.resolve(List.of(sparring), Set.of(0));
+        assertEquals(1, r.count());
+        assertEquals(Set.of(0), r.excluded());
+    }
 }

@@ -97,7 +97,8 @@ final class FightMeasureRun {
         bench.onClient(client -> {
             Module module = Modules.get().get(underTest);
             if (module.isActive()) module.disable();
-            PlacementCounter.get();
+            // A new run, the previous module now off: the cells of earlier placements must not attribute its hits.
+            PlacementCounter.get().resetCells();
         });
     }
 
@@ -317,7 +318,10 @@ final class FightMeasureRun {
         finishingAmbiguous = resolution.ambiguous();
         finishingBlows = resolution.offenseCount();
         finishingHits = resolution.count();
-        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, resolution.excluded());
+        // Task C2 (I2): a hit from a crystal we placed is ours even when the sparring's autobreak set it off.
+        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, resolution.excluded(), watch.ownIndexes(damage));
+        LOG.info("own crystals: {} hits on us came from a crystal of ours the recorder blamed on the opponent; at most {} of ours"
+            + " went gone without an attack of ours (an upper bound that misses a crystal broken in the tick it appeared)", watch.ownHitsBlamedElsewhere(records), watch.ownCrystalsGoneUnattacked());
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 
         Metrics metrics = new Metrics()
@@ -326,7 +330,7 @@ final class FightMeasureRun {
             .put(Metrics.POPS_TAKEN, popsTakenMeasured)
             .put(Metrics.NET_POPS, netPops)
             .put(Metrics.DAMAGE_DEALT, sparring.damageTaken() - sparringDamageBase)
-            .put(Metrics.SELF_DAMAGE, MeasureRun.selfDamage(records))
+            .put(Metrics.SELF_DAMAGE, watch.ownDamage(records))
             .put(Metrics.MIN_HEALTH, minHealth)
             .put(Metrics.PLACEMENTS_PER_S, (double) placementsSent / nominalSeconds);
         if (firstPopTakenTick >= 0) metrics.put(Metrics.FIRST_POP_TAKEN_S, firstPopTakenTick / 20.0);
