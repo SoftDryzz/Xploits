@@ -16,7 +16,6 @@ import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.ExplosionMath;
 import com.xploits.pvp.crystal.core.FinishKind;
 import com.xploits.pvp.crystal.core.HealthTrust;
-import com.xploits.pvp.crystal.core.MovementHistory;
 import com.xploits.pvp.crystal.core.MovementReach;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
@@ -482,8 +481,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * fast-break measurement.
      */
     private Vec3d velocityThisTick = Vec3d.ZERO;
-    /** How far we really moved per pre-tick, the last 40 (task B3), fed with {@link #velocityThisTick}; only while {@code self-budget} is on. */
-    private final MovementHistory movement = new MovementHistory();
     /**
      * The wall-clock spent finding the worst case over where you could move before a crystal explodes (task
      * R3-16, task R3-12: raycasts are expensive, this reads none), and how many times it was asked. Log only,
@@ -519,7 +516,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // A position from before this activation says nothing about how fast you are moving now.
         lastFeetPos = null;
         velocityThisTick = Vec3d.ZERO;
-        movement.reset();
         // Fix round 1 (review-r3-16.md Minor): worstCaseExtraNanos()/worstCaseExtraCalls() are documented as
         // "since activation"; before this they quietly accumulated for the whole client session instead.
         worstCaseNanos = 0;
@@ -634,7 +630,6 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // Fix round 1 (review-r3-16.md Minor): only while self-budget is on does anything read this, matching
         // exactSelfDamage's own budget-off skip; this still costs only two subtractions when it does run.
         velocityThisTick = selfBudget.get() ? horizontalVelocity(feet) : Vec3d.ZERO;
-        if (selfBudget.get()) movement.record(velocityThisTick.x, velocityThisTick.z);
         exposureBudget.reset(EXPOSURE_RAYCASTS_PER_TICK);
 
         List<TargetView> seen = measureTargets();
@@ -933,15 +928,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // Every reach point is read at its real exposure (task B2), worst ceiling first, and only as far as one
         // could still beat what is already known: `floor` is the current position's own real value. A point the
         // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
-        ClientPlayerEntity p = mc.player;
-        int landing = brain.landingTicksBound();
-        // Task B3: the ring is at least as wide as how far we really moved over the landing time, and the jump
-        // point is only there while we are on the ground (in the air the reach follows the flight we are on).
-        double measured = movement.maxDisplacement(landing).orElse(0);
-        List<MovementReach.Offset> reach = MovementReach.withMidpoints(MovementReach.offsets(velocityThisTick.x, velocityThisTick.z, landing, measured,
-            MovementReach.heights(p.isOnGround(), p.getVelocity().y, landing)));
         List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
-            explosion.z - feet.z, reach);
+            explosion.z - feet.z, MovementReach.withMidpoints(MovementReach.offsets(velocityThisTick.x, velocityThisTick.z,
+                brain.landingTicksBound())));
+        ClientPlayerEntity p = mc.player;
         float worst = MovementReach.worstRawDamage(ranked,
             o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
                 : ExposureAt.at(p, explosion, o.dx(), o.dy(), o.dz(), exposureBudget), floor);

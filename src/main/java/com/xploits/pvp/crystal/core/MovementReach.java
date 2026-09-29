@@ -63,23 +63,13 @@ public final class MovementReach {
      * javadoc): a non-finite {@code vx}/{@code vz} reads as 0, and a negative {@code landingTicks} as 0.
      */
     public static List<Offset> offsets(double vx, double vz, long landingTicks) {
-        return offsets(vx, vz, landingTicks, 0, HEIGHTS);
-    }
-
-    /**
-     * {@link #offsets(double, double, long)} with the two things task B3 adds: {@code measured}, the farthest you
-     * really got over the landing time ({@link MovementHistory#maxDisplacement}, 0 or negative or non-finite
-     * when nothing is measured), which can only ENLARGE the ring, whose radius is {@code max(speed *
-     * landingTicks, measured)} (never below either), and the {@code heights} to check ({@link #heights}).
-     */
-    public static List<Offset> offsets(double vx, double vz, long landingTicks, double measured, double[] heights) {
         double safeVx = Double.isFinite(vx) ? vx : 0;
         double safeVz = Double.isFinite(vz) ? vz : 0;
         long ticks = Math.max(0, landingTicks);
         double speed = Math.hypot(safeVx, safeVz);
-        double radius = Math.max(speed * ticks, Double.isFinite(measured) ? Math.max(0, measured) : 0);
+        double radius = speed * ticks;
         List<Offset> points = new ArrayList<>();
-        for (double h : heights) {
+        for (double h : HEIGHTS) {
             points.add(new Offset(0, h, 0));
             points.add(new Offset(safeVx * ticks, h, safeVz * ticks));
             if (radius > 0) {
@@ -110,38 +100,6 @@ public final class MovementReach {
             all.add(new Offset(o.dx() / 2, o.dy() / 2, o.dz() / 2));
         }
         return List.copyOf(all);
-    }
-
-    /** Vanilla's gravity per tick, and the vertical drag applied after it. */
-    private static final double GRAVITY = 0.08;
-    private static final double VERTICAL_DRAG = 0.98;
-    /** Longest flight simulated, in ticks: a landing bound is never longer than the history holds. */
-    private static final int MAX_FLIGHT_TICKS = 40;
-
-    /**
-     * The heights (relative to your feet now) to check. On the ground: standing, and a jump's height ({@value
-     * #JUMP_HEIGHT}). In the air a jump is not available, the reach follows the flight you are on: vanilla's
-     * own vertical motion ({@code vy = (vy - 0.08) * 0.98}, the ground ignored so a fall reads as far as it
-     * could go) from your vertical velocity {@code vy} for {@code landingTicks} ticks: standing height, the
-     * highest and the lowest point of that flight (the crystal can explode at any time up to the bound). A
-     * non-finite {@code vy} reads as the ground's two heights, the more cautious answer.
-     */
-    public static double[] heights(boolean onGround, double vy, long landingTicks) {
-        if (onGround || !Double.isFinite(vy)) return HEIGHTS.clone();
-        double y = 0;
-        double high = 0;
-        double low = 0;
-        double v = vy;
-        long ticks = Math.min(Math.max(0, landingTicks), MAX_FLIGHT_TICKS);
-        // One tick more than the bound, moving by the velocity read first and applying gravity after: whichever
-        // side of vanilla's move-then-gravity order the reading falls on, the flight is never shorter than real.
-        for (long t = 0; t <= ticks; t++) {
-            y += v;
-            v = (v - GRAVITY) * VERTICAL_DRAG;
-            high = Math.max(high, y);
-            low = Math.min(low, y);
-        }
-        return new double[] {0, high, low};
     }
 
     /**
