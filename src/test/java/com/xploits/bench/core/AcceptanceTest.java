@@ -629,7 +629,7 @@ class AcceptanceTest {
     @Test
     void aFightPairIsDetectedFromTheResultMetricAndGetsFRulesNotSAndO() {
         Outcome outcome = judge(threeFights(cappFightWin()), threeFights(meteorFightWin()));
-        assertEquals(List.of("F1", "F2", "F3"), outcome.rules().stream().map(Rule::id).toList());
+        assertEquals(List.of("F1", "F2", "F3", "F4"), outcome.rules().stream().map(Rule::id).toList());
         assertEquals(Verdict.ACCEPT, outcome.verdict());
     }
 
@@ -737,6 +737,66 @@ class AcceptanceTest {
         assertEquals(Result.PASS, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.AGGRESSIVE), "F3").result());
         assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.BALANCED), "F3").result());
         assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.SAFE), "F3").result());
+    }
+
+    // --- F4 (task B0b): the finishing blow keeps its promises, every run -----------------------------
+
+    /** A fight run with the finishing-blow metrics, each null when absent. */
+    private static Map<String, Double> finishingRun(Double totemsMin, Double healthAfter, Double diedWithTotem) {
+        Map<String, Double> m = cappFightWin();
+        if (totemsMin != null) m.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, totemsMin);
+        if (healthAfter != null) m.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        if (diedWithTotem != null) m.put(Acceptance.DIED_WITH_TOTEM, diedWithTotem);
+        return m;
+    }
+
+    private static Result f4(Map<String, Double> one) {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), one, cappFightWin());
+        return rule(judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED), "F4").result();
+    }
+
+    @Test
+    void f4PassesWhenNothingHappenedAtAll() {
+        assertEquals(Result.PASS, f4(cappFightWin()));
+    }
+
+    @Test
+    void f4PassesOnAFinishingHitWithASpareTotemThatLeftUsAlive() {
+        assertEquals(Result.PASS, f4(finishingRun(2.0, 1.0, null)));
+        assertEquals(Result.PASS, f4(finishingRun(5.0, 4.5, null)));
+    }
+
+    @Test
+    void f4FailsWhenAFinishingHitHappenedWithFewerThanTwoTotems() {
+        assertEquals(Result.FAIL, f4(finishingRun(1.0, 1.0, null)));
+    }
+
+    @Test
+    void f4FailsWhenWeWereNotAliveAfterAFinishingHit() {
+        assertEquals(Result.FAIL, f4(finishingRun(3.0, 0.0, null)));
+    }
+
+    @Test
+    void f4FailsWhenARunEndedInOurDeathWhileWeCarriedATotem() {
+        assertEquals(Result.FAIL, f4(finishingRun(null, null, 1.0)));
+    }
+
+    @Test
+    void f4IsSafetyAndRejectsTheVerdictWhenItFails() {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), finishingRun(1.0, 1.0, null), cappFightWin());
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED);
+        assertEquals(Kind.SAFETY, rule(outcome, "F4").kind());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+    }
+
+    @Test
+    void f3StillJudgesOrdinaryHitsOnlyWhichTheBenchAlreadyExcludedFinishingOnesFrom() {
+        // A finishing hit's health never reaches F3: only min_health_after_own_hit does, and the bench leaves
+        // finishing hits out of it. So a run with a low finishing hit and a healthy ordinary one passes F3.
+        Map<String, Double> run = finishingRun(2.0, 1.0, null);
+        run.put(Acceptance.MIN_HEALTH_AFTER_OWN_HIT, 9.0);
+        List<Map<String, Double>> capp = List.of(cappFightWin(), run, cappFightWin());
+        assertEquals(Result.PASS, rule(judge(capp, threeFights(meteorFightWin()), RiskLevel.SAFE), "F3").result());
     }
 
     @Test

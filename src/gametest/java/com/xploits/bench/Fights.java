@@ -78,8 +78,9 @@ final class Fights {
      * with {@code placements_per_s == 0}: both auras "won" identically without ever choosing to place or break
      * a crystal against the opponent itself. A passive opponent takes that shortcut away, so the win has to
      * come from our aura's own placement/break decision, which is what B0's finishing blow needs this fight to
-     * measure. {@link FightMeasure#startingLow(boolean) startingLow(false)} still sets both players' starting
-     * health and strips the opponent's totem before T0.
+     * measure. {@link FightMeasure#startingLow(boolean) startingLow(false)} makes it a warm-up with both players
+     * healthy (so our aura lands a first hit and crystal-aura++ can trust the target's health), then the
+     * near-death moment (task B0b), which strips the opponent's totem.
      */
     static Script nearDeath() {
         return new PassiveTarget(new Vec3i(3, 0, 0));

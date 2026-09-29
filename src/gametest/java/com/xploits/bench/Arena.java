@@ -317,6 +317,29 @@ public final class Arena {
         return player;
     }
 
+    /** Task B0b: the totems the player carries, offhand and spares together (the count the module reads too). */
+    static int totemsCarried(PlayerEntity player) {
+        int found = 0;
+        PlayerInventory inventory = player.getInventory();
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack.isOf(Items.TOTEM_OF_UNDYING)) found += stack.getCount();
+        }
+        return found;
+    }
+
+    /**
+     * Task B0b (the near-death moment): our fight loadout's totems again, the offhand one plus the spares,
+     * after the warm-up may have used some. Server thread.
+     */
+    void restoreTotems(ServerPlayerEntity player) {
+        PlayerInventory inventory = player.getInventory();
+        player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+        for (int i = 0; i < FIGHT_TOTEMS - 1; i++) {
+            inventory.setStack(PlayerInventory.HOTBAR_SIZE + i, new ItemStack(Items.TOTEM_OF_UNDYING));
+        }
+    }
+
     /** Exactly {@code count} of {@code item} across the player's inventory, offhand and armour included. */
     private static boolean holds(PlayerEntity player, int count, Item item) {
         int found = 0;

@@ -7,6 +7,9 @@ import com.xploits.pvp.crystal.core.RiskLevel;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.decoration.EndCrystalEntity;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,9 +81,10 @@ final class FightMeasure implements Scenario {
     }
 
     /**
-     * Task A3 ({@code near-death}): both players start near death ({@value NearDeathSetup#HEALTH} health, no
-     * absorption) holding a totem; the opponent's totem is stripped unless {@code totem}, so our first
-     * successful hit against it is a real kill rather than a pop.
+     * Task A3 ({@code near-death}), redesigned in task B0b ({@link NearDeathSetup}): a warm-up with both players
+     * healthy, then the near-death moment ({@value NearDeathSetup#HEALTH} health, no absorption); the opponent's
+     * totem is stripped at the moment unless {@code totem}, so our first successful hit against it is a real
+     * kill rather than a pop.
      */
     FightMeasure startingLow(boolean totem) {
         return new FightMeasure(name, aura, other, compareWith, script, risk, new NearDeathSetup(totem));
@@ -98,7 +102,7 @@ final class FightMeasure implements Scenario {
 
     @Override
     public int seconds() {
-        return 30;
+        return startingLow == null ? 30 : NearDeathSetup.WARMUP_TICKS / 20 + 30;
     }
 
     @Override
@@ -136,7 +140,6 @@ final class FightMeasure implements Scenario {
         bench.arena().fightLoadout();
         builtScript = script.get();
         bench.spawnForFight(builtScript);
-        if (startingLow != null) startingLow.apply(bench);
     }
 
     @Override
@@ -146,7 +149,8 @@ final class FightMeasure implements Scenario {
         }
         DecisionTally tally = aura == CrystalAuraPlusPlus.class ? DecisionTally.start(bench) : null;
         FightMeasureRun run = new FightMeasureRun(bench, aura);
-        Metrics metrics = run.play(seconds() * 20).metrics();
+        Metrics metrics = startingLow == null ? run.play(seconds() * 20).metrics()
+            : run.play(NearDeathSetup.WARMUP_TICKS, 30 * 20, startingLow.moment(bench)).metrics();
         // Script#close() otherwise only runs at teardown (Sparring#despawn, after this method returns): a
         // cycle still pending at exactly the last tick (TIME_UP) would log one short of spawned() ==
         // explosions() + brokenFirst() + abandoned() if read before it. Calling it here is safe even though
@@ -155,27 +159,67 @@ final class FightMeasure implements Scenario {
         bench.onServer(srv -> builtScript.close());
         Fights.logCounters(name, runs, builtScript);
         if (tally != null) tally.log(bench, name, runs, run.placementsSent());
+        if (aura == CrystalAuraPlusPlus.class) run.logFinishing(name, runs);
         return metrics;
     }
 
-    /** Task A3 ({@code near-death}): both players' starting health and the opponent's totem, set once, after
-     * the spawn, before T0. */
+    /**
+     * The near-death fights (task A3, redesigned in task B0b): both players start healthy, so our aura lands
+     * an ordinary hit first and crystal-aura++ can come to trust the target's health as it would in real
+     * play ({@code HealthTrust}); then, once that hit has landed and settled, the near-death moment: both at
+     * {@value #HEALTH} health with no absorption, our fight loadout's totems back, the opponent's totems
+     * stripped unless {@code totem}. The same for both auras.
+     */
     private record NearDeathSetup(boolean totem) {
         static final float HEALTH = 6f;
+        /** The longest the warm-up may take (10 s) before the moment comes anyway, with a metric saying so. */
+        static final int WARMUP_TICKS = 200;
+        /** Ticks after our hit before the moment: the target's hurt window has closed and its health read. */
+        static final int SETTLE_TICKS = 14;
+        /** Past this many ticks after our hit the moment comes even if a crystal is still in the air. */
+        static final int CLEAR_BOUND_TICKS = 60;
+        /** How far around us a crystal still in the air holds the moment back. */
+        static final double CLEAR_RADIUS = 24;
 
-        void apply(Bench bench) {
+        FightMeasureRun.Moment moment(Bench bench) {
             String player = bench.player();
-            bench.onServer(srv -> {
-                ServerPlayerEntity p = Arena.player(srv, player);
-                p.setHealth(HEALTH);
-                p.setAbsorptionAmount(0f);
-            });
             Sparring sparring = bench.sparring();
-            bench.onServer(srv -> {
-                sparring.setHealth(HEALTH);
-                sparring.setAbsorptionAmount(0f);
-                if (!totem) sparring.disarmTotem();
-            });
+            return new FightMeasureRun.Moment() {
+                private int landedAt = -1;
+
+                @Override
+                public boolean ready(int waited) {
+                    if (landedAt < 0 && bench.sparringStats().hitsFromOthers() > 0) landedAt = waited;
+                    if (landedAt < 0) return false;
+                    int since = waited - landedAt;
+                    if (since < SETTLE_TICKS) return false;
+                    // No end crystal in the air: one decided while both were healthy must not explode after
+                    // the health drop, which no aura could have planned for.
+                    return since >= CLEAR_BOUND_TICKS || bench.fromServer(srv -> srv.getOverworld()
+                        .getEntitiesByClass(EndCrystalEntity.class,
+                            Arena.player(srv, player).getBoundingBox().expand(CLEAR_RADIUS), Entity::isAlive)
+                        .isEmpty());
+                }
+
+                @Override
+                public boolean landed() {
+                    return landedAt >= 0;
+                }
+
+                @Override
+                public void apply(MinecraftServer server) {
+                    ServerPlayerEntity p = Arena.player(server, player);
+                    p.clearStatusEffects();
+                    p.setHealth(HEALTH);
+                    p.setAbsorptionAmount(0f);
+                    bench.arena().restoreTotems(p);
+                    sparring.clearStatusEffects();
+                    sparring.setHealth(HEALTH);
+                    sparring.setAbsorptionAmount(0f);
+                    if (totem) sparring.rearmTotems();
+                    else sparring.disarmTotem();
+                }
+            };
         }
     }
 
