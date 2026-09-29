@@ -487,6 +487,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * never a metric: {@link #worstCaseExtraNanos()}, {@link #worstCaseExtraCalls()}.
      */
     private long worstCaseNanos;
+    /** Raycasts the real-exposure search may still spend this pre-tick (task B2); refilled every pre-tick. */
+    private final ExposureAt.Budget exposureBudget = new ExposureAt.Budget(EXPOSURE_RAYCASTS_PER_TICK);
+    private static final int EXPOSURE_RAYCASTS_PER_TICK = 4000;
     private long worstCaseCalls;
     /** This pre-tick's targets, by the name the brain knows them by, in the world's entity order. */
     private final Map<String, PlayerEntity> targets = new LinkedHashMap<>();
@@ -627,6 +630,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // Fix round 1 (review-r3-16.md Minor): only while self-budget is on does anything read this, matching
         // exactSelfDamage's own budget-off skip; this still costs only two subtractions when it does run.
         velocityThisTick = selfBudget.get() ? horizontalVelocity(feet) : Vec3d.ZERO;
+        exposureBudget.reset(EXPOSURE_RAYCASTS_PER_TICK);
 
         List<TargetView> seen = measureTargets();
         List<CrystalSeen> standing = new ArrayList<>();
@@ -907,21 +911,29 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         double distance = PlayerUtils.distance(feet.x, feet.y, feet.z, explosion.x, explosion.y, explosion.z);
         // Beyond the radius there is nothing to deal here, and no need to raycast for the exposure; a
         // reachable position closer to it is still checked below.
-        float currentRaw = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f
-            : ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
-        float worstRaw = Math.max(currentRaw, worstReachableRawDamage(feet, explosion));
+        double currentExposure = distance > ExplosionMath.CRYSTAL_RADIUS ? 1.0
+            : ExplosionImpl.calculateReceivedDamage(explosion, p);
+        float currentRaw = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f : ExplosionMath.rawDamage(distance, currentExposure);
+        float worstRaw = Math.max(currentRaw, worstReachableRawDamage(feet, explosion, currentRaw, currentExposure));
         return DamageUtils.calculateReductions(worstRaw, p, mc.world.getDamageSources().explosion((Explosion) null));
     }
 
     /**
      * The worst raw damage this explosion could deal from anywhere we could reach before it goes off
-     * ({@link MovementReach}), timed for {@link #worstCaseExtraNanos()}/{@link #worstCaseExtraCalls()} (log
+     * ({@link MovementReach}; {@code floor} and {@code currentExposure} are the value already measured for where we stand), timed for {@link #worstCaseExtraNanos()}/{@link #worstCaseExtraCalls()} (log
      * only, bench).
      */
-    private float worstReachableRawDamage(Vec3d feet, Vec3d explosion) {
+    private float worstReachableRawDamage(Vec3d feet, Vec3d explosion, float floor, double currentExposure) {
         long start = System.nanoTime();
-        float worst = MovementReach.worstRawDamage(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
-            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound());
+        // Every reach point is read at its real exposure (task B2), worst ceiling first, and only as far as one
+        // could still beat what is already known: `floor` is the current position's own real value. A point the
+        // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
+        List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
+            explosion.z - feet.z, velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound());
+        ClientPlayerEntity p = mc.player;
+        float worst = MovementReach.worstRawDamage(ranked,
+            o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
+                : ExposureAt.at(p, explosion, o.dx(), o.dy(), o.dz(), exposureBudget), floor);
         worstCaseNanos += System.nanoTime() - start;
         worstCaseCalls++;
         return worst;
