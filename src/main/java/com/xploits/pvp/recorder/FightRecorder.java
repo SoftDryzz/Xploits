@@ -80,8 +80,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * {@link FightTracker} answers: live lines to the console, and the finished fight to disk, to the console
  * and, when you lost it, to chat. Nothing is decided here.
  *
- * <p><b>No position is read into anything kept or said.</b> Players are turned into a name and a distance
- * the moment they are looked at, crystals into an id; the damage packet's source position is never read.
+ * <p><b>No position is said or written.</b> Players are turned into a name and a distance the moment they
+ * are looked at, crystals into an id; the damage packet's source position is never read. The one position
+ * kept is each end crystal's block cell, in memory only ({@code crystalCells}, cleared on activation), so the
+ * bench can tell our own crystals' hits apart after the crystal is gone; it is never logged, saved or shown.
  *
  * <p><b>Threads.</b> {@code PacketEvent.Receive} is posted on the Netty thread before the packet is
  * applied: the packets are only queued there, and read on the next {@code TickEvent.Post}, on the game
