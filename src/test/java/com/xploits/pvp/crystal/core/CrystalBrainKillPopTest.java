@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static com.xploits.pvp.crystal.core.CrystalBrainFinishingBlowTest.LOW_MIN_DAMAGE;
 import static com.xploits.pvp.crystal.core.CrystalBrainFinishingBlowTest.assertDecision;
 import static com.xploits.pvp.crystal.core.CrystalBrainFinishingBlowTest.placeTheStuckCrystal;
 import static com.xploits.pvp.crystal.core.CrystalBrainFinishingBlowTest.stuckCrystal;
@@ -38,6 +37,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CrystalBrainKillPopTest {
     private static final String OTHER = "other";
 
+    /** Balanced, min-damage out of the way: the pop-grade override may NOT go below the reserve here. */
+    private static final CrystalSettings LOW_MIN_DAMAGE = CrystalBrainFinishingBlowTest.LOW_MIN_DAMAGE;
+    /**
+     * The pop-grade override may go below the reserve only at Aggressive (owner's decision 2026-09-29). At
+     * Aggressive the reserve equals the floor, so the ordinary budget already takes every pop-grade spot the
+     * pop rule would; the only place the pop tier still acts alone is under pause-health, where the ordinary
+     * gate is shut. So the pop-rule tests run Aggressive with pause-health raised: only the override can act.
+     */
+    private static final CrystalSettings POPPING = LOW_MIN_DAMAGE.toBuilder().risk(RiskLevel.AGGRESSIVE).pauseHealth(1000).build();
+
     /** He holds a totem: a crystal that finishes him only pops him. */
     private static final TargetView POP = playerWithHands(ENEMY, 3, 4, true, true);
     /** No totem, one hand shows an item: a crystal that finishes him kills him. */
@@ -49,7 +58,7 @@ class CrystalBrainKillPopTest {
 
     /** Placing spot 3000 (6 to him, {@code self} to us) at {@code health}, our totem and a spare in hand. */
     private static List<Action> placeAt(CrystalBrain b, long t, double health, TargetView foe, double self) {
-        return b.preTick(LOW_MIN_DAMAGE, tick(t).health(health).hands(TOTEM).targets(foe)
+        return b.preTick(POPPING, tick(t).health(health).hands(TOTEM).targets(foe)
             .candidates(spot(3000L, Map.of(ENEMY, 6.0), self)).build());
     }
 
@@ -133,12 +142,12 @@ class CrystalBrainKillPopTest {
         // A foreign standing crystal of self 1.5 is in C: 6.5 - 1.5 - 3 = 2 holds, 6.5 - 1.5 - 3.5 = 1.5 does not.
         CrystalBrain holds = new CrystalBrain();
         long t = trustedEnemy(holds, 1);
-        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), holds.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), holds.preTick(POPPING,
             tick(t).health(6.5).hands(TOTEM).targets(POP).crystals(crystal(999, 0.0, 1.5))
                 .candidates(spot(3000L, Map.of(ENEMY, 6.0), 3)).build()));
         CrystalBrain refuses = new CrystalBrain();
         long t2 = trustedEnemy(refuses, 1);
-        assertNothing(refuses.preTick(LOW_MIN_DAMAGE,
+        assertNothing(refuses.preTick(POPPING,
             tick(t2).health(6.5).hands(TOTEM).targets(POP).crystals(crystal(999, 0.0, 1.5))
                 .candidates(spot(3000L, Map.of(ENEMY, 6.0), 3.5)).build()));
     }
@@ -166,26 +175,26 @@ class CrystalBrainKillPopTest {
         // A pop-grade crystal pending (self 4: 6 - 4 = 2, only the override places it)...
         CrystalBrain popFirst = new CrystalBrain();
         long t = trustedEnemy(popFirst, 1);
-        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), popFirst.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), popFirst.preTick(POPPING,
             tick(t).health(6).hands(TOTEM).targets(POP).candidates(spot(3000L, Map.of(ENEMY, 6.0), 4)).build()));
         popFirst.placed(3000L, 0);
         // ... does not block a kill-grade one: 6 - 4 = 2 holds for it (kill does not subtract its own share).
-        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), popFirst.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), popFirst.preTick(POPPING,
             tick(t + 1).health(6).hands(TOTEM).targets(KILL).candidates(spot(3001L, Map.of(ENEMY, 6.0), 1)).build()));
 
         // A kill-grade crystal pending holds the slot (self 3.75: 6.5 - 3.75 = 2.75 is under the reserve, so only
         // the override places it) ...
         CrystalBrain killFirst = new CrystalBrain();
         long t2 = trustedEnemy(killFirst, 1);
-        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), killFirst.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), killFirst.preTick(POPPING,
             tick(t2).health(6.5).hands(TOTEM).targets(KILL).candidates(spot(3000L, Map.of(ENEMY, 6.0), 3.75)).build()));
         killFirst.placed(3000L, 0);
         // ... so a second kill-grade spot whose floor fails is refused (6.5 - 3.75 - 1 = 1.75) ...
-        assertNothing(killFirst.preTick(LOW_MIN_DAMAGE, tick(t2 + 1).health(6.5).hands(TOTEM).targets(KILL)
+        assertNothing(killFirst.preTick(POPPING, tick(t2 + 1).health(6.5).hands(TOTEM).targets(KILL)
             .candidates(spot(3001L, Map.of(ENEMY, 6.0), 1.0)).build()));
         // ... while a pop-grade one that holds the floor (6.5 - 3.75 - 0.75 = 2) is placed: it neither needs nor
         // takes the slot.
-        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), killFirst.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), killFirst.preTick(POPPING,
             tick(t2 + 2).health(6.5).hands(TOTEM).targets(POP).candidates(spot(3001L, Map.of(ENEMY, 6.0), 0.75)).build()));
     }
 
@@ -252,7 +261,7 @@ class CrystalBrainKillPopTest {
         TargetView killTarget = playerWithHands(ENEMY, 3, 4, false, true);
         TargetView popTarget = playerWithHands(OTHER, 3, 4, true, true);
         // The kill-grade spot is out of range, so it is no candidate: the pop-grade one is still placed.
-        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(POPPING,
             tick(t).health(6).hands(TOTEM).targets(killTarget, popTarget)
                 .candidates(spot(3000L, Map.of(OTHER, 20.0), 4), notInRange(spot(3001L, Map.of(ENEMY, 6.0), 4))).build()));
     }
@@ -277,20 +286,21 @@ class CrystalBrainKillPopTest {
         // Health 4 (pause-health shuts the ordinary break): an own crystal of self 2 leaves exactly 2.
         CrystalBrain at = new CrystalBrain();
         long t = ownCrystal(at, trustedEnemy(at, 1), 950, 3000L);
-        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), at.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), at.preTick(POPPING,
             tick(t).health(4).hands(TOTEM).targets(POP).crystals(crystal(950, 3000L, 6.0, 2.0)).build()));
         assertEquals(Map.of(950, FinishKind.POP), at.finishingCrystalKinds());
 
         CrystalBrain below = new CrystalBrain();
         long t2 = ownCrystal(below, trustedEnemy(below, 1), 950, 3000L);
-        assertNothing(below.preTick(LOW_MIN_DAMAGE, tick(t2).health(4).hands(TOTEM).targets(POP)
+        assertNothing(below.preTick(POPPING, tick(t2).health(4).hands(TOTEM).targets(POP)
             .crystals(crystal(950, 3000L, 6.0, Math.nextUp(2.0))).build()));
 
         // Past max-damage: health 9, self 7 leaves 2.
         CrystalBrain big = new CrystalBrain();
         long t3 = ownCrystal(big, trustedEnemy(big, 1), 950, 3000L);
-        // B1: max-damage no longer keeps it from the normal budget, whose floor (2) it meets exactly.
-        assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), big.preTick(LOW_MIN_DAMAGE,
+        // B1: max-damage no longer keeps it from the normal budget, but here pause-health is raised, so only the
+        // pop override acts (Aggressive), and it meets the floor exactly.
+        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), big.preTick(POPPING,
             tick(t3).health(9).hands(TOTEM).targets(POP).crystals(crystal(950, 3000L, 6.0, 7.0)).build()));
     }
 
@@ -457,10 +467,10 @@ class CrystalBrainKillPopTest {
         CrystalBrain holds = new CrystalBrain();
         long t = slotTakenByAKillCrystal(holds);
         // 6.5 - 3.75 - 0.75 = 2 holds.
-        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), holds.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), holds.preTick(POPPING,
             tick(t).health(6.5).hands(TOTEM).targets(KILL).candidates(spot(3001L, Map.of(ENEMY, 6.0), 0.75)).build()));
         holds.placed(3001L, 0);
-        CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+        CrystalSettings noFastBreak = POPPING.toBuilder().fastBreak(false).build();
         assertTrue(holds.crystalAdded(noFastBreak, crystal(950, 3000L, 6.0, 3.75), 6.5, TOTEM).isEmpty());
         assertTrue(holds.crystalAdded(noFastBreak, crystal(951, 3001L, 6.0, 0.75), 6.5, TOTEM).isEmpty());
         // The first keeps its kill mark, the downgraded one is a pop: no second slot taken.
@@ -468,7 +478,7 @@ class CrystalBrainKillPopTest {
 
         CrystalBrain fails = new CrystalBrain();
         long t2 = slotTakenByAKillCrystal(fails);
-        assertNothing(fails.preTick(LOW_MIN_DAMAGE, tick(t2).health(6.5).hands(TOTEM).targets(KILL)
+        assertNothing(fails.preTick(POPPING, tick(t2).health(6.5).hands(TOTEM).targets(KILL)
             .candidates(spot(3001L, Map.of(ENEMY, 6.0), 1.0)).build()));
     }
 

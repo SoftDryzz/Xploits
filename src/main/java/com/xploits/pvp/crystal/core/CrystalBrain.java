@@ -366,8 +366,11 @@ public final class CrystalBrain {
         if (kind == FinishKind.KILL && breakOverrideHolds(k, FinishKind.KILL, budget)) {
             return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.KILL);
         }
-        // A kill-grade crystal whose kill rule failed is checked by the pop rule (fix round 1).
-        if (!breakOverrideHolds(k, FinishKind.POP, budget)) return Optional.empty();
+        // A kill-grade crystal whose kill rule failed is checked by the pop rule (fix round 1), only at Aggressive.
+        // After B1 this POP branch is unreachable for our own crystals: the pop rule (health - C - own >= 2, C >=
+        // I) is never looser than the ordinary break rule (health - I - own >= 2), which fast-break tries first
+        // (fastBreakOrdinary), so whatever it would take is already taken there. Kept as a guard.
+        if (!popMayGoBelowReserve() || !breakOverrideHolds(k, FinishKind.POP, budget)) return Optional.empty();
         return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.POP);
     }
 
@@ -695,6 +698,16 @@ public final class CrystalBrain {
     }
 
     /**
+     * Owner's decision 2026-09-29: the pop-grade finishing override (popping the target's totem without killing
+     * him) may take us below the reserve only at {@link RiskLevel#AGGRESSIVE}; Safe, Balanced and Custom (counted
+     * as not Aggressive, a conservative ruling) leave a pop-grade crystal to the normal budget. The kill-grade
+     * override is unchanged at every level.
+     */
+    private boolean popMayGoBelowReserve() {
+        return settings.risk() == RiskLevel.AGGRESSIVE;
+    }
+
+    /**
      * The cheap pre-check for the finishing-blow override (task B0a): {@code self-budget} and {@code
      * finishing-blow} on, and condition a ({@link #totemBacksIt}) already holds.
      */
@@ -812,7 +825,9 @@ public final class CrystalBrain {
             }
         }
         // Tier 3: every finishing-grade crystal by the pop rule, a kill-grade one whose kill rule failed
-        // included (fix round 1): it never pops us and takes no slot.
+        // included (fix round 1): it never pops us and takes no slot. Only at Aggressive (owner's decision
+        // 2026-09-29): elsewhere a pop-grade crystal follows the normal budget (tier 1) alone.
+        if (!popMayGoBelowReserve()) return Optional.empty();
         for (Scored<Known> s : finishing) {
             if (breakOverrideHolds(s.item, FinishKind.POP, budget)) {
                 return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, FinishKind.POP);
@@ -1011,7 +1026,9 @@ public final class CrystalBrain {
             }
         }
         // Tier 3: every finishing-grade spot by the pop rule, a kill-grade one whose kill rule failed included
-        // (fix round 1): it never pops us and takes no slot.
+        // (fix round 1): it never pops us and takes no slot. Only at Aggressive (owner's decision 2026-09-29):
+        // elsewhere a pop-grade spot follows the normal budget (tier 1) alone.
+        if (!popMayGoBelowReserve()) return Optional.empty();
         for (Scored<Candidate> s : finishing) {
             long pos = s.item.pos();
             SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
