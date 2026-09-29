@@ -53,6 +53,9 @@ public final class Sparring extends FakePlayer {
     private int deaths;
     private double damageTaken;
     private double rawDamage;
+    /** Task B0b: hits that took health from a source someone else caused (the player breaking a crystal next to
+     * it, say), never its own crystals: what tells the near-death fights' warm-up that OUR hit landed. */
+    private int hitsFromOthers;
     /** The bench tick of the last {@link #step}; a hit comes during the server tick after it. */
     private int lastStepTick;
     /** Task A2 fix round 1: whether {@link Script#close()} has run yet — at most once, from whichever of
@@ -170,7 +173,12 @@ public final class Sparring extends FakePlayer {
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
         boolean hadTotem = getOffHandStack().isOf(Items.TOTEM_OF_UNDYING);
+        float healthBefore = getHealth() + getAbsorptionAmount();
         boolean damaged = super.damage(world, source, amount);
+        if (damaged && getHealth() + getAbsorptionAmount() < healthBefore
+            && source.getAttacker() != null && source.getAttacker() != this) {
+            hitsFromOthers++;
+        }
         if (hadTotem && !getOffHandStack().isOf(Items.TOTEM_OF_UNDYING)) {
             pops++;
             if (firstPopTick < 0) firstPopTick = lastStepTick + 1;
@@ -281,12 +289,31 @@ public final class Sparring extends FakePlayer {
     }
 
     /**
+     * Task B0c/B0b (near-death, no totem): a visible non-totem item in the main hand, so the target's hands read
+     * as visible (at least one shows an item) and, holding no totem, crystal-aura++ counts a blow on it as a kill,
+     * never a pop. Identical for both auras.
+     */
+    void holdVisibleItem() {
+        setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.NETHERITE_SWORD));
+    }
+
+    /**
+     * Task B0b (near-death fights, at the near-death moment): the totems it had at the start of a fight run, all
+     * {@value Arena#FIGHT_TOTEMS} of them, after the warm-up may have used some. Fight mode only.
+     */
+    void rearmTotems() {
+        if (!fightMode) throw new BenchException("rearmTotems is fight-mode only");
+        setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+        totemsSpare = Arena.FIGHT_TOTEMS - 1;
+    }
+
+    /**
      * The counters, with the first pop as ticks after {@code t0Tick} (-1 when it has not popped, or when
      * T0 has not come).
      */
     Stats stats(int t0Tick) {
         int firstPop = firstPopTick < 0 || t0Tick < 0 ? -1 : firstPopTick - t0Tick;
-        return new Stats(pops, firstPop, damageTaken, rawDamage, deaths, getAbsorptionAmount(), getHealth());
+        return new Stats(pops, firstPop, damageTaken, rawDamage, deaths, getAbsorptionAmount(), getHealth(), hitsFromOthers);
     }
 
     /**
@@ -294,6 +321,6 @@ public final class Sparring extends FakePlayer {
      * {@code rawDamage} is the sum of the amounts handed to {@code applyDamage} (before armour).
      */
     public record Stats(int pops, int firstPopTick, double damageTaken, double rawDamage, int deaths,
-                        float absorption, float health) {
+                        float absorption, float health, int hitsFromOthers) {
     }
 }

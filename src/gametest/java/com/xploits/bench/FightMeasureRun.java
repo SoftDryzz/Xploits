@@ -3,11 +3,16 @@ package com.xploits.bench;
 import com.xploits.bench.core.FightResult;
 import com.xploits.bench.core.GappleSchedule;
 import com.xploits.bench.core.MinHealthAfterOwnHit;
+import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightRecord;
 import com.xploits.pvp.recorder.core.FightTracker;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import net.minecraft.server.MinecraftServer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -45,6 +50,8 @@ import java.util.OptionalDouble;
  * this into the three real fight scenarios.
  */
 final class FightMeasureRun {
+    private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
+
     private final Bench bench;
     private final Class<? extends Module> underTest;
 
@@ -57,12 +64,29 @@ final class FightMeasureRun {
     private final GappleSchedule sparringGapple = new GappleSchedule();
     private int placementsAtT0;
     private int nominalSeconds;
+
+    // Task B0b: the finishing blow, the totems we carried, and the near-death moment.
+    private final FinishingWatch watch;
+    private boolean diedWithTotem;
+    /** The bench tick the measured part starts at: T0, or the near-death moment. */
+    private int measureFrom;
+    private boolean measuring = true;
+    private boolean warmupMissed;
+    private boolean trustMissed;
+    private int popsTakenBase;
+    private int sparringPopsBase;
+    private double sparringDamageBase;
+    private int firstBlowTick = -1;
+    private int finishingEventsExcluded;
+    /** Whether this run had a near-death moment ({@link #play(int, int, Moment)}). */
+    private boolean nearDeath;
     /** Crystal placement packets sent from T0 to the close; set once, at {@link #finish}. */
     private int placementsSent;
 
     FightMeasureRun(Bench bench, Class<? extends Module> underTest) {
         this.bench = bench;
         this.underTest = underTest;
+        this.watch = new FinishingWatch(bench, underTest == CrystalAuraPlusPlus.class);
         bench.meteor(FightRecorder.class);
         bench.onClient(client -> {
             Module module = Modules.get().get(underTest);
@@ -83,6 +107,25 @@ final class FightMeasureRun {
     record Outcome(End end, Metrics metrics) {
     }
 
+    /**
+     * Task B0b: the near-death fights' two-step start. {@link #ready} says, after {@code waited} warm-up
+     * ticks, whether the warm-up hit has landed and things have settled; {@link #landed} whether our hit
+     * ever landed; {@link #apply} sets the near-death moment (server side, the same for both auras).
+     */
+    interface Moment {
+        boolean ready(int waited);
+
+        boolean landed();
+
+        /** Whether the aura under test is one that trusts targets, and the moment waits for it to. */
+        boolean expectsTrust();
+
+        /** Whether it does trust the target now. Client thread; only asked when {@link #expectsTrust}. */
+        boolean trusting();
+
+        void apply(MinecraftServer server);
+    }
+
     /** Crystal placement packets sent from T0 to the close (task A4 requirement 2, log only): valid only
      * after {@link #play} returns. */
     int placementsSent() {
@@ -94,17 +137,59 @@ final class FightMeasureRun {
      * requirement 1: a real death, or running out of totems). Returns the outcome and the metrics.
      */
     Outcome play(int nominalTicks) {
+        return play(0, nominalTicks, null);
+    }
+
+    /**
+     * Task B0b: the same, with a warm-up first when {@code moment} is given: up to {@code warmupTicks} ticks
+     * while both sides are healthy and our aura lands a hit (the trust the finishing blow needs), then the
+     * near-death moment ({@link Moment#apply}), then {@code measureTicks} measured from it: every time,
+     * count and damage below is from the moment on. A warm-up that never lands a hit says so: {@link
+     * Metrics#WARMUP_MISSED}, and the run goes on to the moment anyway.
+     */
+    Outcome play(int warmupTicks, int measureTicks, Moment moment) {
         if (bench.fromClient(client -> Modules.get().get(underTest).isActive())) {
             throw new BenchException(underTest.getSimpleName() + " was on before T0");
         }
-        nominalSeconds = Math.max(1, nominalTicks / 20);
+        nominalSeconds = Math.max(1, (warmupTicks + measureTicks) / 20);
         placementsAtT0 = bench.fromClient(client -> PlacementCounter.get().sent());
         bench.start(true, underTest);
         lastOwnPops = 0;
         lastSparringPops = 0;
+        measureFrom = bench.ticksUsed() - bench.sinceT0();
+        nearDeath = moment != null;
         End end = sample();
+        if (end == null && moment != null) {
+            measuring = false;
+            int waited = 0;
+            while (!moment.ready(waited)) {
+                if (waited >= warmupTicks) {
+                    warmupMissed = !moment.landed();
+                    trustMissed = moment.expectsTrust() && !moment.trusting();
+                    break;
+                }
+                bench.ticks(1);
+                waited++;
+                end = sample();
+                if (end != null) break;
+            }
+            if (end == null) {
+                bench.onServer(moment::apply);
+                measuring = true;
+                measureFrom = bench.ticksUsed();
+                popsTakenBase = popsTaken;
+                Sparring.Stats now = bench.sparringStats();
+                sparringPopsBase = now.pops();
+                sparringDamageBase = now.damageTaken();
+                lastSparringPops = now.pops();
+                minHealth = Double.POSITIVE_INFINITY;
+                LOG.info("[bench] near-death moment after {} warm-up tick(s), warm-up hit {}; crystal-aura++ trusted "
+                    + "the target on {} pre-tick(s) so far (log only)", waited, moment.landed() ? "landed" : "MISSED",
+                    watch.trustedTicks());
+            }
+        }
         if (end == null) {
-            for (int tick = 1; tick <= nominalTicks; tick++) {
+            for (int tick = 1; tick <= measureTicks; tick++) {
                 bench.ticks(1);
                 end = sample();
                 if (end != null) break;
@@ -122,13 +207,15 @@ final class FightMeasureRun {
                 client.player.isDead() ? 1 : 0});
         if (us == null) throw new BenchException("the client has no player");
         boolean weDied = us[1] > 0;
+        if (weDied && watch.totems() >= 1) diedWithTotem = true;
+        watch.observe(us[0]);
 
         int ownPopsNow = bench.fromClient(client -> Modules.get().get(FightRecorder.class).live()
             .map(FightTracker.LiveFight::yourPops).orElse(0));
         if (ownPopsNow > lastOwnPops) {
             popsTaken += ownPopsNow - lastOwnPops;
             lastOwnPops = ownPopsNow;
-            if (firstPopTakenTick < 0) firstPopTakenTick = bench.sinceT0();
+            if (firstPopTakenTick < 0 && measuring) firstPopTakenTick = bench.ticksUsed() - measureFrom;
             ourGapple.pop(tick);
         }
         if (weDied) {
@@ -139,7 +226,7 @@ final class FightMeasureRun {
         // Task A4 requirement 1: our own totem supply is the fight loadout's fixed FIGHT_TOTEMS (Arena);
         // once every one is used we have lost, whether or not a real lethal hit ever lands before the time
         // limit. We are still alive here (the totem just saved us), so the gapple schedule stays armed.
-        if (FightResult.outOfTotems(popsTaken, Arena.FIGHT_TOTEMS)) {
+        if (FightResult.outOfTotems(popsTaken - popsTakenBase, Arena.FIGHT_TOTEMS)) {
             return End.WE_OUT_OF_TOTEMS;
         }
 
@@ -147,12 +234,14 @@ final class FightMeasureRun {
         if (sparringPopsNow > lastSparringPops) {
             lastSparringPops = sparringPopsNow;
             sparringGapple.pop(tick);
+            if (measuring && firstBlowTick < 0) firstBlowTick = bench.ticksUsed() - measureFrom;
         }
         if (bench.sparringDied()) {
+            if (measuring && firstBlowTick < 0) firstBlowTick = bench.ticksUsed() - measureFrom;
             sparringGapple.death();
             return End.SPARRING_DIED;
         }
-        if (FightResult.outOfTotems(sparringPopsNow, Arena.FIGHT_TOTEMS)) {
+        if (FightResult.outOfTotems(sparringPopsNow - sparringPopsBase, Arena.FIGHT_TOTEMS)) {
             return End.SPARRING_OUT_OF_TOTEMS;
         }
 
@@ -162,6 +251,14 @@ final class FightMeasureRun {
         }
         if (sparringGapple.due(tick)) bench.onServer(srv -> GappleEffects.apply(bench.sparring()));
         return null;
+    }
+
+    /** Task B0b, log only: what the finishing-blow bookkeeping saw. */
+    void logFinishing(String scenario, int run) {
+        LOG.info("[bench] {} run {}: {} finishing blow(s), {} recorder event(s) taken out of "
+            + "min_health_after_own_hit; the target was trusted on {} pre-tick(s), first {} tick(s) after T0; died "
+            + "holding a totem: {} (log only, not a metric)", scenario, run, watch.blows(),
+            finishingEventsExcluded, watch.trustedTicks(), watch.firstTrustedTick(), diedWithTotem);
     }
 
     private Outcome finish(End end) {
@@ -185,23 +282,34 @@ final class FightMeasureRun {
         }
         int result = FightResult.result(end == End.WE_DIED || end == End.WE_OUT_OF_TOTEMS,
             end == End.SPARRING_DIED || end == End.SPARRING_OUT_OF_TOTEMS);
-        int popsDealt = sparring.pops();
-        int netPops = FightResult.netPops(popsDealt, popsTaken);
+        int popsDealt = sparring.pops() - sparringPopsBase;
+        int popsTakenMeasured = popsTaken - popsTakenBase;
+        int netPops = FightResult.netPops(popsDealt, popsTakenMeasured);
         List<FightRecord.DamageEvent> damage = records.stream().flatMap(r -> r.damage().stream()).toList();
-        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage);
+        // Task B0b: the reserve rule is for ordinary own hits; a finishing hit may take us below it on purpose.
+        java.util.Set<Long> finishingTicks = watch.hitTicks(damage);
+        finishingEventsExcluded = (int) damage.stream().filter(e -> finishingTicks.contains(e.tick())).count();
+        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, finishingTicks);
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 
         Metrics metrics = new Metrics()
             .put(Metrics.RESULT, result)
             .put(Metrics.POPS_DEALT, popsDealt)
-            .put(Metrics.POPS_TAKEN, popsTaken)
+            .put(Metrics.POPS_TAKEN, popsTakenMeasured)
             .put(Metrics.NET_POPS, netPops)
-            .put(Metrics.DAMAGE_DEALT, sparring.damageTaken())
+            .put(Metrics.DAMAGE_DEALT, sparring.damageTaken() - sparringDamageBase)
             .put(Metrics.SELF_DAMAGE, MeasureRun.selfDamage(records))
             .put(Metrics.MIN_HEALTH, minHealth)
             .put(Metrics.PLACEMENTS_PER_S, (double) placementsSent / nominalSeconds);
         if (firstPopTakenTick >= 0) metrics.put(Metrics.FIRST_POP_TAKEN_S, firstPopTakenTick / 20.0);
         if (minAfterOwnHit.isPresent()) metrics.put(Metrics.MIN_HEALTH_AFTER_OWN_HIT, minAfterOwnHit.getAsDouble());
+        watch.put(metrics);
+        if (diedWithTotem) metrics.put(Metrics.DIED_WITH_TOTEM, 1);
+        if (nearDeath) {
+            if (firstBlowTick >= 0) metrics.put(Metrics.FIRST_BLOW_S, firstBlowTick / 20.0);
+            metrics.put(Metrics.WARMUP_MISSED, warmupMissed ? 1 : 0);
+            if (underTest == CrystalAuraPlusPlus.class) metrics.put(Metrics.TRUST_MISSED, trustMissed ? 1 : 0);
+        }
         return new Outcome(end, metrics);
     }
 }

@@ -56,4 +56,22 @@ class MinHealthAfterOwnHitTest {
         assertFalse(MinHealthAfterOwnHit.of(forward).isEmpty());
         assertEquals(MinHealthAfterOwnHit.of(forward), MinHealthAfterOwnHit.of(backward));
     }
+
+    private static DamageEvent hitAt(long tick, AttackerKind by, double before, double after) {
+        return new DamageEvent(tick, DamageKind.CRYSTAL, by, by == AttackerKind.PLAYER ? "someone" : null, before, after, false);
+    }
+
+    @Test
+    void aFinishingHitIsLeftOutSoTheReserveRuleOnlySeesOrdinaryOnes() {
+        // Task B0b: an ordinary hit at 9 and a finishing hit that took us to 1: the reserve rule sees 9.
+        List<DamageEvent> damage = List.of(hitAt(10, AttackerKind.SELF, 20, 9), hitAt(50, AttackerKind.SELF, 6, 1));
+        assertEquals(OptionalDouble.of(9), MinHealthAfterOwnHit.of(damage, java.util.Set.of(50L)));
+        assertEquals(OptionalDouble.of(1), MinHealthAfterOwnHit.of(damage));
+    }
+
+    @Test
+    void emptyWhenEveryOwnHitWasAFinishingOne() {
+        List<DamageEvent> damage = List.of(hitAt(50, AttackerKind.SELF, 6, 0));
+        assertTrue(MinHealthAfterOwnHit.of(damage, java.util.Set.of(50L)).isEmpty());
+    }
 }

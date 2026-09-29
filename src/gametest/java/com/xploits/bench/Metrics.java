@@ -38,6 +38,31 @@ public final class Metrics {
      * took none. */
     public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
 
+    // Task B0b: the finishing blow. Each is only in a run where it happened (absent otherwise).
+    /** Override crystals that exploded (crystal-aura++'s finishing blow). */
+    public static final String FINISHING_BLOWS = "finishing_blows";
+    /** The lowest health plus absorption after a finishing hit; above 0 means we were still alive. */
+    public static final String MIN_HEALTH_AFTER_FINISHING_HIT = "min_health_after_finishing_hit";
+    /** The fewest totems we carried at any finishing hit. */
+    public static final String TOTEMS_AT_FINISHING_HIT_MIN = "totems_at_finishing_hit_min";
+    /** Finishing blows against a target holding no totem, kill-grade by the bench's reading (crystal-aura++). */
+    public static final String FINISHING_KILL_BLOWS = "finishing_kill_blows";
+    /** Finishing blows against a target holding a totem, pop-grade by the bench's reading (crystal-aura++). */
+    public static final String FINISHING_POP_BLOWS = "finishing_pop_blows";
+    /** Finishing blows that cost us a totem (crystal-aura++). */
+    public static final String FINISHING_POPS = "finishing_pops";
+    /** Finishing blows against a target holding a totem that left us below 2 or popped us (pop-grade rule). */
+    public static final String FINISHING_POP_GRADE_VIOLATIONS = "finishing_pop_grade_violations";
+    /** 1 in a run that ended in our death after we had carried at least one totem before the hit. */
+    public static final String DIED_WITH_TOTEM = "died_with_totem";
+    /** Near-death fights: seconds from the near-death moment to our first kill or pop dealt; absent without one. */
+    public static final String FIRST_BLOW_S = "first_blow_s";
+    /** Near-death fights: 1 in a run whose warm-up never landed a hit of ours in time (counted per scenario). */
+    public static final String WARMUP_MISSED = "warmup_missed";
+    /** Near-death fights, crystal-aura++ only: 1 in a run whose target it did not trust at the near-death moment
+     * (counted per scenario): the finishing blow could not apply. */
+    public static final String TRUST_MISSED = "trust_missed";
+
     /** Which way a metric gets better. */
     public enum Better {
         HIGHER, LOWER
@@ -70,7 +95,18 @@ public final class Metrics {
         new Definition(POPS_TAKEN, Better.LOWER, 1, false),
         new Definition(NET_POPS, Better.HIGHER, 1, false),
         new Definition(FIRST_POP_TAKEN_S, Better.LOWER, 0.25, false),
-        new Definition(MIN_HEALTH_AFTER_OWN_HIT, Better.HIGHER, 1.0, false));
+        new Definition(MIN_HEALTH_AFTER_OWN_HIT, Better.HIGHER, 1.0, false),
+        new Definition(FINISHING_BLOWS, Better.HIGHER, 1, false),
+        new Definition(MIN_HEALTH_AFTER_FINISHING_HIT, Better.HIGHER, 1.0, false),
+        new Definition(TOTEMS_AT_FINISHING_HIT_MIN, Better.HIGHER, 1, false),
+        new Definition(FINISHING_KILL_BLOWS, Better.HIGHER, 1, false),
+        new Definition(FINISHING_POP_BLOWS, Better.HIGHER, 1, false),
+        new Definition(FINISHING_POPS, Better.LOWER, 0, false),
+        new Definition(FINISHING_POP_GRADE_VIOLATIONS, Better.LOWER, 0, false),
+        new Definition(DIED_WITH_TOTEM, Better.LOWER, 0, false),
+        new Definition(FIRST_BLOW_S, Better.LOWER, 0.25, false),
+        new Definition(WARMUP_MISSED, Better.LOWER, 0, true),
+        new Definition(TRUST_MISSED, Better.LOWER, 0, true));
 
     private static final Map<String, Definition> BY_NAME = TABLE.stream()
         .collect(Collectors.toUnmodifiableMap(Definition::name, Function.identity()));

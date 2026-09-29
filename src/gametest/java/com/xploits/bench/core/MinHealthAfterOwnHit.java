@@ -5,6 +5,7 @@ import com.xploits.pvp.recorder.core.FightRecord.DamageEvent;
 
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.Set;
 
 /**
  * Task A1 requirement 3: our health plus absorption right after each hit from one of OUR OWN crystals over
@@ -26,6 +27,15 @@ public final class MinHealthAfterOwnHit {
     }
 
     public static OptionalDouble of(List<DamageEvent> damage) {
-        return damage.stream().filter(e -> e.by() == AttackerKind.SELF).mapToDouble(DamageEvent::after).min();
+        return of(damage, Set.of());
+    }
+
+    /**
+     * Task B0b: without the finishing hits ({@link FinishingTracker#hitTicks}, by their tick): the reserve rule
+     * applies to ordinary own hits only, since a finishing blow may take us below it on purpose.
+     */
+    public static OptionalDouble of(List<DamageEvent> damage, Set<Long> finishingTicks) {
+        return damage.stream().filter(e -> e.by() == AttackerKind.SELF && !finishingTicks.contains(e.tick()))
+            .mapToDouble(DamageEvent::after).min();
     }
 }

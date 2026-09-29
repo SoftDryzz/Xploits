@@ -52,6 +52,9 @@ import java.util.function.DoubleBinaryOperator;
  *   any real reserve); NOT_APPLICABLE without a fixed level, or when no run took a hit from its own
  *   crystal</td><td>the lowest of every run's value</td></tr>
  * </table>
+ * <table><caption>F4</caption><tr><td>F4</td><td>(task B0b, safety) no run of ours ends in our death while we carried
+ * a totem before the hit; {@code totems_at_finishing_hit_min} &ge; 2; {@code min_health_after_finishing_hit},
+ * when present, &gt; 0</td><td>every run</td></tr></table>
  * The same before-the-rules order applies (death, gaps, never-placed), and {@link Recommendation}'s levels
  * already fold a fight pair in like any other, since it reads verdicts, not which rules produced them.
  *
@@ -93,6 +96,24 @@ public final class Acceptance {
      * that pops or kills us), never a real low-but-surviving value — see {@code MinHealthAfterOwnHit}'s Javadoc.
      */
     public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
+    // Task B0b: the finishing blow's metrics, each only in a run where it happened.
+    /** Override crystals (crystal-aura++'s finishing blow) that exploded this run. */
+    public static final String FINISHING_BLOWS = "finishing_blows";
+    /** The lowest health plus absorption after a finishing hit; above 0 means we were still alive. */
+    public static final String MIN_HEALTH_AFTER_FINISHING_HIT = "min_health_after_finishing_hit";
+    /** The fewest totems we carried at any finishing hit. */
+    public static final String TOTEMS_AT_FINISHING_HIT_MIN = "totems_at_finishing_hit_min";
+    /** 1 in a run that ended in our death after we had carried at least one totem before the hit. */
+    public static final String DIED_WITH_TOTEM = "died_with_totem";
+    /** Finishing blows that cost us a totem. */
+    public static final String FINISHING_POPS = "finishing_pops";
+    /** Finishing blows against a target holding a totem (pop-grade) that left us below 2 or popped us. */
+    public static final String FINISHING_POP_GRADE_VIOLATIONS = "finishing_pop_grade_violations";
+    /** A pop-grade finishing blow (the target holds a totem) never leaves us below this. */
+    public static final double POP_GRADE_FLOOR = 2.0;
+    /** F4: the finishing blow never happens with fewer than this many totems carried (never the last one). */
+    public static final int FINISHING_MIN_TOTEMS = 2;
+
     /**
      * Every metric a fight pair's judgement requires present in each run ({@link #RESULT}, {@link #NET_POPS});
      * {@link #PLACEMENTS_PER_S} still decides whether the pair applies at all, and
@@ -193,8 +214,8 @@ public final class Acceptance {
                 "neither " + capp.scenario() + " nor " + meteor.scenario() + " placed a crystal in any run", List.of());
         }
         List<Rule> rules = fight
-            ? List.of(f1(capp, meteor), f2(capp, meteor), f3(capp, level))
-            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
+            ? List.of(f1(capp, meteor), f2(capp, meteor), f3(capp, level), f4(capp))
+            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), s4(capp), o1(capp, meteor),
                 o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
         if (failed.isEmpty()) return new Outcome(Verdict.ACCEPT, null, rules);
@@ -353,6 +374,47 @@ public final class Acceptance {
         double lowest = values.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
         return new Rule("F3", Kind.SAFETY, pass(lowest >= reserve),
             "lowest run " + MIN_HEALTH_AFTER_OWN_HIT + ": ++ " + n(lowest) + ", needs >= " + n(reserve) + " (" + level + ")");
+    }
+
+    /**
+     * F4 (safety, task B0b): the finishing blow keeps its promises, over every ++ run. We never end a run dead
+     * while we carried a totem before the hit ({@link #DIED_WITH_TOTEM}); no finishing hit happens with fewer
+     * than {@value #FINISHING_MIN_TOTEMS} totems carried (never the last one); and after a finishing hit we
+     * were still alive ({@link #MIN_HEALTH_AFTER_FINISHING_HIT} above 0: the totem saved us, or the hit was not
+     * lethal). The two finishing metrics are absent in a run without a finishing hit, which is nothing to
+     * judge, never a failure. Unlike F3 it needs no risk level: the finishing blow applies at every level.
+     */
+    private static Rule f4(Side capp) {
+        double deaths = sum(capp, DIED_WITH_TOTEM);
+        List<Double> totems = present(capp, TOTEMS_AT_FINISHING_HIT_MIN);
+        List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
+        double fewest = totems.isEmpty() ? Double.NaN : totems.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double violations = sum(capp, FINISHING_POP_GRADE_VIOLATIONS);
+        boolean passed = deaths == 0 && violations == 0 && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS)
+            && (after.isEmpty() || lowest > 0);
+        return new Rule("F4", Kind.SAFETY, pass(passed),
+            "runs dead while carrying a totem: " + whole(deaths) + ", needs 0; fewest totems at a finishing hit: "
+                + (totems.isEmpty() ? "none" : n(fewest)) + ", needs >= " + FINISHING_MIN_TOTEMS
+                + "; lowest health after a finishing hit: " + (after.isEmpty() ? "none" : n(lowest)) + ", needs > 0"
+                + "; pop-grade blows (target holding a totem) that left us below " + n(POP_GRADE_FLOOR) + " or popped us: "
+                + whole(violations) + ", needs 0");
+    }
+
+    /**
+     * S4 (safety, task B0b/B0c): in the older scenarios the target always holds a totem, so every finishing blow
+     * there is pop-grade: it may take us below the level's reserve, which S1-S3 do not judge (they read ordinary
+     * own hits only), but never below {@value #POP_GRADE_FLOOR} health plus absorption, and never pops us. Over
+     * every run of ours; the metrics are absent in a run without a finishing blow, which is nothing to judge.
+     */
+    private static Rule s4(Side capp) {
+        List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
+        double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double pops = sum(capp, FINISHING_POPS);
+        boolean passed = pops == 0 && (after.isEmpty() || lowest >= POP_GRADE_FLOOR);
+        return new Rule("S4", Kind.SAFETY, pass(passed),
+            "finishing blows that popped us: " + whole(pops) + ", needs 0; lowest health after a finishing hit: "
+                + (after.isEmpty() ? "none" : n(lowest)) + ", needs >= " + n(POP_GRADE_FLOOR));
     }
 
     private static Rule atLeast(String id, Side capp, String metric, double theirs, double limit) {

@@ -584,6 +584,18 @@ public final class CrystalBrain {
         return lastDecision;
     }
 
+    /**
+     * How many of the previous pre-tick's targets have a trusted reported health right now (task B0b, read-only,
+     * so the bench can log whether trust formed).
+     */
+    public int trustedTargetCount() {
+        int count = 0;
+        for (String t : targets) {
+            if (healthTrust.trusted(t)) count++;
+        }
+        return count;
+    }
+
     /** The previous pre-tick's targets, in order: fast-break measures a new crystal against these. */
     public List<String> targets() {
         return targets;

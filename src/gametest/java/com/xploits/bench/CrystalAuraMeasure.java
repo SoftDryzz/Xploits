@@ -315,12 +315,15 @@ final class CrystalAuraMeasure implements Scenario {
             .put(Metrics.DAMAGE_DEALT, sparring.damageTaken())
             .put(Metrics.SPARRING_POPS, sparring.pops());
         if (sparring.firstPopTick() >= 0) metrics.put(Metrics.FIRST_POP_S, sparring.firstPopTick() / 20.0);
-        return metrics
+        metrics
             .put(Metrics.NO_POP_RUNS, sparring.pops() == 0 ? 1 : 0)
             .put(Metrics.SELF_DAMAGE, selfDamage)
             .put(Metrics.SELF_POPS, selfPops)
             .put(Metrics.MIN_HEALTH, minHealth)
             .put(Metrics.PLACEMENTS_PER_S, SettleVerification.perNominalSecond(crystalsPlaced, seconds()));
+        // Task B0b: crystal-aura++'s finishing blows (absent when none happened).
+        run.putFinishing(metrics);
+        return metrics;
     }
 
     /**
@@ -379,7 +382,7 @@ final class CrystalAuraMeasure implements Scenario {
     private Metrics snapshot(Bench bench) {
         Sparring.Stats sparring = bench.sparringStats();
         List<FightRecord> records = run.recordsSoFar();
-        return metrics(sparring, MeasureRun.selfDamage(records), MeasureRun.selfPops(records), run.minHealth(),
+        return metrics(sparring, run.ordinarySelfDamage(records), MeasureRun.selfPops(records), run.minHealth(),
             MeasureRun.crystalsPlaced(records));
     }
 
