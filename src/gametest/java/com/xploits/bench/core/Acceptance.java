@@ -409,10 +409,12 @@ public final class Acceptance {
     }
 
     /**
-     * S4 (safety, task B0b/B0c): in the older scenarios the target always holds a totem, so every finishing blow
-     * there is pop-grade: it may take us below the level's reserve, which S1-S3 do not judge (they read ordinary
-     * own hits only), but never below {@value #POP_GRADE_FLOOR} health plus absorption, and never pops us. Over
-     * every run of ours; the metrics are absent in a run without a finishing blow, which is nothing to judge.
+     * S4 (safety, task B0b/B0c/C2): in the older scenarios the target always holds a totem, so a finishing blow
+     * there is pop-grade. A finishing hit must never pop us and never leave us below {@value #POP_GRADE_FLOOR}
+     * health plus absorption, with at least {@value #FINISHING_MIN_TOTEMS} totems carried. Pop-grade finishing hits
+     * ({@code finishing_pop_hits}) must be zero at Safe, Balanced, Custom and with no level; they are allowed only at
+     * Aggressive, where those floor and pop checks judge them. Over every run of ours; the metrics are absent in a
+     * run without a finishing blow, which is nothing to judge.
      */
     private static Rule s4(Side capp, RiskLevel level) {
         List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
