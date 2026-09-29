@@ -453,6 +453,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private CrystalBrain brain = new CrystalBrain();
     /** Late own crystals counted by brains replaced after a refusal, since activation. */
     private int lateOwnBefore;
+    /** Stuck-standing crystals counted by brains replaced after a refusal, since activation. */
+    private int stuckBefore;
     /** Placements held back for a target's hurt window by brains replaced after a refusal, since activation. */
     private int deferredBefore;
     /**
@@ -503,6 +505,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onActivate() {
         brain = new CrystalBrain();
         lateOwnBefore = 0;
+        stuckBefore = 0;
         deferredBefore = 0;
         damagePackets.clear();
         statusPackets.clear();
@@ -549,6 +552,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** Our crystals that appeared after their pending placement had expired (Q2), since activation. */
     public int lateOwnCrystals() {
         return lateOwnBefore + brain.lateOwnCrystals();
+    }
+
+    /** Our crystals, late ones included, that stood over 20 pre-ticks without an attack of ours, since activation (log only). */
+    public int stuckStandingCrystals() {
+        return stuckBefore + brain.stuckStandingCrystals();
     }
 
     /**
@@ -769,6 +777,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             case STARTED -> warning(CrystalText.METEOR_AURA_ON);
             case ENDED -> {
                 lateOwnBefore += brain.lateOwnCrystals();
+                stuckBefore += brain.stuckStandingCrystals();
                 deferredBefore += brain.deferredForTargetWindow();
                 brain = new CrystalBrain();
                 forgetTick();

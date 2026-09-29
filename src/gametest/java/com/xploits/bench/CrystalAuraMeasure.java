@@ -244,6 +244,10 @@ final class CrystalAuraMeasure implements Scenario {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
                 name, held);
+            int lateOwn = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).lateOwnCrystals());
+            int stuck = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).stuckStandingCrystals());
+            LOG.info("[bench] {}: crystal-aura++ saw {} late own crystal(s) and {} of our standing crystal(s) stayed"
+                + " unattacked over 20 pre-ticks (B1 liveness, counts only, log only, not a metric)", name, lateOwn, stuck);
             long nanos = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraNanos());
             long calls = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraCalls());
             LOG.info("[bench] {}: crystal-aura++'s worst-case reach (R3-16) cost {} call(s), {} total, {} per call (log only, not a metric)",

@@ -255,6 +255,42 @@ class CrystalBrainBudgetTest {
         assertEquals(1, late.lateOwnCrystals());
     }
 
+    /**
+     * Task B1 review (liveness note): with the reserve deciding our own spots, a spot past max-damage can be
+     * placed; if its crystal shows up after the pending wait ran out it is a late own crystal, foreign in every
+     * way (Q2), so max-damage still binds its break and we do NOT break it (no floor exists for a foreign one).
+     * The ownership code stays as it is; this pins it.
+     */
+    @Test
+    void aLateOwnCrystalOverMaxDamageIsNotBrokenByUs() {
+        CrystalSeen over = crystal(1, 9, 8, 6.5);
+        CrystalSeen within = crystal(1, 9, 8, 5);
+
+        CrystalBrain late = placedAtTick1(0, 6);
+        assertTrue(late.crystalAdded(over, 20, HANDS).isEmpty());
+        assertEquals(1, late.lateOwnCrystals());
+        assertNothing(late.preTick(DEFAULTS, tick(8).health(20).crystals(over).build()));
+
+        // Control: a late own crystal within max-damage is broken as foreign.
+        assertTrue(placedAtTick1(0, 6).crystalAdded(within, 20, HANDS).isPresent());
+    }
+
+    @Test
+    void aLateOwnCrystalWeNeverAttackIsCountedStuckOnceAfterTwentyPreTicks() {
+        CrystalSeen over = crystal(1, 9, 8, 6.5);
+        CrystalBrain b = placedAtTick1(0, 6);
+        assertTrue(b.crystalAdded(over, 20, HANDS).isEmpty());
+        long first = 6;
+        for (long t = first + 1; t <= first + CrystalBrain.STUCK_TICKS; t++) {
+            b.preTick(DEFAULTS, tick(t).health(20).crystals(over).build());
+            assertEquals(0, b.stuckStandingCrystals());
+        }
+        b.preTick(DEFAULTS, tick(first + CrystalBrain.STUCK_TICKS + 1).health(20).crystals(over).build());
+        assertEquals(1, b.stuckStandingCrystals());
+        b.preTick(DEFAULTS, tick(first + CrystalBrain.STUCK_TICKS + 2).health(20).crystals(over).build());
+        assertEquals(1, b.stuckStandingCrystals());
+    }
+
     @Test
     void aCrystalFirstSeenAtAPreTickAppearedBeforeIt() {
         // Seen at pre-tick 6 without an EntityAdded: it appeared before 6, while the placement was pending.

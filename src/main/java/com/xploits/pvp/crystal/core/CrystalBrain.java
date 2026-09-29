@@ -105,6 +105,10 @@ public final class CrystalBrain {
     private boolean facePlacing;
     private boolean holding;
     private int lateOwn;
+    /** Task B1 (log only): crystals of ours (late ones included) that stood over {@link #STUCK_TICKS} pre-ticks without one attack of ours. */
+    private int stuckStanding;
+    /** Standing this many pre-ticks without an attack of ours counts a crystal as stuck ({@link #stuckStandingCrystals}). */
+    static final int STUCK_TICKS = 20;
     private Decision lastDecision = Decision.none(Reason.NOTHING_TO_DO);
     /** The targets' hurt windows our crystals opened (with the budget on, they hold placements back). */
     private final TargetWindows windows = new TargetWindows();
@@ -247,6 +251,12 @@ public final class CrystalBrain {
                 k.removedTick = now;
                 // One of ours, gone while known: how long it took, from the first decision to place it to now.
                 if (k.ours && k.placedTick > landingSince) windows.landed(now, now - k.placedTick);
+            }
+        }
+        for (Known k : known.values()) {
+            if (k.mine && !k.stuckCounted && k.live() && k.attempts == 0 && now - k.since > STUCK_TICKS) {
+                k.stuckCounted = true;
+                stuckStanding++;
             }
         }
         known.values().removeIf(k -> k.removedTick != CrystalView.NEVER
@@ -591,6 +601,15 @@ public final class CrystalBrain {
     /** Crystals that appeared at one of our spots after its pending placement expired (Q2), since activation. */
     public int lateOwnCrystals() {
         return lateOwn;
+    }
+
+    /**
+     * Log only (task B1 review): how many crystals of ours, late own ones included (they are foreign to the
+     * budget, Q2, and past max-damage they are never broken by us), stood for more than {@link #STUCK_TICKS}
+     * pre-ticks without one attack of ours, since activation. Counted once per crystal; never a position.
+     */
+    public int stuckStandingCrystals() {
+        return stuckStanding;
     }
 
     /** The last thing decided, or why nothing was. */
@@ -1231,12 +1250,14 @@ public final class CrystalBrain {
                 break;
             }
         }
+        boolean lateMatched = false;
         if (!ours) {
             for (Iterator<Late> it = late.iterator(); it.hasNext(); ) {
                 Late l = it.next();
                 if (l.pos == c.pos()) {
                     it.remove();
                     lateOwn++;
+                    lateMatched = true;
                     windows.landed(at, at - l.firstTick);
                     override = l.finish;
                     break;
@@ -1244,6 +1265,8 @@ public final class CrystalBrain {
             }
         }
         Known k = new Known(c, ours, placedTick);
+        k.since = at;
+        k.mine = ours || lateMatched;
         k.finish = override;
         known.put(c.id(), k);
         return k;
@@ -1304,6 +1327,10 @@ public final class CrystalBrain {
         /** For one of ours, the pre-tick that first decided its placement; {@link CrystalView#NEVER} otherwise. */
         final long placedTick;
         int attempts;
+        /** The pre-tick it was first seen at, and whether it is one of ours (late ones too): for the stuck count, log only. */
+        long since;
+        boolean mine;
+        boolean stuckCounted;
         long attackedTick = CrystalView.NEVER;
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */

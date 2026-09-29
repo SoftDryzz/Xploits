@@ -41,6 +41,7 @@ class CrystalBrainReserveDecidesTest {
         assertNothing(new CrystalBrain().preTick(DEFAULTS, tick(1).health(9).candidates(spot(7, 8, 6.5)).build()));
     }
 
+    /** Documentation of an equivalent mutant: it cannot fail on a real bug, see the note inside. */
     @Test
     void antiSuicideStillRefusesAnOwnSpotThatWouldKill() {
         // Also refused by the reserve (the budget never reads less than Meteor's figure), so anti-suicide is a
@@ -69,6 +70,7 @@ class CrystalBrainReserveDecidesTest {
         assertNothing(b.preTick(DEFAULTS, tick(2).health(8).crystals(mine).build()));
     }
 
+    /** Documentation of an equivalent mutant: the reserve refuses first, so removing anti-suicide changes nothing observable. */
     @Test
     void antiSuicideStillRefusesAnOwnBreakThatWouldKill() {
         CrystalSeen mine = crystal(1, 8, 8);
@@ -81,6 +83,17 @@ class CrystalBrainReserveDecidesTest {
         assertNothing(new CrystalBrain().preTick(DEFAULTS, tick(1).health(20).crystals(crystal(1, 8, 6.5)).build()));
         // Control: within max-damage the same foreign crystal is broken.
         assertBreaks(1, new CrystalBrain().preTick(DEFAULTS, tick(1).health(20).crystals(crystal(1, 8, 5)).build()));
+    }
+
+    @Test
+    void fastBreakOfAForeignCrystalPastMaxDamageStaysUnbroken() {
+        CrystalBrain over = new CrystalBrain();
+        assertNothing(over.preTick(DEFAULTS, tick(1).health(20).build()));
+        assertTrue(over.crystalAdded(DEFAULTS, crystal(1, 8, 6.5), 20, HANDS).isEmpty());
+        // Control: within max-damage the same foreign crystal is fast-broken.
+        CrystalBrain within = new CrystalBrain();
+        assertNothing(within.preTick(DEFAULTS, tick(1).health(20).build()));
+        assertTrue(within.crystalAdded(DEFAULTS, crystal(1, 8, 5), 20, HANDS).isPresent());
     }
 
     @Test
