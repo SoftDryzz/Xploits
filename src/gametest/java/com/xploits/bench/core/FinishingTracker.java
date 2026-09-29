@@ -227,6 +227,14 @@ public final class FinishingTracker {
      * caller will index them): see the class comment. Deterministic; each event is taken at most once.
      */
     public Resolution resolve(List<DamageEvent> damage) {
+        return resolve(damage, OwnHits.selfIndexes(damage));
+    }
+
+    /**
+     * The same, with {@code ours}: the indexes of the events that are ours ({@link OwnHits#indexes}), so a
+     * finishing crystal the opponent's autobreak set off is still a blow of ours and is left out by event.
+     */
+    public Resolution resolve(List<DamageEvent> damage, Set<Integer> ours) {
         boolean[] taken = new boolean[damage.size()];
         List<Blow> blows = new ArrayList<>();
         Set<Integer> excluded = new HashSet<>();
@@ -238,7 +246,7 @@ public final class FinishingTracker {
             long bestGap = Long.MAX_VALUE;
             for (int i = 0; i < damage.size(); i++) {
                 DamageEvent e = damage.get(i);
-                if (taken[i] || e.by() != AttackerKind.SELF || !(e.before() > e.after())) continue;
+                if (taken[i] || !ours.contains(i) || !(e.before() > e.after())) continue;
                 long gap = Math.abs(e.tick() - c.tick);
                 if (gap > TICK_TOLERANCE || e.tick() - c.tick > LATE_TOLERANCE || Math.abs(e.before() - c.before) > HEALTH_TOLERANCE) continue;
                 if (gap < bestGap) {
@@ -252,7 +260,7 @@ public final class FinishingTracker {
             long at = damage.get(best).tick();
             boolean together = false;
             for (int i = 0; i < damage.size(); i++) {
-                if (i != best && damage.get(i).by() == AttackerKind.SELF && damage.get(i).tick() == at) together = true;
+                if (i != best && ours.contains(i) && damage.get(i).tick() == at) together = true;
             }
             if (together) ambiguous++;
             else excluded.add(best);

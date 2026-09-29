@@ -154,6 +154,9 @@ public class FightRecorder extends XploitsModule {
      */
     private boolean tickFailed;
     private long tick;
+    /** Bench only: the direct source of the latest hits on us, in the order their events are made. */
+    private final java.util.ArrayDeque<com.xploits.pvp.recorder.core.HitSource> hitSources = new java.util.ArrayDeque<>();
+    private static final int HIT_SOURCES_KEPT = 4096;
 
     /** The player entity of the previous tick: the client builds a new one when you respawn. */
     private ClientPlayerEntity previousPlayer;
@@ -386,6 +389,8 @@ public class FightRecorder extends XploitsModule {
      */
     private CombatEvent.SelfDamaged selfDamaged(EntityDamageS2CPacket damage, ClientPlayerEntity me, Allies allies) {
         int direct = damage.sourceDirectId();
+        hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct));
+        if (hitSources.size() > HIT_SOURCES_KEPT) hitSources.poll();
         boolean crystal = direct >= 0
             && (crystalIds.contains(direct) || mc.world.getEntityById(direct) instanceof EndCrystalEntity);
         // getIdAsString() gives "minecraft:player_explosion"; getKey().toString() would give the key's
@@ -396,6 +401,14 @@ public class FightRecorder extends XploitsModule {
         String name = cause >= 0 ? playerNames.get(cause) : null;
         if (name == null) return new CombatEvent.SelfDamaged(kind, AttackerKind.NONE, null, false);
         return new CombatEvent.SelfDamaged(kind, AttackerKind.PLAYER, name, allies.ours(name));
+    }
+
+    /**
+     * The direct source of the latest hits on you, oldest first (read-only, for the bench, on the client thread):
+     * one entry per damage packet about you, in the order the ledger is fed.
+     */
+    public List<com.xploits.pvp.recorder.core.HitSource> hitSources() {
+        return List.copyOf(hitSources);
     }
 
     /** Your placements, breaks and crystals near you as they are; attacks on one of ours are dropped. */

@@ -36,8 +36,17 @@ public final class MinHealthAfterOwnHit {
      * own hits only, since a finishing blow may take us below it on purpose. Excluded by event, never by tick.
      */
     public static OptionalDouble of(List<DamageEvent> damage, Set<Integer> excludedIndexes) {
+        return of(damage, excludedIndexes, OwnHits.selfIndexes(damage));
+    }
+
+    /**
+     * Task C2 (I2): over the events that are ours, given as indexes ({@link OwnHits#indexes}: the recorder's own
+     * attribution plus the hits from a crystal we placed that the opponent's autobreak set off), still without the
+     * finishing hits ({@code excludedIndexes}).
+     */
+    public static OptionalDouble of(List<DamageEvent> damage, Set<Integer> excludedIndexes, Set<Integer> ours) {
         return java.util.stream.IntStream.range(0, damage.size())
-            .filter(i -> damage.get(i).by() == AttackerKind.SELF && !excludedIndexes.contains(i))
+            .filter(i -> ours.contains(i) && !excludedIndexes.contains(i))
             .mapToDouble(i -> damage.get(i).after()).min();
     }
 }

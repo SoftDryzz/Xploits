@@ -161,9 +161,10 @@ final class MeasureRun {
     double ordinarySelfDamage(List<FightRecord> from) {
         List<com.xploits.pvp.recorder.core.FightRecord.DamageEvent> damage = FinishingWatch.events(from);
         Set<Integer> finishing = watch.resolve(from).excluded();
+        Set<Integer> ours = watch.ownIndexes(damage);
         double sum = 0;
         for (int i = 0; i < damage.size(); i++) {
-            if (damage.get(i).by() == AttackerKind.SELF && !finishing.contains(i)) {
+            if (ours.contains(i) && !finishing.contains(i)) {
                 sum += damage.get(i).before() - damage.get(i).after();
             }
         }
