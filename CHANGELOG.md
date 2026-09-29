@@ -6,10 +6,6 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
-### Changed
-
-- The addon's listed author is now `SoftDryzz`.
-
 ## [0.7.1] — 2026-09-29
 
 ### Added
@@ -28,6 +24,7 @@ All notable changes to Xploits. The format is based on
 
 ### Changed
 
+- The addon's listed author is now `SoftDryzz`.
 - With the self-budget on, Meteor's `max-damage` no longer limits your own crystals up close: your reserve
   does. Other players' crystals keep `max-damage`, and so does everything when the budget is off.
 - The self-budget now measures how exposed you would really be at each spot you can move to, instead of
