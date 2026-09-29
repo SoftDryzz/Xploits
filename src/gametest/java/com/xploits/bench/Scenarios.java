@@ -87,6 +87,7 @@ public final class Scenarios {
             new AutoPvpEngages(), new AutoPvpEngagesCapp(), new CappBudgetOffParity(), new ProfileDefensive(),
             new AutoPvpAntiResources(),
             new Panel(),
+            new ExposureCoverProbe(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),
@@ -128,6 +129,14 @@ public final class Scenarios {
                 all.add(CrystalAuraMeasure.plusPlus(prefix + fight.name(), "ca-" + fight.name(), fight.script(), level)
                     .healing().movingSelf(fight.selfMotion()));
             }
+        }
+        // Task B2 fix round 1: real cover for the self-budget (Cover): ca-cover, capp-cover (Safe), then each other
+        // level, not healing (the sparring stands still, so the run settles), before the real fights.
+        all.add(CrystalAuraMeasure.meteor("ca-cover", Cover::new));
+        all.add(CrystalAuraMeasure.plusPlus("capp-cover", "ca-cover", Cover::new));
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            all.add(CrystalAuraMeasure.plusPlus(prefix + "cover", "ca-cover", Cover::new, level));
         }
         // Task A3: the real crystal-PvP fights, last, in the brief's own order (exchange, hole-standoff, city,
         // near-death, near-death-totem); city is its own scenario class ({@link CityMeasure}, since auto-pvp

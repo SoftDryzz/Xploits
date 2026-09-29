@@ -18,35 +18,39 @@ import net.minecraft.world.RaycastContext;
  * raycasts and, when the budget cannot pay for the whole grid, measures nothing and returns 1.0, the exposure
  * that can only overstate the damage: a capped tick is more cautious, never less.
  */
-final class ExposureAt {
+public final class ExposureAt {
     private ExposureAt() {
     }
 
     /** The raycasts still affordable; {@link #at} lowers it by what it casts. */
-    static final class Budget {
+    public static final class Budget {
         private int left;
 
-        Budget(int left) {
+        public Budget(int left) {
             this.left = left;
         }
 
-        void reset(int left) {
+        public void reset(int left) {
             this.left = left;
         }
 
-        int left() {
+        public int left() {
             return left;
         }
     }
 
     /**
      * The exposure of {@code entity} moved by {@code (dx, dy, dz)} to an explosion at {@code explosion}, or 1.0
-     * when the box gives no sample points or the budget cannot pay for them all.
+     * when the box gives no sample points, the moved box overlaps a block, or the budget cannot pay for them all.
      */
-    static double at(Entity entity, Vec3d explosion, double dx, double dy, double dz, Budget budget) {
+    public static double at(Entity entity, Vec3d explosion, double dx, double dy, double dz, Budget budget) {
         Box box = entity.getBoundingBox();
-        double[] samples = ExposureGrid.samples(box.minX + dx, box.minY + dy, box.minZ + dz,
-            box.maxX + dx, box.maxY + dy, box.maxZ + dz);
+        // A reach point whose box overlaps a block is not a place we can stand (the surface we would really
+        // stand on is closer to the explosion and exposed): every ray from inside a collider hits at once and
+        // would read a false low. Read it at 1.0, and spend no raycast on it.
+        Box moved = box.offset(dx, dy, dz);
+        if (entity.getEntityWorld().getBlockCollisions(entity, moved).iterator().hasNext()) return 1.0;
+        double[] samples = ExposureGrid.samples(moved.minX, moved.minY, moved.minZ, moved.maxX, moved.maxY, moved.maxZ);
         int total = samples.length / 3;
         if (total == 0 || budget.left < total) return 1.0;
         budget.left -= total;

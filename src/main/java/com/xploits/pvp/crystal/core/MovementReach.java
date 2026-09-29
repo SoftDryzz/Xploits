@@ -92,6 +92,26 @@ public final class MovementReach {
         return List.copyOf(points);
     }
 
+    /**
+     * {@code reach} plus, for every offset, the halfway points towards it: half the way horizontally, half the
+     * way vertically, and both (task B2 fix round 1). At exposure 1.0 the reach points' own raw damage bounded
+     * everything between them; at real exposure it does not, since cover at two points can leave open ground
+     * between them (a pillar, an edge), at nearly the same distance. The halfway points are that ground: to a
+     * jump's height the half is about {@code JUMP_HEIGHT / 2} and to a ring point's radius half the radius. They
+     * are ordinary ranked points (their own exposure-1.0 raw is their ceiling), so the search still prunes them.
+     * Never throws; a non-finite offset stays non-finite, as everywhere in this class.
+     */
+    public static List<Offset> withMidpoints(List<Offset> reach) {
+        List<Offset> all = new ArrayList<>(reach.size() * 4);
+        for (Offset o : reach) {
+            all.add(o);
+            all.add(new Offset(o.dx() / 2, o.dy(), o.dz() / 2));
+            all.add(new Offset(o.dx(), o.dy() / 2, o.dz()));
+            all.add(new Offset(o.dx() / 2, o.dy() / 2, o.dz() / 2));
+        }
+        return List.copyOf(all);
+    }
+
     /** Vanilla's gravity per tick, and the vertical drag applied after it. */
     private static final double GRAVITY = 0.08;
     private static final double VERTICAL_DRAG = 0.98;

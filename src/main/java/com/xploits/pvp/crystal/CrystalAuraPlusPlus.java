@@ -938,8 +938,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // Task B3: the ring is at least as wide as how far we really moved over the landing time, and the jump
         // point is only there while we are on the ground (in the air the reach follows the flight we are on).
         double measured = movement.maxDisplacement(landing).orElse(0);
-        List<MovementReach.Offset> reach = MovementReach.offsets(velocityThisTick.x, velocityThisTick.z, landing, measured,
-            MovementReach.heights(p.isOnGround(), p.getVelocity().y, landing));
+        List<MovementReach.Offset> reach = MovementReach.withMidpoints(MovementReach.offsets(velocityThisTick.x, velocityThisTick.z, landing, measured,
+            MovementReach.heights(p.isOnGround(), p.getVelocity().y, landing)));
         List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
             explosion.z - feet.z, reach);
         float worst = MovementReach.worstRawDamage(ranked,

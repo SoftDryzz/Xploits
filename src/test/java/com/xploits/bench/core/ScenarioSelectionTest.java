@@ -31,7 +31,7 @@ class ScenarioSelectionTest {
 
     private static final List<String> CHECKS = List.of("recorder-pop-end", "recorder-lost", "recorder-opponent",
         "autopvp-engages", "autopvp-engages-capp", "capp-budget-off-parity", "profile-defensive",
-        "autopvp-anti-resources", "panel");
+        "autopvp-anti-resources", "panel", "exposure-cover-probe");
     private static final List<String> FIGHTS = List.of("above", "below", "approach", "strafe");
     /** R3-14: the fight situations where OUR player moves too, after {@link #FIGHTS}. */
     private static final List<String> SELF_FIGHTS = List.of("self-circle", "self-strafe");
@@ -70,6 +70,12 @@ class ScenarioSelectionTest {
             String prefix = "capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-";
             for (String f : SELF_FIGHTS) all.add(new Mirrored(prefix + f + "-regen", true, level, "ca-" + f + "-regen"));
         }
+        // Task B2 fix round 1: the cover pair, after the self fights and before the real fights.
+        all.add(new Mirrored("ca-cover", true, null, null));
+        all.add(new Mirrored("capp-cover", true, SAFE, "ca-cover"));
+        for (RiskLevel level : List.of(BALANCED, AGGRESSIVE)) {
+            all.add(new Mirrored("capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-cover", true, level, "ca-cover"));
+        }
         // Task A3: the real fights, last, ca-<f> then capp-<f> (Safe) then capp-<level>-<f> for each other
         // level, for every fight of the group, exactly as every block above; city between the two groups.
         addRealFights(all, REAL_FIGHTS_BEFORE_CITY);
@@ -97,9 +103,9 @@ class ScenarioSelectionTest {
     }
 
     @Test
-    void theBenchHas72Scenarios() {
-        assertEquals(72, scenarios().size());
-        assertEquals(72, names(scenarios()).stream().distinct().count());
+    void theBenchHas77Scenarios() {
+        assertEquals(77, scenarios().size());
+        assertEquals(77, names(scenarios()).stream().distinct().count());
     }
 
     @Test
@@ -111,19 +117,19 @@ class ScenarioSelectionTest {
             "defense-attacker", "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen",
             "capp-balanced-above-regen", "capp-balanced-below-regen", "capp-balanced-approach-regen",
             "capp-balanced-strafe-regen", "ca-self-circle-regen", "ca-self-strafe-regen",
-            "capp-balanced-self-circle-regen", "capp-balanced-self-strafe-regen",
+            "capp-balanced-self-circle-regen", "capp-balanced-self-strafe-regen", "ca-cover", "capp-balanced-cover",
             // Task A3: the real fights' Meteor and Balanced pairs (Safe and Aggressive are experimental).
             "ca-exchange", "ca-hole-standoff", "capp-balanced-exchange", "capp-balanced-hole-standoff",
             "ca-city", "capp-balanced-city", "ca-near-death", "ca-near-death-totem",
             "capp-balanced-near-death", "capp-balanced-near-death-totem"));
         assertEquals(expected, names(played));
-        assertEquals(41, played.size());
+        assertEquals(44, played.size());
     }
 
     @Test
     void theEverydayRunSkipsSafeAndAggressiveOnly() {
         List<Mirrored> skipped = scenarios().stream().filter(s -> !Profile.EVERYDAY.plays(s.measure(), s.risk())).toList();
-        assertEquals(31, skipped.size());
+        assertEquals(33, skipped.size());
         for (Mirrored s : skipped) {
             boolean experimental = s.risk() == SAFE || s.risk() == AGGRESSIVE;
             assertEquals(true, s.measure() && experimental, s.name());
@@ -137,16 +143,16 @@ class ScenarioSelectionTest {
 
     @Test
     void theFullRunPlaysEveryScenario() {
-        assertEquals(72, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
+        assertEquals(77, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
     }
 
     @Test
-    void theCacheServesExactlySixteenMeteorMeasures() {
+    void theCacheServesExactlySeventeenMeteorMeasures() {
         List<String> cacheable = names(scenarios().stream()
             .filter(s -> MeteorCache.cacheable(s.measure(), s.name(), s.risk() != null, s.compareWith() != null)).toList());
         assertEquals(List.of("ca-still", "ca-circler", "ca-defender", "ca-still-regen", "ca-circler-regen",
             "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen", "ca-self-circle-regen",
-            "ca-self-strafe-regen",
+            "ca-self-strafe-regen", "ca-cover",
             // Task A3: the real fights' own Meteor measures are cacheable the same way (measure, ca-*, no risk,
             // no compare).
             "ca-exchange", "ca-hole-standoff", "ca-city", "ca-near-death", "ca-near-death-totem"), cacheable);
@@ -155,9 +161,9 @@ class ScenarioSelectionTest {
     /**
      * SHA-256 of {@code Scenarios.java}, line endings normalized, when this mirror was last checked against the
      * real {@code Scenarios.all()} (task A3: the real fights added, last, city between the two
-     * {@code addRealFights} groups; every earlier scenario's name, kind, level and twin unchanged).
+     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; every earlier scenario's name, kind, level and twin unchanged).
      */
-    private static final String SCENARIOS_FINGERPRINT = "03d1a36aef4836ab8d028f23abdabe1edcef799bfc769f7e09200ad15ccd1504";
+    private static final String SCENARIOS_FINGERPRINT = "f3f5f32f35fef1ebdc452d2018a9ca798aebde24aef4ead570c25d5076e05ae9";
 
     /**
      * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},

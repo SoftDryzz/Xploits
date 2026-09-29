@@ -156,4 +156,46 @@ class MovementReachExposureTest {
         List<Ranked> ranked = MovementReach.rankedByWorstRaw(100, 0, 0, 0.1, 0, 5);
         assertEquals(0f, MovementReach.worstRawDamage(ranked, o -> 1.0, NONE), 0f);
     }
+
+    // Fix round 1: the points between the reach points
+
+    @Test
+    void midpointsAddTheHalfwayPointsTowardsEveryOffset() {
+        List<Offset> reach = List.of(new Offset(4, 1.25, -2));
+        List<Offset> all = MovementReach.withMidpoints(reach);
+        assertTrue(all.contains(new Offset(4, 1.25, -2)));
+        assertTrue(all.contains(new Offset(2, 1.25, -1)), "half way horizontally");
+        assertTrue(all.contains(new Offset(4, 0.625, -2)), "half way up");
+        assertTrue(all.contains(new Offset(2, 0.625, -1)), "both");
+        assertEquals(4, all.size());
+    }
+
+    @Test
+    void coverAtTheVerticesWithOpenGroundBetweenThemIsCaughtByTheMidpoint() {
+        // The explosion is 5 blocks out. Every reach vertex (standing, the ring point out at 4) is covered
+        // (exposure 0), but half way to the ring point, the ground is open (exposure 1).
+        List<Offset> vertices = MovementReach.offsets(0.5, 0, 8);
+        MovementReach.ExposureFunction openOnlyBetween = o ->
+            Math.abs(o.dx() - 2.0) < 1e-9 && o.dy() == 0 ? 1.0 : 0.0;
+        List<Ranked> plain = MovementReach.rankedByWorstRaw(5, 0, 0, vertices);
+        List<Ranked> withMid = MovementReach.rankedByWorstRaw(5, 0, 0, MovementReach.withMidpoints(vertices));
+        float withoutMidpoints = MovementReach.worstRawDamage(plain, openOnlyBetween, NONE);
+        float withMidpoints = MovementReach.worstRawDamage(withMid, openOnlyBetween, NONE);
+        assertTrue(withMidpoints > withoutMidpoints, "the open ground between the covered vertices is found");
+        assertEquals(ExplosionMath.rawDamage(3.0, 1.0), withMidpoints, 0f);
+    }
+
+    @Test
+    void midpointsNeverLowerTheResultAndStillPrune() {
+        List<Offset> vertices = MovementReach.offsets(0.2, 0.1, 6);
+        List<Ranked> plain = MovementReach.rankedByWorstRaw(5, 1, 0, vertices);
+        List<Ranked> withMid = MovementReach.rankedByWorstRaw(5, 1, 0, MovementReach.withMidpoints(vertices));
+        assertTrue(MovementReach.worstRawDamage(withMid, o -> 1.0, NONE) >= MovementReach.worstRawDamage(plain, o -> 1.0, NONE));
+        List<Offset> asked = new ArrayList<>();
+        MovementReach.worstRawDamage(withMid, o -> {
+            asked.add(o);
+            return 1.0;
+        }, NONE);
+        assertEquals(1, asked.size(), "at full exposure the worst ceiling ends the search at once");
+    }
 }
