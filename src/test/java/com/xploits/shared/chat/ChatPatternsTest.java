@@ -124,7 +124,7 @@ class ChatPatternsTest {
 
     @Test
     void tpaWithNamedHeadPrefixAndAntiSpamSuffix() {
-        assertEquals(new ChatEvent.Tpa("Dryzzical"), parse("[Dryzzical head] Dryzzical wants to teleport to you. (2)"));
+        assertEquals(new ChatEvent.Tpa("Alex"), parse("[Alex head] Alex wants to teleport to you. (2)"));
     }
 
     @Test
@@ -135,7 +135,7 @@ class ChatPatternsTest {
 
     @Test
     void headPrefixDoesNotEnablePublicChatSpoof() {
-        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Karloss16 » StormAegis44 wants to teleport to you."));
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Mallory » StormAegis44 wants to teleport to you."));
         assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head] Mallory » SnifferBuddy whispers: Your order has been placed successfully. Please wait for a courier to deliver it."));
     }
 

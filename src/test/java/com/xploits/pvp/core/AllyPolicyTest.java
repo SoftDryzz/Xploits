@@ -32,7 +32,7 @@ class AllyPolicyTest {
 
     @Test
     void autoTpysUsersListIsNotAttacked() {
-        Allegiance allegiance = AllyPolicy.of("Dryzzical", false, NO_COURIERS, Set.of("Dryzzical"));
+        Allegiance allegiance = AllyPolicy.of("Alex", false, NO_COURIERS, Set.of("Alex"));
         assertEquals(Allegiance.TPY_USER, allegiance);
         assertTrue(allegiance.isOurs());
         assertEquals(PvpText.ALLY_TPY_USER, allegiance.reason());
@@ -40,7 +40,7 @@ class AllyPolicyTest {
 
     @Test
     void aMeteorFriendIsNotAttacked() {
-        Allegiance allegiance = AllyPolicy.of("Dryzzical", true, NO_COURIERS, NO_USERS);
+        Allegiance allegiance = AllyPolicy.of("Alex", true, NO_COURIERS, NO_USERS);
         assertEquals(Allegiance.FRIEND, allegiance);
         assertTrue(allegiance.isOurs());
         assertEquals(PvpText.ALLY_FRIEND, allegiance.reason());
@@ -64,7 +64,7 @@ class AllyPolicyTest {
         assertEquals(Allegiance.STRANGER,
             AllyPolicy.of("stormaegis44", false, Set.of("StormAegis44"), NO_USERS));
         assertEquals(Allegiance.STRANGER,
-            AllyPolicy.of("DRYZZICAL", false, NO_COURIERS, Set.of("Dryzzical")));
+            AllyPolicy.of("ALEX", false, NO_COURIERS, Set.of("Alex")));
     }
 
     @Test
@@ -72,7 +72,7 @@ class AllyPolicyTest {
         assertEquals(Allegiance.COURIER,
             AllyPolicy.of("StormAegis44", false, AllyPolicy.names(List.of("  StormAegis44 ")), NO_USERS));
         assertEquals(Allegiance.TPY_USER,
-            AllyPolicy.of("Dryzzical", false, NO_COURIERS, AllyPolicy.names(List.of("Dryzzical\t"))));
+            AllyPolicy.of("Alex", false, NO_COURIERS, AllyPolicy.names(List.of("Alex\t"))));
     }
 
     @Test
@@ -91,15 +91,15 @@ class AllyPolicyTest {
     @Test
     void nullListsAreTreatedAsEmpty() {
         assertEquals(Allegiance.STRANGER, AllyPolicy.of("StormAegis44", false, null, null));
-        assertEquals(Allegiance.FRIEND, AllyPolicy.of("Dryzzical", true, null, null));
+        assertEquals(Allegiance.FRIEND, AllyPolicy.of("Alex", true, null, null));
     }
 
     // --- names(): trimming is done once per list and per tick, not once per player looked at ---
 
     @Test
     void namesTrimsSpacesAndDropsBlankEntries() {
-        assertEquals(Set.of("StormAegis44", "Dryzzical"),
-            AllyPolicy.names(List.of("  StormAegis44 ", "Dryzzical\t", "", "   ")));
+        assertEquals(Set.of("StormAegis44", "Alex"),
+            AllyPolicy.names(List.of("  StormAegis44 ", "Alex\t", "", "   ")));
     }
 
     @Test
