@@ -2,6 +2,7 @@ package com.xploits.pvp.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -67,6 +68,77 @@ class DefensivePolicyTest {
 
         assertEquals(CombatPosture.THREATENED, new CombatDirector().tick(aimed, 6).posture());
         assertEquals(CombatPosture.CALM, new CombatDirector().tick(aimed, 6, 4).posture());
+    }
+
+    // --- The posture's memory (the owner's real fight, 2026-09-29) ---
+    //
+    // The damage already aimed at you is Meteor's possibleHealthReductions(): the strongest crystal that exists
+    // this tick, whoever placed it. With two crystal auras placing and breaking every few ticks it comes and goes
+    // with each crystal, and a posture that followed it flickered several times a second and turned the defensive
+    // modules off between two crystals.
+
+    private static final CombatSnapshot AIMED = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, Map.of())
+        .withDefense(20, 10, false, true);
+    private static final CombatSnapshot CLEAR = Snapshots.of(true, 3.0, 0, 0, false, false, false, 2, Map.of())
+        .withDefense(20, 0, false, true);
+
+    @Test
+    void aThreatIsTakenAtOnce() {
+        assertEquals(CombatPosture.THREATENED, new CombatDirector().tick(AIMED, 6).posture());
+    }
+
+    @Test
+    void theCalmIsTakenOnlyAfterItHeldForTheWholeWait() {
+        CombatDirector director = new CombatDirector();
+        director.tick(AIMED, 6);
+        for (int i = 1; i < CombatDirector.CALM_HOLD_TICKS; i++) {
+            assertEquals(CombatPosture.THREATENED, director.tick(CLEAR, 6).posture(), "calm tick " + i);
+        }
+        assertEquals(CombatPosture.CALM, director.tick(CLEAR, 6).posture());
+    }
+
+    @Test
+    void aThreatInsideTheWaitStartsItAgain() {
+        CombatDirector director = new CombatDirector();
+        director.tick(AIMED, 6);
+        for (int i = 1; i < CombatDirector.CALM_HOLD_TICKS; i++) director.tick(CLEAR, 6);
+        director.tick(AIMED, 6);
+        for (int i = 1; i < CombatDirector.CALM_HOLD_TICKS; i++) {
+            assertEquals(CombatPosture.THREATENED, director.tick(CLEAR, 6).posture(), "calm tick " + i + " after the second threat");
+        }
+        assertEquals(CombatPosture.CALM, director.tick(CLEAR, 6).posture());
+    }
+
+    @Test
+    void crystalsComingAndGoingDoNotMakeThePostureFlicker() {
+        CombatDirector director = new CombatDirector();
+        List<CombatPosture> seen = new ArrayList<>();
+        for (int i = 0; i < 40; i++) seen.add(director.tick(i % 3 == 0 ? AIMED : CLEAR, 6).posture());
+        assertEquals(List.of(CombatPosture.THREATENED), seen.stream().distinct().toList());
+    }
+
+    @Test
+    void theDefensiveModulesStayOnThroughTheWait() {
+        CombatDirector director = new CombatDirector();
+        assertTrue(director.tick(AIMED, 6).enable().contains(ManagedModules.ANTI_BED), "precondition");
+        for (int i = 1; i < CombatDirector.CALM_HOLD_TICKS; i++) {
+            assertTrue(director.tick(CLEAR, 6).enable().contains(ManagedModules.ANTI_BED), "calm tick " + i);
+        }
+        assertFalse(director.tick(CLEAR, 6).enable().contains(ManagedModules.ANTI_BED), "released once the calm held");
+    }
+
+    @Test
+    void resetForgetsTheThreat() {
+        CombatDirector director = new CombatDirector();
+        director.tick(AIMED, 6);
+        director.reset();
+        assertEquals(CombatPosture.CALM, director.tick(CLEAR, 6).posture());
+    }
+
+    @Test
+    void theCalmWaitIsThreeSeconds() {
+        assertEquals(60, CombatDirector.CALM_HOLD_TICKS,
+            "six crystal cycles at the invulnerability pace a crystal aura keeps: a real lull, not the gap between two");
     }
 
     @Test

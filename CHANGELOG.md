@@ -15,6 +15,13 @@ All notable changes to Xploits. The format is based on
 
 ### Fixed
 
+- `auto-pvp` no longer turns its defensive modules on and off several times a second in a crystal fight.
+  It judged the danger from the crystals standing at that instant, which come and go with every crystal
+  either side places and breaks, so it went from threatened to calm and back again between two crystals.
+  Now it goes on guard at once and stands down only after 3 seconds with nothing aimed at you. In the
+  bench scene that reproduced it, the defensive modules went from 10 switches in the first second to 2.
+  This is the first part of the critical `auto-pvp` fix announced with 0.7.1; the survival response
+  (a broken hole, a popped totem, webs, several attackers) comes next.
 - In a development run (`./gradlew runClient`, the in-game bench) the `console` window opens: it could not
   find its own classes there. The released jar was never affected.
 

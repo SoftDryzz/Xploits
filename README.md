@@ -180,7 +180,9 @@ the ones it turned on: if you touch one by hand, it stops touching it.
 
 It decides on **two axes at once**: what phase the enemy is in (approaching, on the surface,
 surrounded, buried, fleeing) and what is aiming at you. The latter with the damage already on top
-of you —placed crystals, people with swords—, not with a totem counter.
+of you —placed crystals, people with swords—, not with a totem counter. Once something is aimed at you it
+stays on guard until nothing has been for 3 seconds, so its defensive modules do not go off between two
+crystals.
 
 **It does not attack your people**: your Meteor friends, `kit-requester`'s couriers and your
 `auto-tpy` list. And since the five combat modules pick their own target, while it is on it **adds

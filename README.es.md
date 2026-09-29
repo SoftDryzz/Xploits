@@ -181,7 +181,9 @@ si tocas uno a mano, deja de tocarlo.
 
 Decide por **dos ejes a la vez**: en qué fase está el enemigo (acercándose, en superficie, rodeado,
 enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que ya tienes encima
-—cristales colocados, gente con espada—, no con un contador de tótems.
+—cristales colocados, gente con espada—, no con un contador de tótems. En cuanto algo te apunta se pone
+en guardia y no la baja hasta que lleva 3 segundos sin apuntarte nada, así que sus módulos defensivos no
+se apagan entre dos cristales.
 
 **No ataca a los tuyos**: tus amigos de Meteor, los couriers de `kit-requester` y tu lista de
 `auto-tpy`. Y como los cinco módulos de combate eligen su propio objetivo, mientras está encendido
