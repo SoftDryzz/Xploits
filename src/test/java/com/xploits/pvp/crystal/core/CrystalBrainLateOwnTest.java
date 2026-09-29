@@ -159,4 +159,106 @@ class CrystalBrainLateOwnTest {
         for (long t = 2; t <= 7; t++) second.preTick(off, tick(t).build());
         assertNothing(second.preTick(off, tick(8).health(9).candidates(spot(10, 8, 3)).build()));
     }
+
+    // A late crystal of a KILL-overridden placement is only a late own crystal: the floor, never the override
+
+    private static final CrystalTick.Hands TOTEM = Crystals.withTotem(HANDS, true);
+    private static final TargetView KILL = Crystals.playerWithHands(Crystals.ENEMY, 3, 4, false, true);
+    private static final CrystalSettings LOW_MIN = CrystalBrainFinishingBlowTest.LOW_MIN_DAMAGE;
+
+    /** A KILL-grade placement (self 100, past everything) at 6.5 health that expires; returns the brain at its late tick. */
+    private static long killPlacementExpired(CrystalBrain b, CrystalSettings settings) {
+        long t = CrystalBrainFinishingBlowTest.trustedEnemy(b, 1);
+        assertEquals(Decision.place(3000L, Reason.FINISHING_BLOW), only(b.preTick(settings, tick(t).health(6.5).hands(TOTEM)
+            .targets(KILL).candidates(spot(3000L, java.util.Map.of(Crystals.ENEMY, 6.0), 100)).build())).decision());
+        b.placed(3000L, 0);
+        for (long u = t + 1; u < t + 5; u++) assertNothing(b.preTick(settings, tick(u).health(6.5).hands(TOTEM).targets(KILL).build()));
+        // Expires at t + 5 (late from there); the crystal lands at that pre-tick's end.
+        assertNothing(b.preTick(settings, tick(t + 5).health(6.5).hands(TOTEM).targets(KILL).build()));
+        return t + 6;
+    }
+
+    private static com.xploits.pvp.crystal.core.Action only(java.util.List<Action> actions) {
+        return CrystalBrainParityTest.only(actions);
+    }
+
+    @Test
+    void aLateCrystalOfAKillPlacementIsJudgedByTheFloorAndNeverByTheOverride() {
+        CrystalSettings noFast = LOW_MIN.toBuilder().fastBreak(false).build();
+        // Health 6.5: self 5 leaves 1.5 (< 2): nothing, from either path, and never a finishing blow.
+        CrystalBrain over = new CrystalBrain();
+        long t = killPlacementExpired(over, LOW_MIN);
+        assertTrue(over.crystalAdded(LOW_MIN, crystal(960, 3000L, 6.0, 5), 6.5, TOTEM, 2).isEmpty());
+        assertEquals(1, over.lateOwnCrystals());
+        assertNothing(over.preTick(LOW_MIN, tick(t).health(6.5).hands(TOTEM).targets(KILL)
+            .crystals(crystal(960, 3000L, 6.0, 5)).build()));
+
+        CrystalBrain overPre = new CrystalBrain();
+        long tp = killPlacementExpired(overPre, noFast);
+        assertNothing(overPre.preTick(noFast, tick(tp).health(6.5).hands(TOTEM).targets(KILL)
+            .crystals(crystal(960, 3000L, 6.0, 5)).build()));
+
+        // Self 4.5 leaves exactly 2: broken by the ordinary budget, WITHIN_BUDGET.
+        CrystalBrain within = new CrystalBrain();
+        killPlacementExpired(within, LOW_MIN);
+        assertEquals(Decision.breakCrystal(960, Reason.WITHIN_BUDGET),
+            within.crystalAdded(LOW_MIN, crystal(960, 3000L, 6.0, 4.5), 6.5, TOTEM, 2).orElseThrow().decision());
+
+        CrystalBrain withinPre = new CrystalBrain();
+        long tw = killPlacementExpired(withinPre, noFast);
+        assertEquals(Decision.breakCrystal(960, Reason.WITHIN_BUDGET), only(withinPre.preTick(noFast, tick(tw).health(6.5)
+            .hands(TOTEM).targets(KILL).crystals(crystal(960, 3000L, 6.0, 4.5)).build())).decision());
+    }
+
+    // The budget off: the finishing blow never acts, Meteor's rules only
+
+    @Test
+    void withTheBudgetOffTheFinishingBlowNeverActsAndMeteorsRefusalsStand() {
+        CrystalSettings off = Crystals.METEOR.toBuilder().minDamage(1).build();
+        assertTrue(off.finishingBlow() && !off.selfBudget());
+        java.util.Map<String, Double> six = java.util.Map.of(Crystals.ENEMY, 6.0);
+        // Trust was learned while the budget was on (sticky), then the player turned it off: the blow is finishing-grade
+        // (6 >= 1.25 * 4) with a totem in hand and a spare, health just above pause-health (5).
+        for (boolean fast : new boolean[] {true, false}) {
+            CrystalSettings s = off.toBuilder().fastBreak(fast).build();
+            CrystalBrain b = new CrystalBrain();
+            long t = CrystalBrainFinishingBlowTest.trustedEnemy(b, 1);
+            assertEquals(Decision.place(3000L, Reason.BUDGET_OFF), only(b.preTick(s, tick(t).health(5.25).hands(TOTEM)
+                .targets(KILL).candidates(spot(3000L, six, 1)).build())).decision());
+            b.placed(3000L, 0);
+            assertNothing(b.preTick(s, tick(t + 1).health(5.25).hands(TOTEM).targets(KILL).build()));
+            var added = b.crystalAdded(s, crystal(960, 3000L, 6.0, 1), 5.25, TOTEM, 2);
+            if (fast) {
+                assertEquals(Decision.breakCrystal(960, Reason.BUDGET_OFF), added.orElseThrow().decision());
+            } else {
+                assertTrue(added.isEmpty());
+                assertEquals(Decision.breakCrystal(960, Reason.BUDGET_OFF), only(b.preTick(s, tick(t + 2).health(5.25)
+                    .hands(TOTEM).targets(KILL).crystals(crystal(960, 3000L, 6.0, 1)).build())).decision());
+            }
+        }
+        // At pause-health (5) Meteor pauses, and with the budget off no finishing blow gives way to it.
+        CrystalBrain paused = new CrystalBrain();
+        long tq = CrystalBrainFinishingBlowTest.trustedEnemy(paused, 1);
+        assertNothing(paused.preTick(off, tick(tq).health(5).hands(TOTEM).targets(KILL)
+            .candidates(spot(3000L, six, 1)).crystals(crystal(962, 3002L, 6.0, 1)).build()));
+        // What Meteor refuses stays refused: past max-damage (6.5 > 6), and anti-suicide (5.25 >= 5.25) at self 5.25... 
+        // 5.25 is below max-damage 6, so only anti-suicide refuses it.
+        for (double self : new double[] {6.5, 5.25}) {
+            CrystalBrain b = new CrystalBrain();
+            long t = CrystalBrainFinishingBlowTest.trustedEnemy(b, 1);
+            assertNothing(b.preTick(off, tick(t).health(5.25).hands(TOTEM).targets(KILL)
+                .candidates(spot(3000L, six, self)).build()));
+            CrystalBrain c = new CrystalBrain();
+            long u = CrystalBrainFinishingBlowTest.trustedEnemy(c, 1);
+            // One of OURS (placed in time at a spot Meteor accepted), measured on arrival at a self damage it refuses.
+            assertPlaces(3001L, c.preTick(off, tick(u).health(20).hands(TOTEM).targets(KILL)
+                .candidates(spot(3001L, six, 1)).build()));
+            c.placed(3001L, 0);
+            assertNothing(c.preTick(off, tick(u + 1).health(5.25).hands(TOTEM).targets(KILL).build()));
+            u += 2;
+            assertTrue(c.crystalAdded(off, crystal(961, 3001L, 6.0, self), 5.25, TOTEM, 2).isEmpty());
+            assertNothing(c.preTick(off, tick(u).health(5.25).hands(TOTEM).targets(KILL)
+                .crystals(crystal(961, 3001L, 6.0, self)).build()));
+        }
+    }
 }
