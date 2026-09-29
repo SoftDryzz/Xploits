@@ -607,6 +607,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return brain.finishingCrystalsAttacked();
     }
 
+    /** The crystals of ours still remembered, each with whether we attacked it (read-only, for the bench). */
+    public Map<Integer, Boolean> ownCrystals() {
+        return brain.ownCrystals();
+    }
+
     /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */
     public int trustedTargets() {
         return brain.trustedTargetCount();
