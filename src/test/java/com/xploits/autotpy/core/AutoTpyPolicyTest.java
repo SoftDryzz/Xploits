@@ -22,13 +22,13 @@ class AutoTpyPolicyTest {
     @Test
     void acceptsFriendWhenIncludeFriends() {
         assertEquals(AutoTpyPolicy.Decision.ACCEPT,
-            new AutoTpyPolicy().decide("Dryzzical", Set.of(), true, true, Set.of(), 0));
+            new AutoTpyPolicy().decide("Alex", Set.of(), true, true, Set.of(), 0));
     }
 
     @Test
     void ignoresFriendWhenIncludeFriendsOff() {
         assertEquals(AutoTpyPolicy.Decision.NOT_ALLOWED,
-            new AutoTpyPolicy().decide("Dryzzical", Set.of(), true, false, Set.of(), 0));
+            new AutoTpyPolicy().decide("Alex", Set.of(), true, false, Set.of(), 0));
     }
 
     @Test

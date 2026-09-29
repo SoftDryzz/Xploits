@@ -42,9 +42,9 @@ class FriendLedgerTest {
     @Test
     void releasingRemovesOursAndOnlyOurs() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), Set.of("Dryzzical"));
+        ledger.reconcile(Set.of("StormAegis44"), Set.of("Alex"));
 
-        FriendLedger.Result released = ledger.release(Set.of("Dryzzical", "StormAegis44"));
+        FriendLedger.Result released = ledger.release(Set.of("Alex", "StormAegis44"));
 
         assertEquals(List.of("StormAegis44"), released.toRemove());
         assertTrue(ledger.added().isEmpty());
@@ -72,13 +72,13 @@ class FriendLedgerTest {
     @Test
     void aNameLeavingTheSourceListIsRemovedFromFriends() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44", "Dryzzical"), NO_FRIENDS);
+        ledger.reconcile(Set.of("StormAegis44", "Alex"), NO_FRIENDS);
 
         FriendLedger.Result result =
-            ledger.reconcile(Set.of("Dryzzical"), Set.of("StormAegis44", "Dryzzical"));
+            ledger.reconcile(Set.of("Alex"), Set.of("StormAegis44", "Alex"));
 
         assertEquals(List.of("StormAegis44"), result.toRemove());
-        assertEquals(Set.of("Dryzzical"), ledger.added());
+        assertEquals(Set.of("Alex"), ledger.added());
     }
 
     /**
@@ -151,7 +151,7 @@ class FriendLedgerTest {
     void releasingWithoutHavingAddedAnythingRemovesNothing() {
         FriendLedger ledger = new FriendLedger();
 
-        assertTrue(ledger.release(Set.of("StormAegis44", "Dryzzical")).isEmpty());
+        assertTrue(ledger.release(Set.of("StormAegis44", "Alex")).isEmpty());
     }
 
     @Test
@@ -167,9 +167,9 @@ class FriendLedgerTest {
     @Test
     void syncableMergesBothListsAndTrimsSpaces() {
         Set<String> result = FriendLedger.syncable(
-            Set.of(" StormAegis44 "), DISTRUST_UNKNOWN, Set.of("Dryzzical\t"));
+            Set.of(" StormAegis44 "), DISTRUST_UNKNOWN, Set.of("Alex\t"));
 
-        assertEquals(Set.of("StormAegis44", "Dryzzical"), result);
+        assertEquals(Set.of("StormAegis44", "Alex"), result);
     }
 
     /**
@@ -180,9 +180,9 @@ class FriendLedgerTest {
     @Test
     void syncableSyncsNoCourierWithTrustUnknownCouriers() {
         Set<String> result = FriendLedger.syncable(
-            Set.of("StormAegis44", "Mallory"), TRUST_UNKNOWN, Set.of("Dryzzical"));
+            Set.of("StormAegis44", "Mallory"), TRUST_UNKNOWN, Set.of("Alex"));
 
-        assertEquals(Set.of("Dryzzical"), result, "the users list is only written by hand: that one is synced");
+        assertEquals(Set.of("Alex"), result, "the users list is only written by hand: that one is synced");
     }
 
     @Test
@@ -197,26 +197,26 @@ class FriendLedgerTest {
     @Test
     void syncableTreatsNullListsAsEmpty() {
         assertTrue(FriendLedger.syncable(null, DISTRUST_UNKNOWN, null).isEmpty());
-        assertEquals(Set.of("Dryzzical"), FriendLedger.syncable(null, DISTRUST_UNKNOWN, Set.of("Dryzzical")));
+        assertEquals(Set.of("Alex"), FriendLedger.syncable(null, DISTRUST_UNKNOWN, Set.of("Alex")));
     }
 
     @Test
     void aNameInBothListsIsSyncedOnlyOnce() {
         FriendLedger ledger = new FriendLedger();
-        Set<String> wanted = FriendLedger.syncable(Set.of("Dryzzical"), DISTRUST_UNKNOWN, Set.of("Dryzzical"));
+        Set<String> wanted = FriendLedger.syncable(Set.of("Alex"), DISTRUST_UNKNOWN, Set.of("Alex"));
 
-        assertEquals(List.of("Dryzzical"), ledger.reconcile(wanted, NO_FRIENDS).toAdd());
+        assertEquals(List.of("Alex"), ledger.reconcile(wanted, NO_FRIENDS).toAdd());
     }
 
     @Test
     void turningSyncOffReleasesWhatWasAddedWithoutTouchingAnythingElse() {
         FriendLedger ledger = new FriendLedger();
-        ledger.reconcile(Set.of("StormAegis44"), Set.of("Dryzzical"));
+        ledger.reconcile(Set.of("StormAegis44"), Set.of("Alex"));
 
         // The adapter passes the empty set as soon as sync-friends is turned off.
-        FriendLedger.Result result = ledger.reconcile(Set.of(), Set.of("Dryzzical", "StormAegis44"));
+        FriendLedger.Result result = ledger.reconcile(Set.of(), Set.of("Alex", "StormAegis44"));
 
         assertEquals(List.of("StormAegis44"), result.toRemove());
-        assertFalse(result.toRemove().contains("Dryzzical"));
+        assertFalse(result.toRemove().contains("Alex"));
     }
 }
