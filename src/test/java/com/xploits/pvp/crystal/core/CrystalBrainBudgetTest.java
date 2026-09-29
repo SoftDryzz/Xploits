@@ -114,22 +114,24 @@ class CrystalBrainBudgetTest {
         assertDecision(Decision.breakCrystal(2, Reason.WITHIN_BUDGET), List.of(standing.crystalAdded(mine, 8, HANDS).orElseThrow()));
     }
 
+    /**
+     * Task F1 (owner's decision 2026-09-29, task-f1-report.md): this test used to be named
+     * "aCrystalTheBudgetWillNotBreakStillBlocksPlacement" and asserted the opposite (assertNothing) —
+     * the exact deadlock the near-death bench run diagnosed (F1 phase 1): Meteor's one-at-a-time gate
+     * (lines 921-924) closes for any own crystal it would break, even one the budget will refuse forever
+     * and no override ever takes; with nothing else ever removing that crystal, the whole aura stalled
+     * for the rest of the fight. Waiting for "our turn to break it first" is not real one-at-a-time
+     * discipline once we already know, with certainty, that turn will never come.
+     *
+     * <p>Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so the budget refuses to break it (BELOW_FLOOR),
+     * and with no totem in hand the finishing-blow override does not take it either — so the gate no
+     * longer waits on it. Meteor would break it (4 < 5.5): only our own budget's refusal is why it stays
+     * standing, and that refusal itself is untouched (still verified below). Here it is measured beyond
+     * the hazard radius so S does not hold it either, and the budget alone already lets the harmless spot
+     * through (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): the gate was the only thing saying no.
+     */
     @Test
     void aCrystalTheBudgetWillNeverBreakNoLongerBlocksPlacement() {
-        // Task F1 (owner's decision 2026-09-29, task-f1-report.md): this test used to be named
-        // "aCrystalTheBudgetWillNotBreakStillBlocksPlacement" and asserted the opposite (assertNothing) —
-        // the exact deadlock the near-death bench run diagnosed (F1 phase 1): Meteor's one-at-a-time gate
-        // (lines 921-924) closes for any own crystal it would break, even one the budget will refuse forever
-        // and no override ever takes; with nothing else ever removing that crystal, the whole aura stalled
-        // for the rest of the fight. Waiting for "our turn to break it first" is not real one-at-a-time
-        // discipline once we already know, with certainty, that turn will never come.
-        //
-        // Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so the budget refuses to break it (BELOW_FLOOR),
-        // and with no totem in hand the finishing-blow override does not take it either — so the gate no
-        // longer waits on it. Meteor would break it (4 < 5.5): only our own budget's refusal is why it stays
-        // standing, and that refusal itself is untouched (still verified below). Here it is measured beyond
-        // the hazard radius so S does not hold it either, and the budget alone already lets the harmless spot
-        // through (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): the gate was the only thing saying no.
         CrystalSeen mine = crystal(1, 8, 4);
         CrystalBrain b = new CrystalBrain();
         long t = own(b, 1, mine);
@@ -152,6 +154,21 @@ class CrystalBrainBudgetTest {
         CrystalSettings s = DEFAULTS.toBuilder().pauseOnUse(PauseMode.BREAK).build();
 
         assertNothing(new CrystalBrain().preTick(s, tick(1).usingItem().crystals(crystal(1, 8, 1)).candidates(spot(9, 8, 1)).build()));
+    }
+
+    /**
+     * Budget on, an own crystal the budget ALLOWS to break keeps the one-at-a-time gate closed, as before:
+     * breaking is paused this tick, so nothing acts on it, but we would break it (health 20, self 1:
+     * 20 - 0 - 1 = 19 >= 2), so waiting for our turn is real one-at-a-time discipline, not a dead end.
+     */
+    @Test
+    void anOwnCrystalTheBudgetWouldBreakKeepsTheGateClosed() {
+        CrystalSettings s = DEFAULTS.toBuilder().pauseOnUse(PauseMode.BREAK).build();
+        CrystalSeen mine = crystal(1, 8, 1);
+        CrystalBrain b = new CrystalBrain();
+        long t = own(b, 1, mine);
+
+        assertNothing(b.preTick(s, tick(t).usingItem().crystals(mine).candidates(spot(9, 8, 0)).build()));
     }
 
     @Test

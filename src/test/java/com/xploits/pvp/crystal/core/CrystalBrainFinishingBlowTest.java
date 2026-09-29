@@ -575,4 +575,62 @@ class CrystalBrainFinishingBlowTest {
             tick(t2 + 1).health(6).targets(player(ENEMY, 3, 4)).crystals(stuck)
                 .candidates(spot(9004L, 6.0, 0)).build()));
     }
+
+    /**
+     * Condition b fails (another override crystal is already in flight, {@code overrideAvailable}): the
+     * override cannot take the second stuck crystal, so the gate must not wait on it. Two of the run's crystals
+     * are placed at full health and later measured beyond the hazard radius (so neither counts in C and
+     * condition c holds for both: 6 - 0 >= FLOOR, isolating condition b); the override breaks one; the next
+     * tick, with breaking paused so nothing can act on the other, a harmless spot is placed (the gate opened)
+     * where {@link #f1TheGateStaysShutWhileTheOverrideWouldStillTakeIt}, with the override available, left it shut.
+     */
+    @Test
+    void f1TheGateOpensWhenAnotherOverrideCrystalIsInFlightAndTheOverrideCannotTakeThisOne() {
+        CrystalSettings pausedBreak = LOW_MIN_DAMAGE.toBuilder().pauseOnUse(CrystalSettings.PauseMode.BREAK).build();
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        // Both placed at health 20 (20 - 5.54 - 5.54 still keeps the reserve), then both appear at health 6.
+        for (long pos : new long[] {9020L, 9021L}) {
+            assertDecision(Decision.place(pos, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
+                tick(t++).health(20).targets(player(ENEMY, 3, 20))
+                    .candidates(Crystals.withBudget(spot(pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF)).build()));
+            b.placed(pos, 0);
+        }
+        assertTrue(b.crystalAdded(stuckCrystal(9520, 9020L), 6, HANDS).isEmpty());
+        assertTrue(b.crystalAdded(stuckCrystal(9521, 9021L), 6, HANDS).isEmpty());
+        long t3 = t;
+        CrystalSeen a = Crystals.at(stuckCrystal(9520, 9020L), 12.5);
+        CrystalSeen c = Crystals.at(stuckCrystal(9521, 9021L), 12.5);
+
+        Action first = only(b.preTick(LOW_MIN_DAMAGE, tick(t3).health(6).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).crystals(a, c).build()));
+        assertEquals(Decision.Kind.BREAK, first.decision().kind());
+        assertEquals(Reason.FINISHING_BLOW, first.decision().reason());
+        b.attackSent();
+
+        assertDecision(Decision.place(9022L, Reason.WITHIN_BUDGET), b.preTick(pausedBreak,
+            tick(t3 + 1).health(6).usingItem().hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .crystals(a, c).candidates(spot(9022L, 6.0, 0)).build()));
+    }
+
+    /**
+     * Condition c fails (the floor does not hold without this crystal's own share): a standing foreign crystal
+     * of self 5 alone leaves 6 - 5 = 1 < FLOOR 2, so the override cannot take the stuck one, and the gate opens.
+     */
+    @Test
+    void f1TheGateOpensWhenTheFloorDoesNotHoldWithoutTheStuckCrystalAndTheOverrideCannotTakeIt() {
+        CrystalSettings pausedBreak = LOW_MIN_DAMAGE.toBuilder().pauseOnUse(CrystalSettings.PauseMode.BREAK).build();
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        long t2 = placeTheStuckCrystal(b, t, 9030L, 9530);
+        CrystalSeen stuck = stuckCrystal(9530, 9030L);
+        CrystalSeen other = Crystals.withBudget(crystal(9531, 9031L, 0.0, 5), 5);
+
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t2).health(6).hands(withTotem(HANDS, true))
+            .targets(player(ENEMY, 3, 4)).crystals(stuck, other).build()));
+
+        assertDecision(Decision.place(9032L, Reason.SAFE_SELF_DAMAGE), b.preTick(pausedBreak,
+            tick(t2 + 1).health(6).usingItem().hands(withTotem(HANDS, true)).targets(player(ENEMY, 3, 4))
+                .crystals(stuck, other).candidates(spot(9032L, 6.0, 0)).build()));
+    }
 }

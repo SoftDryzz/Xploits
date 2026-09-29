@@ -396,6 +396,23 @@ class CrystalBrainParityTest {
         assertPlaces(9, once(s, tick(1).usingItem().crystals(outOfBreakRange(crystal(1, 8, 1))).candidates(spot(9, 8, 1))));
     }
 
+    @Test
+    void anOwnCrystalMeteorWouldBreakStillClosesTheGateWithTheBudgetOff() {
+        // Task F1 (owner's decision 2026-09-29): only with the budget on may an own crystal the budget refuses
+        // stop closing the gate. With it off there is no budget to consult, so this is Meteor's rule exactly:
+        // the crystal is ours and would be broken (4 < 5.5), breaking is paused so it stays, and it stops the
+        // placement of an otherwise harmless spot. (With the budget on, self 4 at health 5.5 is refused,
+        // 5.5 - 4 < 2, and the gate would open: see CrystalBrainBudgetTest.)
+        CrystalSettings s = METEOR.toBuilder().pauseOnUse(PauseMode.BREAK).build();
+        CrystalSeen mine = crystal(1, 8, 4);
+        CrystalBrain b = new CrystalBrain();
+        assertPlaces(mine.pos(), b.preTick(METEOR, tick(1).candidates(spot(mine.pos(), 8, 4)).build()));
+        b.placed(mine.pos(), 0);
+        assertTrue(b.crystalAdded(Crystals.dealing(mine, 0), 20, HANDS).isEmpty());
+
+        assertNothing(b.preTick(s, tick(2).health(5.5).usingItem().crystals(mine).candidates(spot(10, 8, 0)).build()));
+    }
+
     // P1: Rotate
 
     @Test
