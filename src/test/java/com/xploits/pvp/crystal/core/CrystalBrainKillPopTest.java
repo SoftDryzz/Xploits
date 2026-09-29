@@ -154,19 +154,26 @@ class CrystalBrainKillPopTest {
 
     @Test
     void popGradeStillNeedsATotemInHandASpareAndTrust() {
+        // Positive control in the same fixture (Aggressive, pause-health raised): totem, a spare and trust place it
+        // down to the floor (6.5 - 4.5 = 2), so each refusal below is due to its own missing condition alone.
+        CrystalBrain control = new CrystalBrain();
+        long t0 = trustedEnemy(control, 1);
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), control.preTick(POPPING, tick(t0).health(6.5)
+            .hands(TOTEM).targets(POP).candidates(spot(3000L, Map.of(ENEMY, 6.0), 4.5)).build()));
+
         CrystalBrain noTotem = new CrystalBrain();
         long t = trustedEnemy(noTotem, 1);
-        assertNothing(noTotem.preTick(LOW_MIN_DAMAGE, tick(t).health(6.5).targets(POP)
+        assertNothing(noTotem.preTick(POPPING, tick(t).health(6.5).targets(POP)
             .candidates(spot(3000L, Map.of(ENEMY, 6.0), 4.5)).build()));
 
         CrystalBrain lastTotem = new CrystalBrain();
         long t2 = trustedEnemy(lastTotem, 1);
-        assertNothing(lastTotem.preTick(LOW_MIN_DAMAGE, tick(t2).health(6.5).hands(TOTEM).totems(1).targets(POP)
+        assertNothing(lastTotem.preTick(POPPING, tick(t2).health(6.5).hands(TOTEM).totems(1).targets(POP)
             .candidates(spot(3000L, Map.of(ENEMY, 6.0), 4.5)).build()));
 
         // Never confirmed: his reported health is not trusted, so nothing is finishing-grade.
         CrystalBrain untrusted = new CrystalBrain();
-        assertNothing(untrusted.preTick(LOW_MIN_DAMAGE, tick(1).health(6.5).hands(TOTEM).targets(POP)
+        assertNothing(untrusted.preTick(POPPING, tick(1).health(6.5).hands(TOTEM).targets(POP)
             .candidates(spot(3000L, Map.of(ENEMY, 6.0), 4.5)).build()));
     }
 
