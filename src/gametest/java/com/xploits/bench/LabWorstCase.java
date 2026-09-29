@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The lab's worst cases (the owner, 2026-09-30: "simulate the worst situations: they mine me, insta-place
@@ -65,30 +66,49 @@ final class LabWorstCase implements Scenario {
      */
     enum Driver { AUTO_PVP, BY_HAND, METEOR_BY_HAND }
 
-    record Variant(String name, int attackers, Driver driver, boolean surroundCenters, boolean walkOut, String summary,
-                   boolean ownersSettings) {
-        Variant(String name, int attackers, Driver driver, boolean surroundCenters, boolean walkOut, String summary) {
-            this(name, attackers, driver, surroundCenters, walkOut, summary, false);
+    /** What a variant changes from the plain setup. */
+    enum Tweak {
+        /** The owner's own crystal-aura settings: min-damage 0.9, max-damage 36, place and break range 6,
+         * pause-health 1, anti-suicide off. */
+        OWNER_SETTINGS,
+        /** Surround's {@code center} set to Never. */
+        NO_CENTER,
+        /** Surround's {@code toggle-on-y-change} off. */
+        NO_Y_TOGGLE,
+        /** Surround's {@code double-height} on: obsidian at head height too, where the face-placed crystals go. */
+        DOUBLE_HEIGHT,
+        /** Once the hole breaks, the player holds forward through the gap. */
+        WALK_OUT
+    }
+
+    record Variant(String name, int attackers, Driver driver, Set<Tweak> tweaks, String summary) {
+        boolean has(Tweak tweak) {
+            return tweaks.contains(tweak);
         }
     }
 
     static final List<Variant> VARIANTS = List.of(
-        new Variant("worst-2", 2, Driver.AUTO_PVP, true, false,
+        new Variant("worst-2", 2, Driver.AUTO_PVP, Set.of(),
             "2 attackers; your setup (your surround, then auto-pvp driving crystal-aura++); you stay put"),
-        new Variant("worst-2-walk", 2, Driver.AUTO_PVP, true, true,
+        new Variant("worst-2-walk", 2, Driver.AUTO_PVP, Set.of(Tweak.WALK_OUT),
             "2 attackers; your setup; once the hole breaks you hold forward through the gap"),
-        new Variant("worst-2-walk-nocenter", 2, Driver.AUTO_PVP, false, true,
+        new Variant("worst-2-walk-nocenter", 2, Driver.AUTO_PVP, Set.of(Tweak.WALK_OUT, Tweak.NO_CENTER),
             "the same, with surround's center set to Never"),
-        new Variant("worst-2-byhand", 2, Driver.BY_HAND, true, false,
+        new Variant("worst-2-byhand", 2, Driver.BY_HAND, Set.of(),
             "2 attackers; your surround and crystal-aura++ on by hand, no auto-pvp; you stay put"),
-        new Variant("worst-3", 3, Driver.AUTO_PVP, true, false,
+        new Variant("worst-3", 3, Driver.AUTO_PVP, Set.of(),
             "3 attackers; your setup; you stay put"),
-        new Variant("worst-2-yours", 2, Driver.AUTO_PVP, true, false,
+        new Variant("worst-2-yours", 2, Driver.AUTO_PVP, Set.of(Tweak.OWNER_SETTINGS),
             "2 attackers; your setup with your own crystal-aura++ settings (min-damage 0.9, max-damage 36, place and"
-                + " break range 6, pause-health 1, anti-suicide off); you stay put", true),
-        new Variant("worst-2-meteor", 2, Driver.METEOR_BY_HAND, true, false,
+                + " break range 6, pause-health 1, anti-suicide off); you stay put"),
+        new Variant("worst-2-meteor", 2, Driver.METEOR_BY_HAND, Set.of(Tweak.OWNER_SETTINGS),
             "2 attackers; your surround and Meteor's crystal-aura on by hand with your settings (no reserve); you stay"
-                + " put", true));
+                + " put"),
+        new Variant("worst-2-yours-noytoggle", 2, Driver.AUTO_PVP, Set.of(Tweak.OWNER_SETTINGS, Tweak.NO_Y_TOGGLE),
+            "worst-2-yours with surround's toggle-on-y-change off"),
+        new Variant("worst-2-yours-double", 2, Driver.AUTO_PVP,
+            Set.of(Tweak.OWNER_SETTINGS, Tweak.NO_Y_TOGGLE, Tweak.DOUBLE_HEIGHT),
+            "worst-2-yours-noytoggle with surround's double-height on (obsidian at head height too)"));
 
     private final Variant variant;
     private AutoPvpScene scene;
@@ -130,7 +150,7 @@ final class LabWorstCase implements Scenario {
     @Override
     public void arrange(Bench bench) {
         scene = AutoPvpScene.arrange(bench, "balanced", CrystalModule.XPLOITS);
-        if (variant.ownersSettings()) {
+        if (variant.has(Tweak.OWNER_SETTINGS)) {
             // The owner's own crystal-aura settings, as he plays with them, on whichever aura this variant runs.
             Module aura = bench.fromClient(client -> variant.driver() == Driver.METEOR_BY_HAND
                 ? Modules.get().get(CrystalAura.class) : Modules.get().get(CrystalAuraPlusPlus.class));
@@ -142,7 +162,9 @@ final class LabWorstCase implements Scenario {
             bench.setting(aura, "Pause", "pause-health", 1.0);
         }
         Surround surround = bench.meteor(Surround.class);
-        if (!variant.surroundCenters()) bench.setting(surround, "General", "center", Surround.Center.Never);
+        if (variant.has(Tweak.NO_CENTER)) bench.setting(surround, "General", "center", Surround.Center.Never);
+        if (variant.has(Tweak.NO_Y_TOGGLE)) bench.setting(surround, "Toggles", "toggle-on-y-change", false);
+        if (variant.has(Tweak.DOUBLE_HEIGHT)) bench.setting(surround, "General", "double-height", true);
         bench.meteor(FightRecorder.class);
         bench.arena().fightLoadout();
         bench.arena().give(2, Items.ENCHANTED_GOLDEN_APPLE, 64);
@@ -164,13 +186,14 @@ final class LabWorstCase implements Scenario {
     }
 
     /** One tick of what we see of ourselves, client side. */
-    private record Self(boolean dead, double health, boolean inHole, boolean inWeb, boolean surroundOn, double x, double z) {
+    private record Self(boolean dead, double health, boolean inHole, boolean inWeb, boolean surroundOn, double x, double z,
+                        boolean yChanged, boolean onGround) {
     }
 
     /** One second of the trace. */
     private record Row(int second, double health, int ourPops, int theirPops, int theyAlive, String hole, boolean web,
                        String surround, double moved, int pulledBack, String autoPvp, boolean plusPlusOn, int placed,
-                       String aura, int holding) {
+                       String aura, int holding, int surroundOffs, int yChangedTicks, int onGroundTicks) {
     }
 
     @Override
@@ -207,6 +230,11 @@ final class LabWorstCase implements Scenario {
         boolean secondWeb = false;
         int secondBrokenTicks = 0;
         int secondHolding = 0;
+        int secondSurroundOffs = 0;
+        int secondYChanged = 0;
+        int secondOnGround = 0;
+        int surroundOffsTotal = 0;
+        boolean surroundWasOn = start.surroundOn();
         Map<String, Integer> secondReasons = new HashMap<>();
         int placedBefore = placedAtStart;
         int tick = 0;
@@ -231,6 +259,13 @@ final class LabWorstCase implements Scenario {
                 webTicks++;
                 secondWeb = true;
             }
+            if (surroundWasOn && !now.surroundOn()) {
+                secondSurroundOffs++;
+                surroundOffsTotal++;
+            }
+            surroundWasOn = now.surroundOn();
+            if (now.yChanged()) secondYChanged++;
+            if (now.onGround()) secondOnGround++;
             if (!now.inHole()) {
                 brokenTicks++;
                 secondBrokenTicks++;
@@ -247,7 +282,7 @@ final class LabWorstCase implements Scenario {
             if (bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).holding())) secondHolding++;
             if (breachTick < 0 && wasInHole && !now.inHole()) breachTick = tick;
             wasInHole = now.inHole();
-            if (variant.walkOut() && breachTick >= 0 && walkTick < 0 && !now.dead()) {
+            if (variant.has(Tweak.WALK_OUT) && breachTick >= 0 && walkTick < 0 && !now.dead()) {
                 // Face the gap (east) and hold forward, as a person trying to get out would.
                 bench.command("rotate " + Bench.PLAYER + " -90 0");
                 bench.holdKey(options -> options.forwardKey, true);
@@ -284,10 +319,13 @@ final class LabWorstCase implements Scenario {
                     .limit(2).map(e -> e.getKey() + " ×" + e.getValue()).reduce((a, b) -> a + ", " + b).orElse("");
                 rows.add(new Row((tick + 19) / 20, now.health(), ourPops, theirPops, alive, hole, secondWeb,
                     now.surroundOn() ? "on" : "off", secondMoved, secondPulled, autoPvp, plusPlusOn, placed - placedBefore,
-                    aura, secondHolding));
+                    aura, secondHolding, secondSurroundOffs, secondYChanged, secondOnGround));
                 placedBefore = placed;
                 secondReasons.clear();
                 secondHolding = 0;
+                secondSurroundOffs = 0;
+                secondYChanged = 0;
+                secondOnGround = 0;
                 secondMoved = 0;
                 secondPulled = 0;
                 secondWeb = false;
@@ -307,7 +345,7 @@ final class LabWorstCase implements Scenario {
         int webs = harassment.stream().mapToInt(LabHarass::webs).sum();
         int roofs = harassment.stream().mapToInt(LabHarass::roofs).sum();
         write(rows, end, tick, deathTick, breachTick, walkTick, maxMoved, pulledBackTotal, webTicks, brokenTicks,
-            brokenWithSurroundOn, webs, roofs, fights);
+            brokenWithSurroundOn, surroundOffsTotal, webs, roofs, fights);
         LOG.info("[bench] lab {}: {} after {} s; hole broken at {}; moved at most {} blocks; pulled back {} time(s)",
             variant.name(), end, String.format(Locale.ROOT, "%.1f", tick / 20.0),
             breachTick < 0 ? "never" : String.format(Locale.ROOT, "%.1f s", breachTick / 20.0),
@@ -330,31 +368,33 @@ final class LabWorstCase implements Scenario {
         BlockPos feet = client.player.getBlockPos();
         boolean web = client.world.getBlockState(feet).isOf(Blocks.COBWEB) || client.world.getBlockState(feet.up()).isOf(Blocks.COBWEB);
         boolean dead = client.player.isDead();
+        // The same comparison Surround's toggle-on-y-change makes (Surround.java:310): last tick's Y against this one's.
         return new Self(dead, dead ? 0 : client.player.getHealth() + client.player.getAbsorptionAmount(),
             PlayerUtils.isInHole(false), web, Modules.get().get(Surround.class).isActive(),
-            client.player.getX(), client.player.getZ());
+            client.player.getX(), client.player.getZ(), client.player.lastY != client.player.getY(), client.player.isOnGround());
     }
 
     private void write(List<Row> rows, String end, int ticks, int deathTick, int breachTick, int walkTick, double maxMoved,
-                       int pulledBack, int webTicks, int brokenTicks, int brokenWithSurroundOn, int webs, int roofs,
-                       List<Path> fights) {
+                       int pulledBack, int webTicks, int brokenTicks, int brokenWithSurroundOn, int surroundOffs, int webs,
+                       int roofs, List<Path> fights) {
         StringBuilder md = new StringBuilder();
         md.append("# ").append(variant.name()).append("\n\n").append(variant.summary()).append(".\n\n");
         md.append("| s | health | your pops | their pops | they alive | your hole | web | surround | moved | pulled back"
-            + " | auto-pvp | ++ on | placed | ++ decided (ticks) | ++ held by reserve |\n"
-            + "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+            + " | auto-pvp | ++ on | placed | ++ decided (ticks) | ++ held by reserve | surround went off | y changed | on ground |\n"
+            + "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         for (Row r : rows) {
-            md.append(String.format(Locale.ROOT, "| %d | %.1f | %d | %d | %d | %s | %s | %s | %.2f | %d | %s | %s | %d | %s | %d |%n",
+            md.append(String.format(Locale.ROOT, "| %d | %.1f | %d | %d | %d | %s | %s | %s | %.2f | %d | %s | %s | %d | %s | %d | %d | %d | %d |%n",
                 r.second(), r.health(), r.ourPops(), r.theirPops(), r.theyAlive(), r.hole(), r.web() ? "yes" : "", r.surround(),
-                r.moved(), r.pulledBack(), r.autoPvp(), r.plusPlusOn() ? "yes" : "no", r.placed(), r.aura(), r.holding()));
+                r.moved(), r.pulledBack(), r.autoPvp(), r.plusPlusOn() ? "yes" : "no", r.placed(), r.aura(), r.holding(),
+                r.surroundOffs(), r.yChangedTicks(), r.onGroundTicks()));
         }
         md.append("\n**End:** ").append(end).append(String.format(Locale.ROOT, " after %.1f s.", ticks / 20.0)).append("\n\n");
         md.append(String.format(Locale.ROOT, "- Hole first broken at: %s.%n",
             breachTick < 0 ? "never" : String.format(Locale.ROOT, "%.1f s", breachTick / 20.0)));
-        md.append(String.format(Locale.ROOT, "- Ticks with the hole broken: %d, %d of them with surround still on.%n",
-            brokenTicks, brokenWithSurroundOn));
+        md.append(String.format(Locale.ROOT, "- Ticks with the hole broken: %d, %d of them with surround still on."
+            + " Surround went off %d time(s).%n", brokenTicks, brokenWithSurroundOn, surroundOffs));
         md.append(String.format(Locale.ROOT, "- Ticks in a cobweb: %d. Webs placed on you: %d; roof blocks: %d.%n", webTicks, webs, roofs));
-        if (variant.walkOut()) {
+        if (variant.has(Tweak.WALK_OUT)) {
             md.append(String.format(Locale.ROOT, "- Walking out from: %s. Got at most %.2f blocks from the start;"
                     + " pulled back %d time(s).%n",
                 walkTick < 0 ? "never (the hole never broke)" : String.format(Locale.ROOT, "%.1f s", walkTick / 20.0), maxMoved, pulledBack));
