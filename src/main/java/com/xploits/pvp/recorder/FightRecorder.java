@@ -140,6 +140,9 @@ public class FightRecorder extends XploitsModule {
      * packets as the damage it dealt, so by the time the damage is read it can no longer be looked up.
      */
     private final Set<Integer> crystalIds = Collections.newSetFromMap(recentIds());
+    /** Bench only: where each of those crystals appeared, so a hit can be traced to a cell after the crystal is gone. */
+    private final com.xploits.pvp.recorder.core.CrystalCells crystalCells =
+        new com.xploits.pvp.recorder.core.CrystalCells(REMEMBERED_IDS);
 
     private final FightTracker tracker = new FightTracker(addonVersion());
     private FightStore store;
@@ -178,6 +181,7 @@ public class FightRecorder extends XploitsModule {
         ownEvents.clear();
         playerNames.clear();
         crystalIds.clear();
+        crystalCells.clear();
         hitSources.clear();
         saveWarned = false;
         pruneWarned = false;
@@ -187,7 +191,10 @@ public class FightRecorder extends XploitsModule {
         // Crystals already there when the recorder is turned on never fire EntityAddedEvent.
         if (mc.world != null) {
             for (Entity entity : mc.world.getEntities()) {
-                if (entity instanceof EndCrystalEntity) crystalIds.add(entity.getId());
+                if (entity instanceof EndCrystalEntity) {
+                    crystalIds.add(entity.getId());
+                    crystalCells.remember(entity.getId(), entity.getBlockPos().asLong());
+                }
             }
         }
     }
@@ -271,6 +278,8 @@ public class FightRecorder extends XploitsModule {
     private void onEntityAdded(EntityAddedEvent event) {
         if (!(event.entity instanceof EndCrystalEntity crystal)) return;
         crystalIds.add(crystal.getId());
+        // The spawn packet sets the position (Entity.onSpawnPacket) before ClientWorld.addEntity, so it is set here.
+        crystalCells.remember(crystal.getId(), crystal.getBlockPos().asLong());
         if (mc.player != null && mc.player.distanceTo(crystal) <= FightTracker.CRYSTAL_NEAR_RANGE) {
             ownEvents.add(new CombatEvent.CrystalSpawnedNear());
         }
@@ -391,8 +400,10 @@ public class FightRecorder extends XploitsModule {
     private CombatEvent.SelfDamaged selfDamaged(EntityDamageS2CPacket damage, ClientPlayerEntity me, Allies allies) {
         int direct = damage.sourceDirectId();
         Entity source = direct >= 0 ? mc.world.getEntityById(direct) : null;
-        long cell = source instanceof EndCrystalEntity ? source.getBlockPos().asLong()
+        // The crystal that exploded is already out of the world here: fall back to where it appeared.
+        long live = source instanceof EndCrystalEntity ? source.getBlockPos().asLong()
             : com.xploits.pvp.recorder.core.HitSource.NO_CELL;
+        long cell = direct >= 0 ? crystalCells.resolve(direct, live) : live;
         hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct, cell));
         if (hitSources.size() > HIT_SOURCES_KEPT) hitSources.poll();
         boolean crystal = direct >= 0

@@ -48,7 +48,8 @@ final class MeasureRun {
         bench.onClient(client -> {
             Module module = Modules.get().get(underTest);
             if (module.isActive()) module.disable();
-            PlacementCounter.get();
+            // A new run, the previous module now off: the cells of earlier placements must not attribute its hits.
+            PlacementCounter.get().resetCells();
         });
     }
 

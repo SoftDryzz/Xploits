@@ -44,8 +44,6 @@ final class FinishingWatch {
     FinishingWatch(Bench bench, boolean plusPlus) {
         this.bench = bench;
         this.plusPlus = plusPlus;
-        // A new run: the cells of an earlier run's placements must not attribute this run's hits.
-        bench.onClient(client -> PlacementCounter.get().resetCells());
     }
 
     private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, int totems, int trusted, long recorderTick,
