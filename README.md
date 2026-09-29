@@ -1,3 +1,5 @@
+![Xploits](docs/images/banner.png)
+
 **English** · [Español](README.es.md)
 
 # Xploits
@@ -29,6 +31,27 @@ other anarchy servers. Ten modules, each switched on separately.
 `crystal-aura++` is **measured, not just claimed**: every release is benchmarked in-game against Meteor's
 own `crystal-aura`, and the numbers are in
 [the table below](#crystal-aura--crystal-aura-with-a-floor-under-your-health).
+
+## Screenshots
+
+![auto-pvp driving crystal-aura++ against the bench's sparring partner, the moment its totem pops](docs/images/fight.jpg)
+
+`auto-pvp` driving `crystal-aura++`, the moment the opponent's totem pops. Top left, the `xploits-pvp` HUD
+panel: profile and posture, target and distance, the modules it turned on, your resources and the live fight.
+
+| | |
+|---|---|
+| ![The Xploits category in Meteor's ClickGUI](docs/images/clickgui.jpg) | ![crystal-aura++'s own settings](docs/images/crystal-aura-pp.jpg) |
+| The **Xploits** category, next to Meteor's own in the ClickGUI. | `crystal-aura++`'s own settings: `risk`, `self-budget` and `finishing-blow`. |
+
+![The Xploits console window](docs/images/console.png)
+
+The `console` window: the logo, the game's status (health, armour, what is in your hotbar, which modules are
+on) and everything the modules say, with no coordinates. Here, `fight-recorder`'s summary of the fight that
+just ended.
+
+All four are taken by the bench in a test world, with no real player or server on screen, and are taken again
+for each version (`tools/shots.ps1`).
 
 ---
 
@@ -555,3 +578,7 @@ overwriting nothing; if the same day is in both, both are kept and the old one b
 | [Building a client of your own](docs/own-client/) | If this stops being an addon: licences, Meteor's anatomy, Baritone through its API and a roadmap |
 
 **Build:** `./gradlew build` → `build/libs/xploits-<version>.jar`.
+
+**Artwork and screenshots:** `java tools/ArtRenderer.java` draws the icon, the banner and GitHub's social preview
+from the console's logo; `pwsh -NoProfile -File tools/shots.ps1` takes the screenshots in the bench (a game
+window and the console window open while it runs).
