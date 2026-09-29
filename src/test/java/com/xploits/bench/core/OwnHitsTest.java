@@ -94,4 +94,43 @@ class OwnHitsTest {
         List<DamageEvent> damage = List.of(bySparring(10, 20, 8), bySelf(30, 20, 15));
         assertEquals(Set.of(1), OwnHits.indexes(damage, List.of(), MINE));
     }
+
+    // --- by the spot: a crystal broken in the tick it appeared has an id nobody saw ----------------------------
+
+    private static final Set<Long> PLACED = Set.of(1001L, 1002L);
+
+    @Test
+    void anUnknownIdOnAPlacedCellIsOurs() {
+        List<DamageEvent> damage = List.of(bySparring(10, 20, 4));
+        Set<Integer> ours = OwnHits.indexes(damage, List.of(new HitSource(10, 777, 1001L)), MINE, PLACED);
+        assertEquals(Set.of(0), ours);
+        assertEquals(OptionalDouble.of(4), MinHealthAfterOwnHit.of(damage, Set.of(), ours));
+    }
+
+    @Test
+    void anUnknownIdOnAnUnplacedCellIsNotOurs() {
+        List<DamageEvent> damage = List.of(bySparring(10, 20, 4));
+        assertTrue(OwnHits.indexes(damage, List.of(new HitSource(10, 777, 2000L)), MINE, PLACED).isEmpty());
+    }
+
+    @Test
+    void aPacketWithNoCellIsNeverMatchedBySpot() {
+        List<DamageEvent> damage = List.of(bySparring(10, 20, 4));
+        assertTrue(OwnHits.indexes(damage, List.of(new HitSource(10, 777)), MINE, PLACED).isEmpty());
+    }
+
+    @Test
+    void theSameAttributionWhateverModuleSentThePlacements() {
+        // Meteor's runs know no crystal id, only the cells the placement packets were sent for.
+        List<DamageEvent> damage = List.of(bySparring(10, 20, 4));
+        Set<Integer> ours = OwnHits.indexes(damage, List.of(new HitSource(10, 777, 1002L)), Set.of(), PLACED);
+        assertEquals(Set.of(0), ours);
+    }
+
+    @Test
+    void theSpotAlsoDecidesWhenTheCountsOnATickDisagree() {
+        List<DamageEvent> damage = List.of(bySparring(10, 20, 8));
+        List<HitSource> packets = List.of(new HitSource(10, 999, 2000L), new HitSource(10, 777, 1001L));
+        assertEquals(Set.of(0), OwnHits.indexes(damage, packets, Set.of(), PLACED));
+    }
 }

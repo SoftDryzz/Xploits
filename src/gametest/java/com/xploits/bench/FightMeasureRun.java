@@ -319,8 +319,8 @@ final class FightMeasureRun {
         finishingHits = resolution.count();
         // Task C2 (I2): a hit from a crystal we placed is ours even when the sparring's autobreak set it off.
         OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, resolution.excluded(), watch.ownIndexes(damage));
-        LOG.info("own crystals: {} hits on us came from a crystal of ours the recorder blamed on the opponent; {} of ours"
-            + " went gone without an attack of ours", watch.ownHitsBlamedElsewhere(records), watch.ownCrystalsGoneUnattacked());
+        LOG.info("own crystals: {} hits on us came from a crystal of ours the recorder blamed on the opponent; at most {} of ours"
+            + " went gone without an attack of ours (an upper bound that misses a crystal broken in the tick it appeared)", watch.ownHitsBlamedElsewhere(records), watch.ownCrystalsGoneUnattacked());
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 
         Metrics metrics = new Metrics()

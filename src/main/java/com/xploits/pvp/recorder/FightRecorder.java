@@ -178,6 +178,7 @@ public class FightRecorder extends XploitsModule {
         ownEvents.clear();
         playerNames.clear();
         crystalIds.clear();
+        hitSources.clear();
         saveWarned = false;
         pruneWarned = false;
         tickFailed = false;
@@ -389,7 +390,10 @@ public class FightRecorder extends XploitsModule {
      */
     private CombatEvent.SelfDamaged selfDamaged(EntityDamageS2CPacket damage, ClientPlayerEntity me, Allies allies) {
         int direct = damage.sourceDirectId();
-        hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct));
+        Entity source = direct >= 0 ? mc.world.getEntityById(direct) : null;
+        long cell = source instanceof EndCrystalEntity ? source.getBlockPos().asLong()
+            : com.xploits.pvp.recorder.core.HitSource.NO_CELL;
+        hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct, cell));
         if (hitSources.size() > HIT_SOURCES_KEPT) hitSources.poll();
         boolean crystal = direct >= 0
             && (crystalIds.contains(direct) || mc.world.getEntityById(direct) instanceof EndCrystalEntity);

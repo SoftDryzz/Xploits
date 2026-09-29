@@ -44,6 +44,8 @@ final class FinishingWatch {
     FinishingWatch(Bench bench, boolean plusPlus) {
         this.bench = bench;
         this.plusPlus = plusPlus;
+        // A new run: the cells of an earlier run's placements must not attribute this run's hits.
+        bench.onClient(client -> PlacementCounter.get().resetCells());
     }
 
     private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, int totems, int trusted, long recorderTick,
@@ -149,9 +151,10 @@ final class FinishingWatch {
      * set off ({@link OwnHits}). Without crystal-aura++ under test only the recorder's attribution is known.
      */
     Set<Integer> ownIndexes(List<DamageEvent> damage) {
-        if (!plusPlus) return OwnHits.selfIndexes(damage);
+        // Meteor's runs too: the placed cells come from the packets sent, whichever module sent them.
         List<HitSource> sources = bench.fromClient(client -> Modules.get().get(FightRecorder.class).hitSources());
-        return OwnHits.indexes(damage, sources, ownIds);
+        Set<Long> cells = bench.fromClient(client -> PlacementCounter.get().placedCells());
+        return OwnHits.indexes(damage, sources, ownIds, cells);
     }
 
     /** Health lost to hits that are ours ({@link #ownIndexes}), finishing hits included. */
@@ -169,7 +172,10 @@ final class FinishingWatch {
         return (int) ownIndexes(damage).stream().filter(i -> !self.contains(i)).count();
     }
 
-    /** How many crystals of ours went gone without an attack of ours: at most what the opponent broke (log only). */
+    /**
+     * How many crystals of ours went gone without an attack of ours (log only). An upper bound of what the
+     * opponent broke, and blind to a crystal broken in the tick it appeared (never sampled).
+     */
     int ownCrystalsGoneUnattacked() {
         return (int) ownGoneUnattacked.stream().filter(id -> !ownAttacked.contains(id)).count();
     }
