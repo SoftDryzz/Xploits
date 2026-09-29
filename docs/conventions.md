@@ -129,6 +129,27 @@ could still act, or die, until the time limit), so it never takes the settle cut
 loadout, the sparring's forever-refilling totem and today's death-is-ERROR handling are all still the
 default: a scenario that does not opt in keeps 0.7.0's behaviour and numbers exactly.
 
+**The real fights and their rules (0.7.1).** Five fight-mode situations run last, each judged as a
+`ca-<s>` / `capp-<s>` pair like the rest: `exchange` and `hole-standoff` (an opponent that attacks back),
+`city` (an opponent that mines the wall of our hole and places a crystal in the gap),
+and `near-death` and `near-death-totem` (a stationary, non-attacking opponent that starts low, without and
+with a totem; a warm-up first lets crystal-aura++ confirm his health with a hit of its own, as it would in
+a real fight, and the opponent's hands are shown to the client, which the stepped sparring does not do on
+its own). They add the finishing-blow metrics, each present only in a run where it happened:
+`finishing_blows` (offense: our marked crystals that exploded by our own attack, whether or not they hurt
+us), and the safety counters, matched to our own hit events one by one: `finishing_hits`,
+`finishing_pops`, `min_health_after_finishing_hit`, `totems_at_finishing_hit_min`,
+`finishing_pop_grade_violations` and `died_with_totem`. Two of the fight rules judge safety: **F3**, every
+ordinary own hit leaves us at or above the level's reserve, and **F4**, no run of ours ends dead while it
+carried a totem, no finishing hit happens with fewer than 2 totems carried, we are alive after every
+finishing hit, and no pop-grade blow (the target holds a totem) leaves us below 2 or pops us. The
+offense rules are **F1**, the fight's `result` is no worse than Meteor's, and **F2**, `net_pops` no more
+than 1 below it. In every scenario, ordinary hits are judged by **S1-S3** (S3 not applicable while Meteor
+never went below the reserve) and finishing hits by **S4**: never popping us, never below 2, never with
+fewer than 2 totems carried. A finishing hit is not an ordinary one: it never counts toward S1-S3 or F3.
+Before the fights, `cover` (`ca-cover`, `capp-cover` and one per level) puts a low ceiling and a pillar
+between us and the crystals, so the self-budget's exposure reading meets real cover.
+
 `./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
 cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you
 want to keep it, because the next run erases it. There are two profiles:
