@@ -75,9 +75,13 @@ final class FightMeasureRun {
     private boolean trustMissed;
     private int popsTakenBase;
     private int sparringPopsBase;
+    private int sparringOthersBase;
+    private boolean logTrustNext;
     private double sparringDamageBase;
     private int firstBlowTick = -1;
     private int finishingEventsExcluded;
+    private int finishingAmbiguous;
+    private int finishingBlows;
     /** Whether this run had a near-death moment ({@link #play(int, int, Moment)}). */
     private boolean nearDeath;
     /** Crystal placement packets sent from T0 to the close; set once, at {@link #finish}. */
@@ -180,6 +184,9 @@ final class FightMeasureRun {
                 popsTakenBase = popsTaken;
                 Sparring.Stats now = bench.sparringStats();
                 sparringPopsBase = now.pops();
+                sparringOthersBase = now.popsFromOthers();
+                watch.reset();
+                logTrustNext = true;
                 sparringDamageBase = now.damageTaken();
                 lastSparringPops = now.pops();
                 minHealth = Double.POSITIVE_INFINITY;
@@ -209,6 +216,11 @@ final class FightMeasureRun {
         boolean weDied = us[1] > 0;
         if (weDied && watch.totems() >= 1) diedWithTotem = true;
         watch.observe(us[0]);
+        if (logTrustNext && underTest == CrystalAuraPlusPlus.class) {
+            logTrustNext = false;
+            LOG.info("[bench] first tick after health was forced to near death: crystal-aura++ trusts {} target(s) "
+                + "(log only)", watch.lastTrusted());
+        }
 
         int ownPopsNow = bench.fromClient(client -> Modules.get().get(FightRecorder.class).live()
             .map(FightTracker.LiveFight::yourPops).orElse(0));
@@ -230,14 +242,18 @@ final class FightMeasureRun {
             return End.WE_OUT_OF_TOTEMS;
         }
 
-        int sparringPopsNow = bench.sparringStats().pops();
+        Sparring.Stats sparringNow = bench.sparringStats();
+        int sparringPopsNow = sparringNow.pops();
         if (sparringPopsNow > lastSparringPops) {
             lastSparringPops = sparringPopsNow;
             sparringGapple.pop(tick);
-            if (measuring && firstBlowTick < 0) firstBlowTick = bench.ticksUsed() - measureFrom;
+        }
+        // Our first kill or pop only: one the sparring's own crystals caused does not count (task B0b).
+        if (measuring && firstBlowTick < 0
+            && (sparringNow.popsFromOthers() > sparringOthersBase || sparringNow.killedByOthers())) {
+            firstBlowTick = bench.ticksUsed() - measureFrom;
         }
         if (bench.sparringDied()) {
-            if (measuring && firstBlowTick < 0) firstBlowTick = bench.ticksUsed() - measureFrom;
             sparringGapple.death();
             return End.SPARRING_DIED;
         }
@@ -256,9 +272,9 @@ final class FightMeasureRun {
     /** Task B0b, log only: what the finishing-blow bookkeeping saw. */
     void logFinishing(String scenario, int run) {
         LOG.info("[bench] {} run {}: {} finishing blow(s), {} recorder event(s) taken out of "
-            + "min_health_after_own_hit; the target was trusted on {} pre-tick(s), first {} tick(s) after T0; died "
-            + "holding a totem: {} (log only, not a metric)", scenario, run, watch.blows(),
-            finishingEventsExcluded, watch.trustedTicks(), watch.firstTrustedTick(), diedWithTotem);
+            + "min_health_after_own_hit ({} blow(s) shared their tick with another own hit and hid none); the target was trusted on {} pre-tick(s), first {} tick(s) after T0; died "
+            + "holding a totem: {} (log only, not a metric)", scenario, run, finishingBlows,
+            finishingEventsExcluded, finishingAmbiguous, watch.trustedTicks(), watch.firstTrustedTick(), diedWithTotem);
     }
 
     private Outcome finish(End end) {
@@ -287,9 +303,11 @@ final class FightMeasureRun {
         int netPops = FightResult.netPops(popsDealt, popsTakenMeasured);
         List<FightRecord.DamageEvent> damage = records.stream().flatMap(r -> r.damage().stream()).toList();
         // Task B0b: the reserve rule is for ordinary own hits; a finishing hit may take us below it on purpose.
-        java.util.Set<Long> finishingTicks = watch.hitTicks(damage);
-        finishingEventsExcluded = (int) damage.stream().filter(e -> finishingTicks.contains(e.tick())).count();
-        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, finishingTicks);
+        var resolution = watch.resolve(records);
+        finishingEventsExcluded = resolution.excluded().size();
+        finishingAmbiguous = resolution.ambiguous();
+        finishingBlows = resolution.count();
+        OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, resolution.excluded());
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 
         Metrics metrics = new Metrics()
@@ -303,7 +321,7 @@ final class FightMeasureRun {
             .put(Metrics.PLACEMENTS_PER_S, (double) placementsSent / nominalSeconds);
         if (firstPopTakenTick >= 0) metrics.put(Metrics.FIRST_POP_TAKEN_S, firstPopTakenTick / 20.0);
         if (minAfterOwnHit.isPresent()) metrics.put(Metrics.MIN_HEALTH_AFTER_OWN_HIT, minAfterOwnHit.getAsDouble());
-        watch.put(metrics);
+        watch.put(metrics, resolution);
         if (diedWithTotem) metrics.put(Metrics.DIED_WITH_TOTEM, 1);
         if (nearDeath) {
             if (firstBlowTick >= 0) metrics.put(Metrics.FIRST_BLOW_S, firstBlowTick / 20.0);

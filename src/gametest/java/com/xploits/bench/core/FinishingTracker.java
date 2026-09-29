@@ -1,241 +1,251 @@
 package com.xploits.bench.core;
 
+import com.xploits.pvp.crystal.core.FinishKind;
 import com.xploits.pvp.recorder.core.CombatEvent.AttackerKind;
 import com.xploits.pvp.recorder.core.FightRecord.DamageEvent;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 
 /**
- * Task B0b: tells the finishing blows of crystal-aura++ (the override crystals of task B0a) apart from its
- * ordinary hits, tick by tick, from what the client sees. The recorder's damage events do not say which
- * crystal caused them, so the bench watches the ids the module has marked as finishing crystals
- * ({@code CrystalAuraPlusPlus#finishingCrystalIds}): the tick one of them is gone from the world it has
- * exploded, and the health and totems we carried on the tick before are the ones the blow met.
- *
- * <p>Pure: {@link #observe} takes the tick's facts, nothing else. A crystal is followed from the first tick
- * its id is marked; it counts as exploded as soon as it is no longer present (a crystal already gone the
- * first time it is seen counts on that tick). The health after the blow is the lowest health plus
- * absorption over {@value #WINDOW} ticks from the explosion: the damage packet, the totem's pop and the
- * health update land on the client one or two ticks apart, so a single sample could still be the health
- * from before. A dead player reads 0; a totem that saved us reads its own health (above 0).
+ * Task B0b (fix round 1): tells the finishing blows of crystal-aura++ apart from its ordinary hits. The
+ * recorder's damage events do not say which crystal caused them, so the bench watches the ids the module has
+ * marked as finishing crystals ({@code CrystalAuraPlusPlus#finishingCrystalKinds}, each with its real kind)
+ * and, in two steps:
+ * <ol>
+ *   <li>tick by tick ({@link #observe}): a marked crystal gone from the world has exploded; that is a
+ *   <i>candidate</i>, with the health and totems we carried on the tick before, and, over {@value #WINDOW}
+ *   ticks, the lowest health and fewest totems (the damage packet, the totem's pop and the health update land
+ *   one or two ticks apart);</li>
+ *   <li>at the close ({@link #resolve}): a candidate is a <i>blow</i> only when the recorder has an event of
+ *   ours for it, so one the opponent broke, or that dealt us nothing, is not one. Exactly one event per
+ *   candidate: the nearest tick within {@value #TICK_TOLERANCE} whose {@code before} is the health before the
+ *   candidate, never one already taken. If another event of ours falls on that same tick (two crystals
+ *   exploding together) the two cannot be told apart: the blow counts but no event is excluded, so an
+ *   ordinary hit is never hidden from the reserve rules.</li>
+ * </ol>
+ * Pure: {@link #observe} takes the tick's facts, nothing else. A crystal's kind is the highest it was ever
+ * seen with (a crystal seen KILL stays KILL).
  */
 public final class FinishingTracker {
     /** Ticks, the explosion's own included, over which the lowest health is taken. */
     public static final int WINDOW = 3;
-    /** How many earlier health samples a blow remembers as the health it may have come from. */
-    private static final int HISTORY = 3;
+    /** How far apart, in ticks, a candidate and the recorder's event for it may be read. */
+    public static final int TICK_TOLERANCE = 3;
+    /** How far apart the health before a candidate and the event's {@code before} may be. */
+    public static final double HEALTH_TOLERANCE = 0.05;
+    /** The lowest health plus absorption a pop-grade finishing blow may leave us at. */
+    public static final double POP_FLOOR = 2.0;
 
     /**
-     * One finishing crystal that exploded. {@code healthBefore}: the health plus absorption on the tick
-     * before it (the value the recorder's damage event then shows as {@code before}); {@code earlier}: the
-     * samples before that, newest first, in case the explosion was seen a tick or two late; {@code totems}:
-     * carried on the tick before it, offhand and spares together; {@code tick}: the clock the recorder's
-     * damage events use, on the tick the explosion was seen.
+     * One finishing crystal that exploded and dealt us damage. {@code tick}: the recorder's clock on the tick
+     * the explosion was seen; {@code healthBefore}: health plus absorption on the tick before; {@code
+     * healthAfter}: the lowest over the window; {@code totems}/{@code totemsAfter}: carried on the tick
+     * before / lowest over the window; {@code kill}: the module marked it kill-grade (else pop-grade).
      */
-    public record Blow(long tick, double healthBefore, List<Double> earlier, double healthAfter, int totems,
-                       int totemsAfter, boolean targetHadTotem) {
-        /** A blow that leaves the totem count as it was, against a target that holds a totem. */
-        public Blow(long tick, double healthBefore, List<Double> earlier, double healthAfter, int totems) {
-            this(tick, healthBefore, earlier, healthAfter, totems, totems, true);
-        }
-
-        /**
-         * Kill-grade by the bench's own reading of the target (task B0c): he held no totem on the tick before it
-         * (the bench's near-death target also shows an item in his main hand, so his hands read as visible).
-         * A kill-grade blow may pop us, never the last totem; the rest are pop-grade.
-         */
-        public boolean kill() {
-            return !targetHadTotem;
-        }
-
+    public record Blow(long tick, double healthBefore, double healthAfter, int totems, int totemsAfter, boolean kill) {
         /** Whether it cost us a totem: fewer carried at the lowest point of its window than before it. */
         public boolean popped() {
             return totemsAfter < totems;
         }
 
         /**
-         * Whether it broke the rule of a pop-grade blow (task B0c, owner's decision 2026-09-29): a target that
-         * holds a totem is a pop, never a kill, and a pop may take us below the reserve but never below
-         * {@value FinishingTracker#POP_FLOOR}, and never pops us. The kind is inferred from the target's totem, not read from
-         * the module.
+         * Whether it broke the rule of a pop-grade blow (task B0c): a crystal marked POP may take us below the
+         * reserve but never below {@value FinishingTracker#POP_FLOOR}, and never pops us. Whatever the target holds.
          */
         public boolean popGradeViolation() {
-            return targetHadTotem && (healthAfter < POP_FLOOR || popped());
+            return !kill && (healthAfter < POP_FLOOR || popped());
         }
     }
 
-    /** The lowest health plus absorption a pop-grade finishing blow may leave us at. */
-    public static final double POP_FLOOR = 2.0;
+    /** The blows that have an event, and the indexes (in the list given to {@link #resolve}) to leave out. */
+    public record Resolution(List<Blow> blows, Set<Integer> excluded, int ambiguous) {
+        public int count() {
+            return blows.size();
+        }
 
-    /** How far apart, in ticks, a blow and the recorder's damage event for it may be read. */
-    public static final int TICK_TOLERANCE = 3;
-    /** How far apart the health before a blow and the event's {@code before} may be. */
-    public static final double HEALTH_TOLERANCE = 0.05;
+        /** {@code min_health_after_finishing_hit}: the lowest health after any blow; empty without one. */
+        public OptionalDouble minHealthAfter() {
+            return blows.stream().mapToDouble(Blow::healthAfter).min();
+        }
 
-    /** Every id marked so far: one is followed from the tick it is first marked. */
-    private final Set<Integer> seen = new HashSet<>();
-    /** The marked ids that were still in the world on the last tick. */
-    private final Set<Integer> following = new HashSet<>();
-    private final List<Double> history = new ArrayList<>();
-    private int lastTotems;
-    private final List<Open> open = new ArrayList<>();
-    private final List<Blow> closed = new ArrayList<>();
+        /** {@code totems_at_finishing_hit_min}: the fewest totems carried at any blow; empty without one. */
+        public OptionalInt minTotems() {
+            return blows.stream().mapToInt(Blow::totems).min();
+        }
 
-    private static final class Open {
+        public int kills() {
+            return (int) blows.stream().filter(Blow::kill).count();
+        }
+
+        public int popBlows() {
+            return count() - kills();
+        }
+
+        /** {@code finishing_pops}: how many blows cost us a totem. */
+        public int pops() {
+            return (int) blows.stream().filter(Blow::popped).count();
+        }
+
+        /** {@code finishing_pop_grade_violations}. */
+        public int popGradeViolations() {
+            return (int) blows.stream().filter(Blow::popGradeViolation).count();
+        }
+    }
+
+    private static final class Candidate {
         final long tick;
         final double before;
-        final List<Double> earlier;
         final int totems;
-        final boolean targetHadTotem;
+        final boolean kill;
         double min;
         int minTotems;
         int left = WINDOW - 1;
 
-        Open(long tick, double before, List<Double> earlier, int totems, boolean targetHadTotem, double now, int nowTotems) {
+        Candidate(long tick, double before, int totems, boolean kill, double now, int nowTotems) {
             this.tick = tick;
             this.before = before;
-            this.earlier = earlier;
             this.totems = totems;
-            this.targetHadTotem = targetHadTotem;
+            this.kill = kill;
             this.min = now;
             this.minTotems = Math.min(totems, nowTotems);
         }
 
         Blow blow() {
-            return new Blow(tick, before, List.copyOf(earlier), min, totems, minTotems, targetHadTotem);
+            return new Blow(tick, before, min, totems, minTotems, kill);
         }
     }
+
+    /** Every id marked so far, with the highest kind it was seen with. */
+    private final Map<Integer, FinishKind> kinds = new HashMap<>();
+    /** The marked ids that were still in the world on the last tick. */
+    private final Set<Integer> following = new HashSet<>();
+    private double lastHealth = Double.NaN;
+    private int lastTotems;
+    private final List<Candidate> open = new ArrayList<>();
+    private final List<Candidate> closed = new ArrayList<>();
+    private final List<long[]> sampleTicks = new ArrayList<>();
+    private final List<Double> sampleHealth = new ArrayList<>();
 
     /**
      * One tick's read.
      *
-     * @param marked  the finishing crystal ids the module knows now
+     * @param marked  the finishing crystals the module knows now, with their kind
      * @param present which of those ids are still in the world
      * @param health  our health plus absorption now (0 when dead)
      * @param totems  the totems we carry now
      * @param tick    the recorder's clock now (the one its damage events carry)
      */
-    public void observe(Set<Integer> marked, Set<Integer> present, double health, int totems, long tick) {
-        observe(marked, present, health, totems, tick, true);
-    }
-
-    /**
-     * The same, with {@code targetTotem}: whether the target held a totem on this tick (the next tick's
-     * blow is against the target as it was on the tick before, {@link Blow#popGradeViolation}). Returns whether
-     * this tick is inside a blow's window, the explosion's own tick and the last one included.
-     */
-    public boolean observe(Set<Integer> marked, Set<Integer> present, double health, int totems, long tick,
-                           boolean targetTotem) {
-        boolean inWindow = !open.isEmpty();
-        for (Open blow : open) {
-            blow.min = Math.min(blow.min, health);
-            blow.minTotems = Math.min(blow.minTotems, totems);
-            blow.left--;
+    public void observe(Map<Integer, FinishKind> marked, Set<Integer> present, double health, int totems, long tick) {
+        for (Candidate c : open) {
+            c.min = Math.min(c.min, health);
+            c.minTotems = Math.min(c.minTotems, totems);
+            c.left--;
         }
-        for (Integer id : marked) {
-            if (!seen.add(id)) continue;
+        for (Map.Entry<Integer, FinishKind> e : marked.entrySet()) {
+            int id = e.getKey();
+            boolean first = !kinds.containsKey(id);
+            FinishKind was = kinds.get(id);
+            if (was != FinishKind.KILL) kinds.put(id, e.getValue());
+            if (!first) continue;
             if (present.contains(id)) following.add(id);
-            else inWindow |= explode(health, tick, totems);
+            else explode(id, health, tick, totems);
         }
         for (Integer id : new ArrayList<>(following)) {
             if (present.contains(id)) continue;
             following.remove(id);
-            inWindow |= explode(health, tick, totems);
+            explode(id, health, tick, totems);
         }
-        closeDone();
-        history.addFirst(health);
-        while (history.size() > HISTORY + 1) history.removeLast();
-        lastTotems = totems;
-        lastTargetTotem = targetTotem;
-        return inWindow;
-    }
-
-    /** Whether the target held a totem on the last tick observed; a blow met the target as it was then. */
-    private boolean lastTargetTotem = true;
-
-    private boolean explode(double now, long tick, int totemsNow) {
-        if (history.isEmpty()) return false;
-        double before = history.getFirst();
-        List<Double> earlier = new ArrayList<>(history.subList(1, history.size()));
-        open.add(new Open(tick, before, earlier, lastTotems, lastTargetTotem, now, totemsNow));
-        return true;
-    }
-
-    private void closeDone() {
-        open.removeIf(blow -> {
-            if (blow.left > 0) return false;
-            closed.add(blow.blow());
+        open.removeIf(c -> {
+            if (c.left > 0) return false;
+            closed.add(c);
             return true;
         });
+        sampleTicks.add(new long[] {tick});
+        sampleHealth.add(health);
+        lastHealth = health;
+        lastTotems = totems;
     }
 
-    /** Every blow so far, the ones still being measured closed at their lowest health so far. */
-    public List<Blow> blows() {
-        List<Blow> all = new ArrayList<>(closed);
-        for (Open blow : open) all.add(blow.blow());
-        return List.copyOf(all);
+    private void explode(int id, double now, long tick, int totemsNow) {
+        if (Double.isNaN(lastHealth)) return;
+        open.add(new Candidate(tick, lastHealth, lastTotems, kinds.get(id) == FinishKind.KILL, now, totemsNow));
     }
 
-    /** {@code finishing_blows}: how many override crystals exploded. */
-    public int count() {
-        return blows().size();
+    /** Forgets the candidates so far (the near-death moment: warm-up blows do not count); ids stay known. */
+    public void reset() {
+        open.clear();
+        closed.clear();
+        sampleTicks.clear();
+        sampleHealth.clear();
     }
 
-    /** {@code min_health_after_finishing_hit}: the lowest health after any blow; empty without one. */
-    public OptionalDouble minHealthAfter() {
-        return blows().stream().mapToDouble(Blow::healthAfter).min();
-    }
-
-    /** {@code finishing_kill_blows}: blows against a target with no totem (kill-grade). */
-    public int kills() {
-        return (int) blows().stream().filter(Blow::kill).count();
-    }
-
-    /** {@code finishing_pop_blows}: blows against a target holding a totem (pop-grade). */
-    public int popBlows() {
-        return count() - kills();
-    }
-
-    /** {@code finishing_pops}: how many blows cost us a totem. */
-    public int pops() {
-        return (int) blows().stream().filter(Blow::popped).count();
-    }
-
-    /** {@code finishing_pop_grade_violations}: blows against a target holding a totem that broke a pop-grade blow's rule. */
-    public int popGradeViolations() {
-        return (int) blows().stream().filter(Blow::popGradeViolation).count();
-    }
-
-    /** {@code totems_at_finishing_hit_min}: the fewest totems carried at any blow; empty without one. */
-    public OptionalInt minTotems() {
-        return blows().stream().mapToInt(Blow::totems).min();
+    private List<Candidate> candidates() {
+        List<Candidate> all = new ArrayList<>(closed);
+        all.addAll(open);
+        all.sort((a, b) -> Long.compare(a.tick, b.tick));
+        return all;
     }
 
     /**
-     * The ticks of the recorder's damage events that were finishing hits: the events from one of our own
-     * crystals ({@code by == SELF}) read within {@value #TICK_TOLERANCE} ticks of a blow whose health before
-     * (or one of the samples just before it) is the event's own {@code before}.
+     * The blows among the candidates, given the recorder's damage events ({@code damage}, in the order the
+     * caller will index them): see the class comment. Deterministic; each event is taken at most once.
      */
-    public static Set<Long> hitTicks(List<DamageEvent> damage, List<Blow> blows) {
-        Set<Long> ticks = new HashSet<>();
-        for (Blow blow : blows) {
-            for (DamageEvent event : damage) {
-                if (event.by() != AttackerKind.SELF) continue;
-                if (Math.abs(event.tick() - blow.tick()) > TICK_TOLERANCE) continue;
-                if (near(event.before(), blow.healthBefore()) || blow.earlier().stream().anyMatch(h -> near(event.before(), h))) {
-                    ticks.add(event.tick());
+    public Resolution resolve(List<DamageEvent> damage) {
+        boolean[] taken = new boolean[damage.size()];
+        List<Blow> blows = new ArrayList<>();
+        Set<Integer> excluded = new HashSet<>();
+        int ambiguous = 0;
+        for (Candidate c : candidates()) {
+            int best = -1;
+            long bestGap = Long.MAX_VALUE;
+            for (int i = 0; i < damage.size(); i++) {
+                DamageEvent e = damage.get(i);
+                if (taken[i] || e.by() != AttackerKind.SELF || !(e.before() > e.after())) continue;
+                long gap = Math.abs(e.tick() - c.tick);
+                if (gap > TICK_TOLERANCE || Math.abs(e.before() - c.before) > HEALTH_TOLERANCE) continue;
+                if (gap < bestGap) {
+                    best = i;
+                    bestGap = gap;
                 }
             }
+            if (best < 0) continue;
+            taken[best] = true;
+            blows.add(c.blow());
+            long at = damage.get(best).tick();
+            boolean together = false;
+            for (int i = 0; i < damage.size(); i++) {
+                if (i != best && damage.get(i).by() == AttackerKind.SELF && damage.get(i).tick() == at) together = true;
+            }
+            if (together) ambiguous++;
+            else excluded.add(best);
         }
-        return ticks;
+        return new Resolution(List.copyOf(blows), Set.copyOf(excluded), ambiguous);
     }
 
-    private static boolean near(double a, double b) {
-        return Math.abs(a - b) <= HEALTH_TOLERANCE;
+    /**
+     * The lowest health sampled outside the windows of {@code blows}: what the reserve rules read as the lowest
+     * health, without the ticks a finishing blow is being measured on. Empty without a sample.
+     */
+    public OptionalDouble minHealthOutside(List<Blow> blows) {
+        double min = Double.POSITIVE_INFINITY;
+        boolean any = false;
+        for (int i = 0; i < sampleHealth.size(); i++) {
+            long tick = sampleTicks.get(i)[0];
+            boolean inside = false;
+            for (Blow b : blows) {
+                if (tick >= b.tick() && tick < b.tick() + WINDOW) inside = true;
+            }
+            if (inside) continue;
+            min = Math.min(min, sampleHealth.get(i));
+            any = true;
+        }
+        return any ? OptionalDouble.of(min) : OptionalDouble.empty();
     }
 }

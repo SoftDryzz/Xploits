@@ -14,6 +14,7 @@ import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.ExplosionMath;
+import com.xploits.pvp.crystal.core.FinishKind;
 import com.xploits.pvp.crystal.core.HealthTrust;
 import com.xploits.pvp.crystal.core.MovementReach;
 import com.xploits.pvp.crystal.core.Reach;
@@ -577,6 +578,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      */
     public Set<Integer> finishingCrystalIds() {
         return brain.finishingCrystalIds();
+    }
+
+    /**
+     * The finishing crystals still remembered, with their kind (task B0b, read-only, for the bench): {@link
+     * FinishKind#KILL} or {@link FinishKind#POP}.
+     */
+    public Map<Integer, FinishKind> finishingCrystalKinds() {
+        return brain.finishingCrystalKinds();
     }
 
     /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */

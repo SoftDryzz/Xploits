@@ -167,7 +167,7 @@ class ScenarioSelectionTest {
      * {@link #SCENARIOS_FINGERPRINT} alone.
      */
     private static final String CRYSTAL_AURA_MEASURE_FINGERPRINT =
-        "2a4b56ecb43ef84b4c83b38a046a339b05a0ec04009e6fa74523b449a1204c36";
+        "96f4bdbd96b67b1b2e9c544b2cf0cbdc681176082c1f7a660d9831b2300419d8";
 
     /**
      * SHA-256 of {@code FightMeasure.java}, same normalization (task A3). Its factories ({@code meteor},

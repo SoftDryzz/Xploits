@@ -62,16 +62,21 @@ class MinHealthAfterOwnHitTest {
     }
 
     @Test
-    void aFinishingHitIsLeftOutSoTheReserveRuleOnlySeesOrdinaryOnes() {
-        // Task B0b: an ordinary hit at 9 and a finishing hit that took us to 1: the reserve rule sees 9.
+    void aFinishingHitIsLeftOutByItsIndexSoTheReserveRuleOnlySeesOrdinaryOnes() {
         List<DamageEvent> damage = List.of(hitAt(10, AttackerKind.SELF, 20, 9), hitAt(50, AttackerKind.SELF, 6, 1));
-        assertEquals(OptionalDouble.of(9), MinHealthAfterOwnHit.of(damage, java.util.Set.of(50L)));
+        assertEquals(OptionalDouble.of(9), MinHealthAfterOwnHit.of(damage, java.util.Set.of(1)));
         assertEquals(OptionalDouble.of(1), MinHealthAfterOwnHit.of(damage));
+    }
+
+    @Test
+    void anotherEventOnTheSameTickIsNotLeftOut() {
+        List<DamageEvent> damage = List.of(hitAt(50, AttackerKind.SELF, 14, 9), hitAt(50, AttackerKind.SELF, 9, 3));
+        assertEquals(OptionalDouble.of(9), MinHealthAfterOwnHit.of(damage, java.util.Set.of(1)));
     }
 
     @Test
     void emptyWhenEveryOwnHitWasAFinishingOne() {
         List<DamageEvent> damage = List.of(hitAt(50, AttackerKind.SELF, 6, 0));
-        assertTrue(MinHealthAfterOwnHit.of(damage, java.util.Set.of(50L)).isEmpty());
+        assertTrue(MinHealthAfterOwnHit.of(damage, java.util.Set.of(0)).isEmpty());
     }
 }

@@ -56,6 +56,10 @@ public final class Sparring extends FakePlayer {
     /** Task B0b: hits that took health from a source someone else caused (the player breaking a crystal next to
      * it, say), never its own crystals: what tells the near-death fights' warm-up that OUR hit landed. */
     private int hitsFromOthers;
+    /** Task B0b: pops and the death caused by someone else (the player's crystal), never by its own crystals: our
+     * kills and pops, as the damage source's attacker says (a crystal explosion carries whoever broke it). */
+    private int popsFromOthers;
+    private boolean killedByOthers;
     /** The bench tick of the last {@link #step}; a hit comes during the server tick after it. */
     private int lastStepTick;
     /** Task A2 fix round 1: whether {@link Script#close()} has run yet — at most once, from whichever of
@@ -173,14 +177,18 @@ public final class Sparring extends FakePlayer {
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
         boolean hadTotem = getOffHandStack().isOf(Items.TOTEM_OF_UNDYING);
+        boolean wasAlive = !isDead();
+        boolean byOther = source.getAttacker() != null && source.getAttacker() != this;
         float healthBefore = getHealth() + getAbsorptionAmount();
         boolean damaged = super.damage(world, source, amount);
         if (damaged && getHealth() + getAbsorptionAmount() < healthBefore
             && source.getAttacker() != null && source.getAttacker() != this) {
             hitsFromOthers++;
         }
+        if (wasAlive && isDead() && byOther) killedByOthers = true;
         if (hadTotem && !getOffHandStack().isOf(Items.TOTEM_OF_UNDYING)) {
             pops++;
+            if (byOther) popsFromOthers++;
             if (firstPopTick < 0) firstPopTick = lastStepTick + 1;
             if (!fightMode || totemsSpare > 0) {
                 if (fightMode) totemsSpare--;
@@ -313,7 +321,7 @@ public final class Sparring extends FakePlayer {
      */
     Stats stats(int t0Tick) {
         int firstPop = firstPopTick < 0 || t0Tick < 0 ? -1 : firstPopTick - t0Tick;
-        return new Stats(pops, firstPop, damageTaken, rawDamage, deaths, getAbsorptionAmount(), getHealth(), hitsFromOthers);
+        return new Stats(pops, firstPop, damageTaken, rawDamage, deaths, getAbsorptionAmount(), getHealth(), hitsFromOthers, popsFromOthers, killedByOthers);
     }
 
     /**
@@ -321,6 +329,7 @@ public final class Sparring extends FakePlayer {
      * {@code rawDamage} is the sum of the amounts handed to {@code applyDamage} (before armour).
      */
     public record Stats(int pops, int firstPopTick, double damageTaken, double rawDamage, int deaths,
-                        float absorption, float health, int hitsFromOthers) {
+                        float absorption, float health, int hitsFromOthers, int popsFromOthers,
+                        boolean killedByOthers) {
     }
 }

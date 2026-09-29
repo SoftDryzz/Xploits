@@ -93,10 +93,8 @@ final class MeasureRun {
                 client.player.isDead() ? 1 : 0});
         if (health == null) throw new BenchException("the client has no player");
         if (health[1] > 0) throw new PlayerDied("the player died");
-        // Task B0b: the reserve rules judge ordinary own hits only, so the ticks of a finishing blow (which may
-        // take us below the reserve, never below 2) stay out of the lowest health; its own metrics cover them.
-        boolean finishing = watch.active() && watch.observe(health[0]);
-        if (!finishing) minHealth = Math.min(minHealth, health[0]);
+        if (watch.active()) watch.observe(health[0]);
+        minHealth = Math.min(minHealth, health[0]);
     }
 
     /**
@@ -161,15 +159,28 @@ final class MeasureRun {
 
     /** {@link #selfDamage()} over {@code from}, the records so far or at the close. */
     double ordinarySelfDamage(List<FightRecord> from) {
-        Set<Long> finishing = watch.hitTicks(from.stream().flatMap(r -> r.damage().stream()).toList());
-        return from.stream().flatMap(r -> r.damage().stream())
-            .filter(d -> d.by() == AttackerKind.SELF && !finishing.contains(d.tick()))
-            .mapToDouble(d -> d.before() - d.after()).sum();
+        List<com.xploits.pvp.recorder.core.FightRecord.DamageEvent> damage = FinishingWatch.events(from);
+        Set<Integer> finishing = watch.resolve(from).excluded();
+        double sum = 0;
+        for (int i = 0; i < damage.size(); i++) {
+            if (damage.get(i).by() == AttackerKind.SELF && !finishing.contains(i)) {
+                sum += damage.get(i).before() - damage.get(i).after();
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * The lowest health for the reserve rules, from ordinary hits only ({@link FinishingWatch#ordinaryMinHealth});
+     * the plain lowest health for any module but crystal-aura++.
+     */
+    double ordinaryMinHealth(List<FightRecord> from) {
+        return watch.ordinaryMinHealth(from, minHealth);
     }
 
     /** Task B0b: the finishing-blow metrics into {@code metrics}, when crystal-aura++ landed any. */
-    void putFinishing(Metrics metrics) {
-        watch.put(metrics);
+    void putFinishing(Metrics metrics, List<FightRecord> from) {
+        watch.put(metrics, watch.resolve(from));
     }
 
     int selfPops() {

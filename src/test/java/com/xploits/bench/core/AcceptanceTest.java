@@ -770,6 +770,15 @@ class AcceptanceTest {
     }
 
     @Test
+    void s4FailsOnAFinishingBlowWithFewerThanTwoTotems() {
+        Map<String, Double> odd = goodRun();
+        odd.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, 1.0);
+        assertEquals(Result.FAIL, result(List.of(goodRun(), odd, goodRun()), three(meteorRun()), "S4"));
+        odd.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, 2.0);
+        assertEquals(Result.PASS, result(List.of(goodRun(), odd, goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
     void s4IsSafetyAndRejectsTheVerdictWhenItFails() {
         Outcome outcome = judge(oldRunsWith(1.0, 0.0), three(meteorRun()));
         assertEquals(Kind.SAFETY, rule(outcome, "S4").kind());

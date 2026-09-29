@@ -31,11 +31,13 @@ public final class MinHealthAfterOwnHit {
     }
 
     /**
-     * Task B0b: without the finishing hits ({@link FinishingTracker#hitTicks}, by their tick): the reserve rule
-     * applies to ordinary own hits only, since a finishing blow may take us below it on purpose.
+     * Task B0b: without the finishing hits, given as indexes into {@code damage} ({@link
+     * FinishingTracker.Resolution#excluded}, one event per blow at most): the reserve rule applies to ordinary
+     * own hits only, since a finishing blow may take us below it on purpose. Excluded by event, never by tick.
      */
-    public static OptionalDouble of(List<DamageEvent> damage, Set<Long> finishingTicks) {
-        return damage.stream().filter(e -> e.by() == AttackerKind.SELF && !finishingTicks.contains(e.tick()))
-            .mapToDouble(DamageEvent::after).min();
+    public static OptionalDouble of(List<DamageEvent> damage, Set<Integer> excludedIndexes) {
+        return java.util.stream.IntStream.range(0, damage.size())
+            .filter(i -> damage.get(i).by() == AttackerKind.SELF && !excludedIndexes.contains(i))
+            .mapToDouble(i -> damage.get(i).after()).min();
     }
 }

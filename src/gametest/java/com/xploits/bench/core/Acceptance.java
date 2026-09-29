@@ -411,10 +411,15 @@ public final class Acceptance {
         List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
         double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
         double pops = sum(capp, FINISHING_POPS);
-        boolean passed = pops == 0 && (after.isEmpty() || lowest >= POP_GRADE_FLOOR);
+        List<Double> totems = present(capp, TOTEMS_AT_FINISHING_HIT_MIN);
+        double fewest = totems.isEmpty() ? Double.NaN : totems.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        boolean passed = pops == 0 && (after.isEmpty() || lowest >= POP_GRADE_FLOOR)
+            && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS);
         return new Rule("S4", Kind.SAFETY, pass(passed),
             "finishing blows that popped us: " + whole(pops) + ", needs 0; lowest health after a finishing hit: "
-                + (after.isEmpty() ? "none" : n(lowest)) + ", needs >= " + n(POP_GRADE_FLOOR));
+                + (after.isEmpty() ? "none" : n(lowest)) + ", needs >= " + n(POP_GRADE_FLOOR)
+                + "; fewest totems at a finishing hit: " + (totems.isEmpty() ? "none" : n(fewest)) + ", needs >= "
+                + FINISHING_MIN_TOTEMS);
     }
 
     private static Rule atLeast(String id, Side capp, String metric, double theirs, double limit) {
