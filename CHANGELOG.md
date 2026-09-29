@@ -6,6 +6,38 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-29
+
+### Added
+
+- **`crystal-aura++` finishing blow** — new setting `finishing-blow` (on by default, at every `risk`
+  level, needs `self-budget` on). `crystal-aura++` now goes for the kill:
+  - If a crystal **kills** the opponent (no totem in either of his hands, his hands visible, and his
+    health confirmed by one of your own hits), it may take you below your reserve or pop your totem. It
+    does so only while you hold a totem **and** carry a spare, never your last one, and only one such
+    crystal at a time.
+  - To only **pop** him (he holds a totem, or his hands are hidden), it may drop you below your reserve
+    only at `Aggressive`, and never below 2 health and never popping you. At the other levels the reserve
+    holds.
+  - On servers that hide other players' health (2b2t-style plugins) it does nothing: the opponent's
+    health is never trusted until one of your own hits shows it moving the way it should.
+
+### Changed
+
+- With the self-budget on, Meteor's `max-damage` no longer limits your own crystals up close: your reserve
+  does. Other players' crystals keep `max-damage`, and so does everything when the budget is off.
+- The self-budget now measures how exposed you would really be at each spot you can move to, instead of
+  assuming full exposure. It deals more damage where there is a height difference or cover between you
+  and the crystal, and still keeps the reserve.
+- A spot you could reach that lies inside a block counts as fully exposed (the safer reading), and totem
+  detection covers any item that protects from death, not only the totem itself.
+
+### Fixed
+
+- `crystal-aura++` no longer freezes behind one of its own crystals that it may not break: such a crystal
+  no longer closes Meteor's placing gate, and while the crystals already standing leave less than the
+  reserve, it only uses spots where you would take no damage at all.
+
 ## [0.7.0] — 2026-09-28
 
 ### Added

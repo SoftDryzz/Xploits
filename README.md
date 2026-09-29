@@ -197,9 +197,9 @@ self-damage budget that never lets your health (plus absorption) drop below a re
 crystal that can still hurt you, already placed or on its way to exploding, and works out the exact
 damage a hit would deal (Meteor rounds it down).
 
-> **Experimental in 0.7.0.** It kept your health above the reserve in every measured run, but it is still
+> **Experimental in 0.7.1.** It kept your health above the reserve in every measured run, but it is still
 > being tuned: in some situations it deals less damage than Meteor's `crystal-aura` (see the table and the
-> known issues below). The next 0.7.x releases improve its attack.
+> known issues below). The next 0.7.x releases keep improving its attack.
 
 **Use it from `auto-pvp`'s `crystal-module` setting** (`meteor` default | `xploits++`), or turn
 `crystal-aura++` on by itself. **It does nothing while Meteor's `crystal-aura` is on** — two auras
@@ -216,7 +216,27 @@ recommended), **Safe** (keeps 5, experimental), **Aggressive** (keeps 2, experim
 - Between two spots that would deal the target the same damage, picks the one that hurts you less.
 - Does not place a crystal the target's own damage cooldown would swallow — only when it is sure.
 - Keeps the reserve while you move, by assuming the worst spot you could reach before the crystal
-  explodes.
+  explodes. Since 0.7.1 it measures how exposed you would really be at each of those spots, instead of
+  assuming full exposure, so you get more damage at height differences and behind cover. A spot inside a
+  block still counts as fully exposed.
+- **Up close, the reserve decides.** With the self-budget on, Meteor's `max-damage` no longer limits your
+  own crystals: your reserve does. Other players' crystals keep `max-damage`, and so does everything
+  when the budget is off.
+- **Never stuck.** It no longer freezes behind one of its own crystals that it may not break.
+- **Goes for the kill** (`finishing-blow`, below).
+
+**`finishing-blow`** (on by default, at every `risk` level; it needs `self-budget` on) lets a crystal that
+finishes the opponent go past the reserve:
+
+- **To kill him** (he has no totem in either hand, his hands are visible, and one of your own hits has
+  confirmed his health), a crystal may take you below your reserve or pop your totem. It does so only
+  while you hold a totem **and** carry a spare — never your last one — and only one such crystal is out
+  at a time.
+- **To only pop him** (he holds a totem, or his hands are hidden), it may take you below the reserve only
+  at **Aggressive**, and never below 2 health and never popping you. At every other level the reserve
+  holds.
+- **On servers that hide other players' health** (2b2t-style plugins) it does nothing: his health is
+  never trusted.
 
 **Measured** (the 0.7.0 release bench, 2026-09-28; a fake opponent that never attacks; 100 ms simulated
 ping; unlimited crystals; natural health regeneration only where noted; median of 3 runs of 30 s; "lowest"
@@ -241,14 +261,14 @@ it went down to 0.2.
 
 **Known issues:**
 
-- **Against an opponent who moves around you** Balanced takes the first totem later than Meteor (0.4 to
-  0.75 s later; 3.5 s later while you dodge): it refuses crystals that would take you below 3.5.
-- **With the opponent above or below you** it deals about 6 % less damage than Meteor, and the first
-  totem comes about 0.5 s later. It is more cautious than it needs to be there; 0.7.1 tunes it.
-- **While you move** it is deliberately cautious: about 30 % less damage when you walk in circles.
-- **Up close** (the opponent right on top of you) it may place nothing, like Meteor: Meteor's limit of 6
-  damage to you per crystal still applies. 0.7.1 lets the reserve decide instead.
-- **Not measured yet:** an opponent who attacks you back, golden apples, several enemies at once.
+- **While you move** it is deliberately cautious and still deals less damage than Meteor when you walk
+  in circles or dodge. Sizing that caution from how far you really move is planned for 0.7.2.
+- **Against an opponent who moves around you** Balanced can take the first totem later than Meteor: it
+  refuses crystals that would take you below 3.5.
+- **In an open-ground exchange** (both of you attacking, no cover) it still draws where Meteor wins.
+- **On servers that hide other players' health** there is no finishing blow.
+- **A crystal of yours that appears late** (lag) is treated as someone else's and may stay unbroken.
+- **Not measured yet:** several enemies at once.
 - **Safe and Aggressive** are experimental: Safe keeps more health and deals clearly less damage;
   Aggressive keeps 2.
 
@@ -471,10 +491,9 @@ The most common:
 - **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
   that keeps a health reserve.
 - **Next, in a 0.7.x:** an attack mode for `crystal-aura++`, `Maximum` — places crystals even when
-  they would do little damage, keeps placing up close with the reserve as its only limit, drops
-  obsidian when there is no spot to place on, an easier face-place, and an optional aggressive finish:
-  take damage, or even pop your own totem if you are holding one, when the crystal is sure to kill the
-  opponent — it still never lets you die. Also tighter tuning while you move.
+  they would do little damage, drops obsidian when there is no spot to place on and an easier
+  face-place. Also tighter tuning while you move: the reach radius is sized from how far you really
+  move (0.7.2).
 - **Then, a full fight:** self-protection first — notice the instant your hole is being mined and
   patch it at once, and decide what to do if a crystal is already sitting in the gap; respawn anchors,
   both attacking with them and a defence of our own, since Meteor's `anti-anchor` is not in this

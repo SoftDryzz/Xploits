@@ -195,9 +195,9 @@ valores de fábrica — más un presupuesto de daño propio que nunca deja que t
 de una reserva. Suma todos los cristales que todavía pueden hacerte daño, ya puestos o de camino a
 explotar, y calcula el daño exacto de un golpe (Meteor lo redondea hacia abajo).
 
-> **Experimental en la 0.7.0.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
+> **Experimental en la 0.7.1.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
 > pero todavía se está afinando: en algunas situaciones hace menos daño que el `crystal-aura` de Meteor
-> (mira la tabla y los problemas conocidos más abajo). Las próximas 0.7.x mejoran su ataque.
+> (mira la tabla y los problemas conocidos más abajo). Las próximas 0.7.x siguen mejorando su ataque.
 
 **Úsalo desde el ajuste `crystal-module` de `auto-pvp`** (`meteor` de fábrica | `xploits++`), o
 enciende `crystal-aura++` por su cuenta. **No hace nada mientras el `crystal-aura` de Meteor esté
@@ -215,7 +215,27 @@ diga lo que diga `risk`.
 - No coloca un cristal que el enfriamiento de daño del objetivo se tragaría — solo cuando está
   seguro.
 - Mantiene la reserva mientras te mueves, suponiendo el peor sitio al que podrías llegar antes de que
-  explote el cristal.
+  explote el cristal. Desde la 0.7.1 mide cuánto quedarías realmente expuesto en cada uno de esos
+  sitios, en vez de suponer exposición total, así que hace más daño cuando hay diferencia de altura o
+  cobertura. Un sitio dentro de un bloque sigue contando como totalmente expuesto.
+- **De cerca decide la reserva.** Con el presupuesto encendido, el `max-damage` de Meteor ya no limita
+  tus propios cristales: lo hace tu reserva. Los cristales de otros conservan `max-damage`, y también
+  todo cuando el presupuesto está apagado.
+- **Nunca se queda atascado.** Ya no se congela detrás de un cristal suyo que no puede romper.
+- **Va a por la muerte** (`finishing-blow`, abajo).
+
+**`finishing-blow`** (encendido de fábrica, en todos los niveles de `risk`; necesita `self-budget`
+encendido) deja que un cristal que remata al rival pase de la reserva:
+
+- **Para matarlo** (no tiene tótem en ninguna mano, sus manos se ven y uno de tus golpes ha confirmado
+  su vida), un cristal puede dejarte por debajo de tu reserva o hacerte perder el tótem. Solo lo hace
+  mientras llevas un tótem en la mano **y** otro de repuesto — nunca el último — y solo hay un cristal
+  así a la vez.
+- **Para solo hacerle perder un tótem** (lo lleva, o tiene las manos ocultas), solo puede dejarte por
+  debajo de la reserva en **Aggressive**, y nunca por debajo de 2 de vida ni haciéndote perder el
+  tótem. En los demás niveles manda la reserva.
+- **En servidores que ocultan la vida de los demás** (plugins al estilo 2b2t) no hace nada: nunca se
+  fía de la vida del rival.
 
 **Medido** (banco de pruebas de la 0.7.0, 28-09-2026; un rival falso que nunca ataca; 100 ms de ping
 simulado; cristales ilimitados; regeneración de vida natural solo donde se indica; mediana de 3
@@ -240,16 +260,16 @@ el `crystal-aura` de Meteor bajó hasta 0,2.
 
 **Problemas conocidos:**
 
-- **Contra un rival que se mueve a tu alrededor**, Balanced saca el primer tótem más tarde que Meteor
-  (entre 0,4 y 0,75 s; 3,5 s más tarde mientras esquivas): rechaza cristales que te dejarían por
-  debajo de 3,5.
-- **Con el rival más arriba o más abajo** hace alrededor de un 6 % menos de daño que Meteor, y el
-  primer tótem llega unos 0,5 s más tarde. Ahí es más prudente de lo necesario; la 0.7.1 lo afina.
-- **Mientras te mueves tú** es prudente a propósito: alrededor de un 30 % menos de daño al caminar
-  en círculos.
-- **De cerca** (el rival encima de ti) puede no colocar nada, igual que Meteor: sigue valiendo el
-  límite de Meteor de 6 de daño para ti por cristal. La 0.7.1 deja que decida la reserva.
-- **Todavía sin medir:** un rival que te ataca a ti, manzanas doradas, varios enemigos a la vez.
+- **Mientras te mueves tú** es prudente a propósito y sigue haciendo menos daño que Meteor cuando
+  caminas en círculos o esquivas. Ajustar esa prudencia según lo que te mueves de verdad está previsto
+  para la 0.7.2.
+- **Contra un rival que se mueve a tu alrededor**, Balanced puede sacar el primer tótem más tarde que
+  Meteor: rechaza cristales que te dejarían por debajo de 3,5.
+- **En un intercambio a campo abierto** (los dos atacando, sin cobertura) todavía empata donde gana
+  Meteor.
+- **En servidores que ocultan la vida de los demás** no hay remate.
+- **Un cristal tuyo que aparece tarde** (lag) se toma por ajeno y puede quedarse sin romper.
+- **Todavía sin medir:** varios enemigos a la vez.
 - **Safe y Aggressive** son experimentales: Safe guarda más vida y hace claramente menos daño;
   Aggressive guarda 2.
 
@@ -477,10 +497,9 @@ Lo más habitual:
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
   daño propio que guarda una reserva de vida.
 - **Lo siguiente, en una 0.7.x:** un modo de ataque para `crystal-aura++`, `Maximum` — coloca
-  cristales aunque hagan poco daño, sigue colocando de cerca con la reserva como único límite, pone
-  obsidiana cuando no hay sitio donde colocar, un face-place más fácil, y un remate agresivo opcional:
-  recibir daño, o incluso hacer estallar tu propio tótem si llevas uno, cuando el cristal va a matar
-  seguro al rival — sin dejarte morir nunca. También un ajuste más fino mientras te mueves.
+  cristales aunque hagan poco daño, pone obsidiana cuando no hay sitio donde colocar y un face-place
+  más fácil. También un ajuste más fino mientras te mueves: el radio de alcance se calculará según lo
+  que te mueves de verdad (0.7.2).
 - **Después, la pelea completa:** protegerte a ti primero — notar al instante que te están minando el
   agujero y taparlo enseguida, y decidir qué hacer si ya hay un cristal metido en el hueco; anclas de
   reaparición, atacando con ellas y con una defensa propia, ya que el `anti-anchor` de Meteor no está
