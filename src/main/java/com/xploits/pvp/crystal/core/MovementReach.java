@@ -1,7 +1,10 @@
 package com.xploits.pvp.crystal.core;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Where you could be by the time a crystal explodes (task R3-16, research-reserve-undershoot): the budget
@@ -80,6 +83,26 @@ public final class MovementReach {
     }
 
     /**
+     * {@code reach} plus, for every offset, the halfway points towards it: half the way horizontally, half the
+     * way vertically, and both (task B2 fix round 1). At exposure 1.0 the reach points' own raw damage bounded
+     * everything between them; at real exposure it does not, since cover at two points can leave open ground
+     * between them (a pillar, an edge), at nearly the same distance. The halfway points are that ground: to a
+     * jump's height the half is about {@code JUMP_HEIGHT / 2} and to a ring point's radius half the radius. They
+     * are ordinary ranked points (their own exposure-1.0 raw is their ceiling), so the search still prunes them.
+     * Never throws; a non-finite offset stays non-finite, as everywhere in this class.
+     */
+    public static List<Offset> withMidpoints(List<Offset> reach) {
+        List<Offset> all = new ArrayList<>(reach.size() * 4);
+        for (Offset o : reach) {
+            all.add(o);
+            all.add(new Offset(o.dx() / 2, o.dy(), o.dz() / 2));
+            all.add(new Offset(o.dx(), o.dy() / 2, o.dz()));
+            all.add(new Offset(o.dx() / 2, o.dy() / 2, o.dz() / 2));
+        }
+        return List.copyOf(all);
+    }
+
+    /**
      * The worst raw damage ({@link ExplosionMath#rawDamage}, before armour, exposure assumed 1.0: the most
      * any explosion could deal) an explosion at {@code (ex, ey, ez)} relative to your feet now could deal
      * from anywhere in {@link #offsets(double, double, long)}. Never throws (see the class javadoc): a
@@ -100,5 +123,62 @@ public final class MovementReach {
             worst = Math.max(worst, ExplosionMath.rawDamage(distance, 1.0));
         }
         return worst;
+    }
+
+    /** One reach point with its distance to the explosion and its raw damage at exposure 1.0 (the ceiling). */
+    public record Ranked(Offset offset, double distance, float rawAtFullExposure) {
+    }
+
+    /** The exposure (0 to 1, vanilla's definition) an explosion has on you standing at a reach offset. */
+    @FunctionalInterface
+    public interface ExposureFunction {
+        double at(Offset offset);
+    }
+
+    /**
+     * The distinct reach points, worst first: sorted by their raw damage at exposure 1.0, the most any explosion
+     * could deal there, so that the first one is the ceiling of all the others. A NaN raw (a non-finite
+     * explosion offset, see {@link #worstRawDamage}) sorts first. Never throws, same input contract as
+     * {@link #offsets}.
+     */
+    public static List<Ranked> rankedByWorstRaw(double ex, double ey, double ez, double vx, double vz,
+                                                long landingTicks) {
+        return rankedByWorstRaw(ex, ey, ez, offsets(vx, vz, landingTicks));
+    }
+
+    /** {@link #rankedByWorstRaw(double, double, double, double, double, long)} over the given reach offsets. */
+    public static List<Ranked> rankedByWorstRaw(double ex, double ey, double ez, List<Offset> reach) {
+        Set<Offset> distinct = new LinkedHashSet<>(reach);
+        List<Ranked> ranked = new ArrayList<>(distinct.size());
+        for (Offset o : distinct) {
+            double dx = ex - o.dx();
+            double dy = ey - o.dy();
+            double dz = ez - o.dz();
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            ranked.add(new Ranked(o, distance, ExplosionMath.rawDamage(distance, 1.0)));
+        }
+        ranked.sort(Comparator.comparingDouble((Ranked r) -> r.rawAtFullExposure()).reversed());
+        return ranked;
+    }
+
+    /**
+     * The exact worst raw damage over the reach points with their real exposure: a branch and bound over
+     * {@code ranked} (worst first). Each point's real raw can never exceed its exposure-1.0 raw, so once the
+     * next point's ceiling is not above the best real value found (starting from {@code floor}, the value
+     * already known for where you stand now), no later point can beat it and the search stops. Never below
+     * {@code floor}; never below any point's real value; a NaN ceiling or a NaN result propagates as NaN, like
+     * {@link #worstRawDamage}. An {@code exposure} that is not a finite number in 0..1 is read as 1.0, the
+     * cautious value, and so is any point the caller could not afford to measure.
+     */
+    public static float worstRawDamage(List<Ranked> ranked, ExposureFunction exposure, float floor) {
+        float best = floor;
+        for (Ranked r : ranked) {
+            if (Float.isNaN(r.rawAtFullExposure())) return Float.NaN;
+            if (r.rawAtFullExposure() <= best) break;
+            double e = exposure.at(r.offset());
+            if (!(e >= 0.0 && e <= 1.0)) e = 1.0;
+            best = Math.max(best, ExplosionMath.rawDamage(r.distance(), e));
+        }
+        return best;
     }
 }
