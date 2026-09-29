@@ -45,6 +45,10 @@ public final class Metrics {
     public static final String MIN_HEALTH_AFTER_FINISHING_HIT = "min_health_after_finishing_hit";
     /** The fewest totems we carried at any finishing hit. */
     public static final String TOTEMS_AT_FINISHING_HIT_MIN = "totems_at_finishing_hit_min";
+    /** Finishing blows against a target holding no totem, kill-grade by the bench's reading (crystal-aura++). */
+    public static final String FINISHING_KILL_BLOWS = "finishing_kill_blows";
+    /** Finishing blows against a target holding a totem, pop-grade by the bench's reading (crystal-aura++). */
+    public static final String FINISHING_POP_BLOWS = "finishing_pop_blows";
     /** Finishing blows that cost us a totem (crystal-aura++). */
     public static final String FINISHING_POPS = "finishing_pops";
     /** Finishing blows against a target holding a totem that left us below 2 or popped us (pop-grade rule). */
@@ -95,6 +99,8 @@ public final class Metrics {
         new Definition(FINISHING_BLOWS, Better.HIGHER, 1, false),
         new Definition(MIN_HEALTH_AFTER_FINISHING_HIT, Better.HIGHER, 1.0, false),
         new Definition(TOTEMS_AT_FINISHING_HIT_MIN, Better.HIGHER, 1, false),
+        new Definition(FINISHING_KILL_BLOWS, Better.HIGHER, 1, false),
+        new Definition(FINISHING_POP_BLOWS, Better.HIGHER, 1, false),
         new Definition(FINISHING_POPS, Better.LOWER, 0, false),
         new Definition(FINISHING_POP_GRADE_VIOLATIONS, Better.LOWER, 0, false),
         new Definition(DIED_WITH_TOTEM, Better.LOWER, 0, false),

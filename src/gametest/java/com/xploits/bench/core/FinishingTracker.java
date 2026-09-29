@@ -44,6 +44,15 @@ public final class FinishingTracker {
             this(tick, healthBefore, earlier, healthAfter, totems, totems, true);
         }
 
+        /**
+         * Kill-grade by the bench's own reading of the target (task B0c): he held no totem on the tick before it
+         * (the bench's near-death target also shows an item in his main hand, so his hands read as visible).
+         * A kill-grade blow may pop us, never the last totem; the rest are pop-grade.
+         */
+        public boolean kill() {
+            return !targetHadTotem;
+        }
+
         /** Whether it cost us a totem: fewer carried at the lowest point of its window than before it. */
         public boolean popped() {
             return totemsAfter < totems;
@@ -180,6 +189,16 @@ public final class FinishingTracker {
     /** {@code min_health_after_finishing_hit}: the lowest health after any blow; empty without one. */
     public OptionalDouble minHealthAfter() {
         return blows().stream().mapToDouble(Blow::healthAfter).min();
+    }
+
+    /** {@code finishing_kill_blows}: blows against a target with no totem (kill-grade). */
+    public int kills() {
+        return (int) blows().stream().filter(Blow::kill).count();
+    }
+
+    /** {@code finishing_pop_blows}: blows against a target holding a totem (pop-grade). */
+    public int popBlows() {
+        return count() - kills();
     }
 
     /** {@code finishing_pops}: how many blows cost us a totem. */

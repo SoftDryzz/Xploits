@@ -165,6 +165,18 @@ class FinishingTrackerTest {
     }
 
     @Test
+    void blowsAreCountedPerKindByTheTargetsTotem() {
+        FinishingTracker kill = new FinishingTracker();
+        run(kill, false, new int[] {3, 3, 3, 3}, new double[] {6, 6, 5, 5});
+        assertEquals(1, kill.kills());
+        assertEquals(0, kill.popBlows());
+        FinishingTracker pop = new FinishingTracker();
+        run(pop, true, new int[] {3, 3, 3, 3}, new double[] {6, 6, 5, 5});
+        assertEquals(0, pop.kills());
+        assertEquals(1, pop.popBlows());
+    }
+
+    @Test
     void theWindowFlagCoversTheBlowsTicks() {
         FinishingTracker t = new FinishingTracker();
         assertEquals(false, t.observe(NONE, NONE, 20, 3, 1, true));

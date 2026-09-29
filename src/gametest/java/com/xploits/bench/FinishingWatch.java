@@ -110,13 +110,17 @@ final class FinishingWatch {
 
     /**
      * The finishing-blow metrics, only when a blow happened: how many, the lowest health after one, the fewest
-     * totems carried at one, how many cost us a totem, and how many broke a pop-grade blow's rule.
+     * totems carried at one, how many were kill-grade and how many pop-grade (by the target's totem: the module's
+     * own kinds, {@code CrystalBrain#finishingCrystalKinds}, are not read here), how many cost us a totem, and how
+     * many broke a pop-grade blow's rule.
      */
     void put(Metrics metrics) {
         if (tracker.count() == 0) return;
         metrics.put(Metrics.FINISHING_BLOWS, tracker.count());
         metrics.put(Metrics.MIN_HEALTH_AFTER_FINISHING_HIT, tracker.minHealthAfter().orElseThrow());
         metrics.put(Metrics.TOTEMS_AT_FINISHING_HIT_MIN, tracker.minTotems().orElseThrow());
+        metrics.put(Metrics.FINISHING_KILL_BLOWS, tracker.kills());
+        metrics.put(Metrics.FINISHING_POP_BLOWS, tracker.popBlows());
         metrics.put(Metrics.FINISHING_POPS, tracker.pops());
         metrics.put(Metrics.FINISHING_POP_GRADE_VIOLATIONS, tracker.popGradeViolations());
     }
