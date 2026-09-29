@@ -150,7 +150,8 @@ final class FightMeasure implements Scenario {
         DecisionTally tally = aura == CrystalAuraPlusPlus.class ? DecisionTally.start(bench) : null;
         FightMeasureRun run = new FightMeasureRun(bench, aura);
         Metrics metrics = startingLow == null ? run.play(seconds() * 20).metrics()
-            : run.play(NearDeathSetup.WARMUP_TICKS, 30 * 20, startingLow.moment(bench)).metrics();
+            : run.play(NearDeathSetup.WARMUP_TICKS, 30 * 20,
+                startingLow.moment(bench, builtScript, aura == CrystalAuraPlusPlus.class)).metrics();
         // Script#close() otherwise only runs at teardown (Sparring#despawn, after this method returns): a
         // cycle still pending at exactly the last tick (TIME_UP) would log one short of spawned() ==
         // explosions() + brokenFirst() + abandoned() if read before it. Calling it here is safe even though
@@ -176,34 +177,54 @@ final class FightMeasure implements Scenario {
         static final int WARMUP_TICKS = 200;
         /** Ticks after our hit before the moment: the target's hurt window has closed and its health read. */
         static final int SETTLE_TICKS = 14;
-        /** Past this many ticks after our hit the moment comes even if a crystal is still in the air. */
+        /** Past this many ticks after our hit the moment comes even if things have not gone quiet. */
         static final int CLEAR_BOUND_TICKS = 60;
-        /** How far around us a crystal still in the air holds the moment back. */
+        /** Ticks without a placement sent, and with no end crystal around, that make it quiet. */
+        static final int QUIET_TICKS = 6;
+        /** How far around us an end crystal counts. */
         static final double CLEAR_RADIUS = 24;
 
-        FightMeasureRun.Moment moment(Bench bench) {
+        FightMeasureRun.Moment moment(Bench bench, Script script, boolean plusPlus) {
             String player = bench.player();
             Sparring sparring = bench.sparring();
             return new FightMeasureRun.Moment() {
                 private int landedAt = -1;
+                private int lastSent = -1;
+                private int lastPlacementAt;
 
                 @Override
                 public boolean ready(int waited) {
+                    int sent = bench.fromClient(client -> PlacementCounter.get().sent());
+                    if (sent != lastSent) {
+                        lastSent = sent;
+                        lastPlacementAt = waited;
+                    }
                     if (landedAt < 0 && bench.sparringStats().hitsFromOthers() > 0) landedAt = waited;
                     if (landedAt < 0) return false;
                     int since = waited - landedAt;
                     if (since < SETTLE_TICKS) return false;
-                    // No end crystal in the air: one decided while both were healthy must not explode after
-                    // the health drop, which no aura could have planned for.
-                    return since >= CLEAR_BOUND_TICKS || bench.fromServer(srv -> srv.getOverworld()
-                        .getEntitiesByClass(EndCrystalEntity.class,
-                            Arena.player(srv, player).getBoundingBox().expand(CLEAR_RADIUS), Entity::isAlive)
-                        .isEmpty());
+                    // crystal-aura++ has to trust the target before the finishing blow can apply, as in real
+                    // play, where trust always comes from earlier hits; a further hit may still form it.
+                    if (plusPlus && !trusting()) return false;
+                    // Quiet first: no placement just sent and no end crystal around, so nothing decided while both
+                    // were healthy explodes after the health drop, which no aura could have planned for.
+                    if (since >= CLEAR_BOUND_TICKS) return true;
+                    return waited - lastPlacementAt >= QUIET_TICKS && crystalsAround(bench, player) == 0;
                 }
 
                 @Override
                 public boolean landed() {
                     return landedAt >= 0;
+                }
+
+                @Override
+                public boolean expectsTrust() {
+                    return plusPlus;
+                }
+
+                @Override
+                public boolean trusting() {
+                    return bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).trustedTargets() > 0);
                 }
 
                 @Override
@@ -217,10 +238,31 @@ final class FightMeasure implements Scenario {
                     sparring.setHealth(HEALTH);
                     sparring.setAbsorptionAmount(0f);
                     if (totem) sparring.rearmTotems();
-                    else sparring.disarmTotem();
+                    else {
+                        // No totem in either hand, and a visible item in the main hand: his hands read as visible,
+                        // so a finishing blow on him is a kill, never a pop (task B0c). Both auras alike.
+                        sparring.disarmTotem();
+                        sparring.holdVisibleItem();
+                    }
+                    // Whatever is still standing is cleared, for both auras alike (logged): the near-death moment
+                    // starts from no crystals at all.
+                    int cleared = 0;
+                    for (EndCrystalEntity crystal : server.getOverworld().getEntitiesByClass(EndCrystalEntity.class,
+                        p.getBoundingBox().expand(CLEAR_RADIUS), Entity::isAlive)) {
+                        crystal.discard();
+                        cleared++;
+                    }
+                    LOG.info("[bench] near-death moment: {} end crystal(s) cleared (log only)", cleared);
+                    if (script instanceof GatedScript gated) gated.release();
                 }
             };
         }
+    }
+
+    /** End crystals within {@link NearDeathSetup#CLEAR_RADIUS} of our player. */
+    private static int crystalsAround(Bench bench, String player) {
+        return bench.fromServer(srv -> srv.getOverworld().getEntitiesByClass(EndCrystalEntity.class,
+            Arena.player(srv, player).getBoundingBox().expand(NearDeathSetup.CLEAR_RADIUS), Entity::isAlive).size());
     }
 
     /**

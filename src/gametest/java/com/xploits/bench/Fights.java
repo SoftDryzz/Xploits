@@ -91,11 +91,12 @@ final class Fights {
      * the opponent keeps attacking our feet (A2's {@link CrystalAttack} alone — no autobreak, spot blocking or
      * escape) and, unlike {@code near-death}, keeps its totem ({@link FightMeasure#startingLow(boolean)
      * startingLow(true)}): real placement activity on both sides (8 pops dealt, nonzero placements/s), so this
-     * variant needed no fix.
+     * variant needed no fix. Task B0b: gated ({@link GatedScript}) until the near-death moment, since its
+     * attack alone kills the opponent within the warm-up at full health.
      */
     static Script nearDeathTotem() {
         Vec3i anchor = new Vec3i(3, 0, 0);
-        return new CrystalAttack(CrystalAttack.Mode.FEET, anchor, FEET_CELLS);
+        return new GatedScript(new CrystalAttack(CrystalAttack.Mode.FEET, anchor, FEET_CELLS));
     }
 
     /**
@@ -105,6 +106,7 @@ final class Fights {
      * one fight is never also that fight's base). Log only, never a metric; no coordinates.
      */
     static void logCounters(String scenario, int run, Script script) {
+        if (script instanceof GatedScript gated) logCounters(scenario, run, gated.base());
         if (script instanceof CrystalAttack attack) logCrystalAttack(scenario, run, attack);
         if (script instanceof SurroundMiner miner) logSurroundMiner(scenario, run, miner);
         if (script instanceof ComposedFight composed) {

@@ -289,6 +289,15 @@ public final class Sparring extends FakePlayer {
     }
 
     /**
+     * Task B0c/B0b (near-death, no totem): a visible non-totem item in the main hand, so the target's hands read
+     * as visible (at least one shows an item) and, holding no totem, crystal-aura++ counts a blow on it as a kill,
+     * never a pop. Identical for both auras.
+     */
+    void holdVisibleItem() {
+        setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.NETHERITE_SWORD));
+    }
+
+    /**
      * Task B0b (near-death fights, at the near-death moment): the totems it had at the start of a fight run, all
      * {@value Arena#FIGHT_TOTEMS} of them, after the warm-up may have used some. Fight mode only.
      */

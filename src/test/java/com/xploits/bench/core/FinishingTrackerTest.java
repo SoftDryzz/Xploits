@@ -109,6 +109,72 @@ class FinishingTrackerTest {
         assertEquals(OptionalInt.of(4), t.minTotems());
     }
 
+    // --- Pops and pop-grade blows (task B0b/B0c) ------------------------------------------------------
+
+    private static void run(FinishingTracker t, boolean targetTotem, int[] totems, double[] health) {
+        t.observe(NONE, NONE, 20, totems[0], 1, targetTotem);
+        t.observe(Set.of(7), Set.of(7), health[0], totems[0], 2, targetTotem);
+        for (int i = 1; i < health.length; i++) {
+            t.observe(Set.of(7), NONE, health[i], totems[i], 2 + i, targetTotem);
+        }
+    }
+
+    @Test
+    void aBlowThatCostATotemIsAPop() {
+        FinishingTracker t = new FinishingTracker();
+        run(t, true, new int[] {3, 3, 2, 2}, new double[] {6, 6, 9, 9});
+        assertEquals(1, t.pops());
+        assertTrue(t.blows().getFirst().popped());
+    }
+
+    @Test
+    void aBlowThatLeftOurTotemsAloneIsNoPop() {
+        FinishingTracker t = new FinishingTracker();
+        run(t, true, new int[] {3, 3, 3, 3}, new double[] {6, 6, 2.5, 2.5});
+        assertEquals(0, t.pops());
+    }
+
+    @Test
+    void aBlowAgainstATargetWithATotemThatLeftUsBelowTwoIsAViolation() {
+        FinishingTracker t = new FinishingTracker();
+        run(t, true, new int[] {3, 3, 3, 3}, new double[] {6, 6, 1.5, 1.5});
+        assertEquals(1, t.popGradeViolations());
+    }
+
+    @Test
+    void aBlowAgainstATargetWithATotemThatPoppedUsIsAViolationEvenAboveTwo() {
+        FinishingTracker t = new FinishingTracker();
+        run(t, true, new int[] {3, 3, 2, 2}, new double[] {6, 6, 9, 9});
+        assertEquals(1, t.popGradeViolations());
+    }
+
+    @Test
+    void aBlowAtExactlyTwoWithoutAPopIsNoViolation() {
+        FinishingTracker t = new FinishingTracker();
+        run(t, true, new int[] {3, 3, 3, 3}, new double[] {6, 6, 2.0, 2.0});
+        assertEquals(0, t.popGradeViolations());
+    }
+
+    @Test
+    void aBlowAgainstATargetWithNoTotemMayPopUsWithoutBeingAViolation() {
+        // Kill-grade (the target holds no totem, his hands are visible): a pop is allowed, only never the last totem.
+        FinishingTracker t = new FinishingTracker();
+        run(t, false, new int[] {3, 3, 2, 2}, new double[] {6, 6, 9, 9});
+        assertEquals(1, t.pops());
+        assertEquals(0, t.popGradeViolations());
+    }
+
+    @Test
+    void theWindowFlagCoversTheBlowsTicks() {
+        FinishingTracker t = new FinishingTracker();
+        assertEquals(false, t.observe(NONE, NONE, 20, 3, 1, true));
+        assertEquals(false, t.observe(Set.of(7), Set.of(7), 20, 3, 2, true));
+        assertEquals(true, t.observe(Set.of(7), NONE, 12, 3, 3, true));
+        assertEquals(true, t.observe(Set.of(7), NONE, 12, 3, 4, true));
+        assertEquals(true, t.observe(Set.of(7), NONE, 12, 3, 5, true));
+        assertEquals(false, t.observe(Set.of(7), NONE, 12, 3, 6, true));
+    }
+
     // --- Telling the recorder's events apart -----------------------------------------------------------
 
     private static DamageEvent own(long tick, double before, double after) {

@@ -1,7 +1,6 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.FightResult;
-import com.xploits.bench.core.FinishingTracker;
 import com.xploits.bench.core.GappleSchedule;
 import com.xploits.bench.core.MinHealthAfterOwnHit;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
@@ -15,11 +14,8 @@ import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
-import java.util.HashSet;
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.Set;
 
 /**
  * A fight-mode run (task A1, opt-in): unlike {@link MeasureRun}, our own loss and the sparring's (death, or
@@ -70,16 +66,13 @@ final class FightMeasureRun {
     private int nominalSeconds;
 
     // Task B0b: the finishing blow, the totems we carried, and the near-death moment.
-    private final FinishingTracker finishing = new FinishingTracker();
-    /** Pre-ticks (bench ticks) crystal-aura++ had a trusted target; log only. */
-    private int trustedTicks;
-    /** The totems we carried on the previous sample; -1 before the first. */
-    private int prevTotems = -1;
+    private final FinishingWatch watch;
     private boolean diedWithTotem;
     /** The bench tick the measured part starts at: T0, or the near-death moment. */
     private int measureFrom;
     private boolean measuring = true;
     private boolean warmupMissed;
+    private boolean trustMissed;
     private int popsTakenBase;
     private int sparringPopsBase;
     private double sparringDamageBase;
@@ -93,6 +86,7 @@ final class FightMeasureRun {
     FightMeasureRun(Bench bench, Class<? extends Module> underTest) {
         this.bench = bench;
         this.underTest = underTest;
+        this.watch = new FinishingWatch(bench, underTest == CrystalAuraPlusPlus.class);
         bench.meteor(FightRecorder.class);
         bench.onClient(client -> {
             Module module = Modules.get().get(underTest);
@@ -122,6 +116,12 @@ final class FightMeasureRun {
         boolean ready(int waited);
 
         boolean landed();
+
+        /** Whether the aura under test is one that trusts targets, and the moment waits for it to. */
+        boolean expectsTrust();
+
+        /** Whether it does trust the target now. Client thread; only asked when {@link #expectsTrust}. */
+        boolean trusting();
 
         void apply(MinecraftServer server);
     }
@@ -165,6 +165,7 @@ final class FightMeasureRun {
             while (!moment.ready(waited)) {
                 if (waited >= warmupTicks) {
                     warmupMissed = !moment.landed();
+                    trustMissed = moment.expectsTrust() && !moment.trusting();
                     break;
                 }
                 bench.ticks(1);
@@ -184,7 +185,7 @@ final class FightMeasureRun {
                 minHealth = Double.POSITIVE_INFINITY;
                 LOG.info("[bench] near-death moment after {} warm-up tick(s), warm-up hit {}; crystal-aura++ trusted "
                     + "the target on {} pre-tick(s) so far (log only)", waited, moment.landed() ? "landed" : "MISSED",
-                    trustedTicks);
+                    watch.trustedTicks());
             }
         }
         if (end == null) {
@@ -206,7 +207,8 @@ final class FightMeasureRun {
                 client.player.isDead() ? 1 : 0});
         if (us == null) throw new BenchException("the client has no player");
         boolean weDied = us[1] > 0;
-        watch(us[0], weDied);
+        if (weDied && watch.totems() >= 1) diedWithTotem = true;
+        watch.observe(us[0]);
 
         int ownPopsNow = bench.fromClient(client -> Modules.get().get(FightRecorder.class).live()
             .map(FightTracker.LiveFight::yourPops).orElse(0));
@@ -251,61 +253,12 @@ final class FightMeasureRun {
         return null;
     }
 
-    /** What the client reads for the finishing-blow bookkeeping, in one hop. */
-    private record Watch(Set<Integer> marked, Set<Integer> present, int totems, int trusted, long recorderTick) {
-    }
-
-    private static Field recorderTickField;
-
-    /** The recorder's own tick count, the clock its damage events carry (a private counter read in place). */
-    private static long recorderTick(FightRecorder recorder) {
-        try {
-            if (recorderTickField == null) {
-                recorderTickField = FightRecorder.class.getDeclaredField("tick");
-                recorderTickField.setAccessible(true);
-            }
-            return recorderTickField.getLong(recorder);
-        } catch (ReflectiveOperationException e) {
-            throw new BenchException("cannot read the recorder tick: " + e);
-        }
-    }
-
-    /**
-     * Task B0b, once per tick: the totems we carry (for died_with_totem, both auras), and for crystal-aura++
-     * the finishing crystals it has marked, which of them are still in the world, and whether it trusted a
-     * target this pre-tick.
-     */
-    private void watch(double health, boolean weDied) {
-        boolean plusPlus = underTest == CrystalAuraPlusPlus.class;
-        Watch read = bench.fromClient(client -> {
-            Set<Integer> marked = Set.of();
-            Set<Integer> present = new HashSet<>();
-            int trusted = 0;
-            if (plusPlus) {
-                CrystalAuraPlusPlus module = Modules.get().get(CrystalAuraPlusPlus.class);
-                marked = module.finishingCrystalIds();
-                for (Integer id : marked) {
-                    if (client.world != null && client.world.getEntityById(id) != null) present.add(id);
-                }
-                trusted = module.trustedTargets();
-            }
-            return new Watch(marked, present, client.player == null ? 0 : Arena.totemsCarried(client.player), trusted,
-                recorderTick(Modules.get().get(FightRecorder.class)));
-        });
-        if (weDied && prevTotems >= 1) diedWithTotem = true;
-        if (plusPlus) {
-            finishing.observe(read.marked(), read.present(), health, read.totems(), read.recorderTick());
-            if (read.trusted() > 0) trustedTicks++;
-        }
-        prevTotems = read.totems();
-    }
-
     /** Task B0b, log only: what the finishing-blow bookkeeping saw. */
     void logFinishing(String scenario, int run) {
         LOG.info("[bench] {} run {}: {} finishing blow(s), {} recorder event(s) taken out of "
-            + "min_health_after_own_hit; the target was trusted on {} pre-tick(s); died holding a totem: {} "
-            + "(log only, not a metric)", scenario, run, finishing.count(), finishingEventsExcluded, trustedTicks,
-            diedWithTotem);
+            + "min_health_after_own_hit; the target was trusted on {} pre-tick(s), first {} tick(s) after T0; died "
+            + "holding a totem: {} (log only, not a metric)", scenario, run, watch.blows(),
+            finishingEventsExcluded, watch.trustedTicks(), watch.firstTrustedTick(), diedWithTotem);
     }
 
     private Outcome finish(End end) {
@@ -334,7 +287,7 @@ final class FightMeasureRun {
         int netPops = FightResult.netPops(popsDealt, popsTakenMeasured);
         List<FightRecord.DamageEvent> damage = records.stream().flatMap(r -> r.damage().stream()).toList();
         // Task B0b: the reserve rule is for ordinary own hits; a finishing hit may take us below it on purpose.
-        java.util.Set<Long> finishingTicks = FinishingTracker.hitTicks(damage, finishing.blows());
+        java.util.Set<Long> finishingTicks = watch.hitTicks(damage);
         finishingEventsExcluded = (int) damage.stream().filter(e -> finishingTicks.contains(e.tick())).count();
         OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, finishingTicks);
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
@@ -350,15 +303,12 @@ final class FightMeasureRun {
             .put(Metrics.PLACEMENTS_PER_S, (double) placementsSent / nominalSeconds);
         if (firstPopTakenTick >= 0) metrics.put(Metrics.FIRST_POP_TAKEN_S, firstPopTakenTick / 20.0);
         if (minAfterOwnHit.isPresent()) metrics.put(Metrics.MIN_HEALTH_AFTER_OWN_HIT, minAfterOwnHit.getAsDouble());
-        if (finishing.count() > 0) {
-            metrics.put(Metrics.FINISHING_BLOWS, finishing.count());
-            metrics.put(Metrics.MIN_HEALTH_AFTER_FINISHING_HIT, finishing.minHealthAfter().orElseThrow());
-            metrics.put(Metrics.TOTEMS_AT_FINISHING_HIT_MIN, finishing.minTotems().orElseThrow());
-        }
+        watch.put(metrics);
         if (diedWithTotem) metrics.put(Metrics.DIED_WITH_TOTEM, 1);
         if (nearDeath) {
             if (firstBlowTick >= 0) metrics.put(Metrics.FIRST_BLOW_S, firstBlowTick / 20.0);
             metrics.put(Metrics.WARMUP_MISSED, warmupMissed ? 1 : 0);
+            if (underTest == CrystalAuraPlusPlus.class) metrics.put(Metrics.TRUST_MISSED, trustMissed ? 1 : 0);
         }
         return new Outcome(end, metrics);
     }

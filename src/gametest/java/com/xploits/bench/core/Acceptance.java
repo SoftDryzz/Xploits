@@ -105,6 +105,12 @@ public final class Acceptance {
     public static final String TOTEMS_AT_FINISHING_HIT_MIN = "totems_at_finishing_hit_min";
     /** 1 in a run that ended in our death after we had carried at least one totem before the hit. */
     public static final String DIED_WITH_TOTEM = "died_with_totem";
+    /** Finishing blows that cost us a totem. */
+    public static final String FINISHING_POPS = "finishing_pops";
+    /** Finishing blows against a target holding a totem (pop-grade) that left us below 2 or popped us. */
+    public static final String FINISHING_POP_GRADE_VIOLATIONS = "finishing_pop_grade_violations";
+    /** A pop-grade finishing blow (the target holds a totem) never leaves us below this. */
+    public static final double POP_GRADE_FLOOR = 2.0;
     /** F4: the finishing blow never happens with fewer than this many totems carried (never the last one). */
     public static final int FINISHING_MIN_TOTEMS = 2;
 
@@ -209,7 +215,7 @@ public final class Acceptance {
         }
         List<Rule> rules = fight
             ? List.of(f1(capp, meteor), f2(capp, meteor), f3(capp, level), f4(capp))
-            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
+            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), s4(capp), o1(capp, meteor),
                 o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
         if (failed.isEmpty()) return new Outcome(Verdict.ACCEPT, null, rules);
@@ -384,12 +390,31 @@ public final class Acceptance {
         List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
         double fewest = totems.isEmpty() ? Double.NaN : totems.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
         double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
-        boolean passed = deaths == 0 && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS)
+        double violations = sum(capp, FINISHING_POP_GRADE_VIOLATIONS);
+        boolean passed = deaths == 0 && violations == 0 && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS)
             && (after.isEmpty() || lowest > 0);
         return new Rule("F4", Kind.SAFETY, pass(passed),
             "runs dead while carrying a totem: " + whole(deaths) + ", needs 0; fewest totems at a finishing hit: "
                 + (totems.isEmpty() ? "none" : n(fewest)) + ", needs >= " + FINISHING_MIN_TOTEMS
-                + "; lowest health after a finishing hit: " + (after.isEmpty() ? "none" : n(lowest)) + ", needs > 0");
+                + "; lowest health after a finishing hit: " + (after.isEmpty() ? "none" : n(lowest)) + ", needs > 0"
+                + "; pop-grade blows (target holding a totem) that left us below " + n(POP_GRADE_FLOOR) + " or popped us: "
+                + whole(violations) + ", needs 0");
+    }
+
+    /**
+     * S4 (safety, task B0b/B0c): in the older scenarios the target always holds a totem, so every finishing blow
+     * there is pop-grade: it may take us below the level's reserve, which S1-S3 do not judge (they read ordinary
+     * own hits only), but never below {@value #POP_GRADE_FLOOR} health plus absorption, and never pops us. Over
+     * every run of ours; the metrics are absent in a run without a finishing blow, which is nothing to judge.
+     */
+    private static Rule s4(Side capp) {
+        List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
+        double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double pops = sum(capp, FINISHING_POPS);
+        boolean passed = pops == 0 && (after.isEmpty() || lowest >= POP_GRADE_FLOOR);
+        return new Rule("S4", Kind.SAFETY, pass(passed),
+            "finishing blows that popped us: " + whole(pops) + ", needs 0; lowest health after a finishing hit: "
+                + (after.isEmpty() ? "none" : n(lowest)) + ", needs >= " + n(POP_GRADE_FLOOR));
     }
 
     private static Rule atLeast(String id, Side capp, String metric, double theirs, double limit) {

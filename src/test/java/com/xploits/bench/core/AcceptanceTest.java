@@ -115,8 +115,8 @@ class AcceptanceTest {
     void aRunThatPassesEveryRuleIsAccepted() {
         Outcome outcome = judge(three(goodRun()), three(meteorRun()));
         assertEquals(Verdict.ACCEPT, outcome.verdict());
-        assertEquals(List.of("S1", "S2", "S3", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
-        assertEquals(List.of(Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE),
+        assertEquals(List.of("S1", "S2", "S3", "S4", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
+        assertEquals(List.of(Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE),
             outcome.rules().stream().map(Rule::kind).toList());
         assertTrue(outcome.rules().stream().allMatch(r -> r.result() == Result.PASS), outcome.toString());
         assertNull(outcome.reason());
@@ -515,11 +515,11 @@ class AcceptanceTest {
         // Meteor placed in one run only, ++ never: judged by the rules (the numbers here pass them all).
         Outcome meteorOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0.5, 0));
         assertEquals(Verdict.ACCEPT, meteorOnce.verdict());
-        assertEquals(7, meteorOnce.rules().size());
+        assertEquals(8, meteorOnce.rules().size());
         // ++ placed in one run only, Meteor never: judged too.
         Outcome cappOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 1.0 / 30), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0));
         assertEquals(Verdict.ACCEPT, cappOnce.verdict());
-        assertEquals(7, cappOnce.rules().size());
+        assertEquals(8, cappOnce.rules().size());
     }
 
     @Test
@@ -637,7 +637,7 @@ class AcceptanceTest {
     void anOldStyleFightlessPairStillGetsTheOriginalSevenRules() {
         // Unchanged: a pair whose runs carry the original (non-fight) metrics keeps S1-O4.
         Outcome outcome = judge(three(goodRun()), three(meteorRun()));
-        assertEquals(List.of("S1", "S2", "S3", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
+        assertEquals(List.of("S1", "S2", "S3", "S4", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
     }
 
     // --- F1: result, median, never worse -------------------------------------------------------------
@@ -737,6 +737,52 @@ class AcceptanceTest {
         assertEquals(Result.PASS, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.AGGRESSIVE), "F3").result());
         assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.BALANCED), "F3").result());
         assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.SAFE), "F3").result());
+    }
+
+    // --- S4 (task B0b/B0c): finishing blows in the older scenarios are pop-grade ---------------------
+
+    private static List<Map<String, Double>> oldRunsWith(Double healthAfter, Double pops) {
+        Map<String, Double> odd = goodRun();
+        if (healthAfter != null) odd.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        if (pops != null) odd.put(Acceptance.FINISHING_POPS, pops);
+        return List.of(goodRun(), odd, goodRun());
+    }
+
+    @Test
+    void s4PassesWithoutAnyFinishingBlow() {
+        assertEquals(Result.PASS, result(three(goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4PassesOnAFinishingBlowThatLeftUsAtTwoOrMoreAndDidNotPopUs() {
+        assertEquals(Result.PASS, result(oldRunsWith(2.0, 0.0), three(meteorRun()), "S4"));
+        assertEquals(Result.PASS, result(oldRunsWith(4.5, 0.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4FailsOnAFinishingBlowThatLeftUsBelowTwo() {
+        assertEquals(Result.FAIL, result(oldRunsWith(1.9, 0.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4FailsOnAFinishingBlowThatPoppedUs() {
+        assertEquals(Result.FAIL, result(oldRunsWith(6.0, 1.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4IsSafetyAndRejectsTheVerdictWhenItFails() {
+        Outcome outcome = judge(oldRunsWith(1.0, 0.0), three(meteorRun()));
+        assertEquals(Kind.SAFETY, rule(outcome, "S4").kind());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+    }
+
+    @Test
+    void f4FailsOnAPopGradeViolation() {
+        Map<String, Double> run = finishingRun(3.0, 3.0, null);
+        run.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 1.0);
+        assertEquals(Result.FAIL, f4(run));
+        run.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 0.0);
+        assertEquals(Result.PASS, f4(run));
     }
 
     // --- F4 (task B0b): the finishing blow keeps its promises, every run -----------------------------
