@@ -467,6 +467,18 @@ public final class CrystalBrain {
     }
 
     /**
+     * How many of the previous pre-tick's targets have a trusted reported health right now (task B0b, read-only,
+     * so the bench can log whether trust formed).
+     */
+    public int trustedTargetCount() {
+        int count = 0;
+        for (String t : targets) {
+            if (healthTrust.trusted(t)) count++;
+        }
+        return count;
+    }
+
+    /**
      * How many pre-ticks can pass between deciding one of our placements and its crystal exploding (task
      * R3-16): the slowest of our own crystals' recent landings ({@link TargetWindows#landed}, the same
      * measurement R3-11 already learns for the targets' hurt windows), or {@link

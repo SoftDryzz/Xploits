@@ -570,6 +570,19 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return worstCaseCalls;
     }
 
+    /**
+     * The ids of our crystals that went through the finishing-blow override and are still remembered (task B0b,
+     * read-only, for the bench to tell a finishing hit from an ordinary one).
+     */
+    public Set<Integer> finishingCrystalIds() {
+        return brain.finishingCrystalIds();
+    }
+
+    /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */
+    public int trustedTargets() {
+        return brain.trustedTargetCount();
+    }
+
     /** The last thing decided, or why nothing was. */
     public Decision lastDecision() {
         return refusal.refusing() ? Decision.none(Reason.METEOR_AURA_ON) : brain.lastDecision();
