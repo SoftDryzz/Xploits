@@ -352,7 +352,7 @@ public final class CrystalBrain {
         if (!(damage > settings.minDamage())) return Optional.empty();
         Reason reason = Reason.BUDGET_OFF;
         if (settings.selfBudget()) {
-            Verdict v = budget(health).breakAllowed(k.view(now));
+            Verdict v = budget(health).breakAllowed(k.breakView(now));
             if (!v.allowed()) return Optional.empty();
             reason = v.reason();
         }
@@ -797,7 +797,7 @@ public final class CrystalBrain {
             Reason reason = Reason.BUDGET_OFF;
             if (settings.selfBudget()) {
                 if (budget == null) budget = budget(tick.health());
-                Verdict v = budget.breakAllowed(s.item.view(now));
+                Verdict v = budget.breakAllowed(s.item.breakView(now));
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
@@ -829,7 +829,7 @@ public final class CrystalBrain {
             for (Scored<Known> s : finishing) {
                 if (tooHurtful(s.item.seen.selfDamage(), tick.health(), true)) continue;
                 if (budget == null) budget = budget(tick.health());
-                Verdict v = budget.breakAllowed(s.item.view(now));
+                Verdict v = budget.breakAllowed(s.item.breakView(now));
                 if (answered(v)) return attack(s.item, tick.hands(), v.reason());
             }
         }
@@ -921,7 +921,7 @@ public final class CrystalBrain {
             if (k == null || !k.live() || breakDamage(k, tick.health()) <= 0) continue;
             if (!settings.selfBudget()) return false;
             if (gateBudget == null) gateBudget = budget(tick.health());
-            if (gateBudget.breakAllowed(k.view(now)).allowed()) return false;
+            if (gateBudget.breakAllowed(k.breakView(now)).allowed()) return false;
             if (settings.finishingBlow() && overrideWouldTakeItNow(k, tick, gateBudget)) return false;
         }
         return true;
@@ -1156,9 +1156,13 @@ public final class CrystalBrain {
         return new Action(Decision.place(c.pos(), reason), crystalHand(hands), swap);
     }
 
+    /** Whether a placement of ours at this spot is pending or late: placing there again replaces it ({@link #placed}). */
     private boolean pendingAt(long pos) {
         for (Pending p : pending) {
             if (p.pos == pos) return true;
+        }
+        for (Late l : late) {
+            if (l.pos == pos) return true;
         }
         return false;
     }
@@ -1190,6 +1194,11 @@ public final class CrystalBrain {
         List<Double> selfDamages = new ArrayList<>(pending.size());
         for (Pending p : pending) {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.budgetSelfDamage);
+        }
+        // Task C2 (final review I1): a placement whose wait ran out may still land (Q2), so it counts as pending
+        // until its crystal appears or the late window ends, like a pending one; placing again at its spot replaces it.
+        for (Late l : late) {
+            if (replacedSpot == null || l.pos != replacedSpot) selfDamages.add(l.budgetSelfDamage);
         }
         return SelfBudget.of(now, health, views, selfDamages, settings.budgetReserve(), settings.safeSelfDamage());
     }
@@ -1277,7 +1286,7 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, now, p.firstTick, p.finish));
+                late.add(new Late(p.pos, p.budgetSelfDamage, now, p.firstTick, p.finish));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
@@ -1315,7 +1324,7 @@ public final class CrystalBrain {
      * crystal has not yet been confirmed gone: neither appeared (still in {@link #late}, see
      * {@link #overrideAvailable}) nor its own {@link #LATE_OWN_WINDOW} elapsed with nothing appearing.
      */
-    private record Late(long pos, long since, long firstTick, FinishKind finish) {}
+    private record Late(long pos, double budgetSelfDamage, long since, long firstTick, FinishKind finish) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}
@@ -1358,9 +1367,22 @@ public final class CrystalBrain {
 
         /** As the budget sees it now; one removed since the last pre-tick counts as gone from it. */
         CrystalView view(long now) {
+            return view(now, ours);
+        }
+
+        /**
+         * The view a break is judged by (task C2, final review I1): a late own crystal ({@code mine} but not
+         * {@code ours}) is foreign to Meteor's rules and the ownership of everything else, but it is our own
+         * bomb, so the budget must still leave the floor when breaking it.
+         */
+        CrystalView breakView(long now) {
+            return view(now, ours || mine);
+        }
+
+        private CrystalView view(long now, boolean own) {
             long removed = removedTick != CrystalView.NEVER ? removedTick : reportedGone ? now : CrystalView.NEVER;
             return new CrystalView(seen.id(), seen.pos(), seen.targetDamage(), seen.selfDamage(), seen.budgetSelfDamage(),
-                seen.distance(), seen.inBreakRange(), ours, attempts, attackedTick, removed);
+                seen.distance(), seen.inBreakRange(), own, attempts, attackedTick, removed);
         }
     }
 }
