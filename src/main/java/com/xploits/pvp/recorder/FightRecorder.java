@@ -82,8 +82,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *
  * <p><b>No position is said or written.</b> Players are turned into a name and a distance the moment they
  * are looked at, crystals into an id; the damage packet's source position is never read. The one position
- * kept is each end crystal's block cell, in memory only ({@code crystalCells}, cleared on activation), so the
- * bench can tell our own crystals' hits apart after the crystal is gone; it is never logged, saved or shown.
+ * kept is the cell of each crystal placement of ours and of each crystal that appears, in memory only ({@code
+ * claims}, cleared on activation), so the bench can tell which crystals are ours (one that lands on a spot we just
+ * placed on) after the crystal is gone; it is never logged, saved or shown.
  *
  * <p><b>Threads.</b> {@code PacketEvent.Receive} is posted on the Netty thread before the packet is
  * applied: the packets are only queued there, and read on the next {@code TickEvent.Post}, on the game
@@ -142,9 +143,8 @@ public class FightRecorder extends XploitsModule {
      * packets as the damage it dealt, so by the time the damage is read it can no longer be looked up.
      */
     private final Set<Integer> crystalIds = Collections.newSetFromMap(recentIds());
-    /** Bench only: where each of those crystals appeared, so a hit can be traced to a cell after the crystal is gone. */
-    private final com.xploits.pvp.recorder.core.CrystalCells crystalCells =
-        new com.xploits.pvp.recorder.core.CrystalCells(REMEMBERED_IDS);
+    /** Bench only: which of those crystals landed on a spot we just placed on (claimed as ours), in memory only. */
+    private final com.xploits.pvp.recorder.core.CrystalClaims claims = new com.xploits.pvp.recorder.core.CrystalClaims();
 
     private final FightTracker tracker = new FightTracker(addonVersion());
     private FightStore store;
@@ -183,7 +183,7 @@ public class FightRecorder extends XploitsModule {
         ownEvents.clear();
         playerNames.clear();
         crystalIds.clear();
-        crystalCells.clear();
+        claims.clear();
         hitSources.clear();
         saveWarned = false;
         pruneWarned = false;
@@ -195,7 +195,7 @@ public class FightRecorder extends XploitsModule {
             for (Entity entity : mc.world.getEntities()) {
                 if (entity instanceof EndCrystalEntity) {
                     crystalIds.add(entity.getId());
-                    crystalCells.remember(entity.getId(), entity.getBlockPos().asLong());
+                    claims.added(entity.getId(), entity.getBlockPos().asLong(), tick);
                 }
             }
         }
@@ -253,7 +253,11 @@ public class FightRecorder extends XploitsModule {
     private void onSend(PacketEvent.Send event) {
         if (mc.player == null || mc.world == null) return;
         if (event.packet instanceof PlayerInteractBlockC2SPacket place) {
-            if (mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) ownEvents.add(new CombatEvent.CrystalPlaced());
+            if (mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) {
+                ownEvents.add(new CombatEvent.CrystalPlaced());
+                // The crystal stands on the block above the one clicked.
+                claims.placed(place.getBlockHitResult().getBlockPos().up().asLong(), tick);
+            }
         } else if (event.packet instanceof IPlayerInteractEntityC2SPacket interact && isAttack(interact)) {
             Entity target = interact.meteor$getEntity();
             if (target instanceof EndCrystalEntity) {
@@ -281,7 +285,7 @@ public class FightRecorder extends XploitsModule {
         if (!(event.entity instanceof EndCrystalEntity crystal)) return;
         crystalIds.add(crystal.getId());
         // The spawn packet sets the position (Entity.onSpawnPacket) before ClientWorld.addEntity, so it is set here.
-        crystalCells.remember(crystal.getId(), crystal.getBlockPos().asLong());
+        claims.added(crystal.getId(), crystal.getBlockPos().asLong(), tick);
         if (mc.player != null && mc.player.distanceTo(crystal) <= FightTracker.CRYSTAL_NEAR_RANGE) {
             ownEvents.add(new CombatEvent.CrystalSpawnedNear());
         }
@@ -401,12 +405,7 @@ public class FightRecorder extends XploitsModule {
      */
     private CombatEvent.SelfDamaged selfDamaged(EntityDamageS2CPacket damage, ClientPlayerEntity me, Allies allies) {
         int direct = damage.sourceDirectId();
-        Entity source = direct >= 0 ? mc.world.getEntityById(direct) : null;
-        // The crystal that exploded is already out of the world here: fall back to where it appeared.
-        long live = source instanceof EndCrystalEntity ? source.getBlockPos().asLong()
-            : com.xploits.pvp.recorder.core.HitSource.NO_CELL;
-        long cell = direct >= 0 ? crystalCells.resolve(direct, live) : live;
-        hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct, cell));
+        hitSources.add(new com.xploits.pvp.recorder.core.HitSource(tick, direct));
         if (hitSources.size() > HIT_SOURCES_KEPT) hitSources.poll();
         boolean crystal = direct >= 0
             && (crystalIds.contains(direct) || mc.world.getEntityById(direct) instanceof EndCrystalEntity);
@@ -426,6 +425,16 @@ public class FightRecorder extends XploitsModule {
      */
     public List<com.xploits.pvp.recorder.core.HitSource> hitSources() {
         return List.copyOf(hitSources);
+    }
+
+    /** The crystals claimed as ours, whichever module placed them (read-only, for the bench, on the client thread). */
+    public java.util.Set<Integer> claimedCrystalIds() {
+        return claims.claimedIds();
+    }
+
+    /** How many crystals were claimed as ours since activation (a count only). */
+    public long claimedCrystalCount() {
+        return claims.claimedTotal();
     }
 
     /** Your placements, breaks and crystals near you as they are; attacks on one of ours are dropped. */

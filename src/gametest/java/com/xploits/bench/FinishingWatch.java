@@ -34,6 +34,8 @@ final class FinishingWatch {
     private int totems = -1;
     private int trustedTicks;
     private int firstTrustedTick = -1;
+    /** The recorder's claimed count when this run's first tick was observed (the recorder may have been active longer). */
+    private long claimedBase = -1;
     /** Task C2 (I2): every crystal of ours seen so far (sticky: the brain forgets a crystal soon after it is gone). */
     private final Set<Integer> ownIds = new HashSet<>();
     /** The ones among {@link #ownIds} that we attacked ourselves. */
@@ -54,6 +56,7 @@ final class FinishingWatch {
 
     /** One tick's read, after the tick (crystal-aura++ only; anything else just counts our totems). */
     void observe(double health) {
+        if (claimedBase < 0) claimedBase = bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalCount());
         Read read = bench.fromClient(client -> {
             Map<Integer, FinishKind> marked = Map.of();
             Set<Integer> attacked = Set.of();
@@ -149,10 +152,11 @@ final class FinishingWatch {
      * set off ({@link OwnHits}). Without crystal-aura++ under test only the recorder's attribution is known.
      */
     Set<Integer> ownIndexes(List<DamageEvent> damage) {
-        // Meteor's runs too: the placed cells come from the packets sent, whichever module sent them.
+        // Meteor's runs too: the recorder claims crystals from the placement packets, whichever module sent them.
         List<HitSource> sources = bench.fromClient(client -> Modules.get().get(FightRecorder.class).hitSources());
-        Set<Long> cells = bench.fromClient(client -> PlacementCounter.get().placedCells());
-        return OwnHits.indexes(damage, sources, ownIds, cells);
+        Set<Integer> ids = new HashSet<>(ownIds);
+        ids.addAll(bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalIds()));
+        return OwnHits.indexes(damage, sources, ids);
     }
 
     /** Health lost to hits that are ours ({@link #ownIndexes}), finishing hits included. */
@@ -161,6 +165,11 @@ final class FinishingWatch {
         double sum = 0;
         for (int i : ownIndexes(damage)) sum += damage.get(i).before() - damage.get(i).after();
         return sum;
+    }
+
+    /** How many crystals the recorder claimed as ours during this run (a count only, log only). */
+    long claimedCrystals() {
+        return bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalCount()) - Math.max(0, claimedBase);
     }
 
     /** How many hits on us came from a crystal of ours that the recorder blamed on someone else (log only). */

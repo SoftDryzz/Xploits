@@ -29,17 +29,6 @@ public final class OwnHits {
 
     /** The indexes into {@code damage} of the events that are ours: {@code ownIds} are the crystals we placed. */
     public static Set<Integer> indexes(List<DamageEvent> damage, List<HitSource> sources, Set<Integer> ownIds) {
-        return indexes(damage, sources, ownIds, Set.of());
-    }
-
-    /**
-     * The same, also recognising a crystal by the spot: a packet whose direct crystal stands on a cell where we
-     * sent a placement ({@code placedCells}, packed block positions, in memory only) is ours even when its id was
-     * never seen (the opponent broke it in the tick it appeared). A foreign crystal on one of our cells is
-     * over-counted, the safe direction.
-     */
-    public static Set<Integer> indexes(List<DamageEvent> damage, List<HitSource> sources, Set<Integer> ownIds,
-                                       Set<Long> placedCells) {
         Set<Integer> ours = selfIndexes(damage);
         Set<Long> ticks = new HashSet<>();
         for (DamageEvent e : damage) ticks.add(e.tick());
@@ -55,17 +44,13 @@ public final class OwnHits {
             }
             if (events.size() == packets.size()) {
                 for (int k = 0; k < events.size(); k++) {
-                    if (isOurs(packets.get(k), ownIds, placedCells)) ours.add(events.get(k));
+                    if (ownIds.contains(packets.get(k).directId())) ours.add(events.get(k));
                 }
-            } else if (packets.stream().anyMatch(p -> isOurs(p, ownIds, placedCells))) {
+            } else if (packets.stream().anyMatch(p -> ownIds.contains(p.directId()))) {
                 ours.addAll(events);
             }
         }
         return ours;
-    }
-
-    private static boolean isOurs(HitSource p, Set<Integer> ownIds, Set<Long> placedCells) {
-        return ownIds.contains(p.directId()) || (p.cell() != HitSource.NO_CELL && placedCells.contains(p.cell()));
     }
 
     /** The events the recorder itself gave to us ({@link AttackerKind#SELF}). */

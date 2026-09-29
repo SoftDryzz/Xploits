@@ -8,8 +8,6 @@ import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -34,9 +32,6 @@ final class PlacementCounter {
     private final AtomicInteger blockInteractions = new AtomicInteger();
     private final AtomicInteger entityInteractions = new AtomicInteger();
 
-    /** Cells (packed block positions) where a crystal we placed stands: memory only, never logged or written. */
-    private final Set<Long> placedCells = ConcurrentHashMap.newKeySet();
-
     private PlacementCounter() {
     }
 
@@ -47,16 +42,6 @@ final class PlacementCounter {
             subscribed = true;
         }
         return INSTANCE;
-    }
-
-    /** A copy of the cells we sent a crystal placement for since {@link #resetCells}, for attribution only. */
-    Set<Long> placedCells() {
-        return Set.copyOf(placedCells);
-    }
-
-    /** Forgets the placed cells (a new run starts). */
-    void resetCells() {
-        placedCells.clear();
     }
 
     /** Placement packets sent since the session began. */
@@ -80,11 +65,7 @@ final class PlacementCounter {
         if (mc.player == null) return;
         if (event.packet instanceof PlayerInteractBlockC2SPacket place) {
             blockInteractions.incrementAndGet();
-            if (mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) {
-                sent.incrementAndGet();
-                // The crystal stands on the block above the one clicked.
-                placedCells.add(place.getBlockHitResult().getBlockPos().up().asLong());
-            }
+            if (mc.player.getStackInHand(place.getHand()).isOf(Items.END_CRYSTAL)) sent.incrementAndGet();
         } else if (event.packet instanceof PlayerInteractEntityC2SPacket) {
             entityInteractions.incrementAndGet();
         }
