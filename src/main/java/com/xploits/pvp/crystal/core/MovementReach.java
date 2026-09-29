@@ -222,4 +222,47 @@ public final class MovementReach {
         }
         return best;
     }
+
+    /**
+     * Beyond this reach radius (blocks; {@code speed * landingTicks}) the exact worst case is 0.7.0's: every offset
+     * of {@link #offsets} at exposure 1.0, no raycast (task C3). At this radius or below it reads the real exposure
+     * (task B2). Moving fast with a long landing bound spreads the points so widely that sampling many more of them
+     * at real exposure made moving offense worse than 0.7.0 at Balanced, while standing (or nearly) is where the
+     * real exposure pays off (cover, above, below).
+     */
+    public static final double STILL_RADIUS = 1.0;
+
+    /**
+     * The reach radius: exactly the ring's radius in {@link #offsets} ({@code speed * landingTicks}, a non-finite
+     * velocity read as 0, a negative {@code landingTicks} as 0). Never NaN.
+     */
+    public static double reachRadius(double vx, double vz, long landingTicks) {
+        double safeVx = Double.isFinite(vx) ? vx : 0;
+        double safeVz = Double.isFinite(vz) ? vz : 0;
+        return Math.hypot(safeVx, safeVz) * Math.max(0, landingTicks);
+    }
+
+    /**
+     * Whether the real exposure is read for this reach: the radius is at most {@link #STILL_RADIUS} (exactly 1.0
+     * included). Above it {@link #worstReachRaw} is 0.7.0's worst case.
+     */
+    public static boolean readsRealExposure(double vx, double vz, long landingTicks) {
+        return reachRadius(vx, vz, landingTicks) <= STILL_RADIUS;
+    }
+
+    /**
+     * The exact worst raw damage over what we can reach (task C3), the one entry the adapter uses. Radius at most
+     * {@link #STILL_RADIUS}: {@link #reachPoints} at real exposure by branch and bound ({@link #rankedByWorstRaw},
+     * {@link #worstRawDamage(List, ExposureFunction, float)}). Above it: 0.7.0's {@link #worstRawDamage(double,
+     * double, double, double, double, long)} (exposure 1.0 over {@link #offsets}, no exposure asked), maxed with
+     * {@code floor} (the current position's real value), as 0.7.0's caller did; never below {@code floor} either
+     * way, and a NaN propagates in both. {@code exposure} is not called at all above the radius.
+     */
+    public static float worstReachRaw(double ex, double ey, double ez, double vx, double vz, long landingTicks,
+                                      ExposureFunction exposure, float floor) {
+        if (!readsRealExposure(vx, vz, landingTicks)) {
+            return Math.max(floor, worstRawDamage(ex, ey, ez, vx, vz, landingTicks));
+        }
+        return worstRawDamage(rankedByWorstRaw(ex, ey, ez, reachPoints(vx, vz, landingTicks)), exposure, floor);
+    }
 }

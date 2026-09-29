@@ -940,14 +940,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      */
     private float worstReachableRawDamage(Vec3d feet, Vec3d explosion, float floor, double currentExposure) {
         long start = System.nanoTime();
-        // Every reach point is read at its real exposure (task B2), worst ceiling first, and only as far as one
+        // Up to the still radius every reach point is read at its real exposure (task B2), worst ceiling first, only as far as one
         // could still beat what is already known: `floor` is the current position's own real value. A point the
         // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
-        List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
-            explosion.z - feet.z, MovementReach.reachPoints(velocityThisTick.x, velocityThisTick.z,
-                brain.landingTicksBound()));
         ClientPlayerEntity p = mc.player;
-        float worst = MovementReach.worstRawDamage(ranked,
+        // One radius decides (task C3): up to MovementReach.STILL_RADIUS the real exposure above, beyond it exactly
+        // 0.7.0's exposure-1.0 worst case, so nothing here asks for a raycast while we move.
+        float worst = MovementReach.worstReachRaw(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
+            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound(),
             o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
                 : ExposureAt.at(p, explosion, o.dx(), o.dy(), o.dz(), exposureBudget), floor);
         worstCaseNanos += System.nanoTime() - start;
