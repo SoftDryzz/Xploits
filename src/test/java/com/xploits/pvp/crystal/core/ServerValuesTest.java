@@ -114,7 +114,7 @@ class ServerValuesTest {
             for (double absorption : ODD) {
                 for (double distance : ODD) {
                     Optional<TargetView> t = assertDoesNotThrow(() -> ServerValues.target("p", distance, health, absorption,
-                        TargetView.NO_ARMOR, false, true, false));
+                        TargetView.NO_ARMOR, false, true, false, false, false, false, false));
                     t.ifPresent(v -> {
                         assertTrue(Double.isFinite(v.totalHealth()) && v.totalHealth() >= 0);
                         assertTrue(Double.isFinite(v.squaredDistance()) && v.squaredDistance() >= 0);
@@ -150,6 +150,6 @@ class ServerValuesTest {
     }
 
     private static Optional<TargetView> target(double health, double absorption, double squaredDistance) {
-        return ServerValues.target("p", squaredDistance, health, absorption, TargetView.NO_ARMOR, false, true, false);
+        return ServerValues.target("p", squaredDistance, health, absorption, TargetView.NO_ARMOR, false, true, false, false, false, false, false);
     }
 }

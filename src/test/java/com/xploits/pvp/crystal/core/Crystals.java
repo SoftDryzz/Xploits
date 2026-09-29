@@ -58,7 +58,17 @@ final class Crystals {
 
     /** A player at {@code distance} blocks (the view carries its square, as Meteor compares it). */
     static TargetView player(String name, double distance, double health) {
-        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false);
+        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false, false, true);
+    }
+
+    /**
+     * A player at {@code distance} blocks with the given hands (task B0c): {@code totemInHand}, and whether the
+     * hands are {@code handsVisible}; {@link #player} shows a non-totem item (kill-grade when finished).
+     */
+    static TargetView playerWithHands(String name, double distance, double health, boolean totemInHand,
+                                      boolean handsVisible) {
+        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false,
+            totemInHand, handsVisible);
     }
 
     /** A crystal on base {@code 1000 + id}, at 3 blocks, in break range, dealing {@code damage} to the enemy. */

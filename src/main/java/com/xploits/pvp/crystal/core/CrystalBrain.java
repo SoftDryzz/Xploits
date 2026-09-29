@@ -26,7 +26,10 @@ import java.util.Set;
  * (kills the target or pops his totem, {@link #FINISH_MARGIN}) may go through past {@code max-damage},
  * {@code anti-suicide}, the reserve, the floor or {@code pause-health}, only while a totem of undying backs it
  * (one in hand AND a spare — it may never spend the last one), and at most one such crystal at a time
- * ({@link Reason#FINISHING_BLOW}).
+ * ({@link Reason#FINISHING_BLOW}). Task B0c (spec Amendment 2026-09-29) splits it by {@link FinishKind}: only a
+ * KILL (the target holds no totem in either hand and his hands are visible) may pop our totem; a crystal that
+ * would only POP his may pass {@code max-damage}, the reserve and {@code pause-health} but must leave the floor
+ * after its own damage, so it never pops us, and it does not take the one-at-a-time slot.
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -117,6 +120,11 @@ public final class CrystalBrain {
      * (task B0a, {@link HealthTrust}). Also read for a finishing-grade candidate's own margin check.
      */
     private Map<String, Double> seenHealth = Map.of();
+    /**
+     * The players seen a finishing crystal would kill, not only pop (task B0c, {@link TargetView#killable}):
+     * no totem in either hand and the hands visible. Refreshed with {@link #seenHealth}.
+     */
+    private Set<String> killable = Set.of();
     /**
      * The pre-tick the windows were last forgotten at: a crystal whose placement was first decided then or before is
      * not a landing ({@link TargetWindows#landed}), as the pre-ticks since it may not all have been counted.
@@ -223,6 +231,7 @@ public final class CrystalBrain {
         if (settings.selfBudget()) countHits(previous, nowHealth);
         else forgetWindows();
         seenHealth = nowHealth;
+        killable = killableNames(tick.targets());
 
         // Crystals first seen now appeared after the previous pre-tick, when Meteor's EntityAdded would have
         // matched them against the placements pending then.
@@ -350,11 +359,12 @@ public final class CrystalBrain {
     private Optional<Action> fastBreakOverride(Known k, double health, CrystalTick.Hands hands) {
         if (!k.ours || !totemBacksIt(hands)) return Optional.empty();
         float damage = breakDamageIgnoringSelfDamage(k);
-        if (!(damage > settings.minDamage()) || !isFinishingGrade(k.seen.targetDamage())) return Optional.empty();
-        if (!overrideAvailable(k.seen.id(), null)) return Optional.empty();
-        SelfBudget budget = budget(health);
-        if (budget.health() - budget.worstCaseWithoutCrystal(k.view(now), now) < SelfBudget.FLOOR) return Optional.empty();
-        return attack(k, hands, Reason.FINISHING_BLOW, true);
+        if (!(damage > settings.minDamage())) return Optional.empty();
+        FinishKind kind = finishKind(k.seen.targetDamage());
+        if (kind == FinishKind.NONE) return Optional.empty();
+        // Kill-grade before pop-grade cannot matter for one crystal: it has one kind.
+        if (!breakOverrideHolds(k, kind, budget(health))) return Optional.empty();
+        return attack(k, hands, Reason.FINISHING_BLOW, kind);
     }
 
     /** An end crystal left the world (lines 747-752). */
@@ -422,6 +432,14 @@ public final class CrystalBrain {
         popped.clear();
     }
 
+    private static Set<String> killableNames(List<TargetView> seen) {
+        Set<String> names = new HashSet<>();
+        for (TargetView t : seen) {
+            if (t.killable()) names.add(t.name());
+        }
+        return Set.copyOf(names);
+    }
+
     /** Every player seen this pre-tick, by name, health plus absorption. */
     private static Map<String, Double> healthByName(List<TargetView> seen) {
         Map<String, Double> health = new LinkedHashMap<>();
@@ -459,11 +477,20 @@ public final class CrystalBrain {
      * {@link #known} still keeps (its own cleanup already drops one past that window).
      */
     public Set<Integer> finishingCrystalIds() {
-        Set<Integer> ids = new HashSet<>();
+        return finishingCrystalKinds().keySet();
+    }
+
+    /**
+     * {@link #finishingCrystalIds} with the kind of each (task B0c, read-only, for the bench): {@link
+     * FinishKind#KILL} for a crystal that went through the kill-grade override, {@link FinishKind#POP} for one
+     * that went through the pop-grade one. Never {@link FinishKind#NONE}.
+     */
+    public Map<Integer, FinishKind> finishingCrystalKinds() {
+        Map<Integer, FinishKind> kinds = new LinkedHashMap<>();
         for (Known k : known.values()) {
-            if (k.overrideMark) ids.add(k.seen.id());
+            if (k.finish != FinishKind.NONE) kinds.put(k.seen.id(), k.finish);
         }
-        return Set.copyOf(ids);
+        return Map.copyOf(kinds);
     }
 
     /**
@@ -518,7 +545,7 @@ public final class CrystalBrain {
         pending.removeIf(p -> p.pos == pos);
         late.removeIf(l -> l.pos == pos);
         pending.add(new Pending(pos, decided.budgetSelfDamage, now, Math.max(PENDING_MIN_TICKS, pingTicks + PENDING_PING_MARGIN),
-            first, decided.override));
+            first, decided.finish));
         decided = null;
     }
 
@@ -715,7 +742,7 @@ public final class CrystalBrain {
     }
 
     /**
-     * Tiers 1-2 of the finishing blow for a break (task B0a). {@code overrideAble} already skipped Meteor's
+     * Tiers 1-3 of the finishing blow for a break (task B0a; B0c: tier 2 is kill-grade, tier 3 pop-grade). {@code overrideAble} already skipped Meteor's
      * max-damage and anti-suicide, since the override may bypass those too; tier 1 (the normal budget) puts
      * them back for its own pick, since only tier 2 (the override) may bypass them. Among the finishing-grade
      * crystals of ours: tier 1's normal-budget pick, by damage, unless {@code healthPausedOnly} (then only the
@@ -743,22 +770,40 @@ public final class CrystalBrain {
 
         if (!totemBacksIt(tick.hands())) return Optional.empty();
         SelfBudget budget = budget(tick.health());
-        for (Scored<Known> s : finishing) {
-            if (!overrideAvailable(s.item.seen.id(), null)) continue;
-            CrystalView view = s.item.view(now);
-            if (budget.health() - budget.worstCaseWithoutCrystal(view, now) < SelfBudget.FLOOR) continue;
-            return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, true);
+        // Tier 2 (kill-grade) before tier 3 (pop-grade) (task B0c).
+        for (FinishKind kind : new FinishKind[] {FinishKind.KILL, FinishKind.POP}) {
+            for (Scored<Known> s : finishing) {
+                if (finishKind(s.item.seen.targetDamage()) != kind) continue;
+                if (!breakOverrideHolds(s.item, kind, budget)) continue;
+                return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, kind);
+            }
         }
         return Optional.empty();
     }
 
-    /** Meteor's {@code doBreak(crystal)} (lines 824-875): anti-weakness, then the attack. */
-    private Optional<Action> attack(Known k, CrystalTick.Hands hands, Reason reason) {
-        return attack(k, hands, reason, false);
+    /**
+     * Whether the override of this {@code kind} may break {@code k} now, given condition a already holds (task
+     * B0c). Kill-grade (B0a's override): no other kill-grade override crystal in flight (condition b) and
+     * {@code health - C(without this crystal) >= FLOOR} (condition c): it may pop us, and take us below the
+     * reserve. Pop-grade: it must never pop us, so {@code health - C(without this crystal) - its own self damage
+     * >= FLOOR}; it does not take the one-at-a-time slot.
+     */
+    private boolean breakOverrideHolds(Known k, FinishKind kind, SelfBudget budget) {
+        double left = budget.health() - budget.worstCaseWithoutCrystal(k.view(now), now);
+        return switch (kind) {
+            case KILL -> overrideAvailable(k.seen.id(), null) && left >= SelfBudget.FLOOR;
+            case POP -> left - k.seen.budgetSelfDamage() >= SelfBudget.FLOOR;
+            case NONE -> false;
+        };
     }
 
-    /** The same, {@code override} marking the crystal as one of the finishing-blow override's (task B0a, condition b). */
-    private Optional<Action> attack(Known k, CrystalTick.Hands hands, Reason reason, boolean override) {
+    /** Meteor's {@code doBreak(crystal)} (lines 824-875): anti-weakness, then the attack. */
+    private Optional<Action> attack(Known k, CrystalTick.Hands hands, Reason reason) {
+        return attack(k, hands, reason, FinishKind.NONE);
+    }
+
+    /** The same, {@code finish} marking the crystal as one of the finishing-blow override's (task B0a, condition b; task B0c: the kind). A mark is never lowered: a pop-grade break does not unmark a kill-grade crystal. */
+    private Optional<Action> attack(Known k, CrystalTick.Hands hands, Reason reason, FinishKind finish) {
         if (settings.antiWeakness() && hands.weakened()
             && (!hands.strengthened() || hands.strengthAmplifier() <= hands.weaknessAmplifier())
             && !hands.mainHandBreaksWeakened()) {
@@ -769,7 +814,7 @@ public final class CrystalBrain {
         rotateNow();
         k.attempts++;
         k.attackedTick = now;
-        if (override) k.overrideMark = true;
+        if (finish.ordinal() > k.finish.ordinal()) k.finish = finish;
         return Optional.of(new Action(Decision.breakCrystal(k.seen.id(), reason), crystalHand(hands), false));
     }
 
@@ -820,9 +865,11 @@ public final class CrystalBrain {
     private boolean overrideWouldTakeItNow(Known k, CrystalTick tick, SelfBudget budget) {
         if (!k.ours || !totemBacksIt(tick.hands())) return false;
         if (!(breakDamageIgnoringSelfDamage(k) > 0)) return false;
-        if (!isFinishingGrade(k.seen.targetDamage())) return false;
-        if (!overrideAvailable(k.seen.id(), null)) return false;
-        return budget.health() - budget.worstCaseWithoutCrystal(k.view(now), now) >= SelfBudget.FLOOR;
+        // Only kill-grade (task B0c): a pop-grade break needs at least what the ordinary budget needs (its C is
+        // never below I, and it also subtracts the crystal's own share), so wherever the budget refused this
+        // crystal, the pop-grade rule refuses it too; it never keeps the gate waiting.
+        return finishKind(k.seen.targetDamage()) == FinishKind.KILL
+            && breakOverrideHolds(k, FinishKind.KILL, budget);
     }
 
     /**
@@ -866,13 +913,13 @@ public final class CrystalBrain {
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
-            return Optional.of(place(s.item, reason, false));
+            return Optional.of(place(s.item, reason, FinishKind.NONE));
         }
         return Optional.empty();
     }
 
     /**
-     * Tiers 1-2 of the finishing blow for a place (task B0a). Spots are gathered with Meteor's max-damage and
+     * Tiers 1-3 of the finishing blow for a place (task B0a; B0c: tier 2 is kill-grade, tier 3 pop-grade). Spots are gathered with Meteor's max-damage and
      * anti-suicide skipped, since the override may bypass those too (every other Meteor rule — range,
      * min-damage/face-place minimum, the box — still applies); tier 1 (the normal budget) puts max-damage and
      * anti-suicide back for its own pick, since only tier 2 (the override) may bypass them. Among the
@@ -907,17 +954,25 @@ public final class CrystalBrain {
                 if (pendingAt(pos)) budget = budget(health, pos);
                 else budget = shared != null ? shared : (shared = budget(health, null));
                 Verdict v = budget.placeAllowed(s.item.budgetSelfDamage());
-                if (answered(v)) return Optional.of(place(s.item, v.reason(), false));
+                if (answered(v)) return Optional.of(place(s.item, v.reason(), FinishKind.NONE));
             }
         }
 
         if (!totemBacksIt(hands)) return Optional.empty();
-        for (Scored<Candidate> s : finishing) {
-            long pos = s.item.pos();
-            if (!overrideAvailable(null, pos)) continue;
-            SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
-            if (budget.health() - budget.worstCase() < SelfBudget.FLOOR) continue;
-            return Optional.of(place(s.item, Reason.FINISHING_BLOW, true));
+        // Tier 2 (kill-grade) before tier 3 (pop-grade) (task B0c).
+        for (FinishKind kind : new FinishKind[] {FinishKind.KILL, FinishKind.POP}) {
+            for (Scored<Candidate> s : finishing) {
+                if (finishKind(s.item.targetDamage()) != kind) continue;
+                long pos = s.item.pos();
+                SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
+                double left = budget.health() - budget.worstCase();
+                if (kind == FinishKind.KILL) {
+                    if (!overrideAvailable(null, pos) || left < SelfBudget.FLOOR) continue;
+                } else if (left - s.item.budgetSelfDamage() < SelfBudget.FLOOR) {
+                    continue;
+                }
+                return Optional.of(place(s.item, Reason.FINISHING_BLOW, kind));
+            }
         }
         return Optional.empty();
     }
@@ -951,6 +1006,17 @@ public final class CrystalBrain {
      * or pops his totem if he holds one.
      */
     private boolean isFinishingGrade(Map<String, Double> targetDamage) {
+        return finishKind(targetDamage) != FinishKind.NONE;
+    }
+
+    /**
+     * {@link #isFinishingGrade} with the kind (task B0c, spec Amendment 2026-09-29): {@link FinishKind#KILL} if
+     * the crystal is finishing-grade for at least one target that it kills (no totem in either hand, hands
+     * visible: {@link TargetView#killable}); else {@link FinishKind#POP} if it is finishing-grade for one that
+     * holds a totem or whose hands are not visible; else {@link FinishKind#NONE}.
+     */
+    private FinishKind finishKind(Map<String, Double> targetDamage) {
+        FinishKind kind = FinishKind.NONE;
         for (String t : targets) {
             Double predicted = targetDamage.get(t);
             if (predicted == null || !(predicted > 0)) continue;
@@ -958,9 +1024,11 @@ public final class CrystalBrain {
             if (windows.openByUs(t, now)) continue;
             Double health = seenHealth.get(t);
             if (health == null || !Double.isFinite(health) || health < 0) continue;
-            if (predicted >= FINISH_MARGIN * health) return true;
+            if (predicted < FINISH_MARGIN * health) continue;
+            if (killable.contains(t)) return FinishKind.KILL;
+            kind = FinishKind.POP;
         }
-        return false;
+        return kind;
     }
 
     /**
@@ -975,7 +1043,7 @@ public final class CrystalBrain {
      * appearing used to vanish from every check here the moment {@link #expirePending} moved it from
      * {@link #pending} to {@link #late} — freeing the slot for a second override crystal while the first, a
      * real crystal that may still detonate near us under lag or a high ping, was still a live, uncounted
-     * threat. {@link Late#override} closes that gap: the slot stays blocked for as long as the placement is
+     * threat. {@link Late#finish} closes that gap: the slot stays blocked for as long as the placement is
      * remembered at all, in whichever of {@link #pending}, {@link #late} or {@link #known} it currently lives
      * in (its own aging-out rules — the pending lifetime, {@link #LATE_OWN_WINDOW}, or {@link
      * SelfBudget#DISAPPEARANCE_WINDOW} once it is known and gone — are exactly when it is finally forgotten).
@@ -986,23 +1054,23 @@ public final class CrystalBrain {
     private boolean overrideAvailable(Integer excludeCrystalId, Long excludeSpot) {
         for (Pending p : pending) {
             if (excludeSpot != null && p.pos == excludeSpot) continue;
-            if (p.override) return false;
+            if (p.finish == FinishKind.KILL) return false;
         }
         for (Late l : late) {
             if (excludeSpot != null && l.pos == excludeSpot) continue;
-            if (l.override) return false;
+            if (l.finish == FinishKind.KILL) return false;
         }
         for (Known k : known.values()) {
             if (excludeCrystalId != null && k.seen.id() == excludeCrystalId) continue;
-            if (k.overrideMark) return false;
+            if (k.finish == FinishKind.KILL) return false;
         }
         return true;
     }
 
     /** Meteor's placement tail (lines 1032-1057 up to the packet): rotate, remember it, build the action. */
-    private Action place(Candidate c, Reason reason, boolean override) {
+    private Action place(Candidate c, Reason reason, FinishKind finish) {
         rotateNow();
-        decided = new Placement(c.pos(), c.budgetSelfDamage(), override);
+        decided = new Placement(c.pos(), c.budgetSelfDamage(), finish);
         boolean swap = settings.autoSwitch() == AutoSwitch.NORMAL && !hands.offhandCrystals() && !hands.mainHandCrystals();
         return new Action(Decision.place(c.pos(), reason), crystalHand(hands), swap);
     }
@@ -1080,24 +1148,24 @@ public final class CrystalBrain {
      * fix round 2 reads, no further change needed there).
      *
      * <p>Fix round 1 (review-b0a.md): a late-own crystal placed through the finishing-blow override is the one
-     * exception to "treated as foreign in every other way" — {@link Late#override} still carries onto {@link
-     * Known#overrideMark} (checked and confirmed deliberately: only {@code overrideMark}, not {@code ours}
+     * exception to "treated as foreign in every other way" — {@link Late#finish} still carries onto {@link
+     * Known#finish} (checked and confirmed deliberately: only {@code finish}, not {@code ours}
      * itself, which Q2's own foreign treatment must keep false; {@link #overrideAvailable}'s known-loop reads
-     * only {@code overrideMark}, never {@code ours}, so this alone is enough to keep condition b's "one at a
-     * time" counting it once it is known, continuing the block {@link Late#override} already gave it while it
+     * only {@code finish}, never {@code ours}, so this alone is enough to keep condition b's "one at a
+     * time" counting it once it is known, continuing the block {@link Late#finish} already gave it while it
      * was only late).
      */
     private Known appeared(CrystalSeen c, long at) {
         boolean ours = false;
         long placedTick = CrystalView.NEVER;
-        boolean override = false;
+        FinishKind override = FinishKind.NONE;
         for (Iterator<Pending> it = pending.iterator(); it.hasNext(); ) {
             Pending p = it.next();
             if (p.pos == c.pos() && at - p.tick < p.lifetime) {
                 it.remove();
                 ours = true;
                 placedTick = p.firstTick;
-                override = p.override;
+                override = p.finish;
                 break;
             }
         }
@@ -1108,13 +1176,13 @@ public final class CrystalBrain {
                     it.remove();
                     lateOwn++;
                     windows.landed(at, at - l.firstTick);
-                    override = l.override;
+                    override = l.finish;
                     break;
                 }
             }
         }
         Known k = new Known(c, ours, placedTick);
-        k.overrideMark = override;
+        k.finish = override;
         known.put(c.id(), k);
         return k;
     }
@@ -1124,7 +1192,7 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, now, p.firstTick, p.override));
+                late.add(new Late(p.pos, now, p.firstTick, p.finish));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
@@ -1146,23 +1214,23 @@ public final class CrystalBrain {
     private record Scored<T>(T item, float damage, double budgetSelfDamage) {}
 
     /** A placement decided this tick, with the self damage the budget counts for it, and whether it went through the override. */
-    private record Placement(long pos, double budgetSelfDamage, boolean override) {}
+    private record Placement(long pos, double budgetSelfDamage, FinishKind finish) {}
 
     /**
      * A placement pending: {@code tick} starts its lifetime; {@code firstTick} is the first of the placements on that
-     * base since the last crystal came of one, which its crystal's landing counts from; {@code override}
+     * base since the last crystal came of one, which its crystal's landing counts from; {@code finish}
      * (task B0a) whether it went through the finishing-blow override, carried to the {@link Known} it settles.
      */
-    private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime, long firstTick, boolean override) {}
+    private record Pending(long pos, double budgetSelfDamage, long tick, int lifetime, long firstTick, FinishKind finish) {}
 
     /**
      * A placement's own {@code firstTick} carried along, so a late-own crystal's own lateness can still be
-     * measured; {@code override} (task B0a fix round 1) carried from {@link Pending#override}, so condition
+     * measured; {@code finish} (task B0a fix round 1) carried from {@link Pending#finish}, so condition
      * b's "one at a time" keeps blocking while an override crystal's placement has expired (Q2) but its
      * crystal has not yet been confirmed gone: neither appeared (still in {@link #late}, see
      * {@link #overrideAvailable}) nor its own {@link #LATE_OWN_WINDOW} elapsed with nothing appearing.
      */
-    private record Late(long pos, long since, long firstTick, boolean override) {}
+    private record Late(long pos, long since, long firstTick, FinishKind finish) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}
@@ -1178,8 +1246,11 @@ public final class CrystalBrain {
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
         boolean reportedGone;
-        /** Task B0a: whether its placement or break went through the finishing-blow override. */
-        boolean overrideMark;
+        /**
+         * Task B0a/B0c: which finishing-blow override its placement or break went through. Only {@link
+         * FinishKind#KILL} takes the one-at-a-time slot ({@link #overrideAvailable}).
+         */
+        FinishKind finish = FinishKind.NONE;
 
         Known(CrystalSeen seen, boolean ours, long placedTick) {
             this.seen = seen;

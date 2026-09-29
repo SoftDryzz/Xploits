@@ -29,9 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CrystalBrainFinishingBlowTest {
     /** {@link Crystals#DEFAULTS} with {@code min-damage} out of the way, so a test can isolate the margin. */
-    private static final CrystalSettings LOW_MIN_DAMAGE = DEFAULTS.toBuilder().minDamage(1).build();
+    static final CrystalSettings LOW_MIN_DAMAGE = DEFAULTS.toBuilder().minDamage(1).build();
 
-    private static void assertDecision(Decision expected, List<Action> actions) {
+    static void assertDecision(Decision expected, List<Action> actions) {
         assertEquals(expected, only(actions).decision());
     }
 
@@ -487,7 +487,7 @@ class CrystalBrainFinishingBlowTest {
      *
      * @return the next free pre-tick, with the crystal standing, ours, deadlocked exactly as the run showed it
      */
-    private static long placeTheStuckCrystal(CrystalBrain b, long t, long pos, int id) {
+    static long placeTheStuckCrystal(CrystalBrain b, long t, long pos, int id) {
         assertDecision(Decision.place(pos, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
             tick(t).health(20).targets(player(ENEMY, 3, 20))
                 .candidates(Crystals.withBudget(spot(pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF)).build()));
@@ -497,7 +497,7 @@ class CrystalBrainFinishingBlowTest {
         return t + 1;
     }
 
-    private static CrystalSeen stuckCrystal(int id, long pos) {
+    static CrystalSeen stuckCrystal(int id, long pos) {
         return Crystals.withBudget(crystal(id, pos, 20.0, F1_METEOR_SELF), F1_BUDGET_SELF);
     }
 

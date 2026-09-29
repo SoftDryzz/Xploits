@@ -103,9 +103,9 @@ class CrystalBrainParityTest {
         // Lines 1222-1253: creative, dead and friends are left out; beyond 10 too (squared distance > 100).
         TargetView edge = player("edge", 10, 20);
         TargetView far = player("far", 10.25, 20);
-        TargetView creative = new TargetView("creative", 9, 20, TargetView.NO_ARMOR, true, true, false);
-        TargetView dead = new TargetView("dead", 9, 20, TargetView.NO_ARMOR, false, false, false);
-        TargetView friend = new TargetView("friend", 9, 20, TargetView.NO_ARMOR, false, true, true);
+        TargetView creative = new TargetView("creative", 9, 20, TargetView.NO_ARMOR, true, true, false, false, true);
+        TargetView dead = new TargetView("dead", 9, 20, TargetView.NO_ARMOR, false, false, false, false, true);
+        TargetView friend = new TargetView("friend", 9, 20, TargetView.NO_ARMOR, false, true, true, false, true);
         Candidate forOthers = spot(1, Map.of("far", 50.0, "creative", 50.0, "dead", 50.0, "friend", 50.0), 1);
         Candidate forEdge = spot(2, Map.of("edge", 6.0), 1);
         CrystalBrain b = new CrystalBrain();
@@ -124,7 +124,7 @@ class CrystalBrainParityTest {
         // squares) was a target. The adapter now hands over the squared distance, as Meteor reads it.
         double squared = Math.nextUp(100.0);
         assertEquals(10.0, Math.sqrt(squared), 0.0);
-        TargetView edge = ServerValues.target(ENEMY, squared, 20, 0, TargetView.NO_ARMOR, false, true, false).orElseThrow();
+        TargetView edge = ServerValues.target(ENEMY, squared, 20, 0, TargetView.NO_ARMOR, false, true, false, false, false, false, false).orElseThrow();
         CrystalBrain b = new CrystalBrain();
         assertNothing(b.preTick(METEOR, tick(1).targets(edge).candidates(spot(1, 6, 1)).build()));
         assertEquals(List.of(), b.targets());
@@ -224,8 +224,8 @@ class CrystalBrainParityTest {
         // Lines 1127-1149, 817, 959: any target at <= 8 health, or wearing a piece at <= 2 %.
         TargetView low = player(ENEMY, 3, 8);
         TargetView notLow = player(ENEMY, 3, 8.25);
-        TargetView worn = new TargetView(ENEMY, 9, 20, 2, false, true, false);
-        TargetView notWorn = new TargetView(ENEMY, 9, 20, 2.25, false, true, false);
+        TargetView worn = new TargetView(ENEMY, 9, 20, 2, false, true, false, false, true);
+        TargetView notWorn = new TargetView(ENEMY, 9, 20, 2.25, false, true, false, false, true);
         CrystalSettings off = METEOR.toBuilder().facePlace(false).build();
 
         assertPlaces(1, once(METEOR, tick(1).targets(low).candidates(spot(1, 1.5, 1))));

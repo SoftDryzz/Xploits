@@ -35,13 +35,21 @@ public final class ServerValues {
      *
      * @param lowestArmorPercent as {@link TargetView#lowestArmorPercent}; a NaN means no piece counts, a
      *                           negative one is worn out
+     * @param mainIsTotem        whether its main hand holds a totem of undying (the equipment the server syncs)
+     * @param offIsTotem         whether its off hand holds one
+     * @param mainEmpty          whether its main hand shows no item
+     * @param offEmpty           whether its off hand shows no item; both empty means the hands are not visible
+     *                           (a server that hides equipment shows that), never "no totem" ({@link
+     *                           TargetView#handsVisible})
      */
     public static Optional<TargetView> target(String name, double squaredDistance, double health, double absorption,
-                                              double lowestArmorPercent, boolean creative, boolean alive, boolean friend) {
+                                              double lowestArmorPercent, boolean creative, boolean alive, boolean friend,
+                                              boolean mainIsTotem, boolean offIsTotem, boolean mainEmpty, boolean offEmpty) {
         double total = floatSum(health, absorption);
         if (!valid(total) || !valid(squaredDistance)) return Optional.empty();
         double armor = Double.isNaN(lowestArmorPercent) ? TargetView.NO_ARMOR : Math.max(0, lowestArmorPercent);
-        return Optional.of(new TargetView(name, squaredDistance, total, armor, creative, alive, friend));
+        return Optional.of(new TargetView(name, squaredDistance, total, armor, creative, alive, friend,
+            mainIsTotem || offIsTotem, !mainEmpty || !offEmpty || mainIsTotem || offIsTotem));
     }
 
     /** Our health plus absorption, summed as Meteor does, or nothing if it is not a valid number. */

@@ -18,7 +18,8 @@ import java.util.Objects;
  * @param friend             whether Meteor's friends say not to attack it
  */
 public record TargetView(String name, double squaredDistance, double totalHealth, double lowestArmorPercent,
-                         boolean creative, boolean alive, boolean friend) {
+                         boolean creative, boolean alive, boolean friend, boolean totemInHand,
+                         boolean handsVisible) {
     /** No worn piece counts for face-placing. */
     public static final double NO_ARMOR = Double.POSITIVE_INFINITY;
 
@@ -31,5 +32,13 @@ public record TargetView(String name, double squaredDistance, double totalHealth
         if (Double.isNaN(lowestArmorPercent) || lowestArmorPercent < 0) {
             throw new IllegalArgumentException("armor " + lowestArmorPercent);
         }
+    }
+
+    /**
+     * Whether a crystal that finishes it kills it rather than only pops it (task B0c): no totem in either hand
+     * AND the hands visible. Hidden equipment shows both hands empty, which is never "no totem".
+     */
+    public boolean killable() {
+        return !totemInHand && handsVisible;
     }
 }

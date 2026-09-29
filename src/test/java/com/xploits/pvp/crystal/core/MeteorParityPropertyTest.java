@@ -241,7 +241,7 @@ class MeteorParityPropertyTest {
                     default -> quarters(100);
                 };
                 targets.add(new TargetView(name, squared, health, armor, r.nextDouble() < 0.05,
-                    r.nextDouble() < 0.95, r.nextDouble() < 0.05));
+                    r.nextDouble() < 0.95, r.nextDouble() < 0.05, false, true));
             }
             return targets;
         }

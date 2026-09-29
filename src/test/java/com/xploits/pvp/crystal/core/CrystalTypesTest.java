@@ -145,14 +145,14 @@ class CrystalTypesTest {
         assertThrows(IllegalArgumentException.class, () -> new Candidate(1, ok, Double.POSITIVE_INFINITY, true, Set.of(), false));
         assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, -1, 3, true));
         assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, 1, Double.NaN, true));
-        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, -1, 50, false, true, false));
-        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, 20, Double.NaN, false, true, false));
-        new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false);
+        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, -1, 50, false, true, false, false, true));
+        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, 20, Double.NaN, false, true, false, false, true));
+        new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false, false, true);
     }
 
     @Test
     void aTickRefusesDuplicatesAndImpossibleValues() {
-        TargetView t = new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false);
+        TargetView t = new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false, false, true);
         Candidate p = new Candidate(7, Map.of(), 1, true, Set.of(), false);
         CrystalSeen one = new CrystalSeen(1, 5, Map.of(), 1, 3, true);
         CrystalSeen sameId = new CrystalSeen(1, 6, Map.of(), 2, 3, true);

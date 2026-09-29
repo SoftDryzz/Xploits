@@ -88,11 +88,11 @@ class CrystalSettingsCoverageTest {
     }
 
     private static TargetView at(double squaredDistance) {
-        return new TargetView(ENEMY, squaredDistance, 20, TargetView.NO_ARMOR, false, true, false);
+        return new TargetView(ENEMY, squaredDistance, 20, TargetView.NO_ARMOR, false, true, false, false, true);
     }
 
     private static TargetView wearing(double armorPercent) {
-        return new TargetView(ENEMY, 9, 20, armorPercent, false, true, false);
+        return new TargetView(ENEMY, 9, 20, armorPercent, false, true, false, false, true);
     }
 
     // General

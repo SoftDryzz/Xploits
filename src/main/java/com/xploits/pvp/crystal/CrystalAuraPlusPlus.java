@@ -804,8 +804,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             double squared = player.squaredDistanceTo(mc.player);
             boolean creative = player.getAbilities().creativeMode;
             boolean friend = !Friends.get().shouldAttack(player);
+            ItemStack main = player.getMainHandStack();
+            ItemStack off = player.getOffHandStack();
             Optional<TargetView> view = ServerValues.target(name, squared, player.getHealth(),
-                player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend);
+                player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend,
+                main.isOf(Items.TOTEM_OF_UNDYING), off.isOf(Items.TOTEM_OF_UNDYING), main.isEmpty(), off.isEmpty());
             if (view.isEmpty()) continue;
             seen.add(view.get());
             if (creative || !player.isAlive() || friend || !ENTITIES.contains(player.getType())) continue;
