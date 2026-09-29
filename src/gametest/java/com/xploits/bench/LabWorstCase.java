@@ -5,6 +5,7 @@ import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.Decision;
+import com.xploits.pvp.crystal.core.RiskLevel;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightTracker;
 import meteordevelopment.meteorclient.systems.modules.Module;
@@ -55,7 +56,7 @@ final class LabWorstCase implements Scenario {
     static final String PROPERTY = "xploits.lab";
     /** Where the traces go ({@code build/bench-lab}). */
     static final String OUT_PROPERTY = "xploits.lab.out";
-    static final int RUN_TICKS = 600;
+    static final int RUN_TICKS = 1200;
     /** A drop in how far we have got, within one tick, larger than this while walking: something put us back. */
     private static final double PULLED_BACK = 0.15;
     private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
@@ -66,11 +67,30 @@ final class LabWorstCase implements Scenario {
      */
     enum Driver { AUTO_PVP, BY_HAND, METEOR_BY_HAND }
 
+    /**
+     * The crystal aura's settings in a variant, on whichever aura it runs (crystal-aura++ mirrors Meteor's names; only
+     * the walls ranges and the face-place group are named differently). Ranges stop at 6 because that is where
+     * Meteor's own sliders stop: past it the server refuses the placement anyway.
+     */
+    enum AuraConfig {
+        DEFAULTS("the aura's defaults"),
+        OWNER("yours: min-damage 0.9, max-damage 36, place and break range 6, pause-health 1, anti-suicide off"),
+        OWNER_MAX_FACE("yours with every range at its maximum (place, break and both walls ranges 6, target range 16)"
+            + " and face-placing at any health (face-place-health 36)"),
+        COMPETITIVE("a competitive config, ThunderHack's defaults: min-damage 6, max-damage 10, anti-suicide on, place"
+            + " and break range 5, walls range 3.5, face-place-health 5");
+
+        final String description;
+
+        AuraConfig(String description) {
+            this.description = description;
+        }
+    }
+
     /** What a variant changes from the plain setup. */
     enum Tweak {
-        /** The owner's own crystal-aura settings: min-damage 0.9, max-damage 36, place and break range 6,
-         * pause-health 1, anti-suicide off. */
-        OWNER_SETTINGS,
+        /** crystal-aura++ at {@code risk} Aggressive (reserve 2). */
+        AGGRESSIVE,
         /** Surround's {@code center} set to Never. */
         NO_CENTER,
         /** Surround's {@code toggle-on-y-change} off. */
@@ -81,38 +101,46 @@ final class LabWorstCase implements Scenario {
         WALK_OUT
     }
 
-    record Variant(String name, int attackers, Driver driver, Set<Tweak> tweaks, String summary) {
+    record Variant(String name, int attackers, Driver driver, AuraConfig config, Set<Tweak> tweaks, String summary) {
         boolean has(Tweak tweak) {
             return tweaks.contains(tweak);
         }
     }
 
+    /** Surround at head height too and never switched off by a change of height: the head-covering defence. */
+    private static final Set<Tweak> DOUBLE = Set.of(Tweak.DOUBLE_HEIGHT, Tweak.NO_Y_TOGGLE);
+
+    private static Set<Tweak> doubleAnd(Tweak tweak) {
+        return Set.of(Tweak.DOUBLE_HEIGHT, Tweak.NO_Y_TOGGLE, tweak);
+    }
+
     static final List<Variant> VARIANTS = List.of(
-        new Variant("worst-2", 2, Driver.AUTO_PVP, Set.of(),
-            "2 attackers; your setup (your surround, then auto-pvp driving crystal-aura++); you stay put"),
-        new Variant("worst-2-walk", 2, Driver.AUTO_PVP, Set.of(Tweak.WALK_OUT),
-            "2 attackers; your setup; once the hole breaks you hold forward through the gap"),
-        new Variant("worst-2-walk-nocenter", 2, Driver.AUTO_PVP, Set.of(Tweak.WALK_OUT, Tweak.NO_CENTER),
-            "the same, with surround's center set to Never"),
-        new Variant("worst-2-byhand", 2, Driver.BY_HAND, Set.of(),
-            "2 attackers; your surround and crystal-aura++ on by hand, no auto-pvp; you stay put"),
-        new Variant("worst-3", 3, Driver.AUTO_PVP, Set.of(),
-            "3 attackers; your setup; you stay put"),
-        new Variant("worst-2-yours", 2, Driver.AUTO_PVP, Set.of(Tweak.OWNER_SETTINGS),
-            "2 attackers; your setup with your own crystal-aura++ settings (min-damage 0.9, max-damage 36, place and"
-                + " break range 6, pause-health 1, anti-suicide off); you stay put"),
-        new Variant("worst-2-meteor", 2, Driver.METEOR_BY_HAND, Set.of(Tweak.OWNER_SETTINGS),
-            "2 attackers; your surround and Meteor's crystal-aura on by hand with your settings (no reserve); you stay"
-                + " put"),
-        new Variant("worst-2-yours-noytoggle", 2, Driver.AUTO_PVP, Set.of(Tweak.OWNER_SETTINGS, Tweak.NO_Y_TOGGLE),
-            "worst-2-yours with surround's toggle-on-y-change off"),
-        new Variant("worst-2-yours-double", 2, Driver.AUTO_PVP,
-            Set.of(Tweak.OWNER_SETTINGS, Tweak.NO_Y_TOGGLE, Tweak.DOUBLE_HEIGHT),
-            "worst-2-yours-noytoggle with surround's double-height on (obsidian at head height too)"));
+        new Variant("yours", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(),
+            "your setup: your surround as it comes, auto-pvp driving crystal-aura++ with your settings"),
+        new Variant("yours-double", 2, Driver.AUTO_PVP, AuraConfig.OWNER, DOUBLE,
+            "your setup, surround at head height too and never switched off by a change of height"),
+        new Variant("max-face", 2, Driver.AUTO_PVP, AuraConfig.OWNER_MAX_FACE, DOUBLE,
+            "yours-double with every range at its maximum and face-placing at any health"),
+        new Variant("max-face-aggressive", 2, Driver.AUTO_PVP, AuraConfig.OWNER_MAX_FACE, doubleAnd(Tweak.AGGRESSIVE),
+            "max-face with crystal-aura++ at risk Aggressive (reserve 2)"),
+        new Variant("meteor-max-face", 2, Driver.METEOR_BY_HAND, AuraConfig.OWNER_MAX_FACE, DOUBLE,
+            "max-face with Meteor's crystal-aura on by hand instead (no reserve)"),
+        new Variant("competitive", 2, Driver.AUTO_PVP, AuraConfig.COMPETITIVE, DOUBLE,
+            "yours-double with a competitive aura config instead of yours"),
+        new Variant("meteor-competitive", 2, Driver.METEOR_BY_HAND, AuraConfig.COMPETITIVE, DOUBLE,
+            "the competitive config on Meteor's crystal-aura by hand"),
+        new Variant("yours-3", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(),
+            "your setup against 3 attackers"),
+        new Variant("yours-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT),
+            "your setup; once the hole breaks you hold forward through the gap"),
+        new Variant("yours-walk-nocenter", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT, Tweak.NO_CENTER),
+            "yours-walk with surround's center set to Never"));
 
     private final Variant variant;
     private AutoPvpScene scene;
     private final List<LabHarass> harassment = new ArrayList<>();
+    private final List<LabCrystalAttack> attacks = new ArrayList<>();
+    private final LabHeadMiner headMiner = new LabHeadMiner();
 
     LabWorstCase(Variant variant) {
         this.variant = variant;
@@ -150,17 +178,7 @@ final class LabWorstCase implements Scenario {
     @Override
     public void arrange(Bench bench) {
         scene = AutoPvpScene.arrange(bench, "balanced", CrystalModule.XPLOITS);
-        if (variant.has(Tweak.OWNER_SETTINGS)) {
-            // The owner's own crystal-aura settings, as he plays with them, on whichever aura this variant runs.
-            Module aura = bench.fromClient(client -> variant.driver() == Driver.METEOR_BY_HAND
-                ? Modules.get().get(CrystalAura.class) : Modules.get().get(CrystalAuraPlusPlus.class));
-            bench.setting(aura, "General", "min-damage", 0.9);
-            bench.setting(aura, "General", "max-damage", 36.0);
-            bench.setting(aura, "General", "anti-suicide", false);
-            bench.setting(aura, "Place", "place-range", 6.0);
-            bench.setting(aura, "Break", "break-range", 6.0);
-            bench.setting(aura, "Pause", "pause-health", 1.0);
-        }
+        configure(bench);
         Surround surround = bench.meteor(Surround.class);
         if (variant.has(Tweak.NO_CENTER)) bench.setting(surround, "General", "center", Surround.Center.Never);
         if (variant.has(Tweak.NO_Y_TOGGLE)) bench.setting(surround, "Toggles", "toggle-on-y-change", false);
@@ -171,18 +189,58 @@ final class LabWorstCase implements Scenario {
         // auto-pvp only turns auto-city on with a pickaxe in the hotbar; he had one.
         bench.arena().give(3, Items.NETHERITE_PICKAXE, 1);
 
-        CrystalAttack face = new CrystalAttack(CrystalAttack.Mode.HEAD, new Vec3i(0, 0, -3), Fights.HEAD_CELLS);
         LabHarass harass = new LabHarass();
         harassment.add(harass);
+        LabCrystalAttack second = new LabCrystalAttack(new Vec3i(0, 0, -3));
+        attacks.add(second);
         bench.spawnForFight(new ComposedFight(new SurroundMiner(new Vec3i(2, 0, 0), Direction.EAST),
             List.of(new HoleWalls(Vec3i.ZERO), new SelfSurround(), new Autobreak())));
-        bench.spawnMoreForFight(new ComposedFight(face,
-            List.of(new SelfSurround(), new Autobreak(face), harass, new SpotBlock())), "Sparring2");
+        bench.spawnMoreForFight(new ComposedFight(second,
+            List.of(new SelfSurround(), new Autobreak(), harass, new SpotBlock(), headMiner)), "Sparring2");
         if (variant.attackers() >= 3) {
-            CrystalAttack feet = new CrystalAttack(CrystalAttack.Mode.FEET, new Vec3i(-3, 0, 0), Fights.FEET_CELLS);
-            bench.spawnMoreForFight(new ComposedFight(feet,
-                List.of(new SelfSurround(), new Autobreak(feet), new HoleFill())), "Sparring3");
+            LabCrystalAttack third = new LabCrystalAttack(new Vec3i(-3, 0, 0));
+            attacks.add(third);
+            bench.spawnMoreForFight(new ComposedFight(third,
+                List.of(new SelfSurround(), new Autobreak(), new HoleFill())), "Sparring3");
         }
+    }
+
+    /** The variant's aura settings ({@link AuraConfig}) on whichever aura it runs, and its risk level. */
+    private void configure(Bench bench) {
+        boolean meteor = variant.driver() == Driver.METEOR_BY_HAND;
+        Module aura = bench.fromClient(client -> meteor
+            ? Modules.get().get(CrystalAura.class) : Modules.get().get(CrystalAuraPlusPlus.class));
+        String placeWalls = meteor ? "walls-range" : "place-walls-range";
+        String breakWalls = meteor ? "walls-range" : "break-walls-range";
+        String facePlace = meteor ? "Face Place" : "Place";
+        switch (variant.config()) {
+            case DEFAULTS -> { }
+            case OWNER, OWNER_MAX_FACE -> {
+                bench.setting(aura, "General", "min-damage", 0.9);
+                bench.setting(aura, "General", "max-damage", 36.0);
+                bench.setting(aura, "General", "anti-suicide", false);
+                bench.setting(aura, "Place", "place-range", 6.0);
+                bench.setting(aura, "Break", "break-range", 6.0);
+                bench.setting(aura, "Pause", "pause-health", 1.0);
+                if (variant.config() == AuraConfig.OWNER_MAX_FACE) {
+                    bench.setting(aura, "General", "target-range", 16.0);
+                    bench.setting(aura, "Place", placeWalls, 6.0);
+                    bench.setting(aura, "Break", breakWalls, 6.0);
+                    bench.setting(aura, facePlace, "face-place-health", 36.0);
+                }
+            }
+            case COMPETITIVE -> {
+                bench.setting(aura, "General", "min-damage", 6.0);
+                bench.setting(aura, "General", "max-damage", 10.0);
+                bench.setting(aura, "General", "anti-suicide", true);
+                bench.setting(aura, "Place", "place-range", 5.0);
+                bench.setting(aura, "Break", "break-range", 5.0);
+                bench.setting(aura, "Place", placeWalls, 3.5);
+                bench.setting(aura, "Break", breakWalls, 3.5);
+                bench.setting(aura, facePlace, "face-place-health", 5.0);
+            }
+        }
+        if (variant.has(Tweak.AGGRESSIVE)) bench.setting(aura, "Safety", "risk", RiskLevel.AGGRESSIVE);
     }
 
     /** One tick of what we see of ourselves, client side. */
@@ -379,6 +437,8 @@ final class LabWorstCase implements Scenario {
                        int roofs, List<Path> fights) {
         StringBuilder md = new StringBuilder();
         md.append("# ").append(variant.name()).append("\n\n").append(variant.summary()).append(".\n\n");
+        md.append("Aura settings: ").append(variant.config().description).append(
+            variant.has(Tweak.AGGRESSIVE) ? "; risk Aggressive" : "").append(".\n\n");
         md.append("| s | health | your pops | their pops | they alive | your hole | web | surround | moved | pulled back"
             + " | auto-pvp | ++ on | placed | ++ decided (ticks) | ++ held by reserve | surround went off | y changed | on ground |\n"
             + "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
@@ -402,6 +462,10 @@ final class LabWorstCase implements Scenario {
             md.append(String.format(Locale.ROOT, "- Moved at most %.2f blocks from the start.%n", maxMoved));
         }
         md.append("- Death: ").append(deathTick < 0 ? "no" : String.format(Locale.ROOT, "at %.1f s", deathTick / 20.0)).append(".\n");
+        for (int i = 0; i < attacks.size(); i++) {
+            md.append("- Crystal attacker ").append(i + 2).append(": ").append(attacks.get(i).counts()).append(".\n");
+        }
+        md.append("- Head blocks of yours it mined: ").append(headMiner.mined()).append(".\n");
         md.append("- Fight recorder file(s): ").append(fights.isEmpty() ? "none"
             : String.join(", ", fights.stream().map(p -> p.getFileName().toString()).toList())).append(".\n");
         try {

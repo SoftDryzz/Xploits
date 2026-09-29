@@ -138,8 +138,9 @@ class CombatDirectorTest {
         CombatSnapshot flying = with(surface(), false, false, true, false).withTargetDistance(8.0);
         Plan plan = settle(new CombatDirector(), flying);
         assertEquals(CombatState.CHASE, plan.state());
-        assertTrue(plan.enable().isEmpty(),
-            "§4.2: auto-web never places at elytra speed; enabling it was pretending to do something");
+        assertEquals(List.of(ManagedModules.CRYSTAL_AURA), plan.enable(),
+            "§4.2: auto-web never places at elytra speed; enabling it was pretending to do something. The aura"
+                + " stays on for as long as auto-pvp is");
     }
 
     @Test
@@ -481,14 +482,15 @@ class CombatDirectorTest {
     }
 
     @Test
-    void approachAsksForNothingAtAll() {
+    void approachAsksForNothingButTheAura() {
         // §4.2: APPROACH stays as a reporting label. Between 6 and 16 blocks there is nothing useful
         // to enable, and surround -the only thing it asked for before- locked you in obsidian while
-        // you ran and spent the obsidian auto-trap was going to need.
+        // you ran and spent the obsidian auto-trap was going to need. The aura is on anyway: it stays
+        // on for as long as auto-pvp is (the owner's real fights, 2026-09-30).
         Plan plan = settle(new CombatDirector(), surface().withTargetDistance(8.0));
 
         assertEquals(CombatState.APPROACH, plan.state());
-        assertTrue(plan.enable().isEmpty());
+        assertEquals(List.of(ManagedModules.CRYSTAL_AURA), plan.enable());
         assertFalse(enables(plan, ManagedModules.SURROUND));
     }
 
@@ -498,8 +500,6 @@ class CombatDirectorTest {
         assertEquals(CombatState.BURROWED, plan.state());
         assertTrue(enables(plan, ManagedModules.AUTO_ANVIL));
         assertTrue(enables(plan, ManagedModules.AUTO_TRAP), "the trap is for when they come out of the burrow");
-        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA),
-            "with no other hostiles in crystal range, against someone burrowed the aura is of no use");
     }
 
     @Test
@@ -598,6 +598,29 @@ class CombatDirectorTest {
         assertFalse(director.targetRetreating());
     }
 
+    // --- The aura stays on for as long as auto-pvp is on (the owner's real fights, 2026-09-30) ---
+    //
+    // With the aura already on when the opponents arrived he won 21 totems to 4 against four; when auto-pvp had to
+    // turn it on as they came in range, 0 to 11. Turned on late, the aura starts cold (it has not learnt how long its
+    // crystals take to land) and misses the first crystals placed against you.
+
+    @Test
+    void theAuraIsWantedInEveryPhase() {
+        assertTrue(enables(settle(new CombatDirector(), surface().withTargetDistance(10.0)), ManagedModules.CRYSTAL_AURA),
+            "approaching");
+        assertTrue(enables(settle(new CombatDirector(), noTarget()), ManagedModules.CRYSTAL_AURA), "nobody in reach");
+        assertTrue(enables(settle(new CombatDirector(), with(surface(), false, true, false, false).withHostiles(0)),
+            ManagedModules.CRYSTAL_AURA), "against someone burrowed, nobody else in crystal range");
+    }
+
+    @Test
+    void theTotemFloorStillHoldsTheAuraBackWhenNothingProtectsYou() {
+        CombatSnapshot bare = Snapshots.protectionOff(Snapshots.of(false, 0, 0, 0, false, false, false, 0, Map.of()));
+        Plan plan = settle(new CombatDirector(), bare);
+        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
+        assertTrue(skips(plan, ManagedModules.CRYSTAL_AURA));
+    }
+
     // --- §4.4: the aura is not turned off by the phase if there is someone to crystal ---
 
     @Test
@@ -620,12 +643,6 @@ class CombatDirectorTest {
 
         assertEquals(CombatState.CHASE, plan.state());
         assertTrue(enables(plan, ManagedModules.CRYSTAL_AURA));
-    }
-
-    @Test
-    void withoutUnprotectedHostilesThePhaseDecidesTheAuraAsBefore() {
-        Plan plan = settle(new CombatDirector(), with(surface(), false, true, false, false).withHostiles(0));
-        assertFalse(enables(plan, ManagedModules.CRYSTAL_AURA));
     }
 
     @Test
@@ -928,7 +945,8 @@ class CombatDirectorTest {
 
         plan = director.tick(noTarget(), APPROACH);
         assertEquals(CombatState.NO_COMBAT, plan.state());
-        assertTrue(plan.enable().isEmpty());
+        assertEquals(List.of(ManagedModules.CRYSTAL_AURA), plan.enable(),
+            "everything the fight took is released; only the aura stays, as it does for as long as auto-pvp is on");
     }
 
     @Test

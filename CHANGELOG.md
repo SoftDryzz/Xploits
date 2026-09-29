@@ -22,6 +22,11 @@ All notable changes to Xploits. The format is based on
   bench scene that reproduced it, the defensive modules went from 10 switches in the first second to 2.
   This is the first part of the critical `auto-pvp` fix announced with 0.7.1; the survival response
   (a broken hole, a popped totem, webs, several attackers) comes next.
+- `auto-pvp` keeps the crystal aura on for as long as it is on itself, instead of turning it on only once
+  an opponent was in range. Turned on late, the aura started cold and missed the first crystals placed
+  against you: in the owner's real fights, with the aura already on he won 21 totems to 4 against four
+  opponents, and with `auto-pvp` turning it on as they arrived he lost 11 to 0. Without totems and with
+  nothing protecting you, it still stays off.
 - In a development run (`./gradlew runClient`, the in-game bench) the `console` window opens: it could not
   find its own classes there. The released jar was never affected.
 

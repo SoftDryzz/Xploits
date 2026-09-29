@@ -675,7 +675,13 @@ public final class CombatDirector {
         // crystals on you from inside the burrow and, since "protected" did not count, the ledger turned off your
         // autobreak against the only one who could kill you. It leans the way §10 says: leaving it on
         // too long costs a few crystals; turning it off costs the fight.
-        if (snapshot.hostilesInCrystalRange() > 0) wanted.add(ManagedModules.CRYSTAL_AURA);
+        //
+        // And since the owner's real fights of 2026-09-30 it is wanted always, whatever the phase and whoever is in range:
+        // with the aura already on when the opponents arrived he won 21 totems to 4 against four; when auto-pvp had to turn
+        // it on as they came in range, 0 to 11. Turned on late, the aura starts cold (it has not learnt how long its
+        // crystals take to land) and misses the first crystals placed against you; with nobody to hit it does nothing.
+        // The totem floor below still holds it back when nothing protects you.
+        wanted.add(ManagedModules.CRYSTAL_AURA);
 
         wanted.addAll(DefensivePolicy.modulesFor(posture, snapshot));
 

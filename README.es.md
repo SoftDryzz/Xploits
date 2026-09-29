@@ -183,7 +183,9 @@ Decide por **dos ejes a la vez**: en qué fase está el enemigo (acercándose, e
 enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que ya tienes encima
 —cristales colocados, gente con espada—, no con un contador de tótems. En cuanto algo te apunta se pone
 en guardia y no la baja hasta que lleva 3 segundos sin apuntarte nada, así que sus módulos defensivos no
-se apagan entre dos cristales.
+se apagan entre dos cristales. El aura de cristales que elige `crystal-module` se queda encendida mientras
+`auto-pvp` lo esté: si solo se encendía con un rival ya a tiro, empezaba en frío y se perdía los primeros
+cristales que te ponían.
 
 **No ataca a los tuyos**: tus amigos de Meteor, los couriers de `kit-requester` y tu lista de
 `auto-tpy`. Y como los cinco módulos de combate eligen su propio objetivo, mientras está encendido
