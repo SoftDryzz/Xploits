@@ -9,8 +9,10 @@ import java.util.Set;
  * Test shortcut to build what {@link CrystalBrain} is fed, giving only what a test is about and leaving the
  * rest at neutral values: one enemy at 3 blocks with full health and no armour that could wear out, you
  * at full health holding end crystals in the main hand with a weapon elsewhere in the hotbar, no effects,
- * no pause, crystals within break range at 3 blocks. Every number is exact in binary, so each boundary is
- * the real one.
+ * no pause, crystals within break range at 3 blocks, 2 totems carried (task B0a fix round 1: enough for
+ * condition a's "one in hand plus a spare" whenever a test also puts one in hand with {@link #withTotem}; a
+ * test after the last one in hand needs none). Every number is exact in binary, so each boundary is the real
+ * one.
  */
 final class Crystals {
     private Crystals() {}
@@ -26,21 +28,28 @@ final class Crystals {
      */
     static final CrystalSettings SAFE_DEFAULTS = DEFAULTS.toBuilder().risk(RiskLevel.SAFE).build();
 
-    /** End crystals in the main hand, a weapon elsewhere in the hotbar, no effects. */
+    /** End crystals in the main hand, a weapon elsewhere in the hotbar, no effects, no totem. */
     static final CrystalTick.Hands HANDS = hands(true, true, false);
 
     static CrystalTick.Hands hands(boolean crystalsInHotbar, boolean mainHand, boolean offhand) {
         return new CrystalTick.Hands(crystalsInHotbar, mainHand, offhand, false, false,
-            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, false, true);
+            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, false, true, false);
     }
 
     static CrystalTick.Hands with(CrystalTick.Hands h, boolean gapple, boolean bow) {
         return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), gapple, bow,
-            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened());
+            h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened(), h.totemInHand());
     }
 
     static CrystalTick.Hands weakened(int weakness, int strength, boolean mainHandBreaks, boolean hotbarBreaks) {
-        return new CrystalTick.Hands(true, true, false, false, false, weakness, strength, mainHandBreaks, hotbarBreaks);
+        return new CrystalTick.Hands(true, true, false, false, false, weakness, strength, mainHandBreaks, hotbarBreaks, false);
+    }
+
+    /** The same hands, with (or without) a totem of undying in the main hand too (task B0a). */
+    static CrystalTick.Hands withTotem(CrystalTick.Hands h, boolean totemInHand) {
+        return new CrystalTick.Hands(h.crystalsInHotbar(), h.mainHandCrystals(), h.offhandCrystals(), h.gappleInHand(),
+            h.bowInHand(), h.weaknessAmplifier(), h.strengthAmplifier(), h.mainHandBreaksWeakened(), h.hotbarBreaksWeakened(),
+            totemInHand);
     }
 
     static TargetView enemy() {
@@ -49,7 +58,17 @@ final class Crystals {
 
     /** A player at {@code distance} blocks (the view carries its square, as Meteor compares it). */
     static TargetView player(String name, double distance, double health) {
-        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false);
+        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false, false, true);
+    }
+
+    /**
+     * A player at {@code distance} blocks with the given hands (task B0c): {@code totemInHand}, and whether the
+     * hands are {@code handsVisible}; {@link #player} shows a non-totem item (kill-grade when finished).
+     */
+    static TargetView playerWithHands(String name, double distance, double health, boolean totemInHand,
+                                      boolean handsVisible) {
+        return new TargetView(name, distance * distance, health, TargetView.NO_ARMOR, false, true, false,
+            totemInHand, handsVisible);
     }
 
     /** A crystal on base {@code 1000 + id}, at 3 blocks, in break range, dealing {@code damage} to the enemy. */
@@ -146,7 +165,8 @@ final class Crystals {
     static final class Tick {
         private final long n;
         private double health = 20;
-        private int totems;
+        /** Task B0a fix round 1: enough for condition a's spare, whenever a test also puts one in hand. */
+        private int totems = 2;
         private boolean usingItem;
         private boolean mining;
         private boolean lagging;

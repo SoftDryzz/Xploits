@@ -57,7 +57,7 @@ class CrystalSettingsCoverageGuardTest {
                 "place", "place-range", "place-walls-range", "face-place", "face-place-health", "face-place-durability",
                 "break", "break-range", "break-walls-range", "break-attempts", "attack-frequency", "fast-break",
                 "pause-on-use", "pause-on-mine", "pause-on-lag", "pause-modules", "pause-health",
-                "risk", "self-budget", "reserve", "safe-self-damage"),
+                "risk", "self-budget", "finishing-blow", "reserve", "safe-self-damage"),
             Stream.of(CrystalSetting.values()).map(CrystalSetting::id).toList());
         assertEquals(List.of("General", "Place", "Break", "Pause", "Safety"),
             Stream.of(CrystalSetting.Group.values()).map(CrystalSetting.Group::title).toList());

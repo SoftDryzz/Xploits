@@ -115,8 +115,8 @@ class AcceptanceTest {
     void aRunThatPassesEveryRuleIsAccepted() {
         Outcome outcome = judge(three(goodRun()), three(meteorRun()));
         assertEquals(Verdict.ACCEPT, outcome.verdict());
-        assertEquals(List.of("S1", "S2", "S3", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
-        assertEquals(List.of(Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE),
+        assertEquals(List.of("S1", "S2", "S3", "S4", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
+        assertEquals(List.of(Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.SAFETY, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE, Kind.OFFENSE),
             outcome.rules().stream().map(Rule::kind).toList());
         assertTrue(outcome.rules().stream().allMatch(r -> r.result() == Result.PASS), outcome.toString());
         assertNull(outcome.reason());
@@ -515,11 +515,11 @@ class AcceptanceTest {
         // Meteor placed in one run only, ++ never: judged by the rules (the numbers here pass them all).
         Outcome meteorOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 0), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0.5, 0));
         assertEquals(Verdict.ACCEPT, meteorOnce.verdict());
-        assertEquals(7, meteorOnce.rules().size());
+        assertEquals(8, meteorOnce.rules().size());
         // ++ placed in one run only, Meteor never: judged too.
         Outcome cappOnce = judge(good(Acceptance.PLACEMENTS_PER_S, 0, 0, 1.0 / 30), meteorWith(Acceptance.PLACEMENTS_PER_S, 0, 0, 0));
         assertEquals(Verdict.ACCEPT, cappOnce.verdict());
-        assertEquals(7, cappOnce.rules().size());
+        assertEquals(8, cappOnce.rules().size());
     }
 
     @Test
@@ -589,5 +589,343 @@ class AcceptanceTest {
             assertTrue(metrics.contains("= \"" + name + "\";"), "Metrics has no " + name);
         }
         assertEquals(8, Acceptance.METRICS.size());
+    }
+
+    // --- Task A3: fight scenarios (F1 result, F2 net_pops, F3 the reserve on min_health_after_own_hit) ----
+
+    /** One fight run's numbers; {@code minHealthAfterOwnHit} null when we took no hit from our own crystal. */
+    private static Map<String, Double> fightRun(double result, double popsDealt, double popsTaken, double netPops,
+                                                 double damage, double selfDamage, double minHealth,
+                                                 Double minHealthAfterOwnHit) {
+        Map<String, Double> m = new HashMap<>();
+        m.put(Acceptance.RESULT, result);
+        m.put("pops_dealt", popsDealt);
+        m.put("pops_taken", popsTaken);
+        m.put(Acceptance.NET_POPS, netPops);
+        m.put(Acceptance.DAMAGE_DEALT, damage);
+        m.put(Acceptance.SELF_DAMAGE, selfDamage);
+        m.put(Acceptance.MIN_HEALTH, minHealth);
+        m.put(Acceptance.PLACEMENTS_PER_S, 0.5);
+        if (minHealthAfterOwnHit != null) m.put(Acceptance.MIN_HEALTH_AFTER_OWN_HIT, minHealthAfterOwnHit);
+        return m;
+    }
+
+    private static Map<String, Double> meteorFightWin() {
+        return fightRun(1, 3, 1, 2, 20, 8, 9, null);
+    }
+
+    private static Map<String, Double> cappFightWin() {
+        return fightRun(1, 3, 1, 2, 20, 6, 9, null);
+    }
+
+    private static List<Map<String, Double>> threeFights(Map<String, Double> run) {
+        return List.of(run, new HashMap<>(run), new HashMap<>(run));
+    }
+
+    private static List<Map<String, Double>> fightWith(Map<String, Double> base, String metric, double... values) {
+        return with(base, metric, values);
+    }
+
+    @Test
+    void aFightPairIsDetectedFromTheResultMetricAndGetsFRulesNotSAndO() {
+        Outcome outcome = judge(threeFights(cappFightWin()), threeFights(meteorFightWin()));
+        assertEquals(List.of("F1", "F2", "F3", "F4"), outcome.rules().stream().map(Rule::id).toList());
+        assertEquals(Verdict.ACCEPT, outcome.verdict());
+    }
+
+    @Test
+    void anOldStyleFightlessPairStillGetsTheOriginalSevenRules() {
+        // Unchanged: a pair whose runs carry the original (non-fight) metrics keeps S1-O4.
+        Outcome outcome = judge(three(goodRun()), three(meteorRun()));
+        assertEquals(List.of("S1", "S2", "S3", "S4", "O1", "O2", "O3", "O4"), outcome.rules().stream().map(Rule::id).toList());
+    }
+
+    // --- F1: result, median, never worse -------------------------------------------------------------
+
+    @Test
+    void f1FailsWhenPlusPlussMedianResultIsWorseThanMeteors() {
+        // Meteor wins every run (median 1); ++ loses every run (median -1).
+        List<Map<String, Double>> meteor = threeFights(meteorFightWin());
+        List<Map<String, Double>> capp = fightWith(cappFightWin(), Acceptance.RESULT, -1, -1, -1);
+        assertEquals(Result.FAIL, result(capp, meteor, "F1"));
+    }
+
+    @Test
+    void f1PassesWhenPlusPlusDoesNotLoseWhereMeteorWins() {
+        List<Map<String, Double>> meteor = threeFights(meteorFightWin());
+        assertEquals(Result.PASS, result(threeFights(cappFightWin()), meteor, "F1"));
+    }
+
+    @Test
+    void f1PassesOnAnEqualOrBetterMedian() {
+        // Meteor draws (median 0); ++ wins (median 1): never worse, so it passes.
+        List<Map<String, Double>> meteor = fightWith(meteorFightWin(), Acceptance.RESULT, 0, 0, 0);
+        List<Map<String, Double>> capp = fightWith(cappFightWin(), Acceptance.RESULT, 1, 1, 1);
+        assertEquals(Result.PASS, result(capp, meteor, "F1"));
+        // A draw against a draw: equal is not worse.
+        List<Map<String, Double>> cappDraw = fightWith(cappFightWin(), Acceptance.RESULT, 0, 0, 0);
+        assertEquals(Result.PASS, result(cappDraw, meteor, "F1"));
+    }
+
+    // --- F2: net_pops, never worse beyond a noise margin of 1 ------------------------------------------
+
+    @Test
+    void f2AllowsOneNetPopFewer() {
+        List<Map<String, Double>> meteor = fightWith(meteorFightWin(), Acceptance.NET_POPS, 2, 2, 2);
+        assertEquals(Result.PASS, result(fightWith(cappFightWin(), Acceptance.NET_POPS, 1, 1, 1), meteor, "F2"));
+        assertEquals(Result.FAIL, result(fightWith(cappFightWin(), Acceptance.NET_POPS, 0.5, 0.5, 0.5), meteor, "F2"));
+    }
+
+    @Test
+    void f2UsesMedians() {
+        List<Map<String, Double>> meteor = fightWith(meteorFightWin(), Acceptance.NET_POPS, 2, 2, 2);
+        // ++'s median (0, 1, 3 -> 1) is one below Meteor's 2: passes.
+        assertEquals(Result.PASS, result(fightWith(cappFightWin(), Acceptance.NET_POPS, 0, 1, 3), meteor, "F2"));
+    }
+
+    // --- F3: the reserve on min_health_after_own_hit, every run, per level -----------------------------
+
+    @Test
+    void f3FailsWhenAnyRunsMinHealthAfterOwnHitIsBelowTheLevelsReserve() {
+        // Balanced's reserve is 3.5. One run at 3.4 (below), two well above.
+        List<Map<String, Double>> capp = List.of(
+            fightRun(1, 3, 1, 2, 20, 6, 9, 9.0), fightRun(1, 3, 1, 2, 20, 6, 9, 3.4), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0));
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED);
+        assertEquals(Result.FAIL, rule(outcome, "F3").result());
+    }
+
+    @Test
+    void f3PassesWhenEveryRunsMinHealthAfterOwnHitMeetsTheReserve() {
+        List<Map<String, Double>> capp = List.of(
+            fightRun(1, 3, 1, 2, 20, 6, 9, 3.5), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0), fightRun(1, 3, 1, 2, 20, 6, 9, 5.0));
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED);
+        assertEquals(Result.PASS, rule(outcome, "F3").result());
+    }
+
+    @Test
+    void f3TreatsAZeroAfterAsALethalOwnHitAndFailsAtAnyPositiveReserve() {
+        // MinHealthAfterOwnHit's own javadoc: after == 0 means a lethal own hit, never a real survived value.
+        List<Map<String, Double>> capp = List.of(
+            fightRun(1, 3, 1, 2, 20, 6, 9, 0.0), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0));
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.AGGRESSIVE);
+        assertEquals(Result.FAIL, rule(outcome, "F3").result());
+    }
+
+    @Test
+    void f3IsNotApplicableWhenNoRunTookAHitFromItsOwnCrystal() {
+        Outcome outcome = judge(threeFights(cappFightWin()), threeFights(meteorFightWin()), RiskLevel.BALANCED);
+        assertEquals(Result.NOT_APPLICABLE, rule(outcome, "F3").result());
+    }
+
+    @Test
+    void f3IsNotApplicableWithoutAFixedLevel() {
+        List<Map<String, Double>> capp = List.of(
+            fightRun(1, 3, 1, 2, 20, 6, 9, 0.0), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0), fightRun(1, 3, 1, 2, 20, 6, 9, 9.0));
+        // No level at all, and CUSTOM (a player setting this pure core never sees): F3 cannot be judged.
+        assertEquals(Result.NOT_APPLICABLE, rule(judge(capp, threeFights(meteorFightWin())), "F3").result());
+        assertEquals(Result.NOT_APPLICABLE,
+            rule(judge(capp, threeFights(meteorFightWin()), RiskLevel.CUSTOM), "F3").result());
+    }
+
+    @Test
+    void f3ReadsTheReserveFromEachLevel() {
+        // A run at exactly 2.0 (SelfBudget.FLOOR): passes Aggressive (reserve 2), fails Balanced (3.5) and Safe (5).
+        List<Map<String, Double>> capp = List.of(
+            fightRun(1, 3, 1, 2, 20, 6, 9, 2.0), fightRun(1, 3, 1, 2, 20, 6, 9, 2.0), fightRun(1, 3, 1, 2, 20, 6, 9, 2.0));
+        Side cappSide = capp(capp);
+        Side meteorSide = meteor(threeFights(meteorFightWin()));
+        assertEquals(Result.PASS, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.AGGRESSIVE), "F3").result());
+        assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.BALANCED), "F3").result());
+        assertEquals(Result.FAIL, rule(Acceptance.judge(cappSide, meteorSide, RiskLevel.SAFE), "F3").result());
+    }
+
+    // --- S4 (task B0b/B0c): finishing blows in the older scenarios are pop-grade ---------------------
+
+    private static List<Map<String, Double>> oldRunsWith(Double healthAfter, Double pops) {
+        Map<String, Double> odd = goodRun();
+        if (healthAfter != null) odd.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        if (pops != null) odd.put(Acceptance.FINISHING_POPS, pops);
+        return List.of(goodRun(), odd, goodRun());
+    }
+
+    @Test
+    void s4PassesWithoutAnyFinishingBlow() {
+        assertEquals(Result.PASS, result(three(goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4PassesOnAFinishingBlowThatLeftUsAtTwoOrMoreAndDidNotPopUs() {
+        assertEquals(Result.PASS, result(oldRunsWith(2.0, 0.0), three(meteorRun()), "S4"));
+        assertEquals(Result.PASS, result(oldRunsWith(4.5, 0.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4FailsOnAFinishingBlowThatLeftUsBelowTwo() {
+        assertEquals(Result.FAIL, result(oldRunsWith(1.9, 0.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4FailsOnAFinishingBlowThatPoppedUs() {
+        assertEquals(Result.FAIL, result(oldRunsWith(6.0, 1.0), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4FailsOnAFinishingBlowWithFewerThanTwoTotems() {
+        Map<String, Double> odd = goodRun();
+        odd.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, 1.0);
+        assertEquals(Result.FAIL, result(List.of(goodRun(), odd, goodRun()), three(meteorRun()), "S4"));
+        odd.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, 2.0);
+        assertEquals(Result.PASS, result(List.of(goodRun(), odd, goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4IsSafetyAndRejectsTheVerdictWhenItFails() {
+        Outcome outcome = judge(oldRunsWith(1.0, 0.0), three(meteorRun()));
+        assertEquals(Kind.SAFETY, rule(outcome, "S4").kind());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+    }
+
+    @Test
+    void f4FailsOnAPopGradeViolation() {
+        Map<String, Double> run = finishingRun(3.0, 3.0, null);
+        run.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 1.0);
+        assertEquals(Result.FAIL, f4(run));
+        run.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 0.0);
+        assertEquals(Result.PASS, f4(run));
+    }
+
+    // --- F4 (task B0b): the finishing blow keeps its promises, every run -----------------------------
+
+    /** A fight run with the finishing-blow metrics, each null when absent. */
+    private static Map<String, Double> finishingRun(Double totemsMin, Double healthAfter, Double diedWithTotem) {
+        Map<String, Double> m = cappFightWin();
+        if (totemsMin != null) m.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, totemsMin);
+        if (healthAfter != null) m.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        if (diedWithTotem != null) m.put(Acceptance.DIED_WITH_TOTEM, diedWithTotem);
+        return m;
+    }
+
+    private static Result f4(Map<String, Double> one) {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), one, cappFightWin());
+        return rule(judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED), "F4").result();
+    }
+
+    @Test
+    void f4PassesWhenNothingHappenedAtAll() {
+        assertEquals(Result.PASS, f4(cappFightWin()));
+    }
+
+    @Test
+    void f4PassesOnAFinishingHitWithASpareTotemThatLeftUsAlive() {
+        assertEquals(Result.PASS, f4(finishingRun(2.0, 1.0, null)));
+        assertEquals(Result.PASS, f4(finishingRun(5.0, 4.5, null)));
+    }
+
+    @Test
+    void f4FailsWhenAFinishingHitHappenedWithFewerThanTwoTotems() {
+        assertEquals(Result.FAIL, f4(finishingRun(1.0, 1.0, null)));
+    }
+
+    @Test
+    void f4FailsWhenWeWereNotAliveAfterAFinishingHit() {
+        assertEquals(Result.FAIL, f4(finishingRun(3.0, 0.0, null)));
+    }
+
+    @Test
+    void f4FailsWhenARunEndedInOurDeathWhileWeCarriedATotem() {
+        assertEquals(Result.FAIL, f4(finishingRun(null, null, 1.0)));
+    }
+
+    @Test
+    void f4IsSafetyAndRejectsTheVerdictWhenItFails() {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), finishingRun(1.0, 1.0, null), cappFightWin());
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.BALANCED);
+        assertEquals(Kind.SAFETY, rule(outcome, "F4").kind());
+        assertEquals(Verdict.REJECT, outcome.verdict());
+    }
+
+    @Test
+    void f3StillJudgesOrdinaryHitsOnlyWhichTheBenchAlreadyExcludedFinishingOnesFrom() {
+        // A finishing hit's health never reaches F3: only min_health_after_own_hit does, and the bench leaves
+        // finishing hits out of it. So a run with a low finishing hit and a healthy ordinary one passes F3.
+        Map<String, Double> run = finishingRun(2.0, 1.0, null);
+        run.put(Acceptance.MIN_HEALTH_AFTER_OWN_HIT, 9.0);
+        List<Map<String, Double>> capp = List.of(cappFightWin(), run, cappFightWin());
+        assertEquals(Result.PASS, rule(judge(capp, threeFights(meteorFightWin()), RiskLevel.SAFE), "F3").result());
+    }
+
+    @Test
+    void aFightPairsDetailsNeverLookLikeAPosition() {
+        List<Map<String, Double>> capp = List.of(
+            fightRun(-1, 1, 3, -2, 5, 12, 1, 0.0), fightRun(0, 2, 2, 0, 10, 6, 4, 12.0),
+            fightRun(1, 3, 1, 2, 20, 6, 9, 6.0));
+        Outcome outcome = judge(capp, threeFights(meteorFightWin()), RiskLevel.SAFE);
+        for (Rule r : outcome.rules()) assertFalse(PositionLike.in(r.detail()), r.detail());
+    }
+
+    // --- Task C2 (M5): pop-grade finishing hits are zero at Safe, Balanced and Custom -----------------------
+
+    private static final List<RiskLevel> STRICT_LEVELS = List.of(RiskLevel.SAFE, RiskLevel.BALANCED, RiskLevel.CUSTOM);
+
+    private static Map<String, Double> withPopHit(Map<String, Double> base, double healthAfter, double totems) {
+        Map<String, Double> m = new HashMap<>(base);
+        m.put(Acceptance.FINISHING_POP_HITS, 1.0);
+        m.put(Acceptance.MIN_HEALTH_AFTER_FINISHING_HIT, healthAfter);
+        m.put(Acceptance.TOTEMS_AT_FINISHING_HIT_MIN, totems);
+        return m;
+    }
+
+    @Test
+    void s4FailsOnAPopGradeHitAtSafeBalancedCustomAndWithoutALevel() {
+        for (RiskLevel level : STRICT_LEVELS) {
+            assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 6.0, 3.0), goodRun()), three(meteorRun()), level, "S4"),
+                "S4 at " + level);
+        }
+        assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 6.0, 3.0), goodRun()), three(meteorRun()), "S4"));
+    }
+
+    @Test
+    void s4AcceptsAPopGradeHitAtAggressiveOnlyAtTheFloorOrAbove() {
+        assertEquals(Result.PASS, result(List.of(goodRun(), withPopHit(goodRun(), 2.0, 2.0), goodRun()), three(meteorRun()),
+            RiskLevel.AGGRESSIVE, "S4"));
+        // A regression of the Aggressive gate (a blow below the floor) still fails the bench.
+        assertEquals(Result.FAIL, result(List.of(goodRun(), withPopHit(goodRun(), 1.9, 2.0), goodRun()), three(meteorRun()),
+            RiskLevel.AGGRESSIVE, "S4"));
+    }
+
+    @Test
+    void s4WithoutAPopGradeHitPassesAtEveryLevel() {
+        for (RiskLevel level : RiskLevel.values()) {
+            assertEquals(Result.PASS, result(three(goodRun()), three(meteorRun()), level, "S4"), "S4 at " + level);
+        }
+    }
+
+    private static Result f4At(Map<String, Double> one, RiskLevel level) {
+        List<Map<String, Double>> capp = List.of(cappFightWin(), one, cappFightWin());
+        return rule(judge(capp, threeFights(meteorFightWin()), level), "F4").result();
+    }
+
+    @Test
+    void f4FailsOnAPopGradeHitAtSafeBalancedCustomAndWithoutALevel() {
+        for (RiskLevel level : STRICT_LEVELS) {
+            assertEquals(Result.FAIL, f4At(withPopHit(cappFightWin(), 6.0, 3.0), level), "F4 at " + level);
+        }
+        List<Map<String, Double>> capp = List.of(cappFightWin(), withPopHit(cappFightWin(), 6.0, 3.0), cappFightWin());
+        assertEquals(Result.FAIL, rule(judge(capp, threeFights(meteorFightWin())), "F4").result());
+    }
+
+    @Test
+    void f4AcceptsAPopGradeHitAtAggressiveOnlyWithoutAViolation() {
+        assertEquals(Result.PASS, f4At(withPopHit(cappFightWin(), 2.0, 2.0), RiskLevel.AGGRESSIVE));
+        Map<String, Double> violated = withPopHit(cappFightWin(), 1.5, 2.0);
+        violated.put(Acceptance.FINISHING_POP_GRADE_VIOLATIONS, 1.0);
+        assertEquals(Result.FAIL, f4At(violated, RiskLevel.AGGRESSIVE));
+    }
+
+    @Test
+    void f4WithoutAPopGradeHitPassesAtEveryLevel() {
+        for (RiskLevel level : RiskLevel.values()) {
+            assertEquals(Result.PASS, f4At(finishingRun(3.0, 3.0, null), level), "F4 at " + level);
+        }
     }
 }

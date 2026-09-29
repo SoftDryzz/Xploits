@@ -106,6 +106,50 @@ way, since it fails the regeneration-off condition alone. `-Pbench.verifySettle`
 short: it snapshots the metrics at the first settled tick, runs on to the nominal length anyway, and fails
 the scenario if the final metrics differ from that snapshot or the run stops looking settled before the end.
 
+**Fight mode (opt-in, task A1).** A scenario can opt into a more realistic crystal fight instead of the
+standard loadout: `Arena.fightLoadout()` gives our player netherite Protection IV on the helmet, chestplate
+and boots plus Blast Protection IV on the leggings (unbreakable, like the standard loadout; armour breaking
+stays out of scope for the bench either way) and `Arena.FIGHT_TOTEMS` (8) totems in total, offhand plus
+spare; `Sparring.spawn(..., true)` wears the same armour and gives the sparring the same 8 totems, instead
+of refilling its offhand forever — it dies for real once it takes a lethal hit with none left. In fight
+mode our own death and the sparring's end the run with a `result` (1 win, -1 loss, 0 draw at the time
+limit) instead of ERROR, and add `pops_dealt`, `pops_taken`, `net_pops`, `first_pop_taken_s` and
+`min_health_after_own_hit` (our health plus absorption right after each hit from one of our own crystals,
+the lowest over the run — what the self-budget's reserve promises even while the opponent is also hitting
+us) to the metric table alongside the usual `damage_dealt`, `self_damage`, `min_health` and
+`placements_per_s`; these are new `Metrics` keys that only a fight-mode run puts, and the report and
+`Acceptance` already tolerate a metric being absent (old scenarios) or present (new) since both read the
+metric table by name. 32 ticks after each totem pop of either player — the 1.6 s an enchanted golden apple
+takes to eat — the bench applies its effects server-side: Absorption IV, Regeneration II and Resistance I,
+identical for both players and both auras (documented simplification: it does not tie up the eater's hands
+for those ticks, and it leaves out Fire Resistance, which a real notch apple also gives but which never
+matters with no fire in these fights). A pop while effects are already pending re-arms the delay from
+itself; a death cancels whatever is pending. A fight-mode run is never static by definition (either player
+could still act, or die, until the time limit), so it never takes the settle cut above. The standard
+loadout, the sparring's forever-refilling totem and today's death-is-ERROR handling are all still the
+default: a scenario that does not opt in keeps 0.7.0's behaviour and numbers exactly.
+
+**The real fights and their rules (0.7.1).** Five fight-mode situations run last, each judged as a
+`ca-<s>` / `capp-<s>` pair like the rest: `exchange` and `hole-standoff` (an opponent that attacks back),
+`city` (an opponent that mines the wall of our hole and places a crystal in the gap),
+and `near-death` and `near-death-totem` (a stationary, non-attacking opponent that starts low, without and
+with a totem; a warm-up first lets crystal-aura++ confirm his health with a hit of its own, as it would in
+a real fight, and the opponent's hands are shown to the client, which the stepped sparring does not do on
+its own). They add the finishing-blow metrics, each present only in a run where it happened:
+`finishing_blows` (offense: our marked crystals that exploded by our own attack, whether or not they hurt
+us), and the safety counters, matched to our own hit events one by one: `finishing_hits`,
+`finishing_pops`, `min_health_after_finishing_hit`, `totems_at_finishing_hit_min`,
+`finishing_pop_grade_violations` and `died_with_totem`. Two of the fight rules judge safety: **F3**, every
+ordinary own hit leaves us at or above the level's reserve, and **F4**, no run of ours ends dead while it
+carried a totem, no finishing hit happens with fewer than 2 totems carried, we are alive after every
+finishing hit, and no pop-grade blow (the target holds a totem) leaves us below 2 or pops us. The
+offense rules are **F1**, the fight's `result` is no worse than Meteor's, and **F2**, `net_pops` no more
+than 1 below it. In every scenario, ordinary hits are judged by **S1-S3** (S3 not applicable while Meteor
+never went below the reserve) and finishing hits by **S4**: never popping us, never below 2, never with
+fewer than 2 totems carried. A finishing hit is not an ordinary one: it never counts toward S1-S3 or F3.
+Before the fights, `cover` (`ca-cover`, `capp-cover` and one per level) puts a low ceiling and a pillar
+between us and the crystals, so the self-budget's exposure reading meets real cover.
+
 `./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
 cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you
 want to keep it, because the next run erases it. There are two profiles:
@@ -235,6 +279,36 @@ The delay is added by a bench-only Fabric mixin (`src/gametest/java/com/xploits/
 no bench class), on `ClientConnection.addFlowControlHandler`: that method runs once for the client's own
 connection and once for the server's connection to that same player, so delaying both symmetrically gives a
 round trip with no special case for any one packet kind — keep-alives included the same as any other packet.
+
+**Sharded runs, several clients at once (task A5).** `bench/parallel.ps1` (PowerShell 7) plays the bench as up
+to 4 Minecraft clients at once and merges their reports into one, to cut the wall time on a machine that can
+run several clients comfortably: `bench/parallel.ps1 -Shards 4 -Full -Fresh` for a release, the same flags as
+always otherwise (`-Full`, `-Fresh`, `-Only`, `-Ping`, `-VerifySettle`, `-UpdateBaseline`). It refuses on a
+dirty tree (every shard plays the committed HEAD), runs shard 1 in the current worktree and shards 2..n each
+in their own detached worktree `.worktrees/bench-shard-<k>` (created or reset to HEAD; never the main
+worktree, never committed or pushed from), copies the Meteor cache into each shard first and the new entries
+back after, then hands every shard's report to the `benchMerge` Gradle task. `-Pbench.shard=k/n`
+(`1 <= k <= n <= 4`) picks which slice of the selection one client plays: `ShardPlan` (`bench/core`, pure)
+partitions the scenarios so a compare group — a Meteor scenario together with every scenario judged against
+it — is never split, balanced by an estimated duration (each item's runs times its time limit plus a fixed
+per-run overhead for a fresh world's creation and teardown); `n = 1` plays exactly what today's plain run
+does. `ReportMerge` (`bench/core`, pure) then turns the `n` shard reports into ONE, indistinguishable in
+shape and meaning from a single client's: scenarios in the unsharded order, and the `compare` and
+`recommendation` lines worked out by the same code a single run uses. It refuses, with a clear reason,
+unless every shard agrees on the commit, the versions and the flags it ran, every `k` of the same `n` is
+present exactly once, every scenario appears exactly once, and every shard's own hygiene is clean; if a
+shard's client itself fails, `bench/parallel.ps1` keeps the other shards' reports, names the failed one, and
+never attempts a merge (a partial merge never passes the gate). `benchVerify` and the release gate then run
+on the merged report exactly as they do on a plain run's, and `-Pbench.updateBaseline` is applied once, after
+the merge, from the complete report (never by an individual shard, since shards 2..n's own `bench/baseline.json`
+lives in a disposable worktree). **A release may use a sharded run only with `-Pbench.full -Pbench.fresh` and
+a clean merged gate — the same rule as always, just checked once, on the merged report.**
+
+Each shard's own gradlew process runs with a hidden console (`-Pbench.shard` also caps its heap at `-Xmx3G`,
+measured on the owner's machine at roughly 2 GB for a short two-scenario run, so 3 GB is real headroom, not a
+guess): closing what looks like an empty leftover console window sends that process CTRL_CLOSE and kills the
+shard, so `bench/parallel.ps1` never shows one. Only the Minecraft client's own window (separate from the
+console, opened later by the JVM) stays visible for each shard, since the gametest needs it.
 **Verified:** the bench always plays through an integrated server, whose one player is always its host, and
 vanilla's `isHost` check (`IntegratedServer.isHost`, matched by profile name) makes
 `ServerCommonNetworkHandler.baseTick` skip sending the host a keep-alive at all — so the player-list latency

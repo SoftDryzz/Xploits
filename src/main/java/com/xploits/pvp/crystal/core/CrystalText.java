@@ -34,6 +34,7 @@ public enum CrystalText implements MessageKey {
     SETTING_PAUSE_HEALTH,
     SETTING_RISK,
     SETTING_SELF_BUDGET,
+    SETTING_FINISHING_BLOW,
     SETTING_RESERVE,
     SETTING_SAFE_SELF_DAMAGE,
     /** What each value of {@code risk} means ({@link RiskLevel#text()}), shown after the setting's own description. */

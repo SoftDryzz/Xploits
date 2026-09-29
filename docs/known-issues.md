@@ -134,46 +134,67 @@ The window asks for its size with a sequence Windows Terminal honors. If you set
 conhost, selecting text freezes the window for as long as the selection lasts; the game does not
 notice, because they only talk through files.
 
-### `crystal-aura++` deals less damage than Meteor's above, below and while you move
+### `crystal-aura++` still deals less damage than Meteor's while you dodge
 
-**Symptom:** with the opponent 3 blocks above or below you, Balanced deals about 6 % less damage than
-Meteor's `crystal-aura` and takes the first totem about 0.5 s later; while you walk in circles, about
-30 % less damage.
+**Symptom:** while you dodge (with the opponent circling), Balanced deals a little less damage than
+Meteor's `crystal-aura` (27 against 29.8 in the release bench) and takes the first totem later (5.75 s
+against 1.4 s). Walking in circles, Balanced now deals about what Meteor does (31 against 32); at Safe
+it deals 20, where 0.7.0 dealt about 32.
+
+While you move, the self-budget uses the same reach check as 0.7.0; the real-exposure measurement
+of 0.7.1 applies when you stand still or move very little.
 
 **What happens.** To keep the reserve while you move, the budget judges each crystal at the worst spot
-you could reach before it explodes. That spot includes a jump, is taken as fully exposed, and at the
-start of a fight assumes a whole second of movement until it has learned how long its crystals take to
-land. Above or below you, the edge of the platform or the pit shields you, but the budget does not
-count that shield at those extra spots, so it holds back crystals that were safe.
+you could reach before it explodes. That spot includes a jump, and at the start of a fight it assumes a
+whole second of movement until it has learned how long its crystals take to land. Every spot around a
+moving opponent is close to you, so each crystal hurts you a lot, and the reserve refuses the ones that
+would take you below it. Meteor's `crystal-aura` gets there sooner by taking you down to under 1 health.
 
 **Consequence:** less damage than needed; never less safety (the reserve held in every bench run).
 
 **What to do.** If you prefer Meteor's damage there, set `auto-pvp`'s `crystal-module` to `meteor`.
+`Aggressive` (experimental) keeps 2 instead of 3.5.
 
-**Pending fix:** 0.7.1 — size the caution from how far you really move, and take the real exposure into
-account.
+**Pending fix:** 0.7.2 — size the reach radius from how far you really move. A first attempt in 0.7.1
+made the strafing case worse and was taken out.
 
-### `crystal-aura++` takes the first totem later against an opponent who moves around you
+### `crystal-aura++` still draws an open-ground exchange where Meteor wins
 
-**Symptom:** against an opponent who circles or dodges, Balanced takes the first totem 0.4 to 0.75 s
-later than Meteor (3.5 s later if you also dodge), with about the same total damage.
+**Symptom:** when you and the opponent both attack, in the open with no cover, `crystal-aura++` ends the
+fight in a draw where Meteor's `crystal-aura` wins.
 
-**What happens.** Every spot around a moving opponent is close to you, so each crystal hurts you a lot,
-and the reserve refuses the ones that would take you below it. This is the reserve doing its job:
-Meteor's `crystal-aura` gets there sooner by taking you down to 0.4 health.
+**What happens.** Meteor places every crystal it can, and the reserve makes `crystal-aura++` skip some of
+them. The reserve held in the bench runs. Part of the difference is an artefact of the bench: the
+explosions knock our player out of range and it never walks back to re-engage, which a real player does.
 
-**What to do.** Nothing, if you want the floor. `Aggressive` (experimental) keeps 2 instead of 3.5.
+**Pending fix:** 0.7.2 — keep the bench player in place or make it re-engage, the same for both auras.
 
-### `crystal-aura++` may place nothing when the opponent is right on top of you
+**What to do.** If you prefer Meteor's damage in that kind of fight, set `crystal-module` to `meteor`.
 
-**Symptom:** at 1–2 blocks the aura goes quiet.
+### `crystal-aura++` has no finishing blow on servers that hide health
 
-**What happens.** Meteor's `max-damage` (6 by default: no crystal may deal you more than 6) still
-applies, and up close almost every spot deals you more than that.
+**Symptom:** the aura never goes below your reserve to finish an opponent on a server that hides other
+players' health (2b2t-style plugins).
 
-**What to do.** With `self-budget` on, raising `max-damage` lets the reserve be the limit instead.
+**What happens.** Those plugins send a fixed or random health. `finishing-blow` only trusts an opponent's
+health after one of your own hits has shown it moving the way it should, so on those servers it never
+does. For the same reason there is no finishing blow before your first landed hit on a target. Against a
+plugin that sends random values there is a small chance a hit is read as a match.
 
-**Pending fix:** 0.7.1 — with the budget on, the reserve replaces `max-damage`.
+**What to do.** Nothing: the normal reserve keeps protecting you.
+
+### A crystal of `crystal-aura++` that appears late is treated as someone else's
+
+**Symptom:** after a lag spike, one of your own crystals stays standing and is not broken.
+
+**What happens.** A crystal that reaches the client long after it was placed is filed as another
+player's. Since 0.7.1 it counts against your reserve, but when it would hurt you more than `max-damage`
+it is never broken by you and stays standing until the enemy breaks it. It is the same window as the
+late-crystal gap below.
+
+**What to do.** Nothing you can set. It costs damage at worst, and the reserve still counts that crystal.
+
+**Pending fix:** recognise a late crystal of ours by where and when we placed it.
 
 ### `crystal-aura++` brakes a little more than it needs to after a hit lands
 
@@ -265,7 +286,7 @@ Things that are implemented and reasoned through but that **nobody has seen work
 - Whether the server sends chunks at the rate the lane planning assumes.
 - Whether 6b6t sends the contents of shulkers inside chests (it decides half of the design of
   `stash-keeper`).
-- How `crystal-aura++` does against an opponent who attacks you back, with golden apples, or with
-  several enemies at once: the bench does not measure any of these yet.
+- How `crystal-aura++` does against several enemies at once, or on a real server: the bench plays one
+  opponent that attacks back, with golden apples, but no crowd.
 - Whether `auto-pvp`'s surround request right after a hole block is broken is fast enough against instant
   mining on a real server.

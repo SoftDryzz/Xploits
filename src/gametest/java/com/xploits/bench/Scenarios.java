@@ -59,6 +59,25 @@ public final class Scenarios {
         new SelfFight("self-circle", Still::new, SelfCircleMotion::new),
         new SelfFight("self-strafe", Circler::new, SelfStrafeMotion::new));
 
+    /**
+     * Task A3: a real crystal-PvP fight (fight mode — finite totems, gapples after every pop, a win/loss/draw
+     * outcome, task A1): its name, {@code <f>} in the scenarios' names, its script, and, only for the
+     * {@code near-death} pair, whether the opponent holds a totem ({@code null}: no starting-health setup at
+     * all, the other two fights).
+     */
+    private record RealFight(String name, Supplier<Script> script, Boolean opponentHoldsTotem) {
+    }
+
+    /** {@code exchange} and {@code hole-standoff}: the real fights that run before {@code city}. */
+    private static final List<RealFight> FIGHTS_BEFORE_CITY = List.of(
+        new RealFight("exchange", Fights::exchange, null),
+        new RealFight("hole-standoff", Fights::holeStandoff, null));
+
+    /** {@code near-death} and its {@code near-death-totem} variant: the real fights that run after {@code city}. */
+    private static final List<RealFight> FIGHTS_AFTER_CITY = List.of(
+        new RealFight("near-death", Fights::nearDeath, false),
+        new RealFight("near-death-totem", Fights::nearDeathTotem, true));
+
     public static List<Scenario> all() {
         CrystalAuraMeasure caStill = CrystalAuraMeasure.meteor("ca-still", Still::new);
         CrystalAuraMeasure caCircler = CrystalAuraMeasure.meteor("ca-circler", Circler::new);
@@ -68,6 +87,7 @@ public final class Scenarios {
             new AutoPvpEngages(), new AutoPvpEngagesCapp(), new CappBudgetOffParity(), new ProfileDefensive(),
             new AutoPvpAntiResources(),
             new Panel(),
+            new ExposureCoverProbe(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),
@@ -110,7 +130,54 @@ public final class Scenarios {
                     .healing().movingSelf(fight.selfMotion()));
             }
         }
+        // Task B2 fix round 1: real cover for the self-budget (Cover): ca-cover, capp-cover (Safe), then each other
+        // level, not healing (the sparring stands still, so the run settles), before the real fights.
+        all.add(CrystalAuraMeasure.meteor("ca-cover", Cover::new));
+        all.add(CrystalAuraMeasure.plusPlus("capp-cover", "ca-cover", Cover::new));
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            all.add(CrystalAuraMeasure.plusPlus(prefix + "cover", "ca-cover", Cover::new, level));
+        }
+        // Task A3: the real crystal-PvP fights, last, in the brief's own order (exchange, hole-standoff, city,
+        // near-death, near-death-totem); city is its own scenario class ({@link CityMeasure}, since auto-pvp
+        // drives our own side there) but keeps the same ca-*, then capp-* Safe, then each other level shape
+        // every earlier block here uses.
+        addRealFights(all, FIGHTS_BEFORE_CITY);
+        addCityFight(all);
+        addRealFights(all, FIGHTS_AFTER_CITY);
         return List.copyOf(all);
+    }
+
+    /** {@code ca-<f>}, then {@code capp-<f>} (Safe), then {@code capp-<level>-<f>} for each of
+     * {@link #OTHER_LEVELS}, for every fight in {@code fights}, in that order. */
+    private static void addRealFights(List<Scenario> all, List<RealFight> fights) {
+        for (RealFight fight : fights) all.add(startingLow(FightMeasure.meteor("ca-" + fight.name(), fight.script()), fight));
+        for (RealFight fight : fights) {
+            all.add(startingLow(FightMeasure.plusPlus("capp-" + fight.name(), "ca-" + fight.name(), fight.script()), fight));
+        }
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            for (RealFight fight : fights) {
+                FightMeasure m = FightMeasure.plusPlus(prefix + fight.name(), "ca-" + fight.name(), fight.script(), level);
+                all.add(startingLow(m, fight));
+            }
+        }
+    }
+
+    /** {@code fight}'s starting-health setup ({@link RealFight#opponentHoldsTotem}), or {@code measure}
+     * unchanged when the fight has none (every real fight but {@code near-death}). */
+    private static FightMeasure startingLow(FightMeasure measure, RealFight fight) {
+        return fight.opponentHoldsTotem() == null ? measure : measure.startingLow(fight.opponentHoldsTotem());
+    }
+
+    /** {@code ca-city}, {@code capp-city} (Safe), then {@code capp-<level>-city} for each of {@link #OTHER_LEVELS}. */
+    private static void addCityFight(List<Scenario> all) {
+        all.add(CityMeasure.meteor("ca-city"));
+        all.add(CityMeasure.plusPlus("capp-city", "ca-city"));
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            all.add(CityMeasure.plusPlus(prefix + "city", "ca-city", level));
+        }
     }
 
     /**

@@ -1,7 +1,10 @@
 package com.xploits.pvp.crystal.core;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Where you could be by the time a crystal explodes (task R3-16, research-reserve-undershoot): the budget
@@ -25,11 +28,14 @@ import java.util.List;
  * up to {@code 2 * (2 + }{@value #RING_POINTS}{@code )} points in total, still bounded and still cheap (see
  * below), never a per-height multiplication of anything else.
  *
- * <p>Kept deliberately small (task R3-12: an exposure raycast is expensive) and, more importantly, cheap to
- * check at all: {@link #worstRawDamage} never raycasts any of these extra points. It reads them at the worst
- * exposure an explosion can ever have (1.0) instead, which can only ever read a self damage at or above the
- * true one for that point, never below — the one real raycast a caller still needs (for wherever you stand
- * right now, the one point whose real exposure is worth knowing) is its own, unaffected by this class.
+ * <p>Kept small (task R3-12: an exposure raycast is expensive) and cheap to check.
+ * {@link #worstRawDamage(double, double, double, double, double, long)} reads every point at the worst exposure an
+ * explosion can ever have (1.0), which can only read a self damage at or above the true one. Since task B2 the
+ * exact worst case reads the real exposure at these points by branch and bound ({@link #rankedByWorstRaw},
+ * {@link #worstRawDamage(List, ExposureFunction, float)}): ranked by that ceiling, the search stops at the first
+ * point that cannot beat the best real value found, so only a few raycasts are spent. Task C2 added the ring's arcs
+ * and every point's halfway points ({@link #reachPoints}), since cover at two neighbouring points can hide open
+ * ground between them.
  *
  * <p><b>Total: never throws on any {@code double}/{@code long} input</b> (task R3-16 fix round 1). A
  * non-finite velocity is treated as no velocity (0), and a negative {@code landingTicks} as 0 pre-ticks away —
@@ -80,6 +86,64 @@ public final class MovementReach {
     }
 
     /**
+     * The ring's arc midpoints (task C2, final review I3): with a nonzero speed, {@value #RING_POINTS} more points at
+     * the ring's radius, each half way (in angle) between two neighbouring ring points, at both {@link #HEIGHTS}.
+     * Neighbouring ring points are about 0.77 of the radius apart, so at real exposure cover at both could hide
+     * open ground on the arc between them, at the same distance from you, and the worst case would be read too low.
+     * With these, no point of the ring is farther than a sixteenth of a turn (0.39 of the radius) from a sampled
+     * one; {@link #withMidpoints} then adds their radial midpoints. Empty while standing still. Never throws, same
+     * input contract as {@link #offsets}.
+     */
+    public static List<Offset> arcMidpoints(double vx, double vz, long landingTicks) {
+        double safeVx = Double.isFinite(vx) ? vx : 0;
+        double safeVz = Double.isFinite(vz) ? vz : 0;
+        double radius = Math.hypot(safeVx, safeVz) * Math.max(0, landingTicks);
+        if (!(radius > 0)) return List.of();
+        List<Offset> points = new ArrayList<>();
+        for (double h : HEIGHTS) {
+            for (int i = 0; i < RING_POINTS; i++) {
+                double angle = 2 * Math.PI * (i + 0.5) / RING_POINTS;
+                points.add(new Offset(radius * Math.cos(angle), h, radius * Math.sin(angle)));
+            }
+        }
+        return List.copyOf(points);
+    }
+
+    /**
+     * Every point the exact worst case reads at real exposure (task C2): {@link #offsets} and the ring's {@link
+     * #arcMidpoints}, each with its halfway points ({@link #withMidpoints}). Up to {@code 4 * 2 * (2 + 2 *
+     * RING_POINTS)} = {@code 144} points, which costs almost nothing: they are ranked by their exposure-1.0 raw
+     * damage and the search stops at the first whose ceiling cannot beat the best real value found, so the raycasts
+     * spent stay a handful. (The other way to close the gap, reading the ring at exposure 1.0 beyond one block,
+     * would throw away the cover B2 measures, the very shortfall it fixed, for every moving player.)
+     */
+    public static List<Offset> reachPoints(double vx, double vz, long landingTicks) {
+        List<Offset> base = new ArrayList<>(offsets(vx, vz, landingTicks));
+        base.addAll(arcMidpoints(vx, vz, landingTicks));
+        return withMidpoints(base);
+    }
+
+    /**
+     * {@code reach} plus, for every offset, the halfway points towards it: half the way horizontally, half the
+     * way vertically, and both (task B2 fix round 1). At exposure 1.0 the reach points' own raw damage bounded
+     * everything between them; at real exposure it does not, since cover at two points can leave open ground
+     * between them (a pillar, an edge), at nearly the same distance. The halfway points are that ground: to a
+     * jump's height the half is about {@code JUMP_HEIGHT / 2} and to a ring point's radius half the radius. They
+     * are ordinary ranked points (their own exposure-1.0 raw is their ceiling), so the search still prunes them.
+     * Never throws; a non-finite offset stays non-finite, as everywhere in this class.
+     */
+    public static List<Offset> withMidpoints(List<Offset> reach) {
+        List<Offset> all = new ArrayList<>(reach.size() * 4);
+        for (Offset o : reach) {
+            all.add(o);
+            all.add(new Offset(o.dx() / 2, o.dy(), o.dz() / 2));
+            all.add(new Offset(o.dx(), o.dy() / 2, o.dz()));
+            all.add(new Offset(o.dx() / 2, o.dy() / 2, o.dz() / 2));
+        }
+        return List.copyOf(all);
+    }
+
+    /**
      * The worst raw damage ({@link ExplosionMath#rawDamage}, before armour, exposure assumed 1.0: the most
      * any explosion could deal) an explosion at {@code (ex, ey, ez)} relative to your feet now could deal
      * from anywhere in {@link #offsets(double, double, long)}. Never throws (see the class javadoc): a
@@ -100,5 +164,105 @@ public final class MovementReach {
             worst = Math.max(worst, ExplosionMath.rawDamage(distance, 1.0));
         }
         return worst;
+    }
+
+    /** One reach point with its distance to the explosion and its raw damage at exposure 1.0 (the ceiling). */
+    public record Ranked(Offset offset, double distance, float rawAtFullExposure) {
+    }
+
+    /** The exposure (0 to 1, vanilla's definition) an explosion has on you standing at a reach offset. */
+    @FunctionalInterface
+    public interface ExposureFunction {
+        double at(Offset offset);
+    }
+
+    /**
+     * The distinct reach points, worst first: sorted by their raw damage at exposure 1.0, the most any explosion
+     * could deal there, so that the first one is the ceiling of all the others. A NaN raw (a non-finite
+     * explosion offset, see {@link #worstRawDamage}) sorts first. Never throws, same input contract as
+     * {@link #offsets}.
+     */
+    public static List<Ranked> rankedByWorstRaw(double ex, double ey, double ez, double vx, double vz,
+                                                long landingTicks) {
+        return rankedByWorstRaw(ex, ey, ez, offsets(vx, vz, landingTicks));
+    }
+
+    /** {@link #rankedByWorstRaw(double, double, double, double, double, long)} over the given reach offsets. */
+    public static List<Ranked> rankedByWorstRaw(double ex, double ey, double ez, List<Offset> reach) {
+        Set<Offset> distinct = new LinkedHashSet<>(reach);
+        List<Ranked> ranked = new ArrayList<>(distinct.size());
+        for (Offset o : distinct) {
+            double dx = ex - o.dx();
+            double dy = ey - o.dy();
+            double dz = ez - o.dz();
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            ranked.add(new Ranked(o, distance, ExplosionMath.rawDamage(distance, 1.0)));
+        }
+        ranked.sort(Comparator.comparingDouble((Ranked r) -> r.rawAtFullExposure()).reversed());
+        return ranked;
+    }
+
+    /**
+     * The exact worst raw damage over the reach points with their real exposure: a branch and bound over
+     * {@code ranked} (worst first). Each point's real raw can never exceed its exposure-1.0 raw, so once the
+     * next point's ceiling is not above the best real value found (starting from {@code floor}, the value
+     * already known for where you stand now), no later point can beat it and the search stops. Never below
+     * {@code floor}; never below any point's real value; a NaN ceiling or a NaN result propagates as NaN, like
+     * {@link #worstRawDamage}. An {@code exposure} that is not a finite number in 0..1 is read as 1.0, the
+     * cautious value, and so is any point the caller could not afford to measure.
+     */
+    public static float worstRawDamage(List<Ranked> ranked, ExposureFunction exposure, float floor) {
+        float best = floor;
+        for (Ranked r : ranked) {
+            if (Float.isNaN(r.rawAtFullExposure())) return Float.NaN;
+            if (r.rawAtFullExposure() <= best) break;
+            double e = exposure.at(r.offset());
+            if (!(e >= 0.0 && e <= 1.0)) e = 1.0;
+            best = Math.max(best, ExplosionMath.rawDamage(r.distance(), e));
+        }
+        return best;
+    }
+
+    /**
+     * Beyond this reach radius (blocks; {@code speed * landingTicks}) the exact worst case is 0.7.0's: every offset
+     * of {@link #offsets} at exposure 1.0, no raycast (task C3). At this radius or below it reads the real exposure
+     * (task B2). Moving fast with a long landing bound spreads the points so widely that sampling many more of them
+     * at real exposure made moving offense worse than 0.7.0 at Balanced, while standing (or nearly) is where the
+     * real exposure pays off (cover, above, below).
+     */
+    public static final double STILL_RADIUS = 1.0;
+
+    /**
+     * The reach radius: exactly the ring's radius in {@link #offsets} ({@code speed * landingTicks}, a non-finite
+     * velocity read as 0, a negative {@code landingTicks} as 0). Never NaN.
+     */
+    public static double reachRadius(double vx, double vz, long landingTicks) {
+        double safeVx = Double.isFinite(vx) ? vx : 0;
+        double safeVz = Double.isFinite(vz) ? vz : 0;
+        return Math.hypot(safeVx, safeVz) * Math.max(0, landingTicks);
+    }
+
+    /**
+     * Whether the real exposure is read for this reach: the radius is at most {@link #STILL_RADIUS} (exactly 1.0
+     * included). Above it {@link #worstReachRaw} is 0.7.0's worst case.
+     */
+    public static boolean readsRealExposure(double vx, double vz, long landingTicks) {
+        return reachRadius(vx, vz, landingTicks) <= STILL_RADIUS;
+    }
+
+    /**
+     * The exact worst raw damage over what we can reach (task C3), the one entry the adapter uses. Radius at most
+     * {@link #STILL_RADIUS}: {@link #reachPoints} at real exposure by branch and bound ({@link #rankedByWorstRaw},
+     * {@link #worstRawDamage(List, ExposureFunction, float)}). Above it: 0.7.0's {@link #worstRawDamage(double,
+     * double, double, double, double, long)} (exposure 1.0 over {@link #offsets}, no exposure asked), maxed with
+     * {@code floor} (the current position's real value), as 0.7.0's caller did; never below {@code floor} either
+     * way, and a NaN propagates in both. {@code exposure} is not called at all above the radius.
+     */
+    public static float worstReachRaw(double ex, double ey, double ez, double vx, double vz, long landingTicks,
+                                      ExposureFunction exposure, float floor) {
+        if (!readsRealExposure(vx, vz, landingTicks)) {
+            return Math.max(floor, worstRawDamage(ex, ey, ez, vx, vz, landingTicks));
+        }
+        return worstRawDamage(rankedByWorstRaw(ex, ey, ez, reachPoints(vx, vz, landingTicks)), exposure, floor);
     }
 }

@@ -14,6 +14,8 @@ import com.xploits.pvp.crystal.core.CrystalText;
 import com.xploits.pvp.crystal.core.CrystalTick;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.ExplosionMath;
+import com.xploits.pvp.crystal.core.FinishKind;
+import com.xploits.pvp.crystal.core.HealthTrust;
 import com.xploits.pvp.crystal.core.MovementReach;
 import com.xploits.pvp.crystal.core.Reach;
 import com.xploits.pvp.crystal.core.Reason;
@@ -55,8 +57,10 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityStatuses;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.decoration.EndCrystalEntity;
@@ -70,6 +74,7 @@ import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -107,8 +112,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   hands them to {@link CrystalBrain#placePhase} with the health read during the scan;</li>
  *   <li>each action through {@code Rotations.rotate(..., 50, callback)} with {@code rotate} on, at once
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
- *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
- *   in-flight ledger;</li>
+ *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break (with the
+ *   health, hands and totem count read at that moment) and the in-flight ledger;</li>
  *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
  *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
  *   phase, so they count as read at the previous pre-tick;</li>
@@ -416,6 +421,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         .build()
     );
 
+    private final Setting<Boolean> finishingBlow = sgSafety.add(new BoolSetting.Builder()
+        .name(CrystalSetting.FINISHING_BLOW.id())
+        .description(Texts.startupText(CrystalSetting.FINISHING_BLOW.text()))
+        .defaultValue(true)
+        .visible(() -> selfBudget.get())
+        .build()
+    );
+
     private final Setting<Double> reserve = sgSafety.add(new DoubleSetting.Builder()
         .name(CrystalSetting.RESERVE.id())
         .description(Texts.startupText(CrystalSetting.RESERVE.text()))
@@ -440,6 +453,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private CrystalBrain brain = new CrystalBrain();
     /** Late own crystals counted by brains replaced after a refusal, since activation. */
     private int lateOwnBefore;
+    /** Stuck-standing crystals counted by brains replaced after a refusal, since activation. */
+    private int stuckBefore;
     /** Placements held back for a target's hurt window by brains replaced after a refusal, since activation. */
     private int deferredBefore;
     /**
@@ -447,6 +462,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * posted there, before the packet is applied), read on the game thread.
      */
     private final Queue<EntityDamageS2CPacket> damagePackets = new ConcurrentLinkedQueue<>();
+    /**
+     * Entity-status packets received since the last pre-tick (task B0a: totem pops, status {@code
+     * USE_TOTEM_OF_UNDYING}), the same way as {@link #damagePackets}: filled on the Netty thread, read on the
+     * game thread, where {@code mc.world} is safe to read.
+     */
+    private final Queue<EntityStatusS2CPacket> statusPackets = new ConcurrentLinkedQueue<>();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -468,6 +489,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * never a metric: {@link #worstCaseExtraNanos()}, {@link #worstCaseExtraCalls()}.
      */
     private long worstCaseNanos;
+    /** Raycasts the real-exposure search may still spend this pre-tick (task B2); refilled every pre-tick. */
+    private final ExposureAt.Budget exposureBudget = new ExposureAt.Budget(EXPOSURE_RAYCASTS_PER_TICK);
+    private static final int EXPOSURE_RAYCASTS_PER_TICK = 4000;
     private long worstCaseCalls;
     /** This pre-tick's targets, by the name the brain knows them by, in the world's entity order. */
     private final Map<String, PlayerEntity> targets = new LinkedHashMap<>();
@@ -484,8 +508,10 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onActivate() {
         brain = new CrystalBrain();
         lateOwnBefore = 0;
+        stuckBefore = 0;
         deferredBefore = 0;
         damagePackets.clear();
+        statusPackets.clear();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -504,6 +530,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     public void onDeactivate() {
         forgetTick();
         damagePackets.clear();
+        statusPackets.clear();
         lastRotationPos = null;
         refusal.update(false);
     }
@@ -530,6 +557,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return lateOwnBefore + brain.lateOwnCrystals();
     }
 
+    /** Our crystals, late ones included, that stood over 20 pre-ticks without an attack of ours, since activation (log only). */
+    public int stuckStandingCrystals() {
+        return stuckBefore + brain.stuckStandingCrystals();
+    }
+
     /**
      * Placements held back since activation because the target's hurt window would have swallowed them (one per
      * spot skipped, {@link CrystalBrain#deferredForTargetWindow}). Only with {@code self-budget} on.
@@ -549,6 +581,40 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /** How many times {@link #worstCaseExtraNanos()} was asked, since activation. Log only. */
     public long worstCaseExtraCalls() {
         return worstCaseCalls;
+    }
+
+    /**
+     * The ids of our crystals that went through the finishing-blow override and are still remembered (task B0b,
+     * read-only, for the bench to tell a finishing hit from an ordinary one).
+     */
+    public Set<Integer> finishingCrystalIds() {
+        return brain.finishingCrystalIds();
+    }
+
+    /**
+     * The finishing crystals still remembered, with their kind (task B0b, read-only, for the bench): {@link
+     * FinishKind#KILL} or {@link FinishKind#POP}.
+     */
+    public Map<Integer, FinishKind> finishingCrystalKinds() {
+        return brain.finishingCrystalKinds();
+    }
+
+    /**
+     * The ids among {@link #finishingCrystalIds} that we attacked ourselves (task T2, read-only, for the bench: a
+     * finishing blow is one of these going off, whether or not it hurt us).
+     */
+    public Set<Integer> finishingCrystalsAttacked() {
+        return brain.finishingCrystalsAttacked();
+    }
+
+    /** The crystals of ours still remembered, each with whether we attacked it (read-only, for the bench). */
+    public Map<Integer, Boolean> ownCrystals() {
+        return brain.ownCrystals();
+    }
+
+    /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */
+    public int trustedTargets() {
+        return brain.trustedTargetCount();
     }
 
     /** The last thing decided, or why nothing was. */
@@ -577,6 +643,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // Fix round 1 (review-r3-16.md Minor): only while self-budget is on does anything read this, matching
         // exactSelfDamage's own budget-off skip; this still costs only two subtractions when it does run.
         velocityThisTick = selfBudget.get() ? horizontalVelocity(feet) : Vec3d.ZERO;
+        exposureBudget.reset(EXPOSURE_RAYCASTS_PER_TICK);
 
         List<TargetView> seen = measureTargets();
         List<CrystalSeen> standing = new ArrayList<>();
@@ -593,9 +660,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             pingTicks());
         CrystalSettings settings = settingsNow();
         CrystalBrain b = brain;
-        // Before the break phase, and the order matters: the brain counts the hits handed over before a pre-tick
-        // from the previous one. Handed over after it, they would count from this one, a tick short.
+        // Before the break phase, and the order matters: the brain counts the hits (and the pops, task B0a)
+        // handed over before a pre-tick from the previous one. Handed over after it, they would count from
+        // this one, a tick short.
         readDamagePackets(b);
+        readStatusPackets(b);
         b.breakPhase(settings, measured).ifPresent(a -> execute(a, crystals::get));
         if (b.wantsPlacement()) scan(b, tick);
     }
@@ -622,7 +691,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
         CrystalSeen seen = measure(crystal, previous);
         // Meteor reads its settings live here (lines 740-742): a change since the pre-tick already applies.
-        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal), totems()).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
@@ -638,6 +707,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      */
     private void skipPreTick() {
         damagePackets.clear();
+        statusPackets.clear();
         brain.forgetWindows();
     }
 
@@ -670,6 +740,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
         if (event.packet instanceof EntityDamageS2CPacket damage) damagePackets.add(damage);
+        else if (event.packet instanceof EntityStatusS2CPacket status) statusPackets.add(status);
     }
 
     /**
@@ -688,6 +759,22 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
     }
 
+    /**
+     * The totem pops on other players received since the last pre-tick, to the brain (task B0a, spec Amendment
+     * 2026-09-28): the entity-status packet with status {@code USE_TOTEM_OF_UNDYING} (35, verified in the yarn
+     * 1.21.11 jar's {@code net.minecraft.entity.EntityStatuses}). A packet about us, or about an entity that is
+     * not a player we see, is dropped. With {@code self-budget} off nothing is kept: {@link HealthTrust} is
+     * never read then.
+     */
+    private void readStatusPackets(CrystalBrain b) {
+        boolean keep = selfBudget.get();
+        for (EntityStatusS2CPacket status; (status = statusPackets.poll()) != null; ) {
+            if (!keep || status.getStatus() != EntityStatuses.USE_TOTEM_OF_UNDYING) continue;
+            if (!(status.getEntity(mc.world) instanceof PlayerEntity player) || player == mc.player) continue;
+            b.targetPopped(player.getUuidAsString());
+        }
+    }
+
     // Refusal
 
     /**
@@ -699,6 +786,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             case STARTED -> warning(CrystalText.METEOR_AURA_ON);
             case ENDED -> {
                 lateOwnBefore += brain.lateOwnCrystals();
+                stuckBefore += brain.stuckStandingCrystals();
                 deferredBefore += brain.deferredForTargetWindow();
                 brain = new CrystalBrain();
                 forgetTick();
@@ -743,6 +831,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             .pauseHealth(pauseHealth.get())
             .risk(risk.get())
             .selfBudget(selfBudget.get())
+            .finishingBlow(finishingBlow.get())
             .reserve(reserve.get())
             .safeSelfDamage(safeSelfDamage.get())
             .build();
@@ -764,8 +853,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             double squared = player.squaredDistanceTo(mc.player);
             boolean creative = player.getAbilities().creativeMode;
             boolean friend = !Friends.get().shouldAttack(player);
+            ItemStack main = player.getMainHandStack();
+            ItemStack off = player.getOffHandStack();
             Optional<TargetView> view = ServerValues.target(name, squared, player.getHealth(),
-                player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend);
+                player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend,
+                main.contains(DataComponentTypes.DEATH_PROTECTION), off.contains(DataComponentTypes.DEATH_PROTECTION),
+                main.isEmpty(), off.isEmpty());
             if (view.isEmpty()) continue;
             seen.add(view.get());
             if (creative || !player.isAlive() || friend || !ENTITIES.contains(player.getType())) continue;
@@ -815,8 +908,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * actually explodes (task R3-16: judged only from where we stand right now, this budget still undershoots
      * the reserve whenever we are the one moving). Exposure for where we stand right now is vanilla's raycast
      * ({@code ExplosionImpl.calculateReceivedDamage}, in our own, the client's, world); for the extra
-     * positions {@link MovementReach#worstRawDamage} reads the worst exposure an explosion can have instead of
-     * raycasting each one (task R3-12: raycasts are expensive). The reductions are Meteor's, with the
+     * positions {@link MovementReach#worstRawDamage(java.util.List, MovementReach.ExposureFunction, float)} raycasts
+     * their real exposure ({@link ExposureAt}), worst ceiling first and only as far as one could still beat the
+     * best value known (task B2), reading 1.0 for any point the raycast budget cannot pay for. The reductions are Meteor's, with the
      * explosion source it uses (lines 97, 271-290), applied once to the worst raw damage found, never
      * per-position. Distance from our feet with no predicted movement, as Meteor measures it ({@link
      * #PREDICT_MOVEMENT} is off) for where we stand right now; {@link #velocityThisTick} for the rest. Only the
@@ -832,21 +926,30 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         double distance = PlayerUtils.distance(feet.x, feet.y, feet.z, explosion.x, explosion.y, explosion.z);
         // Beyond the radius there is nothing to deal here, and no need to raycast for the exposure; a
         // reachable position closer to it is still checked below.
-        float currentRaw = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f
-            : ExplosionMath.rawDamage(distance, ExplosionImpl.calculateReceivedDamage(explosion, p));
-        float worstRaw = Math.max(currentRaw, worstReachableRawDamage(feet, explosion));
+        double currentExposure = distance > ExplosionMath.CRYSTAL_RADIUS ? 1.0
+            : ExplosionImpl.calculateReceivedDamage(explosion, p);
+        float currentRaw = distance > ExplosionMath.CRYSTAL_RADIUS ? 0f : ExplosionMath.rawDamage(distance, currentExposure);
+        float worstRaw = Math.max(currentRaw, worstReachableRawDamage(feet, explosion, currentRaw, currentExposure));
         return DamageUtils.calculateReductions(worstRaw, p, mc.world.getDamageSources().explosion((Explosion) null));
     }
 
     /**
      * The worst raw damage this explosion could deal from anywhere we could reach before it goes off
-     * ({@link MovementReach}), timed for {@link #worstCaseExtraNanos()}/{@link #worstCaseExtraCalls()} (log
+     * ({@link MovementReach}; {@code floor} and {@code currentExposure} are the value already measured for where we stand), timed for {@link #worstCaseExtraNanos()}/{@link #worstCaseExtraCalls()} (log
      * only, bench).
      */
-    private float worstReachableRawDamage(Vec3d feet, Vec3d explosion) {
+    private float worstReachableRawDamage(Vec3d feet, Vec3d explosion, float floor, double currentExposure) {
         long start = System.nanoTime();
-        float worst = MovementReach.worstRawDamage(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
-            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound());
+        // Up to the still radius every reach point is read at its real exposure (task B2), worst ceiling first, only as far as one
+        // could still beat what is already known: `floor` is the current position's own real value. A point the
+        // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
+        ClientPlayerEntity p = mc.player;
+        // One radius decides (task C3): up to MovementReach.STILL_RADIUS the real exposure above, beyond it exactly
+        // 0.7.0's exposure-1.0 worst case, so nothing here asks for a raycast while we move.
+        float worst = MovementReach.worstReachRaw(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
+            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound(),
+            o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
+                : ExposureAt.at(p, explosion, o.dx(), o.dy(), o.dz(), exposureBudget), floor);
         worstCaseNanos += System.nanoTime() - start;
         worstCaseCalls++;
         return worst;
@@ -897,8 +1000,29 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return ServerValues.ownHealth(mc.player.getHealth(), mc.player.getAbsorptionAmount());
     }
 
+    /**
+     * Every totem of undying carried, anywhere in the inventory (task B0a fix round 1: half of condition a,
+     * with {@link CrystalTick.Hands#totemInHand}). {@code InvUtils.find} sums {@code stack.getCount()} over
+     * every slot from 0 to {@code PlayerInventory.size()} (verified in both jars: {@code find}/{@code
+     * find(Predicate, int, int)} in the Meteor sources jar; {@code PlayerInventory.size()} in the yarn
+     * 1.21.11 jar is {@code main.size()} (36, hotbar included, so the main hand is in range) plus {@code
+     * EQUIPMENT_SLOTS.size()}, whose range includes {@code OFF_HAND_SLOT}), so this already counts a totem in
+     * either hand along with every other one carried.
+     */
     private int totems() {
-        return InvUtils.find(Items.TOTEM_OF_UNDYING).count();
+        return InvUtils.find(CrystalAuraPlusPlus::savesUs).count();
+    }
+
+    /**
+     * Whether this stack of OURS surely saves us from death (task B0c fix round 1): the item is a totem of
+     * undying AND it still carries the {@code death_protection} component ({@link ServerValues#ownDeathProtection}).
+     * Since 1.21.2 the game saves the holder of any item with that component (verified in the yarn 1.21.11 jar:
+     * {@code LivingEntity.tryUseDeathProtector} reads {@code DataComponentTypes.DEATH_PROTECTION} from each hand),
+     * so a custom item could too, but for our own side only what surely saves us counts: never over-count.
+     */
+    private static boolean savesUs(ItemStack stack) {
+        return ServerValues.ownDeathProtection(stack.isOf(Items.TOTEM_OF_UNDYING),
+            stack.contains(DataComponentTypes.DEATH_PROTECTION));
     }
 
     /** Pause-on-use (lines 1154-1156). */
@@ -936,7 +1060,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             main == Items.BOW || off == Items.BOW,
             ServerValues.amplifier(weakness != null, weakness == null ? 0 : weakness.getAmplifier()),
             ServerValues.amplifier(strength != null, strength == null ? 0 : strength.getAmplifier()),
-            mainBreaks, hotbarBreaks || mainBreaks);
+            mainBreaks, hotbarBreaks || mainBreaks,
+            savesUs(p.getMainHandStack()) || savesUs(p.getOffHandStack()));
     }
 
     /** Meteor's {@code isValidWeaknessItem} (lines 877-879). */

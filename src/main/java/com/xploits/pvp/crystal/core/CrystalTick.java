@@ -13,7 +13,11 @@ import java.util.function.Predicate;
  * @param tick              this pre-tick's number
  * @param health            your health plus absorption ({@code EntityUtils.getTotalHealth}); "health"
  *                          means this everywhere (P3)
- * @param totems            totems you carry; diagnostic only, the budget never counts them (§1)
+ * @param totems            totems you carry, everywhere in the inventory (the adapter's {@code InvUtils.find}
+ *                          sums every slot, hands included); the self-budget itself never counts them (§1),
+ *                          but the finishing-blow override reads this alongside {@link Hands#totemInHand} for
+ *                          its condition a (task B0a fix round 1, owner's decision 2026-09-29): it may never
+ *                          spend the last one, so it needs one in hand AND one more besides
  * @param usingItem         using an item or holding the use key (Meteor's pause-on-use, lines 1154-1156)
  * @param mining            breaking a block (pause-on-mine, line 1160)
  * @param lagging           at least 1 s since the last server tick (pause-on-lag, line 1158)
@@ -99,10 +103,18 @@ public record CrystalTick(long tick, double health, int totems, boolean usingIte
      *                               ({@code DamageUtils.getAttackDamage > 0}, lines 833, 877-879)
      * @param hotbarBreaksWeakened   some item in the hands or hotbar does ({@code InvUtils.findInHotbar},
      *                               line 835)
+     * @param totemInHand            a totem of undying in either hand now (task B0a, spec Amendment
+     *                               2026-09-28): half of condition a of the finishing-blow override, together
+     *                               with {@link CrystalTick#totems} — one in hand is not enough by itself
+     *                               since fix round 1 (owner's decision 2026-09-29): the override may never
+     *                               spend the last totem, so it also needs {@code totems >= 2}. Both are read
+     *                               together only in one place ({@link CrystalBrain}'s own {@code
+     *                               totemBacksIt}), so tightening or loosening condition a further is a
+     *                               one-line change there
      */
     public record Hands(boolean crystalsInHotbar, boolean mainHandCrystals, boolean offhandCrystals,
                         boolean gappleInHand, boolean bowInHand, int weaknessAmplifier, int strengthAmplifier,
-                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened) {
+                        boolean mainHandBreaksWeakened, boolean hotbarBreaksWeakened, boolean totemInHand) {
         /** The effect is not active. */
         public static final int NO_EFFECT = -1;
 

@@ -1,4 +1,6 @@
 import java.net.URLClassLoader
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 plugins {
     alias(libs.plugins.fabric.loom)
@@ -82,6 +84,21 @@ loom.runs.named("clientGameTest") {
     // R3-12: every crystal-aura MEASURE plays over a simulated round trip of PingDelay.BENCH_PING_MS (100 ms);
     // -Pbench.ping overrides it (0 restores today's lock-step for those runs too).
     project.findProperty("bench.ping")?.let { property("xploits.bench.ping", it.toString()) }
+    // Task A5: -Pbench.shard=k/n (1 <= k <= n <= ShardPlan.MAX_SHARDS) plays only shard k of the selection
+    // (bench/parallel.ps1, or a hand-run shard); the report records the commit and whether this worktree's
+    // tree was clean, so ReportMerge can refuse a merge of shards that did not all run the same code.
+    project.findProperty("bench.shard")?.let {
+        property("xploits.bench.shard", it.toString())
+        property("xploits.bench.commit", gitCommit())
+        property("xploits.bench.tree-clean", gitTreeClean().toString())
+        // A cap only for a sharded client, never the plain single-client run: measured, not guessed — a
+        // short two-scenario probe run (ca-still, capp-balanced-still) peaked at ~2.1 GB working set on this
+        // machine; 3 GB leaves real headroom for a longer shard's many scenarios while keeping 4 clients at
+        // once (12 GB) far under the 64 GB available. Window, render and fps options are left at the
+        // gametest run's own defaults, since BenchTest.keepFullFrameRate is the only one of those that could
+        // change a measurement, and it already runs unconditionally.
+        vmArg("-Xmx3G")
+    }
     // R3-12: Fabric's own client-gametest NetworkSynchronizer assumes every packet is handled on the netty
     // thread almost at once and blocks each frame until it is (waitForPacketHandlers, 10 s timeout); the
     // bench's simulated ping deliberately holds a packet longer than that inside the pipeline, which the
@@ -179,6 +196,64 @@ tasks.register("benchVerify") {
             throw GradleException("bench failed: " + reasons.joinToString("; "))
         }
     }
+}
+
+/** The current commit's full SHA (task A5: every shard's report records it). */
+fun gitCommit(): String =
+    providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.get().trim()
+
+/** Whether this worktree has no uncommitted change (task A5: every shard's report records it; the
+ * shard worktrees are always reset to HEAD before a run, so this is really only informative for shard 1's
+ * own worktree, and for {@code bench/parallel.ps1}'s own dirty-tree refusal before it starts any shard). */
+fun gitTreeClean(): Boolean =
+    providers.exec { commandLine("git", "status", "--porcelain") }.standardOutput.asText.get().isBlank()
+
+// Task A5: merges shard 1's report (this worktree's own build/bench) with shards 2..n's, each in its own
+// detached worktree .worktrees/bench-shard-<k> (a sibling of this worktree: ../bench-shard-<k> from here),
+// into this worktree's build/bench/report-<version>.json/.md, then runs benchVerify on the merged report
+// unchanged — bench/parallel.ps1 is what actually runs the n clients and calls this task afterwards.
+// The merge logic itself is ReportMerge, pure core with its own unit tests; this task only locates the n
+// shard report files and runs BenchParallelRunner (plain Java, no Fabric/Meteor: a JavaExec, not a game launch)
+// against them.
+tasks.register<JavaExec>("benchMerge") {
+    group = "verification"
+    description = "Merges n -Pbench.shard=k/n shard reports (task A5, bench/parallel.ps1) into build/bench/report-<version>.json and runs benchVerify on it."
+    dependsOn("compileGametestJava")
+    classpath = sourceSets.named("gametest").get().runtimeClasspath
+    mainClass.set("com.xploits.bench.BenchParallelRunner")
+    val n = (project.findProperty("bench.shards") as String?)?.toInt() ?: 1
+    val version = project.version.toString()
+    val outFolder = benchOut.get().asFile
+    val baselineFile = file("bench/baseline.json").absolutePath
+    val finalJson = outFolder.resolve("report-$version.json")
+    val finalMd = outFolder.resolve("report-$version.md")
+    // Shard 1 always runs in this worktree, so its own live report is written to the exact path the merged
+    // report also belongs at (report-<version>.json/.md) — the same stale-report guard runClientGameTest's
+    // own doFirst has cannot simply delete that path first, or there would be nothing left for shard 1's own
+    // input (this failed a real smoke run before this fix: "shard report missing"). Instead, shard 1's fresh
+    // report is staged aside first (renamed, not copied: no leftover duplicate to go stale itself), which
+    // both frees the final path — so a refused merge (BenchParallelRunner exits 1 before writing anything)
+    // leaves NOTHING at report-<version>.json/.md for the finalizing benchVerify to misread as current,
+    // exactly the "a partial merge never passes the gate" case the brief rules out — and gives BenchParallelRunner
+    // a stable, private path to read shard 1's data from. Never touches meteor-cache/.
+    val shard1Staging = outFolder.resolve("report-$version-shard1.json")
+    val shard1StagingMd = outFolder.resolve("report-$version-shard1.md")
+    doFirst {
+        delete(shard1Staging, shard1StagingMd)
+        if (finalJson.isFile) Files.move(finalJson.toPath(), shard1Staging.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        if (finalMd.isFile) Files.move(finalMd.toPath(), shard1StagingMd.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+    // -Pbench.updateBaseline here, never on the individual shard runs (bench/parallel.ps1 never passes it
+    // down to them): a shard only sees its own slice of the scenarios, and shards 2..n's own baseline.json
+    // lives in a disposable worktree, so only updating it once, here, from the complete merged report, is
+    // correct (task A5 requirement 3).
+    val updateBaseline = project.hasProperty("bench.updateBaseline")
+    val shardFiles = mutableListOf(shard1Staging.absolutePath)
+    for (k in 2..n) {
+        shardFiles += file("../bench-shard-$k/build/bench/report-$version.json").absolutePath
+    }
+    args = listOf(version, outFolder.absolutePath, baselineFile, updateBaseline.toString()) + shardFiles
+    finalizedBy("benchVerify")
 }
 
 // ./gradlew build compiles the bench, so a break shows up there; it never runs it (no window).

@@ -214,8 +214,9 @@ class MeteorParityPropertyTest {
             boolean main = inHotbar && r.nextDouble() < 0.5;
             boolean off = inHotbar && r.nextDouble() < 0.25;
             boolean mainBreaks = r.nextDouble() < 0.5;
+            // The budget is always off here (settings(), below): finishing-blow never reads this either way.
             return new CrystalTick.Hands(inHotbar, main, off, r.nextDouble() < 0.15, r.nextDouble() < 0.1,
-                effect(), effect(), mainBreaks, mainBreaks || r.nextDouble() < 0.6);
+                effect(), effect(), mainBreaks, mainBreaks || r.nextDouble() < 0.6, r.nextDouble() < 0.5);
         }
 
         private int effect() {
@@ -240,7 +241,7 @@ class MeteorParityPropertyTest {
                     default -> quarters(100);
                 };
                 targets.add(new TargetView(name, squared, health, armor, r.nextDouble() < 0.05,
-                    r.nextDouble() < 0.95, r.nextDouble() < 0.05));
+                    r.nextDouble() < 0.95, r.nextDouble() < 0.05, false, true));
             }
             return targets;
         }
@@ -318,6 +319,8 @@ class MeteorParityPropertyTest {
                 .pauseHealth(oneOf(0, 5, 10, quarters(36)))
                 .risk(RiskLevel.values()[r.nextInt(RiskLevel.values().length)])
                 .selfBudget(false)
+                // The finishing blow lives behind the budget: with it off the setting must change nothing (task C2).
+                .finishingBlow(r.nextBoolean())
                 .reserve(2 + quarters(18))
                 .safeSelfDamage(quarters(2))
                 .build();

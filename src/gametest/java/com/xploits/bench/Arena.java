@@ -9,6 +9,7 @@ import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
@@ -44,6 +45,11 @@ public final class Arena {
     private static final int CLEAR_HEIGHT = 4;
     /** Totems of the standard loadout's inventory (the offhand one is extra). */
     public static final int INVENTORY_TOTEMS = 16;
+    /**
+     * Task A1 requirement 1: totems of the fight loadout in total (the offhand one plus
+     * {@value #FIGHT_TOTEMS} - 1 spare in the inventory), for both our player and the sparring.
+     */
+    public static final int FIGHT_TOTEMS = 8;
     /** How long the client may take to see a loadout the server gave. */
     private static final int LOADOUT_SYNC_TICKS = 40;
 
@@ -185,6 +191,47 @@ public final class Arena {
         awaitClient(player -> holds(player, count, item), "an extra hotbar stack");
     }
 
+    /**
+     * The fight loadout (task A1 requirement 1, opt-in): netherite with Protection IV on the helmet,
+     * chestplate and boots plus Blast Protection IV on the leggings — unbreakable, like the standard
+     * loadout; armour breaking is out of scope for the bench either way — a totem in the offhand and
+     * {@value #FIGHT_TOTEMS} totems in total ({@value #FIGHT_TOTEMS} - 1 spare in the inventory), AutoTotem
+     * on in Strict mode refilling the offhand from the spares as with the standard loadout. Hotbar 0 end
+     * crystals, hotbar 1 obsidian. It returns once the client holds it.
+     *
+     * <p>This is the armour real crystal PvP uses: 3x Protection IV plus 1x Blast Protection IV reaches the
+     * same 80&nbsp;% explosion cap as the standard loadout's 4x Blast Protection IV, but lets melee and
+     * other damage through — every scenario that does not opt in keeps the standard loadout, so its numbers
+     * keep meaning what they meant in 0.7.0. The sparring wears the same armour in fight mode
+     * ({@link Sparring#spawn(net.minecraft.server.MinecraftServer, ServerPlayerEntity, Arena, Script, boolean)}).
+     */
+    public void fightLoadout() {
+        AutoTotem totem = bench.meteor(AutoTotem.class);
+        bench.setting(totem, "General", "mode", AutoTotem.Mode.Strict);
+        String name = bench.player();
+        int spare = FIGHT_TOTEMS - 1;
+        bench.onServer(srv -> {
+            ServerPlayerEntity player = player(srv, name);
+            PlayerInventory inventory = player.getInventory();
+            inventory.clear();
+            for (EquipmentSlot slot : ARMOUR) player.equipStack(slot, fightArmour(srv.getRegistryManager(), slot));
+            player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+            for (int i = 0; i < spare; i++) {
+                inventory.setStack(PlayerInventory.HOTBAR_SIZE + i, new ItemStack(Items.TOTEM_OF_UNDYING));
+            }
+            inventory.setStack(0, new ItemStack(Items.END_CRYSTAL, 64));
+            inventory.setStack(1, new ItemStack(Items.OBSIDIAN, 64));
+        });
+        boolean armoured = bench.fromServer(srv -> hasFightArmourEnchantments(srv.getRegistryManager(), player(srv, name)));
+        if (!armoured) throw new BenchException("the fight loadout's armour is not Protection IV plus Blast Protection IV on the leggings");
+        awaitClient(player -> holds(player, spare + 1, Items.TOTEM_OF_UNDYING)
+            && holds(player, 64, Items.END_CRYSTAL) && holds(player, 64, Items.OBSIDIAN)
+            && player.getEquippedStack(EquipmentSlot.FEET).isOf(Items.NETHERITE_BOOTS), "the fight loadout");
+        bench.onClient(client -> {
+            if (!totem.isActive()) totem.enable();
+        });
+    }
+
     /** The bare loadout: one offhand totem, nothing else, AutoTotem off. It returns once the client holds it. */
     public void bare() {
         AutoTotem totem = bench.meteor(AutoTotem.class);
@@ -204,16 +251,32 @@ public final class Arena {
 
     /** A netherite armour piece for {@code slot} with blast protection IV (the player's and the sparring's). */
     static ItemStack armour(DynamicRegistryManager registries, EquipmentSlot slot) {
-        Item item = switch (slot) {
+        ItemStack stack = new ItemStack(netheriteItem(slot));
+        stack.addEnchantment(blastProtection(registries), 4);
+        return stack;
+    }
+
+    /**
+     * Task A1 requirement 1: a netherite armour piece for {@code slot} of the fight loadout — Protection IV
+     * on the helmet, chestplate and boots, Blast Protection IV on the leggings (both our player's and the
+     * sparring's, {@link #fightLoadout} and {@link Sparring#spawn(net.minecraft.server.MinecraftServer,
+     * ServerPlayerEntity, Arena, Script, boolean)}).
+     */
+    static ItemStack fightArmour(DynamicRegistryManager registries, EquipmentSlot slot) {
+        ItemStack stack = new ItemStack(netheriteItem(slot));
+        RegistryEntry<Enchantment> enchantment = slot == EquipmentSlot.LEGS ? blastProtection(registries) : protection(registries);
+        stack.addEnchantment(enchantment, 4);
+        return stack;
+    }
+
+    private static Item netheriteItem(EquipmentSlot slot) {
+        return switch (slot) {
             case HEAD -> Items.NETHERITE_HELMET;
             case CHEST -> Items.NETHERITE_CHESTPLATE;
             case LEGS -> Items.NETHERITE_LEGGINGS;
             case FEET -> Items.NETHERITE_BOOTS;
             default -> throw new BenchException("no armour for the slot " + slot.getName());
         };
-        ItemStack stack = new ItemStack(item);
-        stack.addEnchantment(blastProtection(registries), 4);
-        return stack;
     }
 
     static List<EquipmentSlot> armourSlots() {
@@ -224,11 +287,57 @@ public final class Arena {
         return registries.getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.BLAST_PROTECTION);
     }
 
+    /** Verified in the yarn 1.21.11 jar (javap): {@code Enchantments.PROTECTION} is a real registry key. */
+    private static RegistryEntry<Enchantment> protection(DynamicRegistryManager registries) {
+        return registries.getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.PROTECTION);
+    }
+
+    /**
+     * Task A1 fix round 1: whether {@code entity} actually wears the fight loadout's enchantments —
+     * Protection IV on the helmet, chestplate and boots, Blast Protection IV on the leggings — on every
+     * slot. {@code getArmor()} and armour toughness come from the netherite pieces alone and cannot tell
+     * Protection from Blast Protection, so this is the only real verification of which enchantment landed;
+     * shared by {@link #fightLoadout} (our player) and
+     * {@link Sparring#spawn(net.minecraft.server.MinecraftServer, ServerPlayerEntity, Arena, Script,
+     * boolean) the sparring's fight-mode spawn}, so neither can silently pass with broken armour.
+     */
+    static boolean hasFightArmourEnchantments(DynamicRegistryManager registries, LivingEntity entity) {
+        RegistryEntry<Enchantment> protection = protection(registries);
+        RegistryEntry<Enchantment> blast = blastProtection(registries);
+        boolean legs = EnchantmentHelper.getLevel(blast, entity.getEquippedStack(EquipmentSlot.LEGS)) == 4;
+        boolean others = List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.FEET).stream()
+            .allMatch(slot -> EnchantmentHelper.getLevel(protection, entity.getEquippedStack(slot)) == 4);
+        return legs && others;
+    }
+
     /** The real player on the server, by name. */
     static ServerPlayerEntity player(MinecraftServer srv, String name) {
         ServerPlayerEntity player = srv.getPlayerManager().getPlayer(name);
         if (player == null) throw new BenchException("the player is not on the server");
         return player;
+    }
+
+    /** Task B0b: the totems the player carries, offhand and spares together (the count the module reads too). */
+    static int totemsCarried(PlayerEntity player) {
+        int found = 0;
+        PlayerInventory inventory = player.getInventory();
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack.isOf(Items.TOTEM_OF_UNDYING)) found += stack.getCount();
+        }
+        return found;
+    }
+
+    /**
+     * Task B0b (the near-death moment): our fight loadout's totems again, the offhand one plus the spares,
+     * after the warm-up may have used some. Server thread.
+     */
+    void restoreTotems(ServerPlayerEntity player) {
+        PlayerInventory inventory = player.getInventory();
+        player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+        for (int i = 0; i < FIGHT_TOTEMS - 1; i++) {
+            inventory.setStack(PlayerInventory.HOTBAR_SIZE + i, new ItemStack(Items.TOTEM_OF_UNDYING));
+        }
     }
 
     /** Exactly {@code count} of {@code item} across the player's inventory, offhand and armour included. */

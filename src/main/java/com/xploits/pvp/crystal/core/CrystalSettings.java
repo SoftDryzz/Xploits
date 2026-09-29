@@ -21,7 +21,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
                               double facePlaceDurability, boolean breakCrystals, int breakAttempts,
                               int attackFrequency, boolean fastBreak, PauseMode pauseOnUse, PauseMode pauseOnMine,
                               boolean pauseOnLag, double pauseHealth, RiskLevel risk, boolean selfBudget,
-                              double reserve, double safeSelfDamage) {
+                              boolean finishingBlow, double reserve, double safeSelfDamage) {
     /**
      * Meteor's {@code auto-switch}, without Silent (Q6). The display names are Meteor's, which it saves and a
      * player types: never change them.
@@ -130,6 +130,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         b.pauseHealth = pauseHealth;
         b.risk = risk;
         b.selfBudget = selfBudget;
+        b.finishingBlow = finishingBlow;
         b.reserve = reserve;
         b.safeSelfDamage = safeSelfDamage;
         return b;
@@ -160,6 +161,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         private double pauseHealth = 5;
         private RiskLevel risk = RiskLevel.BALANCED;
         private boolean selfBudget = true;
+        private boolean finishingBlow = true;
         private double reserve = SelfBudget.DEFAULT_RESERVE;
         private double safeSelfDamage = SelfBudget.DEFAULT_SAFE_SELF_DAMAGE;
 
@@ -188,6 +190,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
         public Builder pauseHealth(double v) { pauseHealth = v; return this; }
         public Builder risk(RiskLevel v) { risk = v; return this; }
         public Builder selfBudget(boolean v) { selfBudget = v; return this; }
+        public Builder finishingBlow(boolean v) { finishingBlow = v; return this; }
         public Builder reserve(double v) { reserve = v; return this; }
         public Builder safeSelfDamage(double v) { safeSelfDamage = v; return this; }
 
@@ -195,7 +198,7 @@ public record CrystalSettings(double targetRange, double minDamage, double maxDa
             return new CrystalSettings(targetRange, minDamage, maxDamage, antiSuicide, rotate, autoSwitch,
                 noGapSwitch, noBowSwitch, antiWeakness, place, facePlace, facePlaceHealth, facePlaceDurability,
                 breakCrystals, breakAttempts, attackFrequency, fastBreak, pauseOnUse, pauseOnMine, pauseOnLag,
-                pauseHealth, risk, selfBudget, reserve, safeSelfDamage);
+                pauseHealth, risk, selfBudget, finishingBlow, reserve, safeSelfDamage);
         }
     }
 }

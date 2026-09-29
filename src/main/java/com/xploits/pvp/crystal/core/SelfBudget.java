@@ -18,7 +18,8 @@ import java.util.Set;
  *   that has disappeared, attacked or not, for {@link #DISAPPEARANCE_WINDOW} ticks from the pre-tick it
  *   was first seen gone, because its damage may still arrive.</li>
  *   <li><b>S, standing:</b> every standing crystal that is not in I, whoever placed it, plus our pending
- *   placements. A standing crystal is always in exactly one of I or S.</li>
+ *   placements and the late ones (task C2: an expired placement still counts until its crystal appears or the
+ *   late window ends). A standing crystal is always in exactly one of I or S.</li>
  *   <li>Only crystals within {@link #HAZARD_RADIUS} count: beyond it an end crystal cannot reach you.</li>
  *   <li><b>Worst case C = I + S.</b> Totems and invulnerability are never counted.</li>
  * </ul>
@@ -26,8 +27,9 @@ import java.util.Set;
  * <p>Every self damage here is the exact one ({@link CrystalView#budgetSelfDamage}, {@link ExplosionMath}), never
  * Meteor's truncated prediction: that one is up to a raw point short, and health would end that far below R.
  *
- * <p>These rules only add checks on top of Meteor's; they never allow what Meteor would refuse.
- * Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
+ * <p>These rules add checks on top of Meteor's. They never loosen Meteor's rules themselves: it is the brain that
+ * lets the reserve replace {@code max-damage} for our own crystals (task B1) and runs the finishing blow past
+ * them. Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
  * {@link Verdict#FOREIGN} for it without reading health, so no caller can get that wrong.
  */
 public final class SelfBudget {
@@ -176,11 +178,24 @@ public final class SelfBudget {
      * passed Meteor's checks: allowed if it leaves the reserve ({@code health - C - budgetSelfDamage >= R});
      * otherwise, in safe mode, if the {@code budgetSelfDamage} is tiny and it still leaves the floor
      * ({@code budgetSelfDamage <= epsilon} and {@code health - C - budgetSelfDamage >= F}).
+     *
+     * <p>Task F1 (owner's decision 2026-09-29): a spot whose {@code budgetSelfDamage} is exactly zero is
+     * always allowed once the reserve is already unreachable, even below the floor — placing it cannot make
+     * {@code C} any worse than it already is, and refusing it only because some existing crystal (one we may
+     * never be able to break, {@link CrystalBrain#placeGateOpen}) has already eaten past the floor helps
+     * nothing. This is exact-zero only, never an epsilon: any {@code budgetSelfDamage > 0}, however small,
+     * keeps today's rule (the safe-mode branch below, gated by {@code safeSelfDamage}).
+     *
+     * <p>Final review M2: in survival this rule does not fire. Within {@link #HAZARD_RADIUS} the raw damage is at
+     * least 1 ({@link ExplosionMath}), and a spot's budget self damage is {@code max(Meteor's, exact)}, so it is
+     * never exactly zero there; beyond it the crystal is not counted at all. It is a guard for edge cases (a
+     * creative-mode player or a server that zeroes explosions), not a path a normal fight takes.
      */
     public Verdict placeAllowed(double budgetSelfDamage) {
         Damage.check(budgetSelfDamage, "budget self damage");
         double left = health - worstCase() - budgetSelfDamage;
         if (left >= reserve) return Verdict.ALLOWED;
+        if (budgetSelfDamage == 0.0) return Verdict.ALLOWED_SAFE;
         if (budgetSelfDamage > safeSelfDamage) return Verdict.REFUSED_RESERVE;
         return left >= FLOOR ? Verdict.ALLOWED_SAFE : Verdict.REFUSED_FLOOR;
     }
@@ -196,5 +211,22 @@ public final class SelfBudget {
         if (!crystal.ours()) return Verdict.FOREIGN;
         double others = inFlight - inFlightById.getOrDefault(crystal.id(), 0.0);
         return health - others - crystal.budgetSelfDamage() >= FLOOR ? Verdict.ALLOWED : Verdict.REFUSED_FLOOR;
+    }
+
+    /**
+     * C without one crystal's own share of it (task B0a, condition c of the finishing-blow override:
+     * "nothing else we can see could take the totem first"): the same {@link #worstCase()}, minus {@code
+     * crystal}'s own contribution, wherever this budget counted it (I or S, {@link #shareOf}); unchanged if it
+     * was not counted at all (beyond {@link #HAZARD_RADIUS}). Never changes {@code crystal}'s own
+     * classification, and never mutates this budget: a second, independent reading of the same worst case.
+     *
+     * @param crystal the crystal being broken through the override, or (P4, fast-break) one this budget has
+     *                 not seen; a place asks this differently, of the budget it already builds excluding the
+     *                 spot's own pending placement ({@link #worstCase()} on that one)
+     * @param now      the pre-tick this budget was built for
+     */
+    public double worstCaseWithoutCrystal(CrystalView crystal, long now) {
+        Objects.requireNonNull(crystal, "crystal");
+        return shareOf(crystal, now) == Share.NOT_COUNTED ? worstCase() : worstCase() - crystal.budgetSelfDamage();
     }
 }

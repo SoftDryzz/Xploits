@@ -244,6 +244,10 @@ final class CrystalAuraMeasure implements Scenario {
             int held = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
             LOG.info("[bench] {}: crystal-aura++ held {} placement(s) for the target's hurt window (log only, not a metric)",
                 name, held);
+            int lateOwn = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).lateOwnCrystals());
+            int stuck = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).stuckStandingCrystals());
+            LOG.info("[bench] {}: crystal-aura++ saw {} late own crystal(s) and {} of our standing crystal(s) stayed"
+                + " unattacked over 20 pre-ticks (B1 liveness, counts only, log only, not a metric)", name, lateOwn, stuck);
             long nanos = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraNanos());
             long calls = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).worstCaseExtraCalls());
             LOG.info("[bench] {}: crystal-aura++'s worst-case reach (R3-16) cost {} call(s), {} total, {} per call (log only, not a metric)",
@@ -251,13 +255,14 @@ final class CrystalAuraMeasure implements Scenario {
         }
         if (motion != null) motion.log(bench, name, runs);
         Sparring.Stats sparring = bench.sparringStats();
-        run.close();
+        List<FightRecord> closed = run.close();
 
         // The sparring cannot lose more than it was dealt (§Proving the bench works, sparring validity).
         if (sparring.damageTaken() > sparring.rawDamage() + 1e-3) {
             throw new BenchException("the sparring lost more health than it was dealt");
         }
-        Metrics metrics = metrics(sparring, run.selfDamage(), run.selfPops(), run.minHealth(), run.crystalsPlaced());
+        Metrics metrics = metrics(sparring, run.ordinarySelfDamage(closed), run.selfPops(), run.ordinaryMinHealth(closed),
+            run.crystalsPlaced(), closed);
         if (verification != null) verify(verification, metrics);
         return metrics;
     }
@@ -310,17 +315,21 @@ final class CrystalAuraMeasure implements Scenario {
     }
 
     /** The run's metrics from their parts; the same for the close and for a settle's snapshot. */
-    private Metrics metrics(Sparring.Stats sparring, double selfDamage, int selfPops, double minHealth, int crystalsPlaced) {
+    private Metrics metrics(Sparring.Stats sparring, double selfDamage, int selfPops, double minHealth, int crystalsPlaced,
+                             List<FightRecord> records) {
         Metrics metrics = new Metrics()
             .put(Metrics.DAMAGE_DEALT, sparring.damageTaken())
             .put(Metrics.SPARRING_POPS, sparring.pops());
         if (sparring.firstPopTick() >= 0) metrics.put(Metrics.FIRST_POP_S, sparring.firstPopTick() / 20.0);
-        return metrics
+        metrics
             .put(Metrics.NO_POP_RUNS, sparring.pops() == 0 ? 1 : 0)
             .put(Metrics.SELF_DAMAGE, selfDamage)
             .put(Metrics.SELF_POPS, selfPops)
             .put(Metrics.MIN_HEALTH, minHealth)
             .put(Metrics.PLACEMENTS_PER_S, SettleVerification.perNominalSecond(crystalsPlaced, seconds()));
+        // Task B0b: crystal-aura++'s finishing blows (absent when none happened).
+        run.putFinishing(metrics, records);
+        return metrics;
     }
 
     /**
@@ -379,8 +388,8 @@ final class CrystalAuraMeasure implements Scenario {
     private Metrics snapshot(Bench bench) {
         Sparring.Stats sparring = bench.sparringStats();
         List<FightRecord> records = run.recordsSoFar();
-        return metrics(sparring, MeasureRun.selfDamage(records), MeasureRun.selfPops(records), run.minHealth(),
-            MeasureRun.crystalsPlaced(records));
+        return metrics(sparring, run.ordinarySelfDamage(records), MeasureRun.selfPops(records),
+            run.ordinaryMinHealth(records), MeasureRun.crystalsPlaced(records), records);
     }
 
     /** A settled run's final metrics against its snapshot: the verified line, or ERROR naming what changed. */

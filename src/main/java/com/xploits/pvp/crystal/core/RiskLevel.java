@@ -3,15 +3,19 @@ package com.xploits.pvp.crystal.core;
 /**
  * How much health crystal-aura++'s placements keep back (setting {@code risk}): the reserve R of the
  * self-damage budget ({@link SelfBudget}). Only R moves: the floor F, which breaking our own crystal must
- * leave, and every check of Meteor's stay as they are, so each level still only ever does what Meteor's
- * crystal-aura would also do. The display names are what Meteor saves and a player types: never change them.
+ * leave, and {@code anti-suicide} stay as they are at every level. Meteor's {@code max-damage} no longer limits our
+ * own crystals with the budget on (the reserve does, task B1), and a finishing blow may pass more (see {@link
+ * CrystalBrain}). The display names are what Meteor saves and a player types: never change them.
  */
 public enum RiskLevel {
     /** R = 5, the same as Meteor's pause-health. Experimental. */
     SAFE("Safe", 5.0),
     /** R = 3.5: the default, and recommended. */
     BALANCED("Balanced", 3.5),
-    /** R = F: a placement may leave exactly the floor, and its own crystal can still be broken. Experimental. */
+    /**
+     * R = F: a placement may leave exactly the floor, and its own crystal can still be broken. Experimental. Since
+     * R = F, the pop-grade finishing tier adds only one thing here: acting at or below {@code pause-health}.
+     */
     AGGRESSIVE("Aggressive", SelfBudget.FLOOR),
     /** R = the {@code reserve} setting. */
     CUSTOM("Custom", Double.NaN);

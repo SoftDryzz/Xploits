@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** The plain input and output records: copies, sums and the values they refuse. */
 class CrystalTypesTest {
     private static final CrystalTick.Hands HANDS = new CrystalTick.Hands(true, true, false, false, false,
-        CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true);
+        CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true, false);
 
     private static CrystalView crystal(Map<String, Double> damage, double self, double distance, int attempts, long attacked) {
         return new CrystalView(1, 77, damage, self, distance, true, true, attempts, attacked, CrystalView.NEVER);
@@ -83,7 +83,7 @@ class CrystalTypesTest {
 
     @Test
     void handsSayWhatMeteorChecksBeforeSwitchingAndAttacking() {
-        CrystalTick.Hands weak = new CrystalTick.Hands(true, false, true, true, true, 0, 1, false, true);
+        CrystalTick.Hands weak = new CrystalTick.Hands(true, false, true, true, true, 0, 1, false, true, false);
 
         assertTrue(weak.weakened());
         assertTrue(weak.strengthened());
@@ -92,20 +92,24 @@ class CrystalTypesTest {
         assertTrue(weak.offhandCrystals());
         assertTrue(weak.gappleInHand());
         assertTrue(weak.bowInHand());
+        assertFalse(weak.totemInHand());
         assertFalse(HANDS.weakened());
         assertFalse(HANDS.strengthened());
+        assertFalse(HANDS.totemInHand());
+        assertTrue(new CrystalTick.Hands(true, true, false, false, false,
+            CrystalTick.Hands.NO_EFFECT, CrystalTick.Hands.NO_EFFECT, true, true, true).totemInHand());
         assertEquals(HANDS, tick(List.of(), List.of(), List.of()).hands());
     }
 
     @Test
     void handsRefuseWhatCannotBe() {
         int none = CrystalTick.Hands.NO_EFFECT;
-        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, -2, none, false, false));
-        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, -2, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, -2, none, false, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, -2, false, false, false));
         // testInHotbar tests the hands first, and findInHotbar the main hand
-        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, true, false, false, false, none, none, false, false));
-        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, false, true, false, false, none, none, false, false));
-        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, none, true, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, true, false, false, false, none, none, false, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(false, false, true, false, false, none, none, false, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new CrystalTick.Hands(true, false, false, false, false, none, none, true, false, false));
         assertThrows(NullPointerException.class,
             () -> new CrystalTick(10, 20, 0, false, false, false, false, null, List.of(), List.of(), List.of()));
     }
@@ -141,14 +145,14 @@ class CrystalTypesTest {
         assertThrows(IllegalArgumentException.class, () -> new Candidate(1, ok, Double.POSITIVE_INFINITY, true, Set.of(), false));
         assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, -1, 3, true));
         assertThrows(IllegalArgumentException.class, () -> new CrystalSeen(1, 1, ok, 1, Double.NaN, true));
-        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, -1, 50, false, true, false));
-        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, 20, Double.NaN, false, true, false));
-        new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false);
+        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, -1, 50, false, true, false, false, true));
+        assertThrows(IllegalArgumentException.class, () -> new TargetView("a", 9, 20, Double.NaN, false, true, false, false, true));
+        new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false, false, true);
     }
 
     @Test
     void aTickRefusesDuplicatesAndImpossibleValues() {
-        TargetView t = new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false);
+        TargetView t = new TargetView("a", 9, 20, TargetView.NO_ARMOR, false, true, false, false, true);
         Candidate p = new Candidate(7, Map.of(), 1, true, Set.of(), false);
         CrystalSeen one = new CrystalSeen(1, 5, Map.of(), 1, 3, true);
         CrystalSeen sameId = new CrystalSeen(1, 6, Map.of(), 2, 3, true);

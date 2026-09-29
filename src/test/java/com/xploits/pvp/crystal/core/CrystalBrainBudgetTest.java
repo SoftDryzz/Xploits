@@ -114,19 +114,38 @@ class CrystalBrainBudgetTest {
         assertDecision(Decision.breakCrystal(2, Reason.WITHIN_BUDGET), List.of(standing.crystalAdded(mine, 8, HANDS).orElseThrow()));
     }
 
+    /**
+     * Task F1 (owner's decision 2026-09-29, task-f1-report.md): this test used to be named
+     * "aCrystalTheBudgetWillNotBreakStillBlocksPlacement" and asserted the opposite (assertNothing) —
+     * the exact deadlock the near-death bench run diagnosed (F1 phase 1): Meteor's one-at-a-time gate
+     * (lines 921-924) closes for any own crystal it would break, even one the budget will refuse forever
+     * and no override ever takes; with nothing else ever removing that crystal, the whole aura stalled
+     * for the rest of the fight. Waiting for "our turn to break it first" is not real one-at-a-time
+     * discipline once we already know, with certainty, that turn will never come.
+     *
+     * <p>Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so the budget refuses to break it (BELOW_FLOOR),
+     * and with no totem in hand the finishing-blow override does not take it either — so the gate no
+     * longer waits on it. Meteor would break it (4 < 5.5): only our own budget's refusal is why it stays
+     * standing, and that refusal itself is untouched (still verified below). Here it is measured beyond
+     * the hazard radius so S does not hold it either, and the budget alone already lets the harmless spot
+     * through (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): the gate was the only thing saying no.
+     */
     @Test
-    void aCrystalTheBudgetWillNotBreakStillBlocksPlacement() {
-        // Ours, self 4, at health 5.5: 5.5 - 0 - 4 = 1.5 < 2, so it stays. Meteor would break it (4 < 5.5), so
-        // by Meteor's rule it stops placing, and the budget does not change that. Here it is measured beyond
-        // the hazard radius so S does not hold it and the budget alone would let the spot through
-        // (5.5 - 0 - 0 = 5.5 >= 3.5, DEFAULTS's Balanced reserve): only the one-at-a-time rule says no.
+    void aCrystalTheBudgetWillNeverBreakNoLongerBlocksPlacement() {
         CrystalSeen mine = crystal(1, 8, 4);
         CrystalBrain b = new CrystalBrain();
         long t = own(b, 1, mine);
 
-        assertNothing(b.preTick(DEFAULTS, tick(t).health(5.5).crystals(at(mine, 12.5)).candidates(spot(9, 8, 0)).build()));
-        assertTrue(b.holding());
-        assertEquals(Decision.none(Reason.BELOW_FLOOR), b.lastDecision());
+        assertDecision(Decision.place(9, Reason.WITHIN_BUDGET),
+            b.preTick(DEFAULTS, tick(t).health(5.5).crystals(at(mine, 12.5)).candidates(spot(9, 8, 0)).build()));
+        assertFalse(b.holding());
+
+        // The floor promise on the standing crystal itself is untouched: breaking it is still refused.
+        CrystalBrain stillRefused = new CrystalBrain();
+        long t2 = own(stillRefused, 1, mine);
+        assertNothing(stillRefused.preTick(DEFAULTS, tick(t2).health(5.5).crystals(mine).build()));
+        assertTrue(stillRefused.holding());
+        assertEquals(Decision.none(Reason.BELOW_FLOOR), stillRefused.lastDecision());
     }
 
     @Test
@@ -135,6 +154,21 @@ class CrystalBrainBudgetTest {
         CrystalSettings s = DEFAULTS.toBuilder().pauseOnUse(PauseMode.BREAK).build();
 
         assertNothing(new CrystalBrain().preTick(s, tick(1).usingItem().crystals(crystal(1, 8, 1)).candidates(spot(9, 8, 1)).build()));
+    }
+
+    /**
+     * Budget on, an own crystal the budget ALLOWS to break keeps the one-at-a-time gate closed, as before:
+     * breaking is paused this tick, so nothing acts on it, but we would break it (health 20, self 1:
+     * 20 - 0 - 1 = 19 >= 2), so waiting for our turn is real one-at-a-time discipline, not a dead end.
+     */
+    @Test
+    void anOwnCrystalTheBudgetWouldBreakKeepsTheGateClosed() {
+        CrystalSettings s = DEFAULTS.toBuilder().pauseOnUse(PauseMode.BREAK).build();
+        CrystalSeen mine = crystal(1, 8, 1);
+        CrystalBrain b = new CrystalBrain();
+        long t = own(b, 1, mine);
+
+        assertNothing(b.preTick(s, tick(t).usingItem().crystals(mine).candidates(spot(9, 8, 0)).build()));
     }
 
     @Test
@@ -209,7 +243,8 @@ class CrystalBrainBudgetTest {
     @Test
     void aCrystalWithinFiveTicksOfOurPlacementIsOursLaterItIsForeign() {
         // Ping 0: max(5, 0 + 2) = 5, Meteor's placing window (lines 667-669, 734-738, 1055). The crystal
-        // (self 5) at health 6.5: ours cannot be broken (1.5 < 2), a foreign one is.
+        // (self 5) at health 6.5: ours cannot be broken (1.5 < 2). A late one is still ours for the floor (task C2,
+        // final review I1): not broken at 6.5 either, but broken at 7 (exactly the floor), unlike a foreign one.
         CrystalSeen there = crystal(1, 9, 8, 5);
 
         CrystalBrain inTime = placedAtTick1(0, 5);
@@ -217,8 +252,48 @@ class CrystalBrainBudgetTest {
         assertEquals(0, inTime.lateOwnCrystals());
 
         CrystalBrain late = placedAtTick1(0, 6);
-        assertEquals(Decision.breakCrystal(1, Reason.FOREIGN_CRYSTAL), late.crystalAdded(there, 6.5, HANDS).orElseThrow().decision());
+        assertTrue(late.crystalAdded(there, 6.5, HANDS).isEmpty());
         assertEquals(1, late.lateOwnCrystals());
+
+        assertEquals(Decision.breakCrystal(1, Reason.WITHIN_BUDGET), placedAtTick1(0, 6).crystalAdded(there, 7, HANDS).orElseThrow().decision());
+
+        assertEquals(Decision.breakCrystal(1, Reason.FOREIGN_CRYSTAL), placedAtTick1(0, 26).crystalAdded(there, 6.5, HANDS).orElseThrow().decision());
+    }
+
+    /**
+     * Task B1 review (liveness note): with the reserve deciding our own spots, a spot past max-damage can be
+     * placed; if its crystal shows up after the pending wait ran out it is a late own crystal, foreign in every
+     * way (Q2), so max-damage still binds its break and we do NOT break it (no floor exists for a foreign one).
+     * The ownership code stays as it is; this pins it.
+     */
+    @Test
+    void aLateOwnCrystalOverMaxDamageIsNotBrokenByUs() {
+        CrystalSeen over = crystal(1, 9, 8, 6.5);
+        CrystalSeen within = crystal(1, 9, 8, 5);
+
+        CrystalBrain late = placedAtTick1(0, 6);
+        assertTrue(late.crystalAdded(over, 20, HANDS).isEmpty());
+        assertEquals(1, late.lateOwnCrystals());
+        assertNothing(late.preTick(DEFAULTS, tick(8).health(20).crystals(over).build()));
+
+        // Control: a late own crystal within max-damage is broken as foreign.
+        assertTrue(placedAtTick1(0, 6).crystalAdded(within, 20, HANDS).isPresent());
+    }
+
+    @Test
+    void aLateOwnCrystalWeNeverAttackIsCountedStuckOnceAfterTwentyPreTicks() {
+        CrystalSeen over = crystal(1, 9, 8, 6.5);
+        CrystalBrain b = placedAtTick1(0, 6);
+        assertTrue(b.crystalAdded(over, 20, HANDS).isEmpty());
+        long first = 6;
+        for (long t = first + 1; t <= first + CrystalBrain.STUCK_TICKS; t++) {
+            b.preTick(DEFAULTS, tick(t).health(20).crystals(over).build());
+            assertEquals(0, b.stuckStandingCrystals());
+        }
+        b.preTick(DEFAULTS, tick(first + CrystalBrain.STUCK_TICKS + 1).health(20).crystals(over).build());
+        assertEquals(1, b.stuckStandingCrystals());
+        b.preTick(DEFAULTS, tick(first + CrystalBrain.STUCK_TICKS + 2).health(20).crystals(over).build());
+        assertEquals(1, b.stuckStandingCrystals());
     }
 
     @Test
@@ -232,8 +307,11 @@ class CrystalBrainBudgetTest {
         assertEquals(0, inTime.lateOwnCrystals());
 
         CrystalBrain late = placedAtTick1(0, 6);
-        assertDecision(Decision.breakCrystal(1, Reason.FOREIGN_CRYSTAL), late.preTick(DEFAULTS, tick(7).health(6.5).crystals(there).build()));
+        assertDecision(Decision.breakCrystal(1, Reason.WITHIN_BUDGET), late.preTick(DEFAULTS, tick(7).health(7).crystals(there).build()));
         assertEquals(1, late.lateOwnCrystals());
+
+        // Task C2: over the floor (6.5 - 5 = 1.5) the late own crystal is not broken.
+        assertNothing(placedAtTick1(0, 6).preTick(DEFAULTS, tick(7).health(6.5).crystals(there).build()));
     }
 
     @Test
@@ -244,13 +322,13 @@ class CrystalBrainBudgetTest {
 
         assertTrue(placedAtTick1(CrystalBrain.UNKNOWN_PING_TICKS, 7).crystalAdded(there, 6.5, HANDS).isEmpty());
         CrystalBrain late = placedAtTick1(CrystalBrain.UNKNOWN_PING_TICKS, 8);
-        assertTrue(late.crystalAdded(there, 6.5, HANDS).isPresent());
+        assertTrue(late.crystalAdded(there, 8, HANDS).isPresent());
         assertEquals(1, late.lateOwnCrystals());
 
         assertTrue(placedAtTick1(3, 5).crystalAdded(there, 6.5, HANDS).isEmpty());
-        assertTrue(placedAtTick1(3, 6).crystalAdded(there, 6.5, HANDS).isPresent());
+        assertTrue(placedAtTick1(3, 6).crystalAdded(there, 8, HANDS).isPresent());
         assertTrue(placedAtTick1(10, 12).crystalAdded(there, 6.5, HANDS).isEmpty());
-        assertTrue(placedAtTick1(10, 13).crystalAdded(there, 6.5, HANDS).isPresent());
+        assertTrue(placedAtTick1(10, 13).crystalAdded(there, 8, HANDS).isPresent());
     }
 
     @Test
@@ -261,11 +339,11 @@ class CrystalBrainBudgetTest {
         assertEquals(20, CrystalBrain.LATE_OWN_WINDOW);
 
         CrystalBrain stillLate = placedAtTick1(0, 25);
-        assertTrue(stillLate.crystalAdded(there, 6.5, HANDS).isPresent());
+        assertTrue(stillLate.crystalAdded(there, 8, HANDS).isPresent());
         assertEquals(1, stillLate.lateOwnCrystals());
 
         CrystalBrain forgotten = placedAtTick1(0, 26);
-        assertTrue(forgotten.crystalAdded(there, 6.5, HANDS).isPresent());
+        assertTrue(forgotten.crystalAdded(there, 8, HANDS).isPresent());
         assertEquals(0, forgotten.lateOwnCrystals());
     }
 
@@ -284,12 +362,16 @@ class CrystalBrainBudgetTest {
         assertTrue(b.crystalAdded(appeared, 15, HANDS).isEmpty());
         assertPlaces(8, b.preTick(DEFAULTS, tick(3).health(15).crystals(appeared).candidates(spot(8, 8, 5)).build()));
 
-        // Expired with no crystal, it no longer counts: refused at pre-tick 5, placed at 6 (12 - 0 - 5 = 7).
+        // Expired with no crystal it is late (task C2, final review I1): it still counts while it may yet land, so
+        // it is refused up to the last pre-tick of the late window (expired at 6, window 20), and placed at 26
+        // (12 - 0 - 5 = 7).
         CrystalBrain lost = new CrystalBrain();
         assertPlaces(9, lost.preTick(DEFAULTS, tick(1).candidates(spot(9, 8, 5)).build()));
         lost.placed(9, 0);
-        for (long t = 2; t <= 5; t++) assertNothing(lost.preTick(DEFAULTS, tick(t).health(12).candidates(spot(8, 8, 5)).build()));
-        assertPlaces(8, lost.preTick(DEFAULTS, tick(6).health(12).candidates(spot(8, 8, 5)).build()));
+        for (long t = 2; t < 6 + CrystalBrain.LATE_OWN_WINDOW; t++) {
+            assertNothing(lost.preTick(DEFAULTS, tick(t).health(12).candidates(spot(8, 8, 5)).build()));
+        }
+        assertPlaces(8, lost.preTick(DEFAULTS, tick(6 + CrystalBrain.LATE_OWN_WINDOW).health(12).candidates(spot(8, 8, 5)).build()));
     }
 
     /** Places on base 9 (self 5) at pre-ticks 1 and 2 at health 15, as Meteor does until the crystal arrives. */

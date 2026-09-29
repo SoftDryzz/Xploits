@@ -37,6 +37,29 @@ import java.util.function.DoubleBinaryOperator;
  * The margins are the bench's noise floors for those metrics; the safety rules S1 and S2's first half
  * have none: they must never be worse.
  *
+ * <p>Task A3: a pair of the fight scenarios (detected from the runs themselves, whichever side has any —
+ * only a fight's runs ever carry {@code result}) is judged by three rules instead, over the same {@value
+ * #RUNS} DONE runs a side needs:
+ * <table>
+ *   <caption>Fight acceptance rules</caption>
+ *   <tr><th>Rule</th><th>What must hold</th><th>Over</th></tr>
+ *   <tr><td>F1</td><td>{@code result} (++ must not lose where Meteor wins): ++'s median &ge; Meteor's
+ *   &mdash; win 1 &gt; draw 0 &gt; loss -1, no margin (one of three exact values, not a continuous
+ *   quantity)</td><td>medians</td></tr>
+ *   <tr><td>F2</td><td>{@code net_pops} &ge; Meteor's &minus; 1</td><td>medians</td></tr>
+ *   <tr><td>F3</td><td>every ++ run's {@code min_health_after_own_hit} &ge; the risk level's own reserve
+ *   ({@code after == 0}, {@code MinHealthAfterOwnHit}'s own lethal-hit convention, always fails this against
+ *   any real reserve); NOT_APPLICABLE without a fixed level, or when no run took a hit from its own
+ *   crystal</td><td>the lowest of every run's value</td></tr>
+ * </table>
+ * <table><caption>F4</caption><tr><td>F4</td><td>(task B0b, safety) no run of ours ends in our death while we carried
+ * a totem before the hit; {@code totems_at_finishing_hit_min} &ge; 2; {@code min_health_after_finishing_hit},
+ * when present, &gt; 0</td><td>every run</td></tr></table>
+ * Task C2 (M5): S4 and F4 also require zero pop-grade finishing hits ({@code finishing_pop_hits}) at Safe, Balanced and
+ * Custom; only at Aggressive are they allowed, and then the floor and pop checks judge them.
+ * The same before-the-rules order applies (death, gaps, never-placed), and {@link Recommendation}'s levels
+ * already fold a fight pair in like any other, since it reads verdicts, not which rules produced them.
+ *
  * <p>Before the rules: our player dying in a ++ run is a REJECT (Q5), whatever else. Otherwise either
  * side not DONE, not run in this invocation, without exactly {@value #RUNS} runs, or with a run that lacks
  * a metric the judgement reads, is INCOMPLETE, never ACCEPT (P6). Then a pair where neither side placed a
@@ -64,6 +87,46 @@ public final class Acceptance {
     public static final List<String> METRICS = List.of(DAMAGE_DEALT, SPARRING_POPS, FIRST_POP_S, NO_POP_RUNS,
         SELF_DAMAGE, SELF_POPS, MIN_HEALTH, PLACEMENTS_PER_S);
 
+    // Task A3: the fight scenarios' own metric names (FightMeasureRun), distinct from the metrics above.
+    /** 1 win (the sparring died first), -1 loss (we died), 0 draw (the time limit). */
+    public static final String RESULT = "result";
+    /** {@code pops_dealt - pops_taken}. */
+    public static final String NET_POPS = "net_pops";
+    /**
+     * The lowest health plus absorption right after a hit from one of our own crystals, over the run; absent
+     * in a run where we took none. {@code 0} is DamageLedger's pre-existing lethal-hit convention (a SELF hit
+     * that pops or kills us), never a real low-but-surviving value — see {@code MinHealthAfterOwnHit}'s Javadoc.
+     */
+    public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
+    // Task B0b: the finishing blow's metrics, each only in a run where it happened.
+    /** Override crystals (crystal-aura++'s finishing blow) that exploded this run. */
+    public static final String FINISHING_BLOWS = "finishing_blows";
+    /** The lowest health plus absorption after a finishing hit; above 0 means we were still alive. */
+    public static final String MIN_HEALTH_AFTER_FINISHING_HIT = "min_health_after_finishing_hit";
+    /** The fewest totems we carried at any finishing hit. */
+    public static final String TOTEMS_AT_FINISHING_HIT_MIN = "totems_at_finishing_hit_min";
+    /** 1 in a run that ended in our death after we had carried at least one totem before the hit. */
+    public static final String DIED_WITH_TOTEM = "died_with_totem";
+    /** Finishing blows that cost us a totem. */
+    public static final String FINISHING_POPS = "finishing_pops";
+    /** Finishing blows against a target holding a totem (pop-grade) that left us below 2 or popped us. */
+    public static final String FINISHING_POP_GRADE_VIOLATIONS = "finishing_pop_grade_violations";
+    /** Finishing hits on us by a crystal marked pop-grade (the target holds a totem). */
+    public static final String FINISHING_POP_HITS = "finishing_pop_hits";
+    /** A pop-grade finishing blow (the target holds a totem) never leaves us below this. */
+    public static final double POP_GRADE_FLOOR = 2.0;
+    /** F4: the finishing blow never happens with fewer than this many totems carried (never the last one). */
+    public static final int FINISHING_MIN_TOTEMS = 2;
+
+    /**
+     * Every metric a fight pair's judgement requires present in each run ({@link #RESULT}, {@link #NET_POPS});
+     * {@link #PLACEMENTS_PER_S} still decides whether the pair applies at all, and
+     * {@link #MIN_HEALTH_AFTER_OWN_HIT} is only in a run that took a hit from its own crystal, so neither is
+     * required here (the same way {@link #FIRST_POP_S} is not required in {@link #METRICS}).
+     */
+    public static final List<String> FIGHT_METRICS = List.of(RESULT, NET_POPS, DAMAGE_DEALT, SELF_DAMAGE, MIN_HEALTH,
+        PLACEMENTS_PER_S);
+
     /** S2: no ++ run's min health below the budget's floor F less half a point. */
     public static final double LOWEST_MIN_HEALTH = SelfBudget.FLOOR - 0.5;
     /** S2's median margin, and S3's min-health alternative: the {@code min_health} noise floor. */
@@ -78,6 +141,8 @@ public final class Acceptance {
     public static final double FIRST_POP_FLOOR = 0.25;
     /** The share of Meteor's value a margin grows to when it is larger than the floor. */
     public static final int SHARE_PERCENT = 15;
+    /** F2: the {@code net_pops} noise floor. */
+    public static final double NET_POPS_MARGIN = 1.0;
 
     /**
      * NOT_APPLICABLE: neither side placed a crystal in any run, so the arena measured nothing about either
@@ -138,29 +203,54 @@ public final class Acceptance {
      */
     public static Outcome judge(Side capp, Side meteor, RiskLevel level) {
         if (capp.died()) return new Outcome(Verdict.REJECT, "our player died in a " + capp.scenario() + " run", List.of());
+        // Task A3: a fight pair (FightMeasureRun's own metrics: result, net_pops, ...) is judged by F1-F3
+        // instead of the S/O rules above, which the old scenarios keep exactly as before. Detected from the
+        // runs themselves (whichever side has any) rather than from a parameter, so this stays the one entry
+        // point BenchReport already calls for every compared pair.
+        boolean fight = isFight(capp, meteor);
+        List<String> metrics = fight ? FIGHT_METRICS : METRICS;
         for (Side side : List.of(capp, meteor)) {
-            String gap = gap(side);
+            String gap = gap(side, metrics);
             if (gap != null) return new Outcome(Verdict.INCOMPLETE, gap, List.of());
         }
         if (neverPlaced(capp) && neverPlaced(meteor)) {
             return new Outcome(Verdict.NOT_APPLICABLE,
                 "neither " + capp.scenario() + " nor " + meteor.scenario() + " placed a crystal in any run", List.of());
         }
-        List<Rule> rules = List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), o1(capp, meteor),
-            o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
+        List<Rule> rules = fight
+            ? List.of(f1(capp, meteor), f2(capp, meteor), f3(capp, level), f4(capp, level))
+            : List.of(s1(capp, meteor), s2(capp, meteor), s3(capp, meteor, level), s4(capp, level), o1(capp, meteor),
+                o2(capp, meteor), o3(capp, meteor), o4(capp, meteor));
         List<String> failed = rules.stream().filter(r -> r.result() == Result.FAIL).map(Rule::id).toList();
         if (failed.isEmpty()) return new Outcome(Verdict.ACCEPT, null, rules);
         return new Outcome(Verdict.REJECT, "failed: " + String.join(", ", failed), rules);
     }
 
+    /**
+     * Whether this pair is a fight scenario (task A3): read from whichever side has a run, since only a
+     * fight's runs ever carry {@link #RESULT}. Both sides of a judged pair are always the same kind (a
+     * {@code ca-<fight>}/{@code capp-<fight>} pair, or an old-style pair, never a mix), so the first run found
+     * on either side settles it; when neither side ran at all the kind is moot, since {@link #gap} then
+     * returns "did not run" before either metric list is ever consulted.
+     */
+    private static boolean isFight(Side capp, Side meteor) {
+        for (Side side : List.of(capp, meteor)) {
+            if (!side.runs().isEmpty()) return side.runs().getFirst().containsKey(RESULT);
+        }
+        return false;
+    }
+
     /** Why this side cannot be judged, or null when it can. */
-    private static String gap(Side side) {
+    private static String gap(Side side, List<String> metrics) {
         if (side.status() == null) return side.scenario() + " did not run in this invocation";
         if (!DONE.equals(side.status())) return side.scenario() + " is " + side.status();
         if (side.runs().size() != RUNS) return side.scenario() + " has " + side.runs().size() + " DONE runs, not " + RUNS;
         for (Map<String, Double> run : side.runs()) {
-            for (String metric : METRICS) {
-                if (metric.equals(FIRST_POP_S)) continue;
+            for (String metric : metrics) {
+                // FIRST_POP_S (old scenarios) and MIN_HEALTH_AFTER_OWN_HIT (fight scenarios) are each only
+                // ever in one metric list, but the check is unconditional so neither list has to remember to
+                // repeat it: both are optional per run (absent when nothing to report), never a gap.
+                if (metric.equals(FIRST_POP_S) || metric.equals(MIN_HEALTH_AFTER_OWN_HIT)) continue;
                 Double value = run.get(metric);
                 if (value == null || !Double.isFinite(value)) return "a run of " + side.scenario() + " has no " + metric;
             }
@@ -246,6 +336,114 @@ public final class Acceptance {
         double limit = theirsMedian + margin(theirsMedian, FIRST_POP_FLOOR);
         return new Rule("O4", Kind.OFFENSE, pass(oursMedian <= limit),
             "median " + FIRST_POP_S + ": ++ " + n(oursMedian) + ", Meteor " + n(theirsMedian) + ", needs <= " + n(limit));
+    }
+
+    // --- Task A3: the fight rules (F1 result, F2 net_pops, F3 the reserve) ---------------------------
+
+    /** F1: {@code result}, median, ++ must not lose where Meteor wins — read generally as "never worse"
+     * (win 1 &gt; draw 0 &gt; loss -1), the order the categorical value's own definition gives it. No margin:
+     * it is one of three exact values, not a continuous quantity. */
+    private static Rule f1(Side capp, Side meteor) {
+        double ours = median(capp, RESULT);
+        double theirs = median(meteor, RESULT);
+        return new Rule("F1", Kind.OFFENSE, pass(ours >= theirs),
+            "median " + RESULT + ": ++ " + n(ours) + ", Meteor " + n(theirs) + ", needs >= " + n(theirs));
+    }
+
+    /** F2: {@code net_pops}, median, not worse than Meteor's beyond the noise margin. */
+    private static Rule f2(Side capp, Side meteor) {
+        double theirs = median(meteor, NET_POPS);
+        return atLeast("F2", capp, NET_POPS, theirs, theirs - NET_POPS_MARGIN);
+    }
+
+    /**
+     * F3 (safety): every ++ run's {@code min_health_after_own_hit} must be at least the level's own reserve —
+     * our own crystals must never take us below what the level promises, whatever the opponent does to us
+     * meanwhile. {@code 0} (a lethal own hit, {@code MinHealthAfterOwnHit}'s own convention) always fails this
+     * against any real reserve. NOT_APPLICABLE without a fixed level (no level at all, or CUSTOM, a player
+     * setting this pure core never sees — the same exception {@link #s3} makes), and when no run of the side
+     * ever took a hit from its own crystal (nothing here for the reserve to have protected).
+     */
+    private static Rule f3(Side capp, RiskLevel level) {
+        if (level == null || level == RiskLevel.CUSTOM) {
+            return new Rule("F3", Kind.SAFETY, Result.NOT_APPLICABLE,
+                "no fixed reserve to check for " + (level == null ? "no risk level" : level));
+        }
+        List<Double> values = present(capp, MIN_HEALTH_AFTER_OWN_HIT);
+        if (values.isEmpty()) {
+            return new Rule("F3", Kind.SAFETY, Result.NOT_APPLICABLE,
+                "no run of " + capp.scenario() + " took a hit from its own crystal");
+        }
+        double reserve = level.reserve(Double.NaN);
+        double lowest = values.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        return new Rule("F3", Kind.SAFETY, pass(lowest >= reserve),
+            "lowest run " + MIN_HEALTH_AFTER_OWN_HIT + ": ++ " + n(lowest) + ", needs >= " + n(reserve) + " (" + level + ")");
+    }
+
+    /**
+     * F4 (safety, task B0b): the finishing blow keeps its promises, over every ++ run. We never end a run dead
+     * while we carried a totem before the hit ({@link #DIED_WITH_TOTEM}); no finishing hit happens with fewer
+     * than {@value #FINISHING_MIN_TOTEMS} totems carried (never the last one); and after a finishing hit we
+     * were still alive ({@link #MIN_HEALTH_AFTER_FINISHING_HIT} above 0: the totem saved us, or the hit was not
+     * lethal). The two finishing metrics are absent in a run without a finishing hit, which is nothing to
+     * judge, never a failure. Unlike F3 it needs no fixed level for its checks: the finishing blow applies at every
+     * level; only the pop-grade allowance depends on it (task C2, M5): zero pop-grade finishing hits at Safe, Balanced,
+     * Custom and without a level; at Aggressive they are judged by the floor and pop checks alone.
+     */
+    private static Rule f4(Side capp, RiskLevel level) {
+        double deaths = sum(capp, DIED_WITH_TOTEM);
+        List<Double> totems = present(capp, TOTEMS_AT_FINISHING_HIT_MIN);
+        List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
+        double fewest = totems.isEmpty() ? Double.NaN : totems.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double violations = sum(capp, FINISHING_POP_GRADE_VIOLATIONS);
+        double popHits = popHitsNotAllowed(capp, level);
+        boolean passed = deaths == 0 && violations == 0 && popHits == 0 && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS)
+            && (after.isEmpty() || lowest > 0);
+        return new Rule("F4", Kind.SAFETY, pass(passed),
+            "runs dead while carrying a totem: " + whole(deaths) + ", needs 0; fewest totems at a finishing hit: "
+                + (totems.isEmpty() ? "none" : n(fewest)) + ", needs >= " + FINISHING_MIN_TOTEMS
+                + "; lowest health after a finishing hit: " + (after.isEmpty() ? "none" : n(lowest)) + ", needs > 0"
+                + "; pop-grade blows (target holding a totem) that left us below " + n(POP_GRADE_FLOOR) + " or popped us: "
+                + whole(violations) + ", needs 0; pop-grade finishing hits: " + popHitsText(capp, level));
+    }
+
+    /**
+     * S4 (safety, task B0b/B0c/C2): in the older scenarios the target always holds a totem, so a finishing blow
+     * there is pop-grade. A finishing hit must never pop us and never leave us below {@value #POP_GRADE_FLOOR}
+     * health plus absorption, with at least {@value #FINISHING_MIN_TOTEMS} totems carried. Pop-grade finishing hits
+     * ({@code finishing_pop_hits}) must be zero at Safe, Balanced, Custom and with no level; they are allowed only at
+     * Aggressive, where those floor and pop checks judge them. Over every run of ours; the metrics are absent in a
+     * run without a finishing blow, which is nothing to judge.
+     */
+    private static Rule s4(Side capp, RiskLevel level) {
+        List<Double> after = present(capp, MIN_HEALTH_AFTER_FINISHING_HIT);
+        double lowest = after.isEmpty() ? Double.NaN : after.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double pops = sum(capp, FINISHING_POPS);
+        List<Double> totems = present(capp, TOTEMS_AT_FINISHING_HIT_MIN);
+        double fewest = totems.isEmpty() ? Double.NaN : totems.stream().mapToDouble(Double::doubleValue).min().orElseThrow();
+        double popHits = popHitsNotAllowed(capp, level);
+        boolean passed = pops == 0 && popHits == 0 && (after.isEmpty() || lowest >= POP_GRADE_FLOOR)
+            && (totems.isEmpty() || fewest >= FINISHING_MIN_TOTEMS);
+        return new Rule("S4", Kind.SAFETY, pass(passed),
+            "finishing blows that popped us: " + whole(pops) + ", needs 0; lowest health after a finishing hit: "
+                + (after.isEmpty() ? "none" : n(lowest)) + ", needs >= " + n(POP_GRADE_FLOOR)
+                + "; fewest totems at a finishing hit: " + (totems.isEmpty() ? "none" : n(fewest)) + ", needs >= "
+                + FINISHING_MIN_TOTEMS + "; pop-grade finishing hits: " + popHitsText(capp, level));
+    }
+
+    /**
+     * Task C2 (M5): pop-grade finishing hits (a crystal marked pop-grade hurt us) are only allowed at Aggressive,
+     * whose reserve equals the floor; at Safe, Balanced, Custom, and without a level, any is a failure. Returns
+     * the count that is not allowed. At Aggressive the floor and pop checks above still judge them.
+     */
+    private static double popHitsNotAllowed(Side capp, RiskLevel level) {
+        return level == RiskLevel.AGGRESSIVE ? 0 : sum(capp, FINISHING_POP_HITS);
+    }
+
+    private static String popHitsText(Side capp, RiskLevel level) {
+        return level == RiskLevel.AGGRESSIVE ? "allowed at Aggressive (the floor and pop checks judge them)"
+            : whole(sum(capp, FINISHING_POP_HITS)) + ", needs 0 at " + (level == null ? "no level" : level);
     }
 
     private static Rule atLeast(String id, Side capp, String metric, double theirs, double limit) {

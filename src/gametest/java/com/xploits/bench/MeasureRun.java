@@ -10,6 +10,7 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * What every MEASURE run shares (spec {@code 2026-09-25-ingame-bench}, §Run timeline, §Metrics): the
@@ -32,6 +33,8 @@ final class MeasureRun {
     private double minHealth = Double.POSITIVE_INFINITY;
     private boolean sampling;
     private List<FightRecord> records;
+    /** Task B0b: crystal-aura++'s finishing blows, told apart from its ordinary hits (idle for any other module). */
+    private final FinishingWatch watch;
 
     /**
      * Resets the recorder and makes sure the module under test is off; call it in {@code arrange} before
@@ -40,6 +43,7 @@ final class MeasureRun {
     MeasureRun(Bench bench, Class<? extends Module> underTest) {
         this.bench = bench;
         this.underTest = underTest;
+        this.watch = new FinishingWatch(bench, underTest == CrystalAuraPlusPlus.class);
         bench.meteor(FightRecorder.class);
         bench.onClient(client -> {
             Module module = Modules.get().get(underTest);
@@ -89,6 +93,7 @@ final class MeasureRun {
                 client.player.isDead() ? 1 : 0});
         if (health == null) throw new BenchException("the client has no player");
         if (health[1] > 0) throw new PlayerDied("the player died");
+        if (watch.active()) watch.observe(health[0]);
         minHealth = Math.min(minHealth, health[0]);
     }
 
@@ -144,9 +149,39 @@ final class MeasureRun {
 
     // --- Totals over all the new records ----------------------------------------------------------
 
-    /** Health lost to our own crystals: {@code before - after} of every damage event by SELF. */
+    /**
+     * Health lost to our own crystals: {@code before - after} of every damage event by SELF, without the
+     * finishing hits (task B0b: the reserve rules judge ordinary own hits only).
+     */
     double selfDamage() {
-        return selfDamage(records());
+        return ordinarySelfDamage(records());
+    }
+
+    /** {@link #selfDamage()} over {@code from}, the records so far or at the close. */
+    double ordinarySelfDamage(List<FightRecord> from) {
+        List<com.xploits.pvp.recorder.core.FightRecord.DamageEvent> damage = FinishingWatch.events(from);
+        Set<Integer> finishing = watch.resolve(from).excluded();
+        Set<Integer> ours = watch.ownIndexes(damage);
+        double sum = 0;
+        for (int i = 0; i < damage.size(); i++) {
+            if (ours.contains(i) && !finishing.contains(i)) {
+                sum += damage.get(i).before() - damage.get(i).after();
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * The lowest health for the reserve rules, from ordinary hits only ({@link FinishingWatch#ordinaryMinHealth});
+     * the plain lowest health for any module but crystal-aura++.
+     */
+    double ordinaryMinHealth(List<FightRecord> from) {
+        return watch.ordinaryMinHealth(from, minHealth);
+    }
+
+    /** Task B0b: the finishing-blow metrics into {@code metrics}, when crystal-aura++ landed any. */
+    void putFinishing(Metrics metrics, List<FightRecord> from) {
+        watch.put(metrics, watch.resolve(from));
     }
 
     int selfPops() {

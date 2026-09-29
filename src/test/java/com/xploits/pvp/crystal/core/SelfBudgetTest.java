@@ -128,6 +128,37 @@ class SelfBudgetTest {
         assertEquals(Verdict.ALLOWED, budget(10.5, enemy).placeAllowed(0.5));
     }
 
+    /**
+     * Task F1 (owner's decision 2026-09-29): a spot whose budget self damage is exactly 0.0 is allowed once C
+     * alone already leaves less than the reserve, even below the floor: it adds nothing to C, so the worst
+     * case cannot get worse than it already is. Rule and decision agree: ALLOWED_SAFE (SAFE_SELF_DAMAGE).
+     */
+    @Test
+    void aSpotOfExactlyZeroIsAllowedWhenCAloneLeavesLessThanTheReserveOrTheFloor() {
+        List<CrystalView> enemy = List.of(standing(7, 5, false));
+
+        // 7.5 - 5 = 2.5: under the reserve 3.5, above the floor 2 (already allowed before F1, by the safe branch)
+        assertEquals(Verdict.ALLOWED_SAFE, budget(7.5, enemy).placeAllowed(0.0));
+        // 6 - 5 = 1 < floor 2: under both. Any positive spot is refused (below), zero is allowed.
+        assertEquals(Verdict.ALLOWED_SAFE, budget(6, enemy).placeAllowed(0.0));
+        assertEquals(Reason.SAFE_SELF_DAMAGE, budget(6, enemy).placeAllowed(0.0).reason());
+        // 3 - 5 = -2: C alone exceeds health; still allowed, the worst case is not made worse
+        assertEquals(Verdict.ALLOWED_SAFE, budget(3, enemy).placeAllowed(0.0));
+        // Reserve kept: an ordinary placement, not a safe one
+        assertEquals(Verdict.ALLOWED, budget(20, enemy).placeAllowed(0.0));
+    }
+
+    @Test
+    void theSmallestPositiveSelfDamageIsNotZeroAndKeepsTodaysRule() {
+        List<CrystalView> enemy = List.of(standing(7, 5, false));
+
+        // Same states as above (C leaves 1 and -2, under the floor): exactly zero is the only exception.
+        assertEquals(Verdict.REFUSED_FLOOR, budget(6, enemy).placeAllowed(Double.MIN_VALUE));
+        assertEquals(Verdict.REFUSED_FLOOR, budget(6, enemy).placeAllowed(Math.nextUp(0.0)));
+        assertEquals(Verdict.REFUSED_FLOOR, budget(3, enemy).placeAllowed(Double.MIN_VALUE));
+        assertEquals(Reason.BELOW_FLOOR, budget(6, enemy).placeAllowed(Double.MIN_VALUE).reason());
+    }
+
     @Test
     void epsilonAndTheReserveAreSettings() {
         SelfBudget strict = SelfBudget.of(NOW, 7.5, List.of(standing(7, 5, false)), List.of(), 5, 0.25);
@@ -291,6 +322,37 @@ class SelfBudgetTest {
         assertEquals(Verdict.FOREIGN, b.breakAllowed(enemy));
         assertTrue(b.breakAllowed(enemy).allowed());
         assertEquals(Reason.FOREIGN_CRYSTAL, b.breakAllowed(enemy).reason());
+    }
+
+    // worstCaseWithoutCrystal() (task B0a, condition c of the finishing-blow override)
+
+    @Test
+    void worstCaseWithoutCrystalSubtractsItsOwnShareWhereverItWasCounted() {
+        CrystalView standing = standing(1, 4, true);
+        CrystalView inFlight = attacked(2, 6, NOW);
+        SelfBudget b = budget(20, List.of(standing, inFlight));
+
+        assertEquals(10.0, b.worstCase(), 0.0);
+        assertEquals(6.0, b.worstCaseWithoutCrystal(standing, NOW), 0.0, "standing's own 4 removed");
+        assertEquals(4.0, b.worstCaseWithoutCrystal(inFlight, NOW), 0.0, "in-flight's own 6 removed");
+    }
+
+    @Test
+    void worstCaseWithoutCrystalIsUnchangedForOneNotCountedAtAll() {
+        CrystalView beyond = at(standing(1, 4, true), 12.5);
+        SelfBudget b = budget(20, List.of(beyond));
+
+        assertEquals(0.0, b.worstCase(), 0.0);
+        assertEquals(0.0, b.worstCaseWithoutCrystal(beyond, NOW), 0.0);
+    }
+
+    @Test
+    void worstCaseWithoutCrystalNeverMutatesTheBudget() {
+        CrystalView standing = standing(1, 4, true);
+        SelfBudget b = budget(20, List.of(standing));
+
+        b.worstCaseWithoutCrystal(standing, NOW);
+        assertEquals(4.0, b.worstCase(), 0.0, "a second, independent reading: the budget itself is untouched");
     }
 
     @Test
