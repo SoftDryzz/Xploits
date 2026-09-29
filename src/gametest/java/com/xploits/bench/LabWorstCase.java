@@ -7,7 +7,9 @@ import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightTracker;
+import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
 import meteordevelopment.meteorclient.systems.modules.combat.Surround;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import net.minecraft.block.Blocks;
@@ -57,8 +59,11 @@ final class LabWorstCase implements Scenario {
     private static final double PULLED_BACK = 0.15;
     private static final Logger LOG = LoggerFactory.getLogger("xploits-bench");
 
-    /** Who drives the crystal aura: {@code auto-pvp}, as the owner played, or nobody (the aura on by hand). */
-    enum Driver { AUTO_PVP, BY_HAND }
+    /**
+     * Who drives the crystal aura: {@code auto-pvp}, as the owner played, or nobody (crystal-aura++ on by hand), or
+     * Meteor's own crystal-aura on by hand, for comparison: it has no reserve.
+     */
+    enum Driver { AUTO_PVP, BY_HAND, METEOR_BY_HAND }
 
     record Variant(String name, int attackers, Driver driver, boolean surroundCenters, boolean walkOut, String summary,
                    boolean ownersSettings) {
@@ -80,7 +85,10 @@ final class LabWorstCase implements Scenario {
             "3 attackers; your setup; you stay put"),
         new Variant("worst-2-yours", 2, Driver.AUTO_PVP, true, false,
             "2 attackers; your setup with your own crystal-aura++ settings (min-damage 0.9, max-damage 36, place and"
-                + " break range 6, pause-health 1, anti-suicide off); you stay put", true));
+                + " break range 6, pause-health 1, anti-suicide off); you stay put", true),
+        new Variant("worst-2-meteor", 2, Driver.METEOR_BY_HAND, true, false,
+            "2 attackers; your surround and Meteor's crystal-aura on by hand with your settings (no reserve); you stay"
+                + " put", true));
 
     private final Variant variant;
     private AutoPvpScene scene;
@@ -123,8 +131,9 @@ final class LabWorstCase implements Scenario {
     public void arrange(Bench bench) {
         scene = AutoPvpScene.arrange(bench, "balanced", CrystalModule.XPLOITS);
         if (variant.ownersSettings()) {
-            // The owner's own crystal-aura++ settings, as he plays with them.
-            CrystalAuraPlusPlus aura = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class));
+            // The owner's own crystal-aura settings, as he plays with them, on whichever aura this variant runs.
+            Module aura = bench.fromClient(client -> variant.driver() == Driver.METEOR_BY_HAND
+                ? Modules.get().get(CrystalAura.class) : Modules.get().get(CrystalAuraPlusPlus.class));
             bench.setting(aura, "General", "min-damage", 0.9);
             bench.setting(aura, "General", "max-damage", 36.0);
             bench.setting(aura, "General", "anti-suicide", false);
@@ -168,8 +177,11 @@ final class LabWorstCase implements Scenario {
     public Metrics act(Bench bench) {
         // His own surround first, as he had it, then the aura's driver.
         bench.onClient(client -> Modules.get().get(Surround.class).enable());
-        if (variant.driver() == Driver.AUTO_PVP) scene.start(bench, true);
-        else bench.start(true, CrystalAuraPlusPlus.class);
+        switch (variant.driver()) {
+            case AUTO_PVP -> scene.start(bench, true);
+            case BY_HAND -> bench.start(true, CrystalAuraPlusPlus.class);
+            case METEOR_BY_HAND -> bench.start(true, CrystalAura.class);
+        }
 
         Self start = self(bench);
         List<Sparring> them = bench.sparrings();
@@ -356,6 +368,11 @@ final class LabWorstCase implements Scenario {
             Path out = Path.of(System.getProperty(OUT_PROPERTY, "build/bench-lab"));
             Files.createDirectories(out);
             Files.writeString(out.resolve(variant.name() + ".md"), md.toString(), StandardCharsets.UTF_8);
+            // The game's run folder is emptied on every launch: the fight file goes next to its trace.
+            for (int i = 0; i < fights.size(); i++) {
+                Files.copy(fights.get(i), out.resolve(variant.name() + "-fight" + (i == 0 ? "" : "-" + (i + 1)) + ".json"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             throw new BenchException("the lab trace could not be written (" + e.getClass().getSimpleName() + ")");
         }
