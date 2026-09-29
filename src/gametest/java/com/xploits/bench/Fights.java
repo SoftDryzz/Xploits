@@ -19,14 +19,14 @@ final class Fights {
      * arena's own floor sits at) — a FEET-mode candidate cell list shared by {@code exchange} and
      * {@code near-death}: "next to our feet", the plain crystal-PvP shape (task A2's own {@code Attacker}
      * precedent, {@code ATTACK_CELL} at y = -1 too). */
-    private static final List<Vec3i> FEET_CELLS = List.of(
+    static final List<Vec3i> FEET_CELLS = List.of(
         new Vec3i(1, -1, 0), new Vec3i(-1, -1, 0), new Vec3i(0, -1, 1), new Vec3i(0, -1, -1));
 
     /** The four cardinal neighbours of F at the level of our own feet's block (y = 0) — a HEAD-mode candidate
      * cell list: face-placed on top of them, the crystal floats at head height. These are exactly the same
      * four cells {@code hole-standoff}'s own {@link HoleWalls} builds around F, so {@link CrystalAttack#build}
      * placing obsidian there again is idempotent, not a second, different wall. */
-    private static final List<Vec3i> HEAD_CELLS = List.of(
+    static final List<Vec3i> HEAD_CELLS = List.of(
         new Vec3i(1, 0, 0), new Vec3i(-1, 0, 0), new Vec3i(0, 0, 1), new Vec3i(0, 0, -1));
 
     private Fights() {

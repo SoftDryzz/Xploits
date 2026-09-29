@@ -123,6 +123,12 @@ loom.runs.named("clientGameTest") {
     // -Pshots (tools/shots.ps1): the README's screenshots (Shots) instead of the bench, into build/shots. It writes
     // no bench report, so benchVerify does not run after it, and build/bench is left as it is.
     if (project.hasProperty("shots")) property("xploits.shots", layout.buildDirectory.dir("shots").get().asFile.absolutePath)
+    // -Pbench.lab=<names> (or all): the lab's worst cases (LabWorstCase) instead of the bench, each writing a trace to
+    // build/bench-lab. Like -Pshots, no bench report, so benchVerify does not run and build/bench is left as it is.
+    project.findProperty("bench.lab")?.let {
+        property("xploits.lab", it.toString())
+        property("xploits.lab.out", layout.buildDirectory.dir("bench-lab").get().asFile.absolutePath)
+    }
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that
@@ -135,7 +141,7 @@ val benchOut = layout.buildDirectory.dir("bench")
 val benchReport = benchOut.map { it.file("report-${project.version}.json") }
 
 tasks.named("runClientGameTest") {
-    val shots = project.hasProperty("shots")
+    val shots = project.hasProperty("shots") || project.hasProperty("bench.lab")
     doFirst { if (!shots) delete(fileTree(benchOut) { exclude("meteor-cache/**") }) }
     finalizedBy("benchVerify")
 }
@@ -148,8 +154,8 @@ tasks.register("benchVerify") {
     group = "verification"
     description = "Fails unless the in-game bench report says every scenario passed (run by runClientGameTest)."
     dependsOn("compileGametestJava")
-    val shots = project.hasProperty("shots")
-    onlyIf("a -Pshots run writes no bench report") { !shots }
+    val shots = project.hasProperty("shots") || project.hasProperty("bench.lab")
+    onlyIf("a -Pshots or -Pbench.lab run writes no bench report") { !shots }
     doLast {
         val file = benchReport.get().asFile
         if (!file.isFile) {

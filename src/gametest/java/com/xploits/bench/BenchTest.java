@@ -122,6 +122,11 @@ public class BenchTest implements FabricClientGameTest {
             takeShots(ctx);
             return;
         }
+        String lab = System.getProperty(LabWorstCase.PROPERTY);
+        if (lab != null && !lab.isBlank()) {
+            runLab(ctx, lab);
+            return;
+        }
         Config config = Config.fromSystemProperties();
         Profile profile = config.profile();
         List<Scenario> canonical = select(Scenarios.all(), config.only());
@@ -204,6 +209,22 @@ public class BenchTest implements FabricClientGameTest {
         Run run = runOnce(ctx, new Shots(), Shots.folder(), 0);
         LOG.info("[bench] shots: {}{}", run.status(), run.error() == null ? "" : " (" + run.error() + ")");
         if (run.status().fails()) throw new AssertionError("shots failed: " + run.error());
+    }
+
+    /**
+     * {@code -Pbench.lab=<names>}: the lab's worst cases ({@link LabWorstCase}) instead of the bench, one run each,
+     * each writing its own trace; no report, and {@code benchVerify} does not run after it. A run that fails is
+     * logged and the others still run; the task fails at the end if any did.
+     */
+    private static void runLab(ClientGameTestContext ctx, String names) {
+        keepFullFrameRate(ctx);
+        List<String> failed = new ArrayList<>();
+        for (LabWorstCase variant : LabWorstCase.selected(names)) {
+            Run run = runOnce(ctx, variant, Path.of(System.getProperty(LabWorstCase.OUT_PROPERTY, "build/bench-lab")), 0);
+            LOG.info("[bench] lab {}: {}{}", variant.name(), run.status(), run.error() == null ? "" : " (" + run.error() + ")");
+            if (run.status().fails()) failed.add(variant.name());
+        }
+        if (!failed.isEmpty()) throw new AssertionError("lab run(s) failed: " + String.join(", ", failed));
     }
 
     /** Only Meteor's own MEASUREs, {@code ca-*}, are cached ({@link MeteorCache#cacheable}). */

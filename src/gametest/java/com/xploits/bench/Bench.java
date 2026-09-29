@@ -14,6 +14,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.screenshot.TestScreenshotOptions;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.GameOptions;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.command.ReturnValueConsumer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandOutput;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -64,6 +67,11 @@ public final class Bench {
 
     private int ticksUsed;
     private Sparring sparring;
+    /** The lab's extra opponents, after {@link #sparring} ({@link #spawnMoreForFight}). */
+    private final List<Sparring> more = new ArrayList<>();
+    /** Keys held through {@link #holdKey}, released at the teardown. */
+    private final List<Function<GameOptions, KeyBinding>> heldKeys = new ArrayList<>();
+    private boolean keysReleasedAtTeardown;
     private int sparringVisibleAfter = -1;
     /** Task A1 requirement 3: set once the sparring dies in fight mode ({@link #spawnForFight}). */
     private boolean sparringDied;
@@ -266,10 +274,36 @@ public final class Bench {
     }
 
     private Sparring spawn(Script script, boolean fightMode) {
-        if (sparring != null) throw new BenchException("a run has one sparring partner");
+        if (sparring != null) throw new BenchException("a run has one sparring partner; the lab adds more with spawnMoreForFight");
+        return spawn(script, fightMode, Sparring.NAME);
+    }
+
+    /**
+     * The lab's worst cases ({@link LabWorstCase}): one more opponent, in fight mode, with its own name, after the
+     * first ({@link #spawnForFight}). It steps every tick like the first and is despawned with it; the run's
+     * {@link #sparring()} and {@link #sparringStats()} stay the first one's.
+     */
+    public Sparring spawnMoreForFight(Script script, String name) {
+        if (sparring == null) throw new BenchException("the first sparring partner comes first");
+        if (sparrings().stream().anyMatch(s -> s.getGameProfile().name().equals(name))) {
+            throw new BenchException("two sparring partners called " + name);
+        }
+        return spawn(script, true, name);
+    }
+
+    /** Every sparring partner in this run, the first one first. */
+    public List<Sparring> sparrings() {
+        List<Sparring> all = new ArrayList<>();
+        if (sparring != null) all.add(sparring);
+        all.addAll(more);
+        return all;
+    }
+
+    private Sparring spawn(Script script, boolean fightMode, String sparringName) {
         String name = player();
-        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script, fightMode));
-        sparring = spawned;
+        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script, fightMode, sparringName));
+        if (sparring == null) sparring = spawned;
+        else more.add(spawned);
         atDespawn(() -> onServer(srv -> spawned.despawn(srv)));
         everyTick(() -> {
             int now = ticksUsed;
@@ -282,8 +316,8 @@ public final class Bench {
         });
         for (int i = 1; i <= SPARRING_VISIBLE_TICKS; i++) {
             ticks(1);
-            if (fromClient(Bench::clientSeesSparring)) {
-                sparringVisibleAfter = i;
+            if (fromClient(client -> clientSees(client, sparringName))) {
+                if (spawned == sparring) sparringVisibleAfter = i;
                 ticks(SPARRING_SETTLE_TICKS);
                 return spawned;
             }
@@ -309,12 +343,35 @@ public final class Bench {
         return sparringVisibleAfter;
     }
 
-    /** The client has the sparring among its world's players and in its tab list. */
-    private static boolean clientSeesSparring(MinecraftClient client) {
+    /** The client has the sparring called {@code name} among its world's players and in its tab list. */
+    private static boolean clientSees(MinecraftClient client, String name) {
         if (client.world == null || client.getNetworkHandler() == null) return false;
         boolean inWorld = client.world.getPlayers().stream()
-            .anyMatch(p -> p != client.player && Sparring.NAME.equals(p.getGameProfile().name()));
-        return inWorld && client.getNetworkHandler().getPlayerListEntry(Sparring.NAME) != null;
+            .anyMatch(p -> p != client.player && name.equals(p.getGameProfile().name()));
+        return inWorld && client.getNetworkHandler().getPlayerListEntry(name) != null;
+    }
+
+    // --- Keys ----------------------------------------------------------------------------------------
+
+    /**
+     * Holds or releases one of the player's own keys, as a person pressing it would (the lab's worst cases: our
+     * player trying to walk away). A held key is released at the teardown whatever happened.
+     */
+    public void holdKey(Function<GameOptions, KeyBinding> key, boolean hold) {
+        if (hold) {
+            ctx.getInput().holdKey(key);
+            if (!keysReleasedAtTeardown) {
+                keysReleasedAtTeardown = true;
+                atScreenRestore(() -> {
+                    for (Function<GameOptions, KeyBinding> held : List.copyOf(heldKeys)) ctx.getInput().releaseKey(held);
+                    heldKeys.clear();
+                });
+            }
+            heldKeys.add(key);
+        } else {
+            ctx.getInput().releaseKey(key);
+            heldKeys.remove(key);
+        }
     }
 
     // --- Meteor and Xploits modules --------------------------------------------------------------

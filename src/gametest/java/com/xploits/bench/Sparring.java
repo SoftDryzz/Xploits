@@ -68,8 +68,8 @@ public final class Sparring extends FakePlayer {
      * {@link #step} or {@link #despawn} gets there first. */
     private boolean scriptClosed;
 
-    private Sparring(ServerWorld world, Script script, Arena arena, boolean fightMode) {
-        super(world, new GameProfile(UUID.randomUUID(), NAME));
+    private Sparring(ServerWorld world, Script script, Arena arena, boolean fightMode, String name) {
+        super(world, new GameProfile(UUID.randomUUID(), name));
         this.script = script;
         this.arena = arena;
         this.fightMode = fightMode;
@@ -92,9 +92,18 @@ public final class Sparring extends FakePlayer {
      * instead of refilling forever ({@link #damage}).
      */
     static Sparring spawn(MinecraftServer srv, ServerPlayerEntity player, Arena arena, Script script, boolean fightMode) {
+        return spawn(srv, player, arena, script, fightMode, NAME);
+    }
+
+    /**
+     * The same with its own name: the lab's worst cases ({@link LabWorstCase}) put several opponents in one run,
+     * and the client tells them apart by name. Every other scenario has one, named {@value #NAME}.
+     */
+    static Sparring spawn(MinecraftServer srv, ServerPlayerEntity player, Arena arena, Script script, boolean fightMode,
+                          String name) {
         ServerWorld world = srv.getOverworld();
         script.build(arena, world);
-        Sparring sparring = new Sparring(world, script, arena, fightMode);
+        Sparring sparring = new Sparring(world, script, arena, fightMode, name);
         sparring.totemsSpare = fightMode ? Arena.FIGHT_TOTEMS - 1 : Integer.MAX_VALUE;
         for (EquipmentSlot slot : Arena.armourSlots()) {
             ItemStack piece = fightMode ? Arena.fightArmour(srv.getRegistryManager(), slot) : Arena.armour(srv.getRegistryManager(), slot);
