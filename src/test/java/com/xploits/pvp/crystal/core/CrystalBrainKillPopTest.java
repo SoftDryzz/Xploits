@@ -179,10 +179,11 @@ class CrystalBrainKillPopTest {
         assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), killFirst.preTick(LOW_MIN_DAMAGE,
             tick(t2).health(6.5).hands(TOTEM).targets(KILL).candidates(spot(3000L, Map.of(ENEMY, 6.0), 3.75)).build()));
         killFirst.placed(3000L, 0);
-        // ... so a second kill-grade spot is refused, though its floor would hold (6.5 - 3.75 - 0.75 = 2) ...
+        // ... so a second kill-grade spot whose floor fails is refused (6.5 - 3.75 - 1 = 1.75) ...
         assertNothing(killFirst.preTick(LOW_MIN_DAMAGE, tick(t2 + 1).health(6.5).hands(TOTEM).targets(KILL)
-            .candidates(spot(3001L, Map.of(ENEMY, 6.0), 0.75)).build()));
-        // ... while a pop-grade one with the same numbers is placed: it neither needs nor takes the slot.
+            .candidates(spot(3001L, Map.of(ENEMY, 6.0), 1.0)).build()));
+        // ... while a pop-grade one that holds the floor (6.5 - 3.75 - 0.75 = 2) is placed: it neither needs nor
+        // takes the slot.
         assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), killFirst.preTick(LOW_MIN_DAMAGE,
             tick(t2 + 2).health(6.5).hands(TOTEM).targets(POP).candidates(spot(3001L, Map.of(ENEMY, 6.0), 0.75)).build()));
     }
@@ -432,6 +433,156 @@ class CrystalBrainKillPopTest {
             assertNothing(other.preTick(LOW_MIN_DAMAGE, tick(u2).health(6).hands(TOTEM).targets(foe)
                 .crystals(stuckCrystal(9500, 9000L)).candidates(spot(9003L, 6.0, 0.5)).build()));
         }
+    }
+
+    // Fix round 1: a kill-grade crystal whose kill rule fails is checked by the pop rules
+
+    /** A kill-grade crystal placed through the kill override, pending, holding the slot (self 3.75 at 6.5). */
+    private static long slotTakenByAKillCrystal(CrystalBrain b) {
+        long t = trustedEnemy(b, 1);
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(6.5).hands(TOTEM).targets(KILL).candidates(spot(3000L, Map.of(ENEMY, 6.0), 3.75)).build()));
+        b.placed(3000L, 0);
+        return t + 1;
+    }
+
+    @Test
+    void aKillGradeSpotWithTheSlotTakenIsPlacedAsPopWhenTheFloorHoldsAndRefusedWhenItFails() {
+        CrystalBrain holds = new CrystalBrain();
+        long t = slotTakenByAKillCrystal(holds);
+        // 6.5 - 3.75 - 0.75 = 2 holds.
+        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), holds.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(6.5).hands(TOTEM).targets(KILL).candidates(spot(3001L, Map.of(ENEMY, 6.0), 0.75)).build()));
+        holds.placed(3001L, 0);
+        CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+        assertTrue(holds.crystalAdded(noFastBreak, crystal(950, 3000L, 6.0, 3.75), 6.5, TOTEM).isEmpty());
+        assertTrue(holds.crystalAdded(noFastBreak, crystal(951, 3001L, 6.0, 0.75), 6.5, TOTEM).isEmpty());
+        // The first keeps its kill mark, the downgraded one is a pop: no second slot taken.
+        assertEquals(Map.of(950, FinishKind.KILL, 951, FinishKind.POP), holds.finishingCrystalKinds());
+
+        CrystalBrain fails = new CrystalBrain();
+        long t2 = slotTakenByAKillCrystal(fails);
+        assertNothing(fails.preTick(LOW_MIN_DAMAGE, tick(t2).health(6.5).hands(TOTEM).targets(KILL)
+            .candidates(spot(3001L, Map.of(ENEMY, 6.0), 1.0)).build()));
+    }
+
+    /**
+     * Health 6 (paused): own crystal B was placed earlier at full health (id 960, base 3100), then own crystal A
+     * (id 950, base 3000) through the kill override, which holds the slot. Returns the next free pre-tick.
+     */
+    private static long slotTakenWithAnotherOwnCrystal(CrystalBrain b) {
+        long t = trustedEnemy(b, 1);
+        CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+        assertDecision(Decision.place(3100L, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(20).targets(KILL).candidates(spot(3100L, Map.of(ENEMY, 6.0), 0)).build()));
+        b.placed(3100L, 0);
+        assertTrue(b.crystalAdded(noFastBreak, crystal(960, 3100L, Map.of(ENEMY, 0.0), 0.0), 20, HANDS).isEmpty());
+        assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+            tick(t + 1).health(6).hands(TOTEM).targets(KILL).crystals(crystal(960, 3100L, Map.of(ENEMY, 0.0), 0.0))
+                .candidates(spot(3000L, Map.of(ENEMY, 6.0), 4)).build()));
+        b.placed(3000L, 0);
+        assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), 6, TOTEM).isEmpty());
+        return t + 2;
+    }
+
+    @Test
+    void aKillGradeBreakWithTheSlotTakenIsBrokenAsPopWhenTheFloorHoldsAndRefusedWhenItFails() {
+        // Health 16; A (self 4, no damage now) holds the slot; B (self 7, past max-damage) is kill-grade. C
+        // without B = 4: 16 - 4 - 7 = 5 holds, so B is broken as a pop.
+        CrystalBrain holds = new CrystalBrain();
+        long t = slotTakenWithAnotherOwnCrystal(holds);
+        assertDecision(Decision.breakCrystal(960, Reason.FINISHING_BLOW), holds.preTick(LOW_MIN_DAMAGE,
+            tick(t).health(16).hands(TOTEM).targets(KILL)
+                .crystals(crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), crystal(960, 3100L, Map.of(ENEMY, 6.0), 7.0))
+                .build()));
+        assertEquals(FinishKind.KILL, holds.finishingCrystalKinds().get(950));
+        assertEquals(FinishKind.POP, holds.finishingCrystalKinds().get(960));
+
+        // Self 11: 16 - 4 - 11 = 1 < FLOOR, and the slot is taken: refused.
+        CrystalBrain fails = new CrystalBrain();
+        long t2 = slotTakenWithAnotherOwnCrystal(fails);
+        assertNothing(fails.preTick(LOW_MIN_DAMAGE, tick(t2).health(16).hands(TOTEM).targets(KILL)
+            .crystals(crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), crystal(960, 3100L, Map.of(ENEMY, 6.0), 11.0))
+            .build()));
+    }
+
+    @Test
+    void aKillGradeFastBreakWithTheSlotTakenFallsBackToThePopRules() {
+        for (double self : new double[] {7.0, 11.0}) {
+            CrystalBrain b = new CrystalBrain();
+            long t = trustedEnemy(b, 1);
+            // B placed at full health first (ours), then A through the kill override at health 6.
+            assertDecision(Decision.place(3100L, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
+                tick(t).health(20).targets(KILL).candidates(spot(3100L, Map.of(ENEMY, 6.0), 0)).build()));
+            b.placed(3100L, 0);
+            assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+                tick(t + 1).health(6).hands(TOTEM).targets(KILL).candidates(spot(3000L, Map.of(ENEMY, 6.0), 4)).build()));
+            b.placed(3000L, 0);
+            CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+            assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 2).health(16).hands(TOTEM).targets(KILL).build()));
+            assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), 16, TOTEM).isEmpty());
+            var action = b.crystalAdded(LOW_MIN_DAMAGE, crystal(960, 3100L, 6.0, self), 16, TOTEM);
+            if (self == 7.0) {
+                assertEquals(Decision.breakCrystal(960, Reason.FINISHING_BLOW), action.orElseThrow().decision());
+                assertEquals(FinishKind.POP, b.finishingCrystalKinds().get(960));
+            } else {
+                assertTrue(action.isEmpty());
+            }
+        }
+    }
+
+    @Test
+    void withTwoTargetsTheSelfPopIsJustifiedOnlyByTheKillableOne() {
+        TargetView killTarget = playerWithHands(ENEMY, 3, 4, false, true);
+        TargetView popTarget = playerWithHands(OTHER, 3, 4, true, true);
+        // A spot that only finishes the totem holder cannot pop us (self 100 refused) ...
+        CrystalBrain onlyPop = new CrystalBrain();
+        long t = trustBoth(onlyPop, 1);
+        assertNothing(onlyPop.preTick(LOW_MIN_DAMAGE, tick(t).health(6.5).hands(TOTEM).targets(killTarget, popTarget)
+            .candidates(spot(3000L, Map.of(OTHER, 20.0), 100)).build()));
+        // ... one that finishes the killable one may (and is picked over the bigger pop-only spot).
+        CrystalBrain both = new CrystalBrain();
+        long t2 = trustBoth(both, 1);
+        assertDecision(Decision.place(3001L, Reason.FINISHING_BLOW), both.preTick(LOW_MIN_DAMAGE,
+            tick(t2).health(6.5).hands(TOTEM).targets(killTarget, popTarget)
+                .candidates(spot(3000L, Map.of(OTHER, 20.0), 100), spot(3001L, Map.of(ENEMY, 6.0), 100)).build()));
+    }
+
+    @Test
+    void whenTheHandsChangeAKillMarkedCrystalIsBrokenOnlyIfItMeetsThePopFloor() {
+        for (double self : new double[] {7.0, 7.5}) {
+            CrystalBrain b = new CrystalBrain();
+            long t = trustedEnemy(b, 1);
+            // Placed through the kill override (health 9, self 7 is past max-damage) ...
+            assertDecision(Decision.place(3000L, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+                tick(t).health(9).hands(TOTEM).targets(KILL).candidates(spot(3000L, Map.of(ENEMY, 6.0), 7)).build()));
+            b.placed(3000L, 0);
+            CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
+            assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, 6.0, self), 9, TOTEM).isEmpty());
+            assertEquals(Map.of(950, FinishKind.KILL), b.finishingCrystalKinds());
+            // ... then he equips a totem: the pop floor (9 - 7 = 2) decides.
+            List<Action> actions = b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(9).hands(TOTEM).targets(POP)
+                .crystals(crystal(950, 3000L, 6.0, self)).build());
+            if (self == 7.0) assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), actions);
+            else assertNothing(actions);
+            assertEquals(Map.of(950, FinishKind.KILL), b.finishingCrystalKinds());
+        }
+    }
+
+    @Test
+    void ownDeathProtectionCountsOnlyATotemStillCarryingTheComponent() {
+        assertTrue(ServerValues.ownDeathProtection(true, true));
+        assertFalse(ServerValues.ownDeathProtection(true, false));
+        assertFalse(ServerValues.ownDeathProtection(false, true));
+        assertFalse(ServerValues.ownDeathProtection(false, false));
+    }
+
+    @Test
+    void aTargetHoldingAnyDeathProtectionItemIsPopGrade() {
+        // The adapter passes "has the death_protection component" for each hand; the core only sees the flag.
+        TargetView custom = ServerValues.target("p", 9, 4, 0, TargetView.NO_ARMOR, false, true, false,
+            true, false, false, false).orElseThrow();
+        assertTrue(custom.totemInHand() && !custom.killable());
     }
 
     // Parity

@@ -56,6 +56,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityStatuses;
@@ -808,7 +809,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             ItemStack off = player.getOffHandStack();
             Optional<TargetView> view = ServerValues.target(name, squared, player.getHealth(),
                 player.getAbsorptionAmount(), lowestArmorPercent(player), creative, player.isAlive(), friend,
-                main.isOf(Items.TOTEM_OF_UNDYING), off.isOf(Items.TOTEM_OF_UNDYING), main.isEmpty(), off.isEmpty());
+                main.contains(DataComponentTypes.DEATH_PROTECTION), off.contains(DataComponentTypes.DEATH_PROTECTION),
+                main.isEmpty(), off.isEmpty());
             if (view.isEmpty()) continue;
             seen.add(view.get());
             if (creative || !player.isAlive() || friend || !ENTITIES.contains(player.getType())) continue;
@@ -950,7 +952,19 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * either hand along with every other one carried.
      */
     private int totems() {
-        return InvUtils.find(Items.TOTEM_OF_UNDYING).count();
+        return InvUtils.find(CrystalAuraPlusPlus::savesUs).count();
+    }
+
+    /**
+     * Whether this stack of OURS surely saves us from death (task B0c fix round 1): the item is a totem of
+     * undying AND it still carries the {@code death_protection} component ({@link ServerValues#ownDeathProtection}).
+     * Since 1.21.2 the game saves the holder of any item with that component (verified in the yarn 1.21.11 jar:
+     * {@code LivingEntity.tryUseDeathProtector} reads {@code DataComponentTypes.DEATH_PROTECTION} from each hand),
+     * so a custom item could too, but for our own side only what surely saves us counts: never over-count.
+     */
+    private static boolean savesUs(ItemStack stack) {
+        return ServerValues.ownDeathProtection(stack.isOf(Items.TOTEM_OF_UNDYING),
+            stack.contains(DataComponentTypes.DEATH_PROTECTION));
     }
 
     /** Pause-on-use (lines 1154-1156). */
@@ -989,7 +1003,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             ServerValues.amplifier(weakness != null, weakness == null ? 0 : weakness.getAmplifier()),
             ServerValues.amplifier(strength != null, strength == null ? 0 : strength.getAmplifier()),
             mainBreaks, hotbarBreaks || mainBreaks,
-            main == Items.TOTEM_OF_UNDYING || off == Items.TOTEM_OF_UNDYING);
+            savesUs(p.getMainHandStack()) || savesUs(p.getOffHandStack()));
     }
 
     /** Meteor's {@code isValidWeaknessItem} (lines 877-879). */

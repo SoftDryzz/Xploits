@@ -375,17 +375,17 @@ class CrystalBrainFinishingBlowTest {
         // A skipped pre-tick (the adapter's own recovery): windows and hits forgotten, the pending override not.
         b.forgetWindows();
         assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(3).hands(withTotem(HANDS, true))
-            .targets(player(ENEMY, 3, 4)).candidates(spot(3001L, Map.of(ENEMY, 6.0), 1)).build()));
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3001L, Map.of(ENEMY, 6.0), 1.5)).build()));
 
         // The pending placement itself expires (Q2): fix round 1, the tag now stays blocked through the late
         // window too (the crystal may still appear and detonate near us), so this alone does not free it.
         long expiredAt = t + CrystalBrain.PENDING_MIN_TICKS;
         assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(expiredAt).health(3).hands(withTotem(HANDS, true))
-            .targets(player(ENEMY, 3, 4)).candidates(spot(3002L, Map.of(ENEMY, 6.0), 1)).build()));
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3002L, Map.of(ENEMY, 6.0), 1.5)).build()));
         // A second skipped pre-tick, now that it is late rather than pending: still does not touch the tag.
         b.forgetWindows();
         assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(expiredAt + 1).health(3).hands(withTotem(HANDS, true))
-            .targets(player(ENEMY, 3, 4)).candidates(spot(3003L, Map.of(ENEMY, 6.0), 1)).build()));
+            .targets(player(ENEMY, 3, 4)).candidates(spot(3003L, Map.of(ENEMY, 6.0), 1.5)).build()));
 
         // Only once the late window itself elapses with nothing ever appearing does the tag free up.
         for (long idle = expiredAt + 2; idle < expiredAt + CrystalBrain.LATE_OWN_WINDOW; idle++) {

@@ -362,9 +362,13 @@ public final class CrystalBrain {
         if (!(damage > settings.minDamage())) return Optional.empty();
         FinishKind kind = finishKind(k.seen.targetDamage());
         if (kind == FinishKind.NONE) return Optional.empty();
-        // Kill-grade before pop-grade cannot matter for one crystal: it has one kind.
-        if (!breakOverrideHolds(k, kind, budget(health))) return Optional.empty();
-        return attack(k, hands, Reason.FINISHING_BLOW, kind);
+        SelfBudget budget = budget(health);
+        if (kind == FinishKind.KILL && breakOverrideHolds(k, FinishKind.KILL, budget)) {
+            return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.KILL);
+        }
+        // A kill-grade crystal whose kill rule failed is checked by the pop rule (fix round 1).
+        if (!breakOverrideHolds(k, FinishKind.POP, budget)) return Optional.empty();
+        return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.POP);
     }
 
     /** An end crystal left the world (lines 747-752). */
@@ -742,14 +746,15 @@ public final class CrystalBrain {
     }
 
     /**
-     * Tiers 1-3 of the finishing blow for a break (task B0a; B0c: tier 2 is kill-grade, tier 3 pop-grade). {@code overrideAble} already skipped Meteor's
-     * max-damage and anti-suicide, since the override may bypass those too; tier 1 (the normal budget) puts
+     * Tiers 1-3 of the finishing blow for a break (task B0a; B0c: tier 2 is kill-grade, tier 3
+     * pop-grade, which also takes a kill-grade crystal whose kill rule failed). {@code overrideAble} already
+     * skipped Meteor's max-damage and anti-suicide, since the override may bypass those too; tier 1 (the normal budget) puts
      * them back for its own pick, since only tier 2 (the override) may bypass them. Among the finishing-grade
      * crystals of ours: tier 1's normal-budget pick, by damage, unless {@code healthPausedOnly} (then only the
      * override may act, since an ordinary break stays paused); else tier 2's override pick, gated by a totem
      * in hand plus a spare (condition a), no other override crystal in flight (condition b) and the floor
-     * holding without this crystal's own share (condition c). Empty when neither: the caller's unchanged loop, over
-     * Meteor-gated candidates, decides as before.
+     * holding without this crystal's own share (condition c); else tier 3, the pop rule. Empty when none: the
+     * caller's unchanged loop, over Meteor-gated candidates, decides as before.
      */
     private Optional<Action> breakFinishing(CrystalTick tick, List<Scored<Known>> overrideAble, boolean healthPausedOnly) {
         List<Scored<Known>> finishing = new ArrayList<>();
@@ -770,12 +775,18 @@ public final class CrystalBrain {
 
         if (!totemBacksIt(tick.hands())) return Optional.empty();
         SelfBudget budget = budget(tick.health());
-        // Tier 2 (kill-grade) before tier 3 (pop-grade) (task B0c).
-        for (FinishKind kind : new FinishKind[] {FinishKind.KILL, FinishKind.POP}) {
-            for (Scored<Known> s : finishing) {
-                if (finishKind(s.item.seen.targetDamage()) != kind) continue;
-                if (!breakOverrideHolds(s.item, kind, budget)) continue;
-                return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, kind);
+        // Tier 2: kill-grade crystals by the kill rule (task B0c).
+        for (Scored<Known> s : finishing) {
+            if (finishKind(s.item.seen.targetDamage()) != FinishKind.KILL) continue;
+            if (breakOverrideHolds(s.item, FinishKind.KILL, budget)) {
+                return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, FinishKind.KILL);
+            }
+        }
+        // Tier 3: every finishing-grade crystal by the pop rule, a kill-grade one whose kill rule failed
+        // included (fix round 1): it never pops us and takes no slot.
+        for (Scored<Known> s : finishing) {
+            if (breakOverrideHolds(s.item, FinishKind.POP, budget)) {
+                return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, FinishKind.POP);
             }
         }
         return Optional.empty();
@@ -919,14 +930,16 @@ public final class CrystalBrain {
     }
 
     /**
-     * Tiers 1-3 of the finishing blow for a place (task B0a; B0c: tier 2 is kill-grade, tier 3 pop-grade). Spots are gathered with Meteor's max-damage and
-     * anti-suicide skipped, since the override may bypass those too (every other Meteor rule — range,
+     * Tiers 1-3 of the finishing blow for a place (task B0a; B0c: tier 2 is kill-grade, tier 3
+     * pop-grade, which also takes a kill-grade spot whose kill rule failed). Spots are gathered with Meteor's
+     * max-damage and anti-suicide skipped, since the override may bypass those too (every other Meteor rule — range,
      * min-damage/face-place minimum, the box — still applies); tier 1 (the normal budget) puts max-damage and
      * anti-suicide back for its own pick, since only tier 2 (the override) may bypass them. Among the
      * finishing-grade spots (never one a target's hurt window would swallow): tier 1's normal-budget pick, by
      * damage, unless {@code healthPausedOnly} (then only the override may act); else tier 2's override pick,
      * gated by a totem in hand plus a spare (condition a), no other override crystal in flight at that spot
-     * (condition b) and the floor holding without this spot's own pending placement there (condition c). Empty when neither.
+     * (condition b) and the floor holding without this spot's own pending placement there (condition c); else
+     * tier 3, the pop rule. Empty when none.
      */
     private Optional<Action> placeFinishing(double health, List<Candidate> candidates, boolean healthPausedOnly) {
         double minimum = minimumDamage();
@@ -959,19 +972,22 @@ public final class CrystalBrain {
         }
 
         if (!totemBacksIt(hands)) return Optional.empty();
-        // Tier 2 (kill-grade) before tier 3 (pop-grade) (task B0c).
-        for (FinishKind kind : new FinishKind[] {FinishKind.KILL, FinishKind.POP}) {
-            for (Scored<Candidate> s : finishing) {
-                if (finishKind(s.item.targetDamage()) != kind) continue;
-                long pos = s.item.pos();
-                SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
-                double left = budget.health() - budget.worstCase();
-                if (kind == FinishKind.KILL) {
-                    if (!overrideAvailable(null, pos) || left < SelfBudget.FLOOR) continue;
-                } else if (left - s.item.budgetSelfDamage() < SelfBudget.FLOOR) {
-                    continue;
-                }
-                return Optional.of(place(s.item, Reason.FINISHING_BLOW, kind));
+        // Tier 2: kill-grade spots by the kill rule (task B0c).
+        for (Scored<Candidate> s : finishing) {
+            if (finishKind(s.item.targetDamage()) != FinishKind.KILL) continue;
+            long pos = s.item.pos();
+            SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
+            if (overrideAvailable(null, pos) && budget.health() - budget.worstCase() >= SelfBudget.FLOOR) {
+                return Optional.of(place(s.item, Reason.FINISHING_BLOW, FinishKind.KILL));
+            }
+        }
+        // Tier 3: every finishing-grade spot by the pop rule, a kill-grade one whose kill rule failed included
+        // (fix round 1): it never pops us and takes no slot.
+        for (Scored<Candidate> s : finishing) {
+            long pos = s.item.pos();
+            SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
+            if (budget.health() - budget.worstCase() - s.item.budgetSelfDamage() >= SelfBudget.FLOOR) {
+                return Optional.of(place(s.item, Reason.FINISHING_BLOW, FinishKind.POP));
             }
         }
         return Optional.empty();

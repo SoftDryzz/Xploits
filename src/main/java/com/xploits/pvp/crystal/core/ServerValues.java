@@ -35,7 +35,9 @@ public final class ServerValues {
      *
      * @param lowestArmorPercent as {@link TargetView#lowestArmorPercent}; a NaN means no piece counts, a
      *                           negative one is worn out
-     * @param mainIsTotem        whether its main hand holds a totem of undying (the equipment the server syncs)
+     * @param mainIsTotem        whether its main hand holds an item with death protection (the equipment the
+     *                           server syncs; since 1.21.2 any item with the {@code death_protection} component
+     *                           saves its holder, not only the totem of undying)
      * @param offIsTotem         whether its off hand holds one
      * @param mainEmpty          whether its main hand shows no item
      * @param offEmpty           whether its off hand shows no item; both empty means the hands are not visible
@@ -50,6 +52,16 @@ public final class ServerValues {
         double armor = Double.isNaN(lowestArmorPercent) ? TargetView.NO_ARMOR : Math.max(0, lowestArmorPercent);
         return Optional.of(new TargetView(name, squaredDistance, total, armor, creative, alive, friend,
             mainIsTotem || offIsTotem, !mainEmpty || !offEmpty || mainIsTotem || offIsTotem));
+    }
+
+    /**
+     * Whether a stack of OURS surely saves us from death (task B0c fix round 1): a totem of undying that still
+     * carries the death-protection component. Stricter than the target's check on purpose: an item with the
+     * component but not a totem might save us, but we never count on it, and a totem stripped of the component
+     * does not save us.
+     */
+    public static boolean ownDeathProtection(boolean itemIsTotem, boolean hasComponent) {
+        return itemIsTotem && hasComponent;
     }
 
     /** Our health plus absorption, summed as Meteor does, or nothing if it is not a valid number. */
