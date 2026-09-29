@@ -428,10 +428,11 @@ public final class CrystalBrain {
                 }
                 windows.fullHit(hit.target, previous, raw);
                 double before = seenHealth.getOrDefault(hit.target, Double.NaN);
-                double after = nowHealth.getOrDefault(hit.target, Double.NaN);
-                healthTrust.judge(hit.target, predicted, before, after, popped.contains(hit.target));
+                healthTrust.hit(hit.target, predicted, before, popped.contains(hit.target));
             }
         }
+        // Every pending hit reads this pre-tick's health: it may arrive some pre-ticks after the damage packet.
+        healthTrust.advance(nowHealth, popped);
         hits.clear();
         popped.clear();
     }
@@ -463,6 +464,7 @@ public final class CrystalBrain {
         windows.clear();
         hits.clear();
         popped.clear();
+        healthTrust.forgetPending();
         landingSince = now;
     }
 
