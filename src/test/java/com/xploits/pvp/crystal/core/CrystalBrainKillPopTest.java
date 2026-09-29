@@ -24,6 +24,7 @@ import static com.xploits.pvp.crystal.core.Crystals.tick;
 import static com.xploits.pvp.crystal.core.Crystals.withTotem;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -210,7 +211,7 @@ class CrystalBrainKillPopTest {
         long t = trustedEnemy(pop, 1);
         assertDecision(Decision.place(3000L, Reason.WITHIN_BUDGET), pop.preTick(LOW_MIN_DAMAGE,
             tick(t).health(20).hands(TOTEM).targets(POP)
-                .candidates(spot(3001L, Map.of(ENEMY, 20.0), 7), spot(3000L, Map.of(ENEMY, 6.0), 1)).build()));
+                .candidates(spot(3001L, Map.of(ENEMY, 20.0), 100), spot(3000L, Map.of(ENEMY, 6.0), 1)).build()));
         CrystalBrain kill = new CrystalBrain();
         long t2 = trustedEnemy(kill, 1);
         assertDecision(Decision.place(3000L, Reason.WITHIN_BUDGET), kill.preTick(LOW_MIN_DAMAGE,
@@ -288,7 +289,8 @@ class CrystalBrainKillPopTest {
         // Past max-damage: health 9, self 7 leaves 2.
         CrystalBrain big = new CrystalBrain();
         long t3 = ownCrystal(big, trustedEnemy(big, 1), 950, 3000L);
-        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), big.preTick(LOW_MIN_DAMAGE,
+        // B1: max-damage no longer keeps it from the normal budget, whose floor (2) it meets exactly.
+        assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), big.preTick(LOW_MIN_DAMAGE,
             tick(t3).health(9).hands(TOTEM).targets(POP).crystals(crystal(950, 3000L, 6.0, 7.0)).build()));
     }
 
@@ -322,21 +324,24 @@ class CrystalBrainKillPopTest {
         TargetView killTarget = playerWithHands(ENEMY, 3, 4, false, true);
         TargetView popTarget = playerWithHands(OTHER, 3, 4, true, true);
 
-        // Sanity: on its own, P is broken by the pop rule (P alone: 16 - 7 = 9, minus its own 7 = 2).
+        // Sanity: on its own, P is broken (B1: by the normal budget now, 16 - 7 = 9 >= 2; the pop rule, which
+        // asks 9 - 7 = 2, never takes a crystal the budget already allows, so it is not marked).
         CrystalBrain alone = new CrystalBrain();
         long t = ownCrystalsPAndK(alone, false);
-        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), alone.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), alone.preTick(LOW_MIN_DAMAGE,
             tick(t).health(16).hands(TOTEM).targets(killTarget, popTarget)
                 .crystals(crystal(950, 3000L, P_DAMAGE, 7.0)).build()));
-        assertEquals(Map.of(950, FinishKind.POP), alone.finishingCrystalKinds());
+        assertEquals(Map.of(), alone.finishingCrystalKinds());
 
-        // With K standing too, P is listed first with more damage, and K (kill-grade) still goes first.
+        // With K standing too, both are within the normal budget (a break asks 16 - 7 >= 2 of each, the crystals
+        // standing do not count for a break), so B1's tier 1 takes the one with more damage, P, before any
+        // override; K, kill-grade, would only go first where the budget refused both (nothing here does).
         CrystalBrain both = new CrystalBrain();
         long t2 = ownCrystalsPAndK(both, true);
-        assertDecision(Decision.breakCrystal(951, Reason.FINISHING_BLOW), both.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), both.preTick(LOW_MIN_DAMAGE,
             tick(t2).health(16).hands(TOTEM).targets(killTarget, popTarget)
                 .crystals(crystal(950, 3000L, P_DAMAGE, 7.0), crystal(951, 3001L, K_DAMAGE, 7.0)).build()));
-        assertEquals(Map.of(951, FinishKind.KILL), both.finishingCrystalKinds());
+        assertEquals(Map.of(), both.finishingCrystalKinds());
     }
 
     @Test
@@ -360,7 +365,8 @@ class CrystalBrainKillPopTest {
         CrystalSettings noFastBreak = LOW_MIN_DAMAGE.toBuilder().fastBreak(false).build();
         assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, 6.0, 7.0), 9, TOTEM).isEmpty());
         assertEquals(Map.of(950, FinishKind.KILL), b.finishingCrystalKinds());
-        assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), b.preTick(LOW_MIN_DAMAGE,
+        // B1: the normal budget breaks it now (9 - 7 = 2), and never lowers the mark.
+        assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), b.preTick(LOW_MIN_DAMAGE,
             tick(t + 1).health(9).hands(TOTEM).targets(POP).crystals(crystal(950, 3000L, 6.0, 7.0)).build()));
         assertEquals(Map.of(950, FinishKind.KILL), b.finishingCrystalKinds());
     }
@@ -389,7 +395,7 @@ class CrystalBrainKillPopTest {
             assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(9).hands(TOTEM).targets(POP).build()));
             var action = b.crystalAdded(LOW_MIN_DAMAGE, crystal(950, 3000L, 6.0, self), 9, TOTEM);
             if (self == 7.0) {
-                assertEquals(Decision.breakCrystal(950, Reason.FINISHING_BLOW), action.orElseThrow().decision());
+                assertEquals(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), action.orElseThrow().decision());
             } else {
                 assertTrue(action.isEmpty());
             }
@@ -491,24 +497,25 @@ class CrystalBrainKillPopTest {
         // without B = 4: 16 - 4 - 7 = 5 holds, so B is broken as a pop.
         CrystalBrain holds = new CrystalBrain();
         long t = slotTakenWithAnotherOwnCrystal(holds);
-        assertDecision(Decision.breakCrystal(960, Reason.FINISHING_BLOW), holds.preTick(LOW_MIN_DAMAGE,
+        assertDecision(Decision.breakCrystal(960, Reason.WITHIN_BUDGET), holds.preTick(LOW_MIN_DAMAGE,
             tick(t).health(16).hands(TOTEM).targets(KILL)
                 .crystals(crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), crystal(960, 3100L, Map.of(ENEMY, 6.0), 7.0))
                 .build()));
         assertEquals(FinishKind.KILL, holds.finishingCrystalKinds().get(950));
-        assertEquals(FinishKind.POP, holds.finishingCrystalKinds().get(960));
+        assertNull(holds.finishingCrystalKinds().get(960));
 
-        // Self 11: 16 - 4 - 11 = 1 < FLOOR, and the slot is taken: refused.
+        // Self 15: the budget refuses it (16 - 15 = 1 < FLOOR), 16 - 4 - 15 fails the pop rule, and the slot is
+        // taken: refused. (Self 11 used to show this through max-damage; the budget allows it now.)
         CrystalBrain fails = new CrystalBrain();
         long t2 = slotTakenWithAnotherOwnCrystal(fails);
         assertNothing(fails.preTick(LOW_MIN_DAMAGE, tick(t2).health(16).hands(TOTEM).targets(KILL)
-            .crystals(crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), crystal(960, 3100L, Map.of(ENEMY, 6.0), 11.0))
+            .crystals(crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), crystal(960, 3100L, Map.of(ENEMY, 6.0), 15.0))
             .build()));
     }
 
     @Test
     void aKillGradeFastBreakWithTheSlotTakenFallsBackToThePopRules() {
-        for (double self : new double[] {7.0, 11.0}) {
+        for (double self : new double[] {7.0, 15.0}) {
             CrystalBrain b = new CrystalBrain();
             long t = trustedEnemy(b, 1);
             // B placed at full health first (ours), then A through the kill override at health 6.
@@ -523,8 +530,8 @@ class CrystalBrainKillPopTest {
             assertTrue(b.crystalAdded(noFastBreak, crystal(950, 3000L, Map.of(ENEMY, 0.5), 4.0), 16, TOTEM).isEmpty());
             var action = b.crystalAdded(LOW_MIN_DAMAGE, crystal(960, 3100L, 6.0, self), 16, TOTEM);
             if (self == 7.0) {
-                assertEquals(Decision.breakCrystal(960, Reason.FINISHING_BLOW), action.orElseThrow().decision());
-                assertEquals(FinishKind.POP, b.finishingCrystalKinds().get(960));
+                assertEquals(Decision.breakCrystal(960, Reason.WITHIN_BUDGET), action.orElseThrow().decision());
+                assertNull(b.finishingCrystalKinds().get(960));
             } else {
                 assertTrue(action.isEmpty());
             }
@@ -563,7 +570,7 @@ class CrystalBrainKillPopTest {
             // ... then he equips a totem: the pop floor (9 - 7 = 2) decides.
             List<Action> actions = b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(9).hands(TOTEM).targets(POP)
                 .crystals(crystal(950, 3000L, 6.0, self)).build());
-            if (self == 7.0) assertDecision(Decision.breakCrystal(950, Reason.FINISHING_BLOW), actions);
+            if (self == 7.0) assertDecision(Decision.breakCrystal(950, Reason.WITHIN_BUDGET), actions);
             else assertNothing(actions);
             assertEquals(Map.of(950, FinishKind.KILL), b.finishingCrystalKinds());
         }

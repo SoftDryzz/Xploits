@@ -647,9 +647,15 @@ public final class CrystalBrain {
     /**
      * Meteor's self-damage checks: max-damage and anti-suicide (lines 812, 953), on Meteor's own prediction
      * ({@code selfDamage}, never the budget's exact one), so with the budget off ++ is Meteor.
+     *
+     * <p>Task B1: with the budget on, {@code ours} (a placement of ours, a break of a crystal of ours) skips
+     * max-damage, since the reserve is what limits our self damage then; anti-suicide stays. A foreign crystal
+     * never consults the budget, so its break keeps max-damage.
      */
-    private boolean tooHurtful(double selfDamage, double health) {
-        return selfDamage > settings.maxDamage() || (settings.antiSuicide() && selfDamage >= health);
+    private boolean tooHurtful(double selfDamage, double health, boolean ours) {
+        boolean reserveDecides = ours && settings.selfBudget();
+        return (!reserveDecides && selfDamage > settings.maxDamage())
+            || (settings.antiSuicide() && selfDamage >= health);
     }
 
     /** Every pause but {@code pause-health} (lines 1153-1160): still enforced for every crystal, override included. */
@@ -706,7 +712,7 @@ public final class CrystalBrain {
         if (k.waiting(now)) return 0;
         if (k.attempts > settings.breakAttempts()) return 0;
         if (!k.seen.inBreakRange()) return 0;
-        if (tooHurtful(k.seen.selfDamage(), health)) return 0;
+        if (tooHurtful(k.seen.selfDamage(), health, k.ours)) return 0;
         float damage = k.seen.damageTo(targets);
         return damage < minimumDamage() ? 0 : damage;
     }
@@ -789,7 +795,7 @@ public final class CrystalBrain {
         if (!healthPausedOnly) {
             SelfBudget budget = null;
             for (Scored<Known> s : finishing) {
-                if (tooHurtful(s.item.seen.selfDamage(), tick.health())) continue;
+                if (tooHurtful(s.item.seen.selfDamage(), tick.health(), true)) continue;
                 if (budget == null) budget = budget(tick.health());
                 Verdict v = budget.breakAllowed(s.item.view(now));
                 if (answered(v)) return attack(s.item, tick.hands(), v.reason());
@@ -920,7 +926,7 @@ public final class CrystalBrain {
         List<Scored<Candidate>> able = new ArrayList<>();
         double minimum = minimumDamage();
         for (Candidate c : candidates) {
-            if (!c.inRange() || tooHurtful(c.selfDamage(), health)) continue;
+            if (!c.inRange() || tooHurtful(c.selfDamage(), health, true)) continue;
             float damage = c.damageTo(targets);
             if (damage < minimum || boxTaken(c)) continue;
             // Meteor keeps a spot only if it beats the best so far, which starts at 0 (lines 927, 972, 982).
@@ -984,7 +990,7 @@ public final class CrystalBrain {
         if (!healthPausedOnly) {
             SelfBudget shared = null;
             for (Scored<Candidate> s : finishing) {
-                if (tooHurtful(s.item.selfDamage(), health)) continue;
+                if (tooHurtful(s.item.selfDamage(), health, true)) continue;
                 long pos = s.item.pos();
                 SelfBudget budget;
                 if (pendingAt(pos)) budget = budget(health, pos);
