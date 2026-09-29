@@ -938,8 +938,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // could still beat what is already known: `floor` is the current position's own real value. A point the
         // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
         List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
-            explosion.z - feet.z, MovementReach.withMidpoints(MovementReach.offsets(velocityThisTick.x, velocityThisTick.z,
-                brain.landingTicksBound())));
+            explosion.z - feet.z, MovementReach.reachPoints(velocityThisTick.x, velocityThisTick.z,
+                brain.landingTicksBound()));
         ClientPlayerEntity p = mc.player;
         float worst = MovementReach.worstRawDamage(ranked,
             o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
