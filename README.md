@@ -5,9 +5,30 @@
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
 other anarchy servers. Ten modules, each switched on separately.
 
-The core idea: **no module does half a job without saying so**. If it cannot deliver what it
-promises, it refuses and tells you which setting to change — instead of doing something similar and
-keeping quiet.
+## Why Xploits
+
+- **`crystal-aura++` goes for the kill, and never kills you.** With the opponent at the edge of death it
+  finishes him at every risk level, where 0.7.0 dealt nothing there. It goes past your reserve only for a
+  kill, only while you hold a totem and carry a spare, and never below 2 health in the other cases.
+- **It deals more than Meteor's own `crystal-aura` where it counts.** Behind cover, 540 damage against
+  490; with the opponent below you, 304 against 288; with him coming and going, 37 against 31. Where it
+  is behind (while you dodge, and the open-ground exchange) it says so: see the
+  [known issues](docs/known-issues.md).
+- **Your own crystals never took you below your reserve in any run of the 0.7.1 bench**: 77 scenarios,
+  three runs of each measured one, at every risk level, against opponents that attack, break your
+  crystals and block your spots. Meteor's `crystal-aura` went down to 0.2 health in the same bench.
+- **`auto-pvp` switches the right combat modules on at the right moment** — crystals, traps, webs,
+  surround, hole-filling and the rest — and only turns off the ones it turned on.
+- **`fight-recorder` tells you why you died**: a JSON file per fight with the damage split, your totems
+  and crystals, and its best guess at the cause. No positions are stored.
+- **`auto-travel` flies you somewhere without leaving an arrow pointing at your base** (a decoy pattern
+  breaks up your trail), and **`nether-sweep`** combs the Nether to find other people's bases.
+- **No module does half a job silently.** If it cannot deliver what it promises, it refuses and tells you
+  which setting to change, instead of doing something similar and keeping quiet.
+
+`crystal-aura++` is **measured, not just claimed**: every release is benchmarked in-game against Meteor's
+own `crystal-aura`, and the numbers are in
+[the table below](#crystal-aura--crystal-aura-with-a-floor-under-your-health).
 
 ---
 
@@ -17,17 +38,6 @@ keeping quiet.
 any older `xploits-*.jar`**: the file name carries the version, and with two of them the addon loads
 twice. Restart the game. The modules show up in the ClickGUI, under the **Xploits** category. What
 changes in each version: [CHANGELOG](CHANGELOG.md).
-
-⚠️ **If you are coming from before 0.4.0**, close any console window you still have open before
-starting the game: on the first start of 0.4.0, the addon automatically renames the settings and
-files whose names changed in that version (`modules.nbt`, `hud.nbt` and the `xploits/consola/`
-folder), backs up every file it touches as `<file>.pre-0.4.0.backup.nbt` before writing it, and
-tells you in chat what it did. You lose nothing; if a console window still has the folder open,
-whatever could not be moved is retried on the next start: with the old window closed,
-`xploits/consola/` is merged into `xploits/console/` (the history goes to `console/history/`,
-overwriting nothing; if the same day is in both, both are kept and the old one becomes
-`<day>-old.log`) and the old folder is deleted once empty. Meteor macros that type
-`.toggle consola` are not migrated: change them to `console`.
 
 ### What you need installed, and what stops working without it
 
@@ -516,6 +526,21 @@ The most common:
   still, dodging or attacking; golden apples; several enemies at once.
 - **Later:** more `++` modules wherever Meteor's own fall short, and the fight director tuned against
   recorded real fights.
+
+---
+
+## Upgrading from old versions
+
+⚠️ **If you are coming from before 0.4.0**, close any console window you still have open before
+starting the game: on the first start of 0.4.0, the addon automatically renames the settings and
+files whose names changed in that version (`modules.nbt`, `hud.nbt` and the `xploits/consola/`
+folder), backs up every file it touches as `<file>.pre-0.4.0.backup.nbt` before writing it, and
+tells you in chat what it did. You lose nothing; if a console window still has the folder open,
+whatever could not be moved is retried on the next start: with the old window closed,
+`xploits/consola/` is merged into `xploits/console/` (the history goes to `console/history/`,
+overwriting nothing; if the same day is in both, both are kept and the old one becomes
+`<day>-old.log`) and the old folder is deleted once empty. Meteor macros that type
+`.toggle consola` are not migrated: change them to `console`.
 
 ---
 

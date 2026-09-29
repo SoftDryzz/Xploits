@@ -5,8 +5,32 @@
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
 otros servidores anarchy. Diez módulos que se encienden por separado.
 
-La idea de fondo: **ningún módulo hace algo a medias sin decirlo**. Si no puede cumplir lo que
-promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido y callar.
+## Por qué Xploits
+
+- **`crystal-aura++` va a por la muerte, y nunca te mata a ti.** Con el rival al borde de la muerte lo
+  remata en todos los niveles de riesgo, donde la 0.7.0 no hacía nada. Solo pasa de tu reserva para
+  matar, solo mientras llevas un tótem y otro de repuesto, y nunca por debajo de 2 de vida en los demás
+  casos.
+- **Hace más daño que el `crystal-aura` de Meteor donde importa.** Tras una cobertura, 540 de daño
+  frente a 490; con el rival más bajo que tú, 304 frente a 288; con él yendo y viniendo, 37 frente a 31.
+  Donde va por detrás (mientras esquivas, y el intercambio a campo abierto) lo dice: mira los
+  [problemas conocidos](docs/known-issues.md).
+- **Tus propios cristales nunca te dejaron por debajo de tu reserva en ninguna tanda del banco de la
+  0.7.1**: 77 escenarios, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
+  contra rivales que atacan, rompen tus cristales y te bloquean los sitios. El `crystal-aura` de Meteor
+  bajó hasta 0,2 de vida en el mismo banco.
+- **`auto-pvp` enciende los módulos de combate adecuados en el momento adecuado** — cristales, trampas,
+  telarañas, surround, rellenar agujeros y el resto — y solo apaga los que encendió él.
+- **`fight-recorder` te dice por qué moriste**: un fichero JSON por pelea con el reparto de daño, tus
+  tótems y cristales, y su mejor suposición de la causa. No guarda posiciones.
+- **`auto-travel` te lleva volando a algún sitio sin dejar una flecha hacia tu base** (un patrón de
+  señuelo rompe tu rastro), y **`nether-sweep`** peina el Nether para encontrar bases ajenas.
+- **Ningún módulo hace algo a medias sin decirlo.** Si no puede cumplir lo que promete, se niega y
+  explica qué ajuste tocar, en vez de hacer algo parecido y callar.
+
+`crystal-aura++` está **medido, no solo prometido**: cada versión se prueba dentro del juego contra el
+`crystal-aura` de Meteor, y los números están en
+[la tabla de más abajo](#crystal-aura--crystal-aura-con-un-suelo-bajo-tu-vida).
 
 ---
 
@@ -16,17 +40,6 @@ promete, se niega y explica qué ajuste tocar — en vez de hacer algo parecido 
 cualquier `xploits-*.jar` anterior**: el nombre lleva la versión, y con dos a la vez el addon se carga
 dos veces. Reinicia el juego. Los módulos salen en la ClickGUI, categoría **Xploits**. Qué cambia en
 cada versión: [CHANGELOG](CHANGELOG.md).
-
-⚠️ **Si vienes de antes de la 0.4.0**, cierra cualquier ventana de la consola que sigas teniendo
-abierta antes de arrancar: al primer arranque de la 0.4.0, el addon renombra automáticamente los
-ajustes y ficheros que cambiaron de nombre en esa versión (`modules.nbt`, `hud.nbt` y la carpeta
-`xploits/consola/`), hace una copia de cada fichero que toca como `<fichero>.pre-0.4.0.backup.nbt`
-antes de escribirlo, y te avisa por chat de lo que hizo. No pierdes nada; si una ventana de la
-consola sigue teniendo la carpeta abierta, lo que no pudo moverse se reintenta en el siguiente
-arranque: con la ventana antigua ya cerrada, `xploits/consola/` se fusiona con `xploits/console/`
-(el historial pasa a `console/history/`, sin sobrescribir nada; si un mismo día está en las dos, se
-guardan ambos y el antiguo queda como `<día>-old.log`) y la carpeta antigua se borra al quedar vacía.
-Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `console`.
 
 ### Qué necesitas instalado, y qué deja de funcionar si falta
 
@@ -521,6 +534,21 @@ Lo más habitual:
   encima, por debajo, quieto, esquivando o atacando; manzanas doradas; varios enemigos a la vez.
 - **Más adelante:** más módulos `++` donde los de Meteor se queden cortos, y el director de peleas
   afinado con peleas reales grabadas.
+
+---
+
+## Actualizar desde versiones antiguas
+
+⚠️ **Si vienes de antes de la 0.4.0**, cierra cualquier ventana de la consola que sigas teniendo
+abierta antes de arrancar: al primer arranque de la 0.4.0, el addon renombra automáticamente los
+ajustes y ficheros que cambiaron de nombre en esa versión (`modules.nbt`, `hud.nbt` y la carpeta
+`xploits/consola/`), hace una copia de cada fichero que toca como `<fichero>.pre-0.4.0.backup.nbt`
+antes de escribirlo, y te avisa por chat de lo que hizo. No pierdes nada; si una ventana de la
+consola sigue teniendo la carpeta abierta, lo que no pudo moverse se reintenta en el siguiente
+arranque: con la ventana antigua ya cerrada, `xploits/consola/` se fusiona con `xploits/console/`
+(el historial pasa a `console/history/`, sin sobrescribir nada; si un mismo día está en las dos, se
+guardan ambos y el antiguo queda como `<día>-old.log`) y la carpeta antigua se borra al quedar vacía.
+Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `console`.
 
 ---
 
