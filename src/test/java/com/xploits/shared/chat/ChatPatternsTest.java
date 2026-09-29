@@ -119,7 +119,7 @@ class ChatPatternsTest {
 
     @Test
     void tpaWithUnknownHeadPrefix() {
-        assertEquals(new ChatEvent.Tpa("xto2002"), parse("[unknown player head] xto2002 wants to teleport to you."));
+        assertEquals(new ChatEvent.Tpa("steve"), parse("[unknown player head] steve wants to teleport to you."));
     }
 
     @Test
@@ -152,7 +152,7 @@ class ChatPatternsTest {
 
     @Test
     void markerWithoutTrailingSpaceIsNotStripped() {
-        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head]xto2002 wants to teleport to you."));
+        assertEquals(Optional.empty(), ChatPatterns.classify("[unknown player head]steve wants to teleport to you."));
     }
 
     @Test

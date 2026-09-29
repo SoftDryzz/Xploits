@@ -18,8 +18,8 @@ class AllyPolicyTest {
     @Test
     void aStrangerIsATarget() {
         assertEquals(Allegiance.STRANGER,
-            AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("xto2002")));
-        assertFalse(AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("xto2002")).isOurs());
+            AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("steve")));
+        assertFalse(AllyPolicy.of("Mallory", false, Set.of("StormAegis44"), Set.of("steve")).isOurs());
     }
 
     @Test

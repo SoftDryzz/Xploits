@@ -6,6 +6,10 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- The addon's listed author is now `SoftDryzz`.
+
 ## [0.7.0] — 2026-09-28
 
 ### Added
@@ -37,7 +41,7 @@ All notable changes to Xploits. The format is based on
 
 ### Changed
 
-- `console`: the window now opens with the Xploits logo instead of XTO2002. When the window is too
+- `console`: the window now opens with the Xploits logo instead of the previous one. When the window is too
   small for it, the one-row fallback says "Xploits" in the logo's purple.
 
 ### Fixed
@@ -282,7 +286,7 @@ Requires Minecraft 1.21.11 and Meteor Client. `auto-travel` and `nether-sweep` a
   accepts `/tpahere`.
 - **`stash-keeper`** — remembers what was inside the containers you opened and the shulkers you saw;
   `.xploits find <item>` tells you where.
-- **`consola`** — an external terminal window with the XTO2002 logo, the live game state and a
+- **`consola`** — an external terminal window with a logo, the live game state and a
   filterable log of everything the modules say. It never shows coordinates, keeps up to 30 days of
   history on disk while it is on, and stays open when the game closes.
 - **`.xploits`** command: `status`, `find`, `stash`, `pvp`, `travel` (`go`, `stop`), `sweep` (`go`,
