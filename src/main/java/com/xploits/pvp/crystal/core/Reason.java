@@ -24,9 +24,10 @@ public enum Reason {
     METEOR_AURA_ON,
     /**
      * Task B0a: a finishing-grade crystal (kills the target or pops his totem) placed or broken through the
-     * override, past what {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code
-     * pause-health} would otherwise allow, only while a totem backs it — one in hand and a spare (fix round 1,
-     * owner's decision 2026-09-29: it never spends the last one).
+     * override, only while a totem backs it — one in hand and a spare (fix round 1, owner's decision 2026-09-29:
+     * it never spends the last one). A kill-grade one may pass {@code max-damage}, {@code anti-suicide}, the
+     * reserve, the floor and {@code pause-health}; a pop-grade one, only at Aggressive, must leave the floor after
+     * its own damage, so what it adds over the ordinary rules is acting at or below {@code pause-health}.
      */
     FINISHING_BLOW
 }

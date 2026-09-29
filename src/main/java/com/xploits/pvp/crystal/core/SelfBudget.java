@@ -18,7 +18,8 @@ import java.util.Set;
  *   that has disappeared, attacked or not, for {@link #DISAPPEARANCE_WINDOW} ticks from the pre-tick it
  *   was first seen gone, because its damage may still arrive.</li>
  *   <li><b>S, standing:</b> every standing crystal that is not in I, whoever placed it, plus our pending
- *   placements. A standing crystal is always in exactly one of I or S.</li>
+ *   placements and the late ones (task C2: an expired placement still counts until its crystal appears or the
+ *   late window ends). A standing crystal is always in exactly one of I or S.</li>
  *   <li>Only crystals within {@link #HAZARD_RADIUS} count: beyond it an end crystal cannot reach you.</li>
  *   <li><b>Worst case C = I + S.</b> Totems and invulnerability are never counted.</li>
  * </ul>
@@ -26,8 +27,9 @@ import java.util.Set;
  * <p>Every self damage here is the exact one ({@link CrystalView#budgetSelfDamage}, {@link ExplosionMath}), never
  * Meteor's truncated prediction: that one is up to a raw point short, and health would end that far below R.
  *
- * <p>These rules only add checks on top of Meteor's; they never allow what Meteor would refuse.
- * Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
+ * <p>These rules add checks on top of Meteor's. They never loosen Meteor's rules themselves: it is the brain that
+ * lets the reserve replace {@code max-damage} for our own crystals (task B1) and runs the finishing blow past
+ * them. Breaking a crystal we did not place never consults the budget (P2): {@link #breakAllowed} answers
  * {@link Verdict#FOREIGN} for it without reading health, so no caller can get that wrong.
  */
 public final class SelfBudget {
@@ -183,6 +185,11 @@ public final class SelfBudget {
      * never be able to break, {@link CrystalBrain#placeGateOpen}) has already eaten past the floor helps
      * nothing. This is exact-zero only, never an epsilon: any {@code budgetSelfDamage > 0}, however small,
      * keeps today's rule (the safe-mode branch below, gated by {@code safeSelfDamage}).
+     *
+     * <p>Final review M2: in survival this rule does not fire. Within {@link #HAZARD_RADIUS} the raw damage is at
+     * least 1 ({@link ExplosionMath}), and a spot's budget self damage is {@code max(Meteor's, exact)}, so it is
+     * never exactly zero there; beyond it the crystal is not counted at all. It is a guard for edge cases (a
+     * creative-mode player or a server that zeroes explosions), not a path a normal fight takes.
      */
     public Verdict placeAllowed(double budgetSelfDamage) {
         Damage.check(budgetSelfDamage, "budget self damage");

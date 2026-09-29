@@ -198,4 +198,86 @@ class MovementReachExposureTest {
         }, NONE);
         assertEquals(1, asked.size(), "at full exposure the worst ceiling ends the search at once");
     }
+
+    // Task C2 (final review I3): the arcs between neighbouring ring points
+
+    private static final double RADIUS = 2.0;
+
+    private static Offset arc(int i, double h, double scale) {
+        double angle = 2 * Math.PI * (i + 0.5) / MovementReach.RING_POINTS;
+        return new Offset(scale * RADIUS * Math.cos(angle), h, scale * RADIUS * Math.sin(angle));
+    }
+
+    private static boolean near(Offset a, Offset b) {
+        return Math.abs(a.dx() - b.dx()) < 1e-9 && Math.abs(a.dy() - b.dy()) < 1e-9 && Math.abs(a.dz() - b.dz()) < 1e-9;
+    }
+
+    @Test
+    void theReachPointsIncludeAnArcMidpointBetweenEveryPairOfRingPointsAtBothHeights() {
+        List<Offset> reach = MovementReach.reachPoints(0.5, 0, 4);
+        for (double h : new double[] {0, MovementReach.JUMP_HEIGHT}) {
+            for (int i = 0; i < MovementReach.RING_POINTS; i++) {
+                Offset arc = arc(i, h, 1.0);
+                assertTrue(reach.stream().anyMatch(o -> near(o, arc)), "arc " + i + " at " + h);
+                Offset radial = arc(i, h, 0.5);
+                assertTrue(reach.stream().anyMatch(o -> near(o, radial)), "radial midpoint of arc " + i + " at " + h);
+            }
+        }
+        // Every one of the old reach points is still there.
+        for (Offset o : MovementReach.withMidpoints(MovementReach.offsets(0.5, 0, 4))) assertTrue(reach.contains(o));
+    }
+
+    @Test
+    void standingStillHasNoArcPoints() {
+        assertEquals(MovementReach.withMidpoints(MovementReach.offsets(0, 0, 4)), MovementReach.reachPoints(0, 0, 4));
+    }
+
+    @Test
+    void groundOpenOnlyOnAnArcBetweenTwoCoveredRingPointsIsCaught() {
+        // Ring radius 2, so neighbouring ring points are 1.53 apart. Every other point is covered (0); only the
+        // arc midpoint is open, and the explosion sits one block beyond it, in line with it.
+        for (double h : new double[] {0, MovementReach.JUMP_HEIGHT}) {
+            for (int i = 0; i < MovementReach.RING_POINTS; i++) {
+                Offset open = arc(i, h, 1.0);
+                Offset beyond = arc(i, h, 1.5);
+                MovementReach.ExposureFunction openOnlyThere = o -> near(o, open) ? 1.0 : 0.0;
+                float withArcs = MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(beyond.dx(), beyond.dy(),
+                    beyond.dz(), MovementReach.reachPoints(0.5, 0, 4)), openOnlyThere, NONE);
+                float without = MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(beyond.dx(), beyond.dy(),
+                    beyond.dz(), MovementReach.withMidpoints(MovementReach.offsets(0.5, 0, 4))), openOnlyThere, NONE);
+                assertEquals(ExplosionMath.rawDamage(1.0, 1.0), withArcs, 1e-4f, "arc " + i + " at " + h);
+                assertTrue(withArcs > without, "the old reach points missed arc " + i + " at " + h);
+            }
+        }
+    }
+
+    @Test
+    void groundOpenOnlyHalfWayToAnArcMidpointIsCaughtToo() {
+        Offset open = arc(3, 0, 0.5);
+        Offset beyond = arc(3, 0, 1.0);
+        float real = MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(beyond.dx(), beyond.dy(), beyond.dz(),
+            MovementReach.reachPoints(0.5, 0, 4)), o -> near(o, open) ? 1.0 : 0.0, NONE);
+        assertEquals(ExplosionMath.rawDamage(1.0, 1.0), real, 1e-4f);
+    }
+
+    @Test
+    void theArcPointsNeverLowerTheResultAndStillPrune() {
+        List<Offset> old = MovementReach.withMidpoints(MovementReach.offsets(0.2, 0.1, 6));
+        List<Offset> all = MovementReach.reachPoints(0.2, 0.1, 6);
+        assertTrue(all.containsAll(old));
+        assertTrue(MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(5, 1, 0, all), o -> 1.0, NONE)
+            >= MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(5, 1, 0, old), o -> 1.0, NONE));
+        List<Offset> asked = new ArrayList<>();
+        MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(5, 1, 0, all), o -> {
+            asked.add(o);
+            return 1.0;
+        }, NONE);
+        assertEquals(1, asked.size());
+        assertTrue(all.size() <= 4 * 2 * (2 + 2 * MovementReach.RING_POINTS), "bounded: " + all.size());
+    }
+
+    @Test
+    void nonFiniteVelocityAndNegativeTicksStillNeverThrow() {
+        assertDoesNotThrow(() -> MovementReach.reachPoints(Double.NaN, Double.POSITIVE_INFINITY, -5));
+    }
 }

@@ -19,17 +19,26 @@ import java.util.Set;
 /**
  * What crystal-aura++ does, tick by tick: Meteor's CrystalAura with its default settings (spec P1, Q1,
  * line numbers from the 1.21.11 sources), plus the self-damage budget (§1, P2-P4) and, with it, the targets'
- * hurt windows ({@link TargetWindows}), and nothing else. Every action it returns is one Meteor would also allow
- * in the same state; the budget only refuses, and never for breaking a crystal we did not place, and a hurt
- * window only holds a placement back, never a break. The one exception (task B0a, spec Amendment
- * 2026-09-28; condition a tightened fix round 1, owner's decision 2026-09-29): a finishing-grade crystal
- * (kills the target or pops his totem, {@link #FINISH_MARGIN}) may go through past {@code max-damage},
- * {@code anti-suicide}, the reserve, the floor or {@code pause-health}, only while a totem of undying backs it
- * (one in hand AND a spare — it may never spend the last one), and at most one such crystal at a time
- * ({@link Reason#FINISHING_BLOW}). Task B0c (spec Amendment 2026-09-29) splits it by {@link FinishKind}: only a
- * KILL (the target holds no totem in either hand and his hands are visible) may pop our totem; a crystal that
- * would only POP his may pass {@code max-damage}, the reserve and {@code pause-health} but must leave the floor
- * after its own damage, so it never pops us, and it does not take the one-at-a-time slot.
+ * hurt windows ({@link TargetWindows}), and nothing else. With the budget off it is Meteor's rules only. With it
+ * on, the budget refuses, never for breaking a crystal we did not place (Meteor's rules only, {@code max-damage}
+ * included), and a hurt window only holds a placement back, never a break. Two things it allows that Meteor's
+ * rules would not:
+ * <ol>
+ *   <li>our OWN crystals are no longer limited by {@code max-damage} (task B1): the reserve decides them, and
+ *   {@code anti-suicide} still applies. A crystal of ours that appears after its placement's wait ran out
+ *   (late, Q2) is foreign for every other rule but still ours for the budget: it counts in C while it may land,
+ *   and breaking it must leave the floor (task C2);</li>
+ *   <li>the finishing blow (task B0a, spec Amendment 2026-09-28; condition a tightened fix round 1, owner's
+ *   decision 2026-09-29): a finishing-grade crystal (kills the target or pops his totem, {@link #FINISH_MARGIN})
+ *   may go through past {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code pause-health},
+ *   only while a totem of undying backs it (one in hand AND a spare: it may never spend the last one), and at most
+ *   one such crystal at a time ({@link Reason#FINISHING_BLOW}). Task B0c (spec Amendment 2026-09-29) splits it by
+ *   {@link FinishKind}: only a KILL (the target holds no totem in either hand and his hands are visible) may pop
+ *   our totem. A crystal that would only POP his must leave the floor after its own damage, so it never pops us,
+ *   and it does not take the one-at-a-time slot; since B1 and the owner's decision of 2026-09-29 it acts only at
+ *   the Aggressive level, where the reserve equals the floor, so what it really adds is going on below
+ *   {@code pause-health} (the ordinary rules already allow every other pop-grade crystal that leaves the floor).</li>
+ * </ol>
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -303,12 +312,13 @@ public final class CrystalBrain {
 
     /**
      * An end crystal was added to the world (lines 731-744): it is ours if one of our placements is pending
-     * at its spot (ownership first, Q2), then fast-break may attack it at once. Fast-break needs damage
+     * at its spot (ownership first, Q2; one whose wait ran out is late: foreign for Meteor's rules, but our own
+     * for the floor, {@link Known#breakView}), then fast-break may attack it at once. Fast-break needs damage
      * above {@code min-damage} (never the face-place minimum), and checks no pause, no timer and not the
      * {@code break} setting; it uses the previous pre-tick's targets. The budget reads {@code health} as
      * it is now (P4). Task B0a: if the ordinary checks refuse it, the finishing-blow override may still
-     * fast-break it (tier 2 only, {@link #fastBreakOverride}; see {@link #breakFinishing} for the same tiers
-     * at a pre-tick's own break phase). Fast-break itself has never read any of the settings-level pauses at
+     * fast-break it (the kill-grade tier, and the pop-grade one at Aggressive, {@link #fastBreakOverride}; see
+     * {@link #breakFinishing} for the same tiers at a pre-tick's own break phase). Fast-break itself has never read any of the settings-level pauses at
      * all, not even {@code pause-health} (pre-existing, Meteor's own design (line 740), unrelated to this
      * task) — so, unlike {@link #breakBest}/{@link #placeGateOpen}, there is no pause-health carve-out to
      * apply here: neither the ordinary nor the override path is ever paused by it.
@@ -317,15 +327,20 @@ public final class CrystalBrain {
      *                 so a change made since the last pre-tick already applies
      * @param health   your health plus absorption now
      * @param hands    your hands now (anti-weakness reads them when attacking, lines 826-835)
+     * @param totems   the totems of undying you carry now, hands included (task C2, final review M4): read fresh,
+     *                 not the last pre-tick's, so a pop since then can never let a finishing blow spend the last one
      */
-    public Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+    public Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands,
+                                         int totems) {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(crystal, "crystal");
         Objects.requireNonNull(hands, "hands");
         Damage.check(health, "health");
+        if (totems < 0) throw new IllegalArgumentException("totems " + totems);
         // Before the first pre-tick Meteor has no targets and nothing pending; the crystal is seen then.
         if (now == NO_TICK || known.containsKey(crystal.id())) return Optional.empty();
         this.settings = settings;
+        this.totems = totems;
         Known k = appeared(crystal, now);
 
         if (!settings.fastBreak() || rotated || attacks >= settings.attackFrequency()) return Optional.empty();
@@ -339,11 +354,16 @@ public final class CrystalBrain {
     }
 
     /**
-     * {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands)} with the last settings given
+     * {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands, int)} with the last settings given
      * to the brain, by a pre-tick or by an earlier {@code crystalAdded} (tests).
      */
     Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
         return crystalAdded(settings, crystal, health, hands);
+    }
+
+    /** The same with the totems the last pre-tick read (tests that do not care about a fresher count). */
+    Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+        return crystalAdded(settings, crystal, health, hands, totems);
     }
 
     /** Meteor's fast-break (lines 740-743, {@code getBreakDamage}), unchanged. */
@@ -352,7 +372,7 @@ public final class CrystalBrain {
         if (!(damage > settings.minDamage())) return Optional.empty();
         Reason reason = Reason.BUDGET_OFF;
         if (settings.selfBudget()) {
-            Verdict v = budget(health).breakAllowed(k.view(now));
+            Verdict v = budget(health).breakAllowed(k.breakView(now));
             if (!v.allowed()) return Optional.empty();
             reason = v.reason();
         }
@@ -395,7 +415,8 @@ public final class CrystalBrain {
      * read since the last pre-tick. It is kept until the next pre-tick, which counts it as read at the last one,
      * whenever it was handed over in between (even during a pre-tick, after its break phase). So the adapter must
      * hand over, before a pre-tick's break phase, every hit read before that pre-tick: one handed over later counts
-     * from that pre-tick, one tick short. If its direct source is one of our crystals, and we measured that
+     * from that pre-tick, one tick short. If its direct source is one of our crystals (one placed in time: a late
+     * own crystal, foreign for ownership, counts as another source), and we measured that
      * crystal's raw damage to the player (when we attacked it, or when it was last seen), the player's window opens
      * at that size ({@link TargetWindows}); anything else (another source, one we do not know, no measurement)
      * closes it. The same hit also judges the target's health trust (task B0a, {@link HealthTrust}), from our
@@ -424,8 +445,9 @@ public final class CrystalBrain {
     /**
      * At the start of a pre-tick, before the crystals are updated: the hits handed over since {@code previous}
      * open or close the targets' windows as read at {@code previous}, and judge each target's health trust from
-     * {@code seenHealth} (still {@code previous}'s values here) against {@code nowHealth}. Before the first
-     * pre-tick nothing is ours, so they are dropped.
+     * {@code seenHealth} (still {@code previous}'s values here) against {@code nowHealth}. Only a hit from one of
+     * our crystals placed in time opens a window at its size; before the first pre-tick nothing is ours, so they
+     * are dropped.
      */
     private void countHits(long previous, Map<String, Double> nowHealth) {
         if (previous != NO_TICK) {
@@ -708,9 +730,11 @@ public final class CrystalBrain {
      * #fastBreakOverride}) — so tightening or loosening condition a further is a one-line change.
      *
      * <p>{@code hands} is a parameter, not always {@link #hands}: fast-break ({@link #crystalAdded}) reads its
-     * hands fresh, its own parameter, the same way Meteor's own anti-weakness does there; {@link #totems} is
-     * only as fresh as the last full pre-tick even then, the same as every other fact fast-break does not
-     * re-measure (e.g. the targets it measures against, {@code fastBreakMeasuresAgainstThePreviousPreTicksTargets}).
+     * hands fresh, its own parameter, the same way Meteor's own anti-weakness does there, and so is {@link #totems}
+     * (task C2, final review M4: {@link #crystalAdded} takes the count the adapter reads at that moment, so a pop
+     * since the last pre-tick can never let it spend the last totem); the other facts fast-break does not
+     * re-measure (e.g. the targets it measures against, {@code fastBreakMeasuresAgainstThePreviousPreTicksTargets})
+     * are still the last pre-tick's.
      */
     private boolean totemBacksIt(CrystalTick.Hands hands) {
         return hands.totemInHand() && totems >= 2;
@@ -721,6 +745,10 @@ public final class CrystalBrain {
      * him) may take us below the reserve only at {@link RiskLevel#AGGRESSIVE}; Safe, Balanced and Custom (counted
      * as not Aggressive, a conservative ruling) leave a pop-grade crystal to the normal budget. The kill-grade
      * override is unchanged at every level.
+     *
+     * <p>What it really adds (final review M1): at Aggressive the reserve equals the floor (2), and the pop rule
+     * asks for the floor too (health - C - own >= 2), so the normal budget already allows every crystal it would;
+     * the only thing left is that it may act at or below {@code pause-health}, where the ordinary rules are paused.
      */
     private boolean popMayGoBelowReserve() {
         return settings.risk() == RiskLevel.AGGRESSIVE;
@@ -797,7 +825,7 @@ public final class CrystalBrain {
             Reason reason = Reason.BUDGET_OFF;
             if (settings.selfBudget()) {
                 if (budget == null) budget = budget(tick.health());
-                Verdict v = budget.breakAllowed(s.item.view(now));
+                Verdict v = budget.breakAllowed(s.item.breakView(now));
                 if (!answered(v)) continue;
                 reason = v.reason();
             }
@@ -829,7 +857,7 @@ public final class CrystalBrain {
             for (Scored<Known> s : finishing) {
                 if (tooHurtful(s.item.seen.selfDamage(), tick.health(), true)) continue;
                 if (budget == null) budget = budget(tick.health());
-                Verdict v = budget.breakAllowed(s.item.view(now));
+                Verdict v = budget.breakAllowed(s.item.breakView(now));
                 if (answered(v)) return attack(s.item, tick.hands(), v.reason());
             }
         }
@@ -921,7 +949,7 @@ public final class CrystalBrain {
             if (k == null || !k.live() || breakDamage(k, tick.health()) <= 0) continue;
             if (!settings.selfBudget()) return false;
             if (gateBudget == null) gateBudget = budget(tick.health());
-            if (gateBudget.breakAllowed(k.view(now)).allowed()) return false;
+            if (gateBudget.breakAllowed(k.breakView(now)).allowed()) return false;
             if (settings.finishingBlow() && overrideWouldTakeItNow(k, tick, gateBudget)) return false;
         }
         return true;
@@ -1156,9 +1184,13 @@ public final class CrystalBrain {
         return new Action(Decision.place(c.pos(), reason), crystalHand(hands), swap);
     }
 
+    /** Whether a placement of ours at this spot is pending or late: placing there again replaces it ({@link #placed}). */
     private boolean pendingAt(long pos) {
         for (Pending p : pending) {
             if (p.pos == pos) return true;
+        }
+        for (Late l : late) {
+            if (l.pos == pos) return true;
         }
         return false;
     }
@@ -1190,6 +1222,11 @@ public final class CrystalBrain {
         List<Double> selfDamages = new ArrayList<>(pending.size());
         for (Pending p : pending) {
             if (replacedSpot == null || p.pos != replacedSpot) selfDamages.add(p.budgetSelfDamage);
+        }
+        // Task C2 (final review I1): a placement whose wait ran out may still land (Q2), so it counts as pending
+        // until its crystal appears or the late window ends, like a pending one; placing again at its spot replaces it.
+        for (Late l : late) {
+            if (replacedSpot == null || l.pos != replacedSpot) selfDamages.add(l.budgetSelfDamage);
         }
         return SelfBudget.of(now, health, views, selfDamages, settings.budgetReserve(), settings.safeSelfDamage());
     }
@@ -1277,7 +1314,7 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, now, p.firstTick, p.finish));
+                late.add(new Late(p.pos, p.budgetSelfDamage, now, p.firstTick, p.finish));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
@@ -1315,7 +1352,7 @@ public final class CrystalBrain {
      * crystal has not yet been confirmed gone: neither appeared (still in {@link #late}, see
      * {@link #overrideAvailable}) nor its own {@link #LATE_OWN_WINDOW} elapsed with nothing appearing.
      */
-    private record Late(long pos, long since, long firstTick, FinishKind finish) {}
+    private record Late(long pos, double budgetSelfDamage, long since, long firstTick, FinishKind finish) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}
@@ -1358,9 +1395,22 @@ public final class CrystalBrain {
 
         /** As the budget sees it now; one removed since the last pre-tick counts as gone from it. */
         CrystalView view(long now) {
+            return view(now, ours);
+        }
+
+        /**
+         * The view a break is judged by (task C2, final review I1): a late own crystal ({@code mine} but not
+         * {@code ours}) is foreign to Meteor's rules and the ownership of everything else, but it is our own
+         * bomb, so the budget must still leave the floor when breaking it.
+         */
+        CrystalView breakView(long now) {
+            return view(now, ours || mine);
+        }
+
+        private CrystalView view(long now, boolean own) {
             long removed = removedTick != CrystalView.NEVER ? removedTick : reportedGone ? now : CrystalView.NEVER;
             return new CrystalView(seen.id(), seen.pos(), seen.targetDamage(), seen.selfDamage(), seen.budgetSelfDamage(),
-                seen.distance(), seen.inBreakRange(), ours, attempts, attackedTick, removed);
+                seen.distance(), seen.inBreakRange(), own, attempts, attackedTick, removed);
         }
     }
 }

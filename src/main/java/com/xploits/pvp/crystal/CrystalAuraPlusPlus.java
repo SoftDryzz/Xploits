@@ -112,8 +112,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   hands them to {@link CrystalBrain#placePhase} with the health read during the scan;</li>
  *   <li>each action through {@code Rotations.rotate(..., 50, callback)} with {@code rotate} on, at once
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
- *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
- *   in-flight ledger;</li>
+ *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break (with the
+ *   health, hands and totem count read at that moment) and the in-flight ledger;</li>
  *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
  *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
  *   phase, so they count as read at the previous pre-tick;</li>
@@ -686,7 +686,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
         CrystalSeen seen = measure(crystal, previous);
         // Meteor reads its settings live here (lines 740-742): a change since the pre-tick already applies.
-        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal), totems()).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
@@ -903,8 +903,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * actually explodes (task R3-16: judged only from where we stand right now, this budget still undershoots
      * the reserve whenever we are the one moving). Exposure for where we stand right now is vanilla's raycast
      * ({@code ExplosionImpl.calculateReceivedDamage}, in our own, the client's, world); for the extra
-     * positions {@link MovementReach#worstRawDamage} reads the worst exposure an explosion can have instead of
-     * raycasting each one (task R3-12: raycasts are expensive). The reductions are Meteor's, with the
+     * positions {@link MovementReach#worstRawDamage(java.util.List, MovementReach.ExposureFunction, float)} raycasts
+     * their real exposure ({@link ExposureAt}), worst ceiling first and only as far as one could still beat the
+     * best value known (task B2), reading 1.0 for any point the raycast budget cannot pay for. The reductions are Meteor's, with the
      * explosion source it uses (lines 97, 271-290), applied once to the worst raw damage found, never
      * per-position. Distance from our feet with no predicted movement, as Meteor measures it ({@link
      * #PREDICT_MOVEMENT} is off) for where we stand right now; {@link #velocityThisTick} for the rest. Only the
@@ -938,8 +939,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // could still beat what is already known: `floor` is the current position's own real value. A point the
         // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
         List<MovementReach.Ranked> ranked = MovementReach.rankedByWorstRaw(explosion.x - feet.x, explosion.y - feet.y,
-            explosion.z - feet.z, MovementReach.withMidpoints(MovementReach.offsets(velocityThisTick.x, velocityThisTick.z,
-                brain.landingTicksBound())));
+            explosion.z - feet.z, MovementReach.reachPoints(velocityThisTick.x, velocityThisTick.z,
+                brain.landingTicksBound()));
         ClientPlayerEntity p = mc.player;
         float worst = MovementReach.worstRawDamage(ranked,
             o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure

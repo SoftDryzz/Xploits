@@ -28,11 +28,14 @@ import java.util.Set;
  * up to {@code 2 * (2 + }{@value #RING_POINTS}{@code )} points in total, still bounded and still cheap (see
  * below), never a per-height multiplication of anything else.
  *
- * <p>Kept deliberately small (task R3-12: an exposure raycast is expensive) and, more importantly, cheap to
- * check at all: {@link #worstRawDamage} never raycasts any of these extra points. It reads them at the worst
- * exposure an explosion can ever have (1.0) instead, which can only ever read a self damage at or above the
- * true one for that point, never below — the one real raycast a caller still needs (for wherever you stand
- * right now, the one point whose real exposure is worth knowing) is its own, unaffected by this class.
+ * <p>Kept small (task R3-12: an exposure raycast is expensive) and cheap to check.
+ * {@link #worstRawDamage(double, double, double, double, double, long)} reads every point at the worst exposure an
+ * explosion can ever have (1.0), which can only read a self damage at or above the true one. Since task B2 the
+ * exact worst case reads the real exposure at these points by branch and bound ({@link #rankedByWorstRaw},
+ * {@link #worstRawDamage(List, ExposureFunction, float)}): ranked by that ceiling, the search stops at the first
+ * point that cannot beat the best real value found, so only a few raycasts are spent. Task C2 added the ring's arcs
+ * and every point's halfway points ({@link #reachPoints}), since cover at two neighbouring points can hide open
+ * ground between them.
  *
  * <p><b>Total: never throws on any {@code double}/{@code long} input</b> (task R3-16 fix round 1). A
  * non-finite velocity is treated as no velocity (0), and a negative {@code landingTicks} as 0 pre-ticks away —
@@ -80,6 +83,44 @@ public final class MovementReach {
             }
         }
         return List.copyOf(points);
+    }
+
+    /**
+     * The ring's arc midpoints (task C2, final review I3): with a nonzero speed, {@value #RING_POINTS} more points at
+     * the ring's radius, each half way (in angle) between two neighbouring ring points, at both {@link #HEIGHTS}.
+     * Neighbouring ring points are about 0.77 of the radius apart, so at real exposure cover at both could hide
+     * open ground on the arc between them, at the same distance from you, and the worst case would be read too low.
+     * With these, no point of the ring is farther than a sixteenth of a turn (0.39 of the radius) from a sampled
+     * one; {@link #withMidpoints} then adds their radial midpoints. Empty while standing still. Never throws, same
+     * input contract as {@link #offsets}.
+     */
+    public static List<Offset> arcMidpoints(double vx, double vz, long landingTicks) {
+        double safeVx = Double.isFinite(vx) ? vx : 0;
+        double safeVz = Double.isFinite(vz) ? vz : 0;
+        double radius = Math.hypot(safeVx, safeVz) * Math.max(0, landingTicks);
+        if (!(radius > 0)) return List.of();
+        List<Offset> points = new ArrayList<>();
+        for (double h : HEIGHTS) {
+            for (int i = 0; i < RING_POINTS; i++) {
+                double angle = 2 * Math.PI * (i + 0.5) / RING_POINTS;
+                points.add(new Offset(radius * Math.cos(angle), h, radius * Math.sin(angle)));
+            }
+        }
+        return List.copyOf(points);
+    }
+
+    /**
+     * Every point the exact worst case reads at real exposure (task C2): {@link #offsets} and the ring's {@link
+     * #arcMidpoints}, each with its halfway points ({@link #withMidpoints}). Up to {@code 4 * 2 * (2 + 2 *
+     * RING_POINTS)} = {@code 144} points, which costs almost nothing: they are ranked by their exposure-1.0 raw
+     * damage and the search stops at the first whose ceiling cannot beat the best real value found, so the raycasts
+     * spent stay a handful. (The other way to close the gap, reading the ring at exposure 1.0 beyond one block,
+     * would throw away the cover B2 measures, the very shortfall it fixed, for every moving player.)
+     */
+    public static List<Offset> reachPoints(double vx, double vz, long landingTicks) {
+        List<Offset> base = new ArrayList<>(offsets(vx, vz, landingTicks));
+        base.addAll(arcMidpoints(vx, vz, landingTicks));
+        return withMidpoints(base);
     }
 
     /**
