@@ -319,6 +319,8 @@ class MeteorParityPropertyTest {
                 .pauseHealth(oneOf(0, 5, 10, quarters(36)))
                 .risk(RiskLevel.values()[r.nextInt(RiskLevel.values().length)])
                 .selfBudget(false)
+                // The finishing blow lives behind the budget: with it off the setting must change nothing (task C2).
+                .finishingBlow(r.nextBoolean())
                 .reserve(2 + quarters(18))
                 .safeSelfDamage(quarters(2))
                 .build();
