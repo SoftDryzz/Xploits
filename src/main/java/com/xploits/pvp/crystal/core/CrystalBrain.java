@@ -19,17 +19,26 @@ import java.util.Set;
 /**
  * What crystal-aura++ does, tick by tick: Meteor's CrystalAura with its default settings (spec P1, Q1,
  * line numbers from the 1.21.11 sources), plus the self-damage budget (§1, P2-P4) and, with it, the targets'
- * hurt windows ({@link TargetWindows}), and nothing else. Every action it returns is one Meteor would also allow
- * in the same state; the budget only refuses, and never for breaking a crystal we did not place, and a hurt
- * window only holds a placement back, never a break. The one exception (task B0a, spec Amendment
- * 2026-09-28; condition a tightened fix round 1, owner's decision 2026-09-29): a finishing-grade crystal
- * (kills the target or pops his totem, {@link #FINISH_MARGIN}) may go through past {@code max-damage},
- * {@code anti-suicide}, the reserve, the floor or {@code pause-health}, only while a totem of undying backs it
- * (one in hand AND a spare — it may never spend the last one), and at most one such crystal at a time
- * ({@link Reason#FINISHING_BLOW}). Task B0c (spec Amendment 2026-09-29) splits it by {@link FinishKind}: only a
- * KILL (the target holds no totem in either hand and his hands are visible) may pop our totem; a crystal that
- * would only POP his may pass {@code max-damage}, the reserve and {@code pause-health} but must leave the floor
- * after its own damage, so it never pops us, and it does not take the one-at-a-time slot.
+ * hurt windows ({@link TargetWindows}), and nothing else. With the budget off it is Meteor's rules only. With it
+ * on, the budget refuses, never for breaking a crystal we did not place (Meteor's rules only, {@code max-damage}
+ * included), and a hurt window only holds a placement back, never a break. Two things it allows that Meteor's
+ * rules would not:
+ * <ol>
+ *   <li>our OWN crystals are no longer limited by {@code max-damage} (task B1): the reserve decides them, and
+ *   {@code anti-suicide} still applies. A crystal of ours that appears after its placement's wait ran out
+ *   (late, Q2) is foreign for every other rule but still ours for the budget: it counts in C while it may land,
+ *   and breaking it must leave the floor (task C2);</li>
+ *   <li>the finishing blow (task B0a, spec Amendment 2026-09-28; condition a tightened fix round 1, owner's
+ *   decision 2026-09-29): a finishing-grade crystal (kills the target or pops his totem, {@link #FINISH_MARGIN})
+ *   may go through past {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code pause-health},
+ *   only while a totem of undying backs it (one in hand AND a spare: it may never spend the last one), and at most
+ *   one such crystal at a time ({@link Reason#FINISHING_BLOW}). Task B0c (spec Amendment 2026-09-29) splits it by
+ *   {@link FinishKind}: only a KILL (the target holds no totem in either hand and his hands are visible) may pop
+ *   our totem. A crystal that would only POP his must leave the floor after its own damage, so it never pops us,
+ *   and it does not take the one-at-a-time slot; since B1 and the owner's decision of 2026-09-29 it acts only at
+ *   the Aggressive level, where the reserve equals the floor, so what it really adds is going on below
+ *   {@code pause-health} (the ordinary rules already allow every other pop-grade crystal that leaves the floor).</li>
+ * </ol>
  *
  * <p>One brain per activation (Meteor clears its state on activation and deactivation). The adapter
  * calls, in the game's order:
@@ -303,12 +312,13 @@ public final class CrystalBrain {
 
     /**
      * An end crystal was added to the world (lines 731-744): it is ours if one of our placements is pending
-     * at its spot (ownership first, Q2), then fast-break may attack it at once. Fast-break needs damage
+     * at its spot (ownership first, Q2; one whose wait ran out is late: foreign for Meteor's rules, but our own
+     * for the floor, {@link Known#breakView}), then fast-break may attack it at once. Fast-break needs damage
      * above {@code min-damage} (never the face-place minimum), and checks no pause, no timer and not the
      * {@code break} setting; it uses the previous pre-tick's targets. The budget reads {@code health} as
      * it is now (P4). Task B0a: if the ordinary checks refuse it, the finishing-blow override may still
-     * fast-break it (tier 2 only, {@link #fastBreakOverride}; see {@link #breakFinishing} for the same tiers
-     * at a pre-tick's own break phase). Fast-break itself has never read any of the settings-level pauses at
+     * fast-break it (the kill-grade tier, and the pop-grade one at Aggressive, {@link #fastBreakOverride}; see
+     * {@link #breakFinishing} for the same tiers at a pre-tick's own break phase). Fast-break itself has never read any of the settings-level pauses at
      * all, not even {@code pause-health} (pre-existing, Meteor's own design (line 740), unrelated to this
      * task) — so, unlike {@link #breakBest}/{@link #placeGateOpen}, there is no pause-health carve-out to
      * apply here: neither the ordinary nor the override path is ever paused by it.
@@ -405,7 +415,8 @@ public final class CrystalBrain {
      * read since the last pre-tick. It is kept until the next pre-tick, which counts it as read at the last one,
      * whenever it was handed over in between (even during a pre-tick, after its break phase). So the adapter must
      * hand over, before a pre-tick's break phase, every hit read before that pre-tick: one handed over later counts
-     * from that pre-tick, one tick short. If its direct source is one of our crystals, and we measured that
+     * from that pre-tick, one tick short. If its direct source is one of our crystals (one placed in time: a late
+     * own crystal, foreign for ownership, counts as another source), and we measured that
      * crystal's raw damage to the player (when we attacked it, or when it was last seen), the player's window opens
      * at that size ({@link TargetWindows}); anything else (another source, one we do not know, no measurement)
      * closes it. The same hit also judges the target's health trust (task B0a, {@link HealthTrust}), from our
@@ -434,8 +445,9 @@ public final class CrystalBrain {
     /**
      * At the start of a pre-tick, before the crystals are updated: the hits handed over since {@code previous}
      * open or close the targets' windows as read at {@code previous}, and judge each target's health trust from
-     * {@code seenHealth} (still {@code previous}'s values here) against {@code nowHealth}. Before the first
-     * pre-tick nothing is ours, so they are dropped.
+     * {@code seenHealth} (still {@code previous}'s values here) against {@code nowHealth}. Only a hit from one of
+     * our crystals placed in time opens a window at its size; before the first pre-tick nothing is ours, so they
+     * are dropped.
      */
     private void countHits(long previous, Map<String, Double> nowHealth) {
         if (previous != NO_TICK) {
@@ -733,6 +745,10 @@ public final class CrystalBrain {
      * him) may take us below the reserve only at {@link RiskLevel#AGGRESSIVE}; Safe, Balanced and Custom (counted
      * as not Aggressive, a conservative ruling) leave a pop-grade crystal to the normal budget. The kill-grade
      * override is unchanged at every level.
+     *
+     * <p>What it really adds (final review M1): at Aggressive the reserve equals the floor (2), and the pop rule
+     * asks for the floor too (health - C - own >= 2), so the normal budget already allows every crystal it would;
+     * the only thing left is that it may act at or below {@code pause-health}, where the ordinary rules are paused.
      */
     private boolean popMayGoBelowReserve() {
         return settings.risk() == RiskLevel.AGGRESSIVE;

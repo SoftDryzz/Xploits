@@ -200,7 +200,7 @@ class ScenarioSelectionTest {
      * {@code Scenarios.java} or {@code CrystalAuraMeasure.java}.
      */
     private static final String RISK_LEVEL_FINGERPRINT =
-        "70a251df43ab0daa93fcd26608ca55a7ecf657429a8226f325c1be372f21f4df";
+        "31c36cf7345641323a27a7d4622844707d4a1e968ea81b9e4e453c7d25adad65";
 
     @Test
     void theMirrorFollowsScenarios() throws IOException, NoSuchAlgorithmException {

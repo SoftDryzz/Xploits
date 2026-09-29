@@ -112,8 +112,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   hands them to {@link CrystalBrain#placePhase} with the health read during the scan;</li>
  *   <li>each action through {@code Rotations.rotate(..., 50, callback)} with {@code rotate} on, at once
  *   otherwise; {@link CrystalBrain#attackSent()} and {@link CrystalBrain#placed} when the packet goes out;</li>
- *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break and the
- *   in-flight ledger;</li>
+ *   <li>{@code EntityAddedEvent} / {@code EntityRemovedEvent} for end crystals: ownership, fast-break (with the
+ *   health, hands and totem count read at that moment) and the in-flight ledger;</li>
  *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
  *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
  *   phase, so they count as read at the previous pre-tick;</li>
@@ -903,8 +903,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * actually explodes (task R3-16: judged only from where we stand right now, this budget still undershoots
      * the reserve whenever we are the one moving). Exposure for where we stand right now is vanilla's raycast
      * ({@code ExplosionImpl.calculateReceivedDamage}, in our own, the client's, world); for the extra
-     * positions {@link MovementReach#worstRawDamage} reads the worst exposure an explosion can have instead of
-     * raycasting each one (task R3-12: raycasts are expensive). The reductions are Meteor's, with the
+     * positions {@link MovementReach#worstRawDamage(java.util.List, MovementReach.ExposureFunction, float)} raycasts
+     * their real exposure ({@link ExposureAt}), worst ceiling first and only as far as one could still beat the
+     * best value known (task B2), reading 1.0 for any point the raycast budget cannot pay for. The reductions are Meteor's, with the
      * explosion source it uses (lines 97, 271-290), applied once to the worst raw damage found, never
      * per-position. Distance from our feet with no predicted movement, as Meteor measures it ({@link
      * #PREDICT_MOVEMENT} is off) for where we stand right now; {@link #velocityThisTick} for the rest. Only the

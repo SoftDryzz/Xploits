@@ -28,11 +28,14 @@ import java.util.Set;
  * up to {@code 2 * (2 + }{@value #RING_POINTS}{@code )} points in total, still bounded and still cheap (see
  * below), never a per-height multiplication of anything else.
  *
- * <p>Kept deliberately small (task R3-12: an exposure raycast is expensive) and, more importantly, cheap to
- * check at all: {@link #worstRawDamage} never raycasts any of these extra points. It reads them at the worst
- * exposure an explosion can ever have (1.0) instead, which can only ever read a self damage at or above the
- * true one for that point, never below — the one real raycast a caller still needs (for wherever you stand
- * right now, the one point whose real exposure is worth knowing) is its own, unaffected by this class.
+ * <p>Kept small (task R3-12: an exposure raycast is expensive) and cheap to check.
+ * {@link #worstRawDamage(double, double, double, double, double, long)} reads every point at the worst exposure an
+ * explosion can ever have (1.0), which can only read a self damage at or above the true one. Since task B2 the
+ * exact worst case reads the real exposure at these points by branch and bound ({@link #rankedByWorstRaw},
+ * {@link #worstRawDamage(List, ExposureFunction, float)}): ranked by that ceiling, the search stops at the first
+ * point that cannot beat the best real value found, so only a few raycasts are spent. Task C2 added the ring's arcs
+ * and every point's halfway points ({@link #reachPoints}), since cover at two neighbouring points can hide open
+ * ground between them.
  *
  * <p><b>Total: never throws on any {@code double}/{@code long} input</b> (task R3-16 fix round 1). A
  * non-finite velocity is treated as no velocity (0), and a negative {@code landingTicks} as 0 pre-ticks away —
