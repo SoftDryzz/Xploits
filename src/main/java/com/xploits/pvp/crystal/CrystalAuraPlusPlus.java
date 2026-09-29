@@ -588,6 +588,14 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return brain.finishingCrystalKinds();
     }
 
+    /**
+     * The ids among {@link #finishingCrystalIds} that we attacked ourselves (task T2, read-only, for the bench: a
+     * finishing blow is one of these going off, whether or not it hurt us).
+     */
+    public Set<Integer> finishingCrystalsAttacked() {
+        return brain.finishingCrystalsAttacked();
+    }
+
     /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */
     public int trustedTargets() {
         return brain.trustedTargetCount();

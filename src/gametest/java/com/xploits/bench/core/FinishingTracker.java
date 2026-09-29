@@ -32,12 +32,21 @@ import java.util.Set;
  * </ol>
  * Pure: {@link #observe} takes the tick's facts, nothing else. A crystal's kind is the highest it was ever
  * seen with (a crystal seen KILL stays KILL).
+ *
+ * <p>Offense and safety apart (task T2): a candidate is a marked crystal that WE attacked and that left the world
+ * ({@link Resolution#offense}: {@code finishing_blows}, whether or not it hurt us); a <i>blow</i>, or hit
+ * ({@link Resolution#blows}: {@code finishing_hits}), is a candidate the recorder has an event for. Every safety
+ * measure reads the hits only. An event is taken for a candidate only when it is not later than
+ * {@value #LATE_TOLERANCE} tick after it (an ordinary hit landing 2 ticks after a crystal that did not hurt us
+ * must not be borrowed; the damage packet does not trail the removal by more).
  */
 public final class FinishingTracker {
     /** Ticks, the explosion's own included, over which the lowest health is taken. */
     public static final int WINDOW = 3;
     /** How far apart, in ticks, a candidate and the recorder's event for it may be read. */
     public static final int TICK_TOLERANCE = 3;
+    /** How many ticks after the candidate the recorder's event may be read (task T2, minor of the B0b re-review). */
+    public static final int LATE_TOLERANCE = 1;
     /** How far apart the health before a candidate and the event's {@code before} may be. */
     public static final double HEALTH_TOLERANCE = 0.05;
     /** The lowest health plus absorption a pop-grade finishing blow may leave us at. */
@@ -64,8 +73,19 @@ public final class FinishingTracker {
         }
     }
 
-    /** The blows that have an event, and the indexes (in the list given to {@link #resolve}) to leave out. */
-    public record Resolution(List<Blow> blows, Set<Integer> excluded, int ambiguous) {
+    /** The blows that have an event (the hits), the offense (all candidates), and the indexes (in the list given to {@link #resolve}) to leave out. */
+    public record Resolution(List<Blow> blows, Set<Integer> excluded, int ambiguous, List<Blow> offense) {
+        /** Every marked crystal of ours that we attacked and that went off: {@code finishing_blows}. */
+        public int offenseCount() {
+            return offense.size();
+        }
+
+        /** The kill-grade ones among {@link #offense}. */
+        public int offenseKills() {
+            return (int) offense.stream().filter(Blow::kill).count();
+        }
+
+        /** {@code finishing_hits}. */
         public int count() {
             return blows.size();
         }
@@ -143,6 +163,15 @@ public final class FinishingTracker {
      * @param tick    the recorder's clock now (the one its damage events carry)
      */
     public void observe(Map<Integer, FinishKind> marked, Set<Integer> present, double health, int totems, long tick) {
+        observe(marked, present, marked.keySet(), health, totems, tick);
+    }
+
+    /**
+     * The same, with {@code attacked}: which of the marked ids we attacked ourselves
+     * ({@code CrystalAuraPlusPlus#finishingCrystalsAttacked}). Only one of those leaving the world is a candidate.
+     */
+    public void observe(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, double health,
+                        int totems, long tick) {
         for (Candidate c : open) {
             c.min = Math.min(c.min, health);
             c.minTotems = Math.min(c.minTotems, totems);
@@ -155,12 +184,12 @@ public final class FinishingTracker {
             if (was != FinishKind.KILL) kinds.put(id, e.getValue());
             if (!first) continue;
             if (present.contains(id)) following.add(id);
-            else explode(id, health, tick, totems);
+            else if (attacked.contains(id)) explode(id, health, tick, totems);
         }
         for (Integer id : new ArrayList<>(following)) {
             if (present.contains(id)) continue;
             following.remove(id);
-            explode(id, health, tick, totems);
+            if (attacked.contains(id)) explode(id, health, tick, totems);
         }
         open.removeIf(c -> {
             if (c.left > 0) return false;
@@ -202,14 +231,16 @@ public final class FinishingTracker {
         List<Blow> blows = new ArrayList<>();
         Set<Integer> excluded = new HashSet<>();
         int ambiguous = 0;
+        List<Blow> offense = new ArrayList<>();
         for (Candidate c : candidates()) {
+            offense.add(c.blow());
             int best = -1;
             long bestGap = Long.MAX_VALUE;
             for (int i = 0; i < damage.size(); i++) {
                 DamageEvent e = damage.get(i);
                 if (taken[i] || e.by() != AttackerKind.SELF || !(e.before() > e.after())) continue;
                 long gap = Math.abs(e.tick() - c.tick);
-                if (gap > TICK_TOLERANCE || Math.abs(e.before() - c.before) > HEALTH_TOLERANCE) continue;
+                if (gap > TICK_TOLERANCE || e.tick() - c.tick > LATE_TOLERANCE || Math.abs(e.before() - c.before) > HEALTH_TOLERANCE) continue;
                 if (gap < bestGap) {
                     best = i;
                     bestGap = gap;
@@ -226,7 +257,7 @@ public final class FinishingTracker {
             if (together) ambiguous++;
             else excluded.add(best);
         }
-        return new Resolution(List.copyOf(blows), Set.copyOf(excluded), ambiguous);
+        return new Resolution(List.copyOf(blows), Set.copyOf(excluded), ambiguous, List.copyOf(offense));
     }
 
     /**
@@ -247,5 +278,28 @@ public final class FinishingTracker {
             any = true;
         }
         return any ? OptionalDouble.of(min) : OptionalDouble.empty();
+    }
+
+    /**
+     * The lowest {@code after} among the events that are not finishing hits, for the ordinary minimum (S1-S3).
+     * The ledger writes 0 after a hit that popped or killed: such an ordinary hit counts as 0 when it falls inside
+     * a blow's window (the samples there are skipped, so it would vanish), and is otherwise left to the samples.
+     */
+    public static OptionalDouble ordinaryEventMin(List<DamageEvent> damage, Resolution resolution) {
+        double min = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < damage.size(); i++) {
+            if (resolution.excluded().contains(i)) continue;
+            DamageEvent e = damage.get(i);
+            if (!(e.after() > 0) && !insideAWindow(e.tick(), resolution.blows())) continue;
+            min = Math.min(min, e.after());
+        }
+        return Double.isFinite(min) ? OptionalDouble.of(min) : OptionalDouble.empty();
+    }
+
+    private static boolean insideAWindow(long tick, List<Blow> blows) {
+        for (Blow b : blows) {
+            if (tick >= b.tick() && tick < b.tick() + WINDOW) return true;
+        }
+        return false;
     }
 }

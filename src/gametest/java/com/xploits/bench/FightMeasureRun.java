@@ -82,6 +82,8 @@ final class FightMeasureRun {
     private int finishingEventsExcluded;
     private int finishingAmbiguous;
     private int finishingBlows;
+    /** Finishing blows that hurt us (task T2). */
+    private int finishingHits;
     /** Whether this run had a near-death moment ({@link #play(int, int, Moment)}). */
     private boolean nearDeath;
     /** Crystal placement packets sent from T0 to the close; set once, at {@link #finish}. */
@@ -271,14 +273,21 @@ final class FightMeasureRun {
 
     /** Task B0b, log only: what the finishing-blow bookkeeping saw. */
     void logFinishing(String scenario, int run) {
-        LOG.info("[bench] {} run {}: {} finishing blow(s), {} recorder event(s) taken out of "
+        LOG.info("[bench] {} run {}: {} finishing blow(s), {} of them hit us, {} recorder event(s) taken out of "
             + "min_health_after_own_hit ({} blow(s) shared their tick with another own hit and hid none); the target was trusted on {} pre-tick(s), first {} tick(s) after T0; died "
-            + "holding a totem: {} (log only, not a metric)", scenario, run, finishingBlows,
+            + "holding a totem: {} (log only, not a metric)", scenario, run, finishingBlows, finishingHits,
             finishingEventsExcluded, finishingAmbiguous, watch.trustedTicks(), watch.firstTrustedTick(), diedWithTotem);
     }
 
     private Outcome finish(End end) {
         List<FightRecord> records = bench.finish();
+        if (watch.active()) {
+            // The fight ends on the tick the server sees the target die; the client removes the crystal that did it
+            // a tick later, in the tick finish() just waited: read it, or the blow that ended the fight goes uncounted.
+            double health = bench.fromClient(client -> client.player == null || client.player.isDead() ? 0
+                : client.player.getHealth() + client.player.getAbsorptionAmount());
+            watch.observe(health);
+        }
         for (FightRecord record : records) {
             if (record.damageEventsDropped() > 0) {
                 throw new BenchException("a record dropped " + record.damageEventsDropped() + " damage events");
@@ -306,7 +315,8 @@ final class FightMeasureRun {
         var resolution = watch.resolve(records);
         finishingEventsExcluded = resolution.excluded().size();
         finishingAmbiguous = resolution.ambiguous();
-        finishingBlows = resolution.count();
+        finishingBlows = resolution.offenseCount();
+        finishingHits = resolution.count();
         OptionalDouble minAfterOwnHit = MinHealthAfterOwnHit.of(damage, resolution.excluded());
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
 

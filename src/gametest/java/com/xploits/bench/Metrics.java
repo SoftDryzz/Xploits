@@ -39,7 +39,7 @@ public final class Metrics {
     public static final String MIN_HEALTH_AFTER_OWN_HIT = "min_health_after_own_hit";
 
     // Task B0b: the finishing blow. Each is only in a run where it happened (absent otherwise).
-    /** Override crystals that exploded (crystal-aura++'s finishing blow). */
+    /** Override crystals we attacked that exploded (crystal-aura++'s finishing blow), whether or not they hurt us. */
     public static final String FINISHING_BLOWS = "finishing_blows";
     /** The lowest health plus absorption after a finishing hit; above 0 means we were still alive. */
     public static final String MIN_HEALTH_AFTER_FINISHING_HIT = "min_health_after_finishing_hit";
@@ -49,7 +49,13 @@ public final class Metrics {
     public static final String FINISHING_KILL_BLOWS = "finishing_kill_blows";
     /** Finishing blows against a target holding a totem, pop-grade by the bench's reading (crystal-aura++). */
     public static final String FINISHING_POP_BLOWS = "finishing_pop_blows";
-    /** Finishing blows that cost us a totem (crystal-aura++). */
+    /** Finishing blows that HURT us, matched to one of our own damage events (task T2: the safety count; blows are the offense). */
+    public static final String FINISHING_HITS = "finishing_hits";
+    /** The kill-grade ones among {@link #FINISHING_HITS}. */
+    public static final String FINISHING_KILL_HITS = "finishing_kill_hits";
+    /** The pop-grade ones among {@link #FINISHING_HITS}. */
+    public static final String FINISHING_POP_HITS = "finishing_pop_hits";
+    /** Finishing hits that cost us a totem (crystal-aura++). */
     public static final String FINISHING_POPS = "finishing_pops";
     /** Finishing blows against a target holding a totem that left us below 2 or popped us (pop-grade rule). */
     public static final String FINISHING_POP_GRADE_VIOLATIONS = "finishing_pop_grade_violations";
@@ -101,6 +107,9 @@ public final class Metrics {
         new Definition(TOTEMS_AT_FINISHING_HIT_MIN, Better.HIGHER, 1, false),
         new Definition(FINISHING_KILL_BLOWS, Better.HIGHER, 1, false),
         new Definition(FINISHING_POP_BLOWS, Better.HIGHER, 1, false),
+        new Definition(FINISHING_HITS, Better.LOWER, 0, false),
+        new Definition(FINISHING_KILL_HITS, Better.LOWER, 0, false),
+        new Definition(FINISHING_POP_HITS, Better.LOWER, 0, false),
         new Definition(FINISHING_POPS, Better.LOWER, 0, false),
         new Definition(FINISHING_POP_GRADE_VIOLATIONS, Better.LOWER, 0, false),
         new Definition(DIED_WITH_TOTEM, Better.LOWER, 0, false),

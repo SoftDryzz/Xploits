@@ -38,7 +38,7 @@ final class FinishingWatch {
         this.plusPlus = plusPlus;
     }
 
-    private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, int totems, int trusted, long recorderTick) {
+    private record Read(Map<Integer, FinishKind> marked, Set<Integer> present, Set<Integer> attacked, int totems, int trusted, long recorderTick) {
     }
 
     private int lastTrusted;
@@ -47,21 +47,23 @@ final class FinishingWatch {
     void observe(double health) {
         Read read = bench.fromClient(client -> {
             Map<Integer, FinishKind> marked = Map.of();
+            Set<Integer> attacked = Set.of();
             Set<Integer> present = new HashSet<>();
             int trusted = 0;
             if (plusPlus) {
                 CrystalAuraPlusPlus module = Modules.get().get(CrystalAuraPlusPlus.class);
                 marked = module.finishingCrystalKinds();
+                attacked = module.finishingCrystalsAttacked();
                 for (Integer id : marked.keySet()) {
                     if (client.world != null && client.world.getEntityById(id) != null) present.add(id);
                 }
                 trusted = module.trustedTargets();
             }
-            return new Read(marked, present, client.player == null ? 0 : Arena.totemsCarried(client.player), trusted,
+            return new Read(marked, present, attacked, client.player == null ? 0 : Arena.totemsCarried(client.player), trusted,
                 plusPlus ? recorderTick(Modules.get().get(FightRecorder.class)) : 0);
         });
         if (plusPlus) {
-            tracker.observe(read.marked(), read.present(), health, read.totems(), read.recorderTick());
+            tracker.observe(read.marked(), read.present(), read.attacked(), health, read.totems(), read.recorderTick());
             lastTrusted = read.trusted();
             if (read.trusted() > 0) {
                 trustedTicks++;
@@ -132,10 +134,7 @@ final class FinishingWatch {
         List<DamageEvent> damage = events(records);
         FinishingTracker.Resolution r = tracker.resolve(damage);
         double min = tracker.minHealthOutside(r.blows()).orElse(Double.POSITIVE_INFINITY);
-        for (int i = 0; i < damage.size(); i++) {
-            if (r.excluded().contains(i) || !(damage.get(i).after() > 0)) continue;
-            min = Math.min(min, damage.get(i).after());
-        }
+        min = Math.min(min, FinishingTracker.ordinaryEventMin(damage, r).orElse(Double.POSITIVE_INFINITY));
         return Double.isFinite(min) ? min : raw;
     }
 
@@ -145,12 +144,18 @@ final class FinishingWatch {
      * module marked kill-grade and pop-grade, how many cost us a totem, and how many broke the pop-grade rule.
      */
     void put(Metrics metrics, FinishingTracker.Resolution r) {
+        if (r.offenseCount() == 0) return;
+        // Offense (task T2): our marked crystals we attacked that went off, hurt us or not.
+        metrics.put(Metrics.FINISHING_BLOWS, r.offenseCount());
+        metrics.put(Metrics.FINISHING_KILL_BLOWS, r.offenseKills());
+        metrics.put(Metrics.FINISHING_POP_BLOWS, r.offenseCount() - r.offenseKills());
+        // Safety: the ones that hurt us; everything the safety rules read is over those alone.
+        metrics.put(Metrics.FINISHING_HITS, r.count());
+        metrics.put(Metrics.FINISHING_KILL_HITS, r.kills());
+        metrics.put(Metrics.FINISHING_POP_HITS, r.popBlows());
         if (r.count() == 0) return;
-        metrics.put(Metrics.FINISHING_BLOWS, r.count());
         metrics.put(Metrics.MIN_HEALTH_AFTER_FINISHING_HIT, r.minHealthAfter().orElseThrow());
         metrics.put(Metrics.TOTEMS_AT_FINISHING_HIT_MIN, r.minTotems().orElseThrow());
-        metrics.put(Metrics.FINISHING_KILL_BLOWS, r.kills());
-        metrics.put(Metrics.FINISHING_POP_BLOWS, r.popBlows());
         metrics.put(Metrics.FINISHING_POPS, r.pops());
         metrics.put(Metrics.FINISHING_POP_GRADE_VIOLATIONS, r.popGradeViolations());
     }

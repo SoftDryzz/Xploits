@@ -247,4 +247,88 @@ class FinishingTrackerTest {
         assertEquals(1, r.pops());
         assertEquals(0, r.popGradeViolations());
     }
+
+    // --- Offense and safety apart (task T2) --------------------------------------------------------------
+
+    /** Crystal {@code id} stands on tick 2 and is gone from tick 3; only the ids in {@code attacked} were attacked by us. */
+    private static FinishingTracker goneOn3(int id, Set<Integer> attacked, double[] health) {
+        FinishingTracker t = new FinishingTracker();
+        t.observe(NONE, GONE, GONE, health[0], 4, 1);
+        t.observe(kill(id), Set.of(id), attacked, health[1], 4, 2);
+        for (int i = 2; i < health.length; i++) t.observe(kill(id), GONE, attacked, health[i], 4, 1 + i);
+        return t;
+    }
+
+    @Test
+    void onlyAMarkedCrystalWeAttackedIsOffense() {
+        double[] health = {20, 20, 20, 20, 20};
+        assertEquals(1, goneOn3(7, Set.of(7), health).resolve(List.of()).offenseCount());
+        assertEquals(0, goneOn3(7, Set.of(), health).resolve(List.of()).offenseCount(), "never attacked by us");
+    }
+
+    @Test
+    void aCrystalAlreadyGoneAndNeverAttackedIsNoOffense() {
+        FinishingTracker t = new FinishingTracker();
+        t.observe(NONE, GONE, GONE, 20, 4, 1);
+        t.observe(kill(9), GONE, GONE, 20, 4, 2);
+        assertEquals(0, t.resolve(List.of()).offenseCount());
+    }
+
+    @Test
+    void anAttackedCrystalThatDidNotHurtUsIsOffenseButNotAHit() {
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 20, 20, 20, 20}).resolve(List.of());
+        assertEquals(1, r.offenseCount());
+        assertEquals(1, r.offenseKills());
+        assertEquals(0, r.count(), "no event of ours: no hit");
+        assertTrue(r.minHealthAfter().isEmpty(), "the safety measures see nothing");
+        assertEquals(0, r.pops());
+        assertEquals(0, r.popGradeViolations());
+    }
+
+    @Test
+    void anAttackedCrystalMatchedByAnEventIsOffenseAndAHit() {
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 1.5, 1.5, 1.5}).resolve(List.of(own(3, 6, 1.5)));
+        assertEquals(1, r.offenseCount());
+        assertEquals(1, r.count());
+        assertEquals(OptionalDouble.of(1.5), r.minHealthAfter());
+    }
+
+    @Test
+    void anOrdinaryHitLandingTwoTicksAfterAPhantomCandidateIsNotBorrowed() {
+        // The crystal went off without hurting us (no event of its own); an ordinary hit lands 2 ticks after it at the
+        // same health before. It must stay an ordinary event: no hit, nothing excluded from the reserve rules.
+        FinishingTracker t = goneOn3(7, Set.of(7), new double[] {20, 20, 20, 20, 12, 12});
+        Resolution r = t.resolve(List.of(own(5, 20, 12)));
+        assertEquals(0, r.count());
+        assertTrue(r.excluded().isEmpty());
+        assertEquals(1, r.offenseCount());
+    }
+
+    @Test
+    void anEventOneTickAfterTheCandidateIsStillItsOwn() {
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 6, 1.5, 1.5}).resolve(List.of(own(4, 6, 1.5)));
+        assertEquals(1, r.count());
+    }
+
+    @Test
+    void anOrdinaryLethalHitInsideABlowsWindowCountsAsZeroInTheOrdinaryMinimum() {
+        List<DamageEvent> damage = List.of(own(3, 6, 1.5), own(4, 1.5, 0));
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 1.5, 1.5, 1.5}).resolve(damage);
+        assertEquals(Set.of(0), r.excluded());
+        assertEquals(OptionalDouble.of(0), FinishingTracker.ordinaryEventMin(damage, r));
+    }
+
+    @Test
+    void anOrdinaryLethalHitOutsideEveryWindowIsLeftToTheSamples() {
+        List<DamageEvent> damage = List.of(own(3, 6, 1.5), own(9, 6, 0));
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 1.5, 1.5, 1.5}).resolve(damage);
+        assertTrue(FinishingTracker.ordinaryEventMin(damage, r).isEmpty());
+    }
+
+    @Test
+    void anOrdinaryHitThatDidNotKillCountsByItsHealthAfter() {
+        List<DamageEvent> damage = List.of(own(3, 6, 1.5), own(4, 1.5, 1.0));
+        Resolution r = goneOn3(7, Set.of(7), new double[] {20, 6, 1.5, 1.5, 1.5}).resolve(damage);
+        assertEquals(OptionalDouble.of(1.0), FinishingTracker.ordinaryEventMin(damage, r));
+    }
 }

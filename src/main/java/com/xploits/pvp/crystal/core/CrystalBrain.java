@@ -486,6 +486,15 @@ public final class CrystalBrain {
         return finishingCrystalKinds().keySet();
     }
 
+    /** The ids among {@link #finishingCrystalIds} that we attacked (task T2, read-only, for the bench). */
+    public Set<Integer> finishingCrystalsAttacked() {
+        Set<Integer> ids = new HashSet<>();
+        for (Known k : known.values()) {
+            if (k.finish != FinishKind.NONE && k.attackedTick != CrystalView.NEVER) ids.add(k.seen.id());
+        }
+        return Set.copyOf(ids);
+    }
+
     /**
      * {@link #finishingCrystalIds} with the kind of each (task B0c, read-only, for the bench): {@link
      * FinishKind#KILL} for a crystal that went through the kill-grade override, {@link FinishKind#POP} for one
