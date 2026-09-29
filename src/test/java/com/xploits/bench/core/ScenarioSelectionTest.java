@@ -167,7 +167,7 @@ class ScenarioSelectionTest {
      * {@link #SCENARIOS_FINGERPRINT} alone.
      */
     private static final String CRYSTAL_AURA_MEASURE_FINGERPRINT =
-        "96f4bdbd96b67b1b2e9c544b2cf0cbdc681176082c1f7a660d9831b2300419d8";
+        "0f9860971d0775d0db6f699dbaae00bbce781a87ee5a66aa65b5df6494ed6cd9";
 
     /**
      * SHA-256 of {@code FightMeasure.java}, same normalization (task A3). Its factories ({@code meteor},
@@ -176,7 +176,7 @@ class ScenarioSelectionTest {
      * #REAL_FIGHTS_AFTER_CITY}), the same role {@link #CRYSTAL_AURA_MEASURE_FINGERPRINT} plays for the older
      * scenarios.
      */
-    private static final String FIGHT_MEASURE_FINGERPRINT = "0782e5b62964bacb17fea15dff63974e24cd9e6b52568929bbe4afbefba6fb8f";
+    private static final String FIGHT_MEASURE_FINGERPRINT = "1a2a9159bde08143abd760cd4013d23bcae88178197c64fb2e6fdd3bd1affbe9";
 
     /**
      * SHA-256 of {@code CityMeasure.java}, same normalization (task A3). Its factories ({@code meteor},

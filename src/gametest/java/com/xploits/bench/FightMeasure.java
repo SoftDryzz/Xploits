@@ -333,6 +333,11 @@ final class FightMeasure implements Scenario {
 
         void log(Bench bench, String name, int runs, int placementsSent) {
             int deferred = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).deferredForTargetWindow());
+            int lateOwn = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).lateOwnCrystals());
+            int stuck = bench.fromClient(client -> Modules.get().get(CrystalAuraPlusPlus.class).stuckStandingCrystals());
+            LOG.info("[bench] {} run {}: crystal-aura++ saw {} late own crystal(s) and {} of our standing crystal(s) stayed"
+                + " unattacked over 20 pre-ticks this activation (B1 liveness, counts only, log only, not a metric)",
+                name, runs, lateOwn, stuck);
             int crystalsSeen = bench.fromClient(client -> CrystalAppearanceCounter.get().appeared()) - crystalsSeenAtT0;
             int entityInteractions = bench.fromClient(client -> PlacementCounter.get().entityInteractionsSent()) - entityInteractionsAtT0;
             LOG.info("[bench] {} run {}: crystal-aura++'s lastDecision() reason over {} pre-tick(s): {} (log only, not a metric)",

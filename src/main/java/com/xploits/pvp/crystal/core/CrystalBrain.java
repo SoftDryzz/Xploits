@@ -105,6 +105,10 @@ public final class CrystalBrain {
     private boolean facePlacing;
     private boolean holding;
     private int lateOwn;
+    /** Task B1 (log only): crystals of ours (late ones included) that stood over {@link #STUCK_TICKS} pre-ticks without one attack of ours. */
+    private int stuckStanding;
+    /** Standing this many pre-ticks without an attack of ours counts a crystal as stuck ({@link #stuckStandingCrystals}). */
+    static final int STUCK_TICKS = 20;
     private Decision lastDecision = Decision.none(Reason.NOTHING_TO_DO);
     /** The targets' hurt windows our crystals opened (with the budget on, they hold placements back). */
     private final TargetWindows windows = new TargetWindows();
@@ -249,6 +253,12 @@ public final class CrystalBrain {
                 if (k.ours && k.placedTick > landingSince) windows.landed(now, now - k.placedTick);
             }
         }
+        for (Known k : known.values()) {
+            if (k.mine && !k.stuckCounted && k.live() && k.attempts == 0 && now - k.since > STUCK_TICKS) {
+                k.stuckCounted = true;
+                stuckStanding++;
+            }
+        }
         known.values().removeIf(k -> k.removedTick != CrystalView.NEVER
             && now - k.removedTick >= SelfBudget.DISAPPEARANCE_WINDOW);
         expirePending();
@@ -366,8 +376,11 @@ public final class CrystalBrain {
         if (kind == FinishKind.KILL && breakOverrideHolds(k, FinishKind.KILL, budget)) {
             return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.KILL);
         }
-        // A kill-grade crystal whose kill rule failed is checked by the pop rule (fix round 1).
-        if (!breakOverrideHolds(k, FinishKind.POP, budget)) return Optional.empty();
+        // A kill-grade crystal whose kill rule failed is checked by the pop rule (fix round 1), only at Aggressive.
+        // After B1 this POP branch is unreachable for our own crystals: the pop rule (health - C - own >= 2, C >=
+        // I) is never looser than the ordinary break rule (health - I - own >= 2), which fast-break tries first
+        // (fastBreakOrdinary), so whatever it would take is already taken there. Kept as a guard.
+        if (!popMayGoBelowReserve() || !breakOverrideHolds(k, FinishKind.POP, budget)) return Optional.empty();
         return attack(k, hands, Reason.FINISHING_BLOW, FinishKind.POP);
     }
 
@@ -590,6 +603,15 @@ public final class CrystalBrain {
         return lateOwn;
     }
 
+    /**
+     * Log only (task B1 review): how many crystals of ours, late own ones included (they are foreign to the
+     * budget, Q2, and past max-damage they are never broken by us), stood for more than {@link #STUCK_TICKS}
+     * pre-ticks without one attack of ours, since activation. Counted once per crystal; never a position.
+     */
+    public int stuckStandingCrystals() {
+        return stuckStanding;
+    }
+
     /** The last thing decided, or why nothing was. */
     public Decision lastDecision() {
         return lastDecision;
@@ -647,9 +669,15 @@ public final class CrystalBrain {
     /**
      * Meteor's self-damage checks: max-damage and anti-suicide (lines 812, 953), on Meteor's own prediction
      * ({@code selfDamage}, never the budget's exact one), so with the budget off ++ is Meteor.
+     *
+     * <p>Task B1: with the budget on, {@code ours} (a placement of ours, a break of a crystal of ours) skips
+     * max-damage, since the reserve is what limits our self damage then; anti-suicide stays. A foreign crystal
+     * never consults the budget, so its break keeps max-damage.
      */
-    private boolean tooHurtful(double selfDamage, double health) {
-        return selfDamage > settings.maxDamage() || (settings.antiSuicide() && selfDamage >= health);
+    private boolean tooHurtful(double selfDamage, double health, boolean ours) {
+        boolean reserveDecides = ours && settings.selfBudget();
+        return (!reserveDecides && selfDamage > settings.maxDamage())
+            || (settings.antiSuicide() && selfDamage >= health);
     }
 
     /** Every pause but {@code pause-health} (lines 1153-1160): still enforced for every crystal, override included. */
@@ -689,6 +717,16 @@ public final class CrystalBrain {
     }
 
     /**
+     * Owner's decision 2026-09-29: the pop-grade finishing override (popping the target's totem without killing
+     * him) may take us below the reserve only at {@link RiskLevel#AGGRESSIVE}; Safe, Balanced and Custom (counted
+     * as not Aggressive, a conservative ruling) leave a pop-grade crystal to the normal budget. The kill-grade
+     * override is unchanged at every level.
+     */
+    private boolean popMayGoBelowReserve() {
+        return settings.risk() == RiskLevel.AGGRESSIVE;
+    }
+
+    /**
      * The cheap pre-check for the finishing-blow override (task B0a): {@code self-budget} and {@code
      * finishing-blow} on, and condition a ({@link #totemBacksIt}) already holds.
      */
@@ -706,7 +744,7 @@ public final class CrystalBrain {
         if (k.waiting(now)) return 0;
         if (k.attempts > settings.breakAttempts()) return 0;
         if (!k.seen.inBreakRange()) return 0;
-        if (tooHurtful(k.seen.selfDamage(), health)) return 0;
+        if (tooHurtful(k.seen.selfDamage(), health, k.ours)) return 0;
         float damage = k.seen.damageTo(targets);
         return damage < minimumDamage() ? 0 : damage;
     }
@@ -789,7 +827,7 @@ public final class CrystalBrain {
         if (!healthPausedOnly) {
             SelfBudget budget = null;
             for (Scored<Known> s : finishing) {
-                if (tooHurtful(s.item.seen.selfDamage(), tick.health())) continue;
+                if (tooHurtful(s.item.seen.selfDamage(), tick.health(), true)) continue;
                 if (budget == null) budget = budget(tick.health());
                 Verdict v = budget.breakAllowed(s.item.view(now));
                 if (answered(v)) return attack(s.item, tick.hands(), v.reason());
@@ -806,7 +844,9 @@ public final class CrystalBrain {
             }
         }
         // Tier 3: every finishing-grade crystal by the pop rule, a kill-grade one whose kill rule failed
-        // included (fix round 1): it never pops us and takes no slot.
+        // included (fix round 1): it never pops us and takes no slot. Only at Aggressive (owner's decision
+        // 2026-09-29): elsewhere a pop-grade crystal follows the normal budget (tier 1) alone.
+        if (!popMayGoBelowReserve()) return Optional.empty();
         for (Scored<Known> s : finishing) {
             if (breakOverrideHolds(s.item, FinishKind.POP, budget)) {
                 return attack(s.item, tick.hands(), Reason.FINISHING_BLOW, FinishKind.POP);
@@ -920,7 +960,7 @@ public final class CrystalBrain {
         List<Scored<Candidate>> able = new ArrayList<>();
         double minimum = minimumDamage();
         for (Candidate c : candidates) {
-            if (!c.inRange() || tooHurtful(c.selfDamage(), health)) continue;
+            if (!c.inRange() || tooHurtful(c.selfDamage(), health, true)) continue;
             float damage = c.damageTo(targets);
             if (damage < minimum || boxTaken(c)) continue;
             // Meteor keeps a spot only if it beats the best so far, which starts at 0 (lines 927, 972, 982).
@@ -984,7 +1024,7 @@ public final class CrystalBrain {
         if (!healthPausedOnly) {
             SelfBudget shared = null;
             for (Scored<Candidate> s : finishing) {
-                if (tooHurtful(s.item.selfDamage(), health)) continue;
+                if (tooHurtful(s.item.selfDamage(), health, true)) continue;
                 long pos = s.item.pos();
                 SelfBudget budget;
                 if (pendingAt(pos)) budget = budget(health, pos);
@@ -1005,7 +1045,9 @@ public final class CrystalBrain {
             }
         }
         // Tier 3: every finishing-grade spot by the pop rule, a kill-grade one whose kill rule failed included
-        // (fix round 1): it never pops us and takes no slot.
+        // (fix round 1): it never pops us and takes no slot. Only at Aggressive (owner's decision 2026-09-29):
+        // elsewhere a pop-grade spot follows the normal budget (tier 1) alone.
+        if (!popMayGoBelowReserve()) return Optional.empty();
         for (Scored<Candidate> s : finishing) {
             long pos = s.item.pos();
             SelfBudget budget = pendingAt(pos) ? budget(health, pos) : budget(health, null);
@@ -1208,12 +1250,14 @@ public final class CrystalBrain {
                 break;
             }
         }
+        boolean lateMatched = false;
         if (!ours) {
             for (Iterator<Late> it = late.iterator(); it.hasNext(); ) {
                 Late l = it.next();
                 if (l.pos == c.pos()) {
                     it.remove();
                     lateOwn++;
+                    lateMatched = true;
                     windows.landed(at, at - l.firstTick);
                     override = l.finish;
                     break;
@@ -1221,6 +1265,8 @@ public final class CrystalBrain {
             }
         }
         Known k = new Known(c, ours, placedTick);
+        k.since = at;
+        k.mine = ours || lateMatched;
         k.finish = override;
         known.put(c.id(), k);
         return k;
@@ -1281,6 +1327,10 @@ public final class CrystalBrain {
         /** For one of ours, the pre-tick that first decided its placement; {@link CrystalView#NEVER} otherwise. */
         final long placedTick;
         int attempts;
+        /** The pre-tick it was first seen at, and whether it is one of ours (late ones too): for the stuck count, log only. */
+        long since;
+        boolean mine;
+        boolean stuckCounted;
         long attackedTick = CrystalView.NEVER;
         long removedTick = CrystalView.NEVER;
         /** Removed from the world since the last pre-tick, which will stamp it. */
