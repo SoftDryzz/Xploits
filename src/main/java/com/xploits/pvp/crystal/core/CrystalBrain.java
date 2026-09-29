@@ -317,15 +317,20 @@ public final class CrystalBrain {
      *                 so a change made since the last pre-tick already applies
      * @param health   your health plus absorption now
      * @param hands    your hands now (anti-weakness reads them when attacking, lines 826-835)
+     * @param totems   the totems of undying you carry now, hands included (task C2, final review M4): read fresh,
+     *                 not the last pre-tick's, so a pop since then can never let a finishing blow spend the last one
      */
-    public Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+    public Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands,
+                                         int totems) {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(crystal, "crystal");
         Objects.requireNonNull(hands, "hands");
         Damage.check(health, "health");
+        if (totems < 0) throw new IllegalArgumentException("totems " + totems);
         // Before the first pre-tick Meteor has no targets and nothing pending; the crystal is seen then.
         if (now == NO_TICK || known.containsKey(crystal.id())) return Optional.empty();
         this.settings = settings;
+        this.totems = totems;
         Known k = appeared(crystal, now);
 
         if (!settings.fastBreak() || rotated || attacks >= settings.attackFrequency()) return Optional.empty();
@@ -339,11 +344,16 @@ public final class CrystalBrain {
     }
 
     /**
-     * {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands)} with the last settings given
+     * {@link #crystalAdded(CrystalSettings, CrystalSeen, double, CrystalTick.Hands, int)} with the last settings given
      * to the brain, by a pre-tick or by an earlier {@code crystalAdded} (tests).
      */
     Optional<Action> crystalAdded(CrystalSeen crystal, double health, CrystalTick.Hands hands) {
         return crystalAdded(settings, crystal, health, hands);
+    }
+
+    /** The same with the totems the last pre-tick read (tests that do not care about a fresher count). */
+    Optional<Action> crystalAdded(CrystalSettings settings, CrystalSeen crystal, double health, CrystalTick.Hands hands) {
+        return crystalAdded(settings, crystal, health, hands, totems);
     }
 
     /** Meteor's fast-break (lines 740-743, {@code getBreakDamage}), unchanged. */
@@ -708,9 +718,11 @@ public final class CrystalBrain {
      * #fastBreakOverride}) — so tightening or loosening condition a further is a one-line change.
      *
      * <p>{@code hands} is a parameter, not always {@link #hands}: fast-break ({@link #crystalAdded}) reads its
-     * hands fresh, its own parameter, the same way Meteor's own anti-weakness does there; {@link #totems} is
-     * only as fresh as the last full pre-tick even then, the same as every other fact fast-break does not
-     * re-measure (e.g. the targets it measures against, {@code fastBreakMeasuresAgainstThePreviousPreTicksTargets}).
+     * hands fresh, its own parameter, the same way Meteor's own anti-weakness does there, and so is {@link #totems}
+     * (task C2, final review M4: {@link #crystalAdded} takes the count the adapter reads at that moment, so a pop
+     * since the last pre-tick can never let it spend the last totem); the other facts fast-break does not
+     * re-measure (e.g. the targets it measures against, {@code fastBreakMeasuresAgainstThePreviousPreTicksTargets})
+     * are still the last pre-tick's.
      */
     private boolean totemBacksIt(CrystalTick.Hands hands) {
         return hands.totemInHand() && totems >= 2;

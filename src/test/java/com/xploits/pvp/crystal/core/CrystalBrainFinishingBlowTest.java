@@ -314,6 +314,41 @@ class CrystalBrainFinishingBlowTest {
         assertEquals(Decision.breakCrystal(960, Reason.FINISHING_BLOW), a.decision());
     }
 
+    /**
+     * Task C2 (final review M4): fast-break reads the totem count of that moment, not the last pre-tick's. The
+     * pre-tick saw two (one in hand and a spare); a pop since then left one, and the override must not spend it.
+     */
+    @Test
+    void fastBreakReadsAFreshTotemCountAndNeverSpendsTheLastOne() {
+        for (int fresh : new int[] {0, 1, 2, 3}) {
+            CrystalBrain b = new CrystalBrain();
+            long t = trustedEnemy(b, 1);
+            assertPlaces(2600L, b.preTick(LOW_MIN_DAMAGE, tick(t).health(20).totems(2).targets(player(ENEMY, 3, 4))
+                .candidates(spot(2600L, Map.of(ENEMY, 6.0), 0)).build()));
+            b.placed(2600L, 0);
+            assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(6.5).totems(2).targets(player(ENEMY, 3, 4)).build()));
+            var action = b.crystalAdded(LOW_MIN_DAMAGE, crystal(960, 2600L, 6.0, 100), 6.5, withTotem(HANDS, true), fresh);
+            assertEquals(fresh >= 2, action.isPresent(), "fresh totems " + fresh);
+        }
+        // The other direction: the pre-tick saw one, a totem was picked up since: two now, it may act.
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        assertPlaces(2600L, b.preTick(LOW_MIN_DAMAGE, tick(t).health(20).totems(1).targets(player(ENEMY, 3, 4))
+            .candidates(spot(2600L, Map.of(ENEMY, 6.0), 0)).build()));
+        b.placed(2600L, 0);
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t + 1).health(6.5).totems(1).targets(player(ENEMY, 3, 4)).build()));
+        assertTrue(b.crystalAdded(LOW_MIN_DAMAGE, crystal(960, 2600L, 6.0, 100), 6.5, withTotem(HANDS, true), 2).isPresent());
+    }
+
+    @Test
+    void aNegativeFreshTotemCountIsRejected() {
+        CrystalBrain b = new CrystalBrain();
+        long t = trustedEnemy(b, 1);
+        assertNothing(b.preTick(LOW_MIN_DAMAGE, tick(t).build()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> b.crystalAdded(LOW_MIN_DAMAGE, crystal(960, 2600L, 6.0, 100), 6.5, withTotem(HANDS, true), -1));
+    }
+
     // 9. Setting off -> identical decisions to today
 
     @Test

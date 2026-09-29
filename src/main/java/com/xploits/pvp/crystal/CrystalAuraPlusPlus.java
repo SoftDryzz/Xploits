@@ -686,7 +686,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
         CrystalSeen seen = measure(crystal, previous);
         // Meteor reads its settings live here (lines 740-742): a change since the pre-tick already applies.
-        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal)).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
+        brain.crystalAdded(settingsNow(), seen, health.getAsDouble(), hands(crystal), totems()).ifPresent(a -> execute(a, id -> id == crystal.getId() ? crystal : null));
     }
 
     @EventHandler
