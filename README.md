@@ -238,36 +238,50 @@ finishes the opponent go past the reserve:
 - **On servers that hide other players' health** (2b2t-style plugins) it does nothing: his health is
   never trusted.
 
-**Measured** (the 0.7.0 release bench, 2026-09-28; a fake opponent that never attacks; 100 ms simulated
-ping; unlimited crystals; natural health regeneration only where noted; median of 3 runs of 30 s; "lowest"
-is the lowest health seen across those 3 runs, out of 20). Damage dealt / your lowest health, Balanced
-against Meteor's `crystal-aura`:
+**Measured** (the 0.7.1 release bench, 2026-09-29; 100 ms simulated ping; unlimited crystals; natural
+health regeneration only where noted; median of 3 runs; the sparring opponents in the table's first rows
+never attack, and in the fights at the bottom the opponent attacks back). First rows: damage dealt /
+your lowest health across the 3 runs, Balanced against Meteor's `crystal-aura`. Fight rows: result
+(wins-draws-losses of 3), net totem pops (pops you dealt minus pops you took) and the time of the first
+blow on the opponent, where measured:
 
 | Situation | Meteor | Balanced |
 |---|---|---|
 | Opponent standing still | 30 / 3.4 | 30 / 3.5 |
-| Opponent circling | 20 / 3.8 | 20 / 4.0 |
+| Opponent circling | 20 / 3.8 | 20 / 3.9 |
 | Standing still, with regeneration | 40 / 0.2 | 40.8 / 3.5 |
-| Circling, with regeneration | 29.9 / 0.4 | 29.3 / 3.8 |
-| Opponent 3 blocks higher | 289 / 18.8 | 273 / 18.9 |
-| Opponent 3 blocks lower | 290 / 18.8 | 269 / 18.8 |
-| Opponent coming and going | 35.5 / 0.4 | 39.5 / 3.6 |
-| Opponent dodging sideways | 38 / 1.6 | 31 / 3.5 |
-| You walking in circles | 41 / 0.3 | 29 / 7.1 |
-| You dodging, opponent circling | 29.8 / 0.2 | 27.3 / 3.9 |
+| Circling, with regeneration | 30 / 0.7 | 26 / 3.8 |
+| Opponent 3 blocks higher | 303 / 18.8 | 296 / 18.8 |
+| Opponent 3 blocks lower | 288 / 18.8 | 304 / 18.8 |
+| Opponent coming and going | 31 / 0.5 | 37 / 3.5 |
+| Opponent dodging sideways | 38 / 0.3 | 31 / 3.5 |
+| You walking in circles | 32 / 0.4 | 31 / 4.4 |
+| You dodging, opponent circling | 29.8 / 0.4 | 27 / 3.8 |
+| Behind cover | 490 / 18.0 | 540 / 17.3 |
+| Fight: opponent almost dead, no totem | 2-1-0, net 0, 0.5 s | 3-0-0, net 0, 0.6 s |
+| Fight: opponent almost dead, with totem | 3-0-0, net 6, 0.45 s | 3-0-0, net 5 |
+| Fight: open-ground exchange | 3-0-0, net 8 | 0-3-0, net 2 |
+| Fight: both in a hole | 0-3-0, net 0 | 0-3-0, net 0 |
+| Fight: opponent mining your hole | 0-3-0, net 1 | 0-3-0, net 0 |
 
-In every run of every level your health stayed above that level's reserve; with Meteor's `crystal-aura`
-it went down to 0.2.
+In every run of every level the reserve held against your own crystals: no death and no totem lost to
+one of them (a finishing blow that kills may go past it, as described above). In the fights the
+opponent's own crystals can take you lower than the reserve, which only guards against yours. With
+Meteor's `crystal-aura` your health went down to 0.2.
 
 **Known issues:**
 
-- **While you move** it is deliberately cautious and still deals less damage than Meteor when you walk
-  in circles or dodge. Sizing that caution from how far you really move is planned for 0.7.2.
+- **While you move** it is deliberately cautious. Walking in circles it now deals about what Meteor does
+  at Balanced (at Safe it deals less), but while you dodge it still deals less and takes the first totem
+  later. Sizing that caution from how far you really move is planned for 0.7.2.
 - **Against an opponent who moves around you** Balanced can take the first totem later than Meteor: it
   refuses crystals that would take you below 3.5.
 - **In an open-ground exchange** (both of you attacking, no cover) it still draws where Meteor wins.
+  Part of that is the bench: explosions knock your player out of range and it never walks back
+  (fixed in 0.7.2).
 - **On servers that hide other players' health** there is no finishing blow.
-- **A crystal of yours that appears late** (lag) is treated as someone else's and may stay unbroken.
+- **A crystal of yours that appears late** (lag) is treated as someone else's and, when it would hurt you
+  more than `max-damage`, may stay unbroken.
 - **Not measured yet:** several enemies at once.
 - **Safe and Aggressive** are experimental: Safe keeps more health and deals clearly less damage;
   Aggressive keeps 2.

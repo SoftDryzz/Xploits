@@ -134,10 +134,15 @@ The window asks for its size with a sequence Windows Terminal honors. If you set
 conhost, selecting text freezes the window for as long as the selection lasts; the game does not
 notice, because they only talk through files.
 
-### `crystal-aura++` still deals less damage than Meteor's while you move
+### `crystal-aura++` still deals less damage than Meteor's while you dodge
 
-**Symptom:** while you walk in circles or dodge, Balanced deals clearly less damage than Meteor's
-`crystal-aura`, and against an opponent who circles or dodges it can take the first totem later.
+**Symptom:** while you dodge (with the opponent circling), Balanced deals a little less damage than
+Meteor's `crystal-aura` (27 against 29.8 in the release bench) and takes the first totem later (5.75 s
+against 1.4 s). Walking in circles, Balanced now deals about what Meteor does (31 against 32); at Safe
+it deals 20, where 0.7.0 dealt about 32.
+
+While you move, the self-budget uses the same reach check as 0.7.0; the real-exposure measurement
+of 0.7.1 applies when you stand still or move very little.
 
 **What happens.** To keep the reserve while you move, the budget judges each crystal at the worst spot
 you could reach before it explodes. That spot includes a jump, and at the start of a fight it assumes a
@@ -159,7 +164,10 @@ made the strafing case worse and was taken out.
 fight in a draw where Meteor's `crystal-aura` wins.
 
 **What happens.** Meteor places every crystal it can, and the reserve makes `crystal-aura++` skip some of
-them. The reserve held in the bench runs.
+them. The reserve held in the bench runs. Part of the difference is an artefact of the bench: the
+explosions knock our player out of range and it never walks back to re-engage, which a real player does.
+
+**Pending fix:** 0.7.2 — keep the bench player in place or make it re-engage, the same for both auras.
 
 **What to do.** If you prefer Meteor's damage in that kind of fight, set `crystal-module` to `meteor`.
 
@@ -180,8 +188,9 @@ plugin that sends random values there is a small chance a hit is read as a match
 **Symptom:** after a lag spike, one of your own crystals stays standing and is not broken.
 
 **What happens.** A crystal that reaches the client long after it was placed is filed as another
-player's. That gives it `max-damage` as its limit for breaking, and it also counts against your reserve
-until the enemy breaks it. It is the same window as the late-crystal gap below.
+player's. Since 0.7.1 it counts against your reserve, but when it would hurt you more than `max-damage`
+it is never broken by you and stays standing until the enemy breaks it. It is the same window as the
+late-crystal gap below.
 
 **What to do.** Nothing you can set. It costs damage at worst, and the reserve still counts that crystal.
 

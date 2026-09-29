@@ -237,38 +237,51 @@ encendido) deja que un cristal que remata al rival pase de la reserva:
 - **En servidores que ocultan la vida de los demás** (plugins al estilo 2b2t) no hace nada: nunca se
   fía de la vida del rival.
 
-**Medido** (banco de pruebas de la 0.7.0, 28-09-2026; un rival falso que nunca ataca; 100 ms de ping
-simulado; cristales ilimitados; regeneración de vida natural solo donde se indica; mediana de 3
-tandas de 30 s; «más baja» es la vida más baja de esas 3 tandas, sobre 20). Daño hecho / tu vida más
-baja, Balanced frente al `crystal-aura` de Meteor:
+**Medido** (banco de pruebas de la 0.7.1, 29-09-2026; 100 ms de ping simulado; cristales ilimitados;
+regeneración de vida natural solo donde se indica; mediana de 3 tandas; los rivales de las primeras
+filas de la tabla nunca atacan, y en las peleas del final el rival ataca). Primeras filas: daño hecho /
+tu vida más baja de las 3 tandas, Balanced frente al `crystal-aura` de Meteor. Filas de pelea: resultado
+(victorias-empates-derrotas de 3), tótems de saldo neto (los que hiciste perder menos los que
+perdiste tú) y el momento del primer golpe al rival, cuando se midió:
 
 | Situación | Meteor | Balanced |
 |---|---|---|
 | Rival quieto | 30 / 3,4 | 30 / 3,5 |
-| Rival dando vueltas | 20 / 3,8 | 20 / 4,0 |
+| Rival dando vueltas | 20 / 3,8 | 20 / 3,9 |
 | Quieto, con regeneración | 40 / 0,2 | 40,8 / 3,5 |
-| Dando vueltas, con regeneración | 29,9 / 0,4 | 29,3 / 3,8 |
-| Rival 3 bloques más alto | 289 / 18,8 | 273 / 18,9 |
-| Rival 3 bloques más bajo | 290 / 18,8 | 269 / 18,8 |
-| Rival yendo y viniendo | 35,5 / 0,4 | 39,5 / 3,6 |
-| Rival esquivando a los lados | 38 / 1,6 | 31 / 3,5 |
-| Tú caminando en círculos | 41 / 0,3 | 29 / 7,1 |
-| Tú esquivando, rival dando vueltas | 29,8 / 0,2 | 27,3 / 3,9 |
+| Dando vueltas, con regeneración | 30 / 0,7 | 26 / 3,8 |
+| Rival 3 bloques más alto | 303 / 18,8 | 296 / 18,8 |
+| Rival 3 bloques más bajo | 288 / 18,8 | 304 / 18,8 |
+| Rival yendo y viniendo | 31 / 0,5 | 37 / 3,5 |
+| Rival esquivando a los lados | 38 / 0,3 | 31 / 3,5 |
+| Tú caminando en círculos | 32 / 0,4 | 31 / 4,4 |
+| Tú esquivando, rival dando vueltas | 29,8 / 0,4 | 27 / 3,8 |
+| Tras una cobertura | 490 / 18,0 | 540 / 17,3 |
+| Pelea: rival casi muerto, sin tótem | 2-1-0, saldo 0, 0,5 s | 3-0-0, saldo 0, 0,6 s |
+| Pelea: rival casi muerto, con tótem | 3-0-0, saldo 6, 0,45 s | 3-0-0, saldo 5 |
+| Pelea: intercambio a campo abierto | 3-0-0, saldo 8 | 0-3-0, saldo 2 |
+| Pelea: los dos en un agujero | 0-3-0, saldo 0 | 0-3-0, saldo 0 |
+| Pelea: rival minando tu agujero | 0-3-0, saldo 1 | 0-3-0, saldo 0 |
 
-En todas las tandas de todos los niveles tu vida se quedó por encima de la reserva de ese nivel; con
-el `crystal-aura` de Meteor bajó hasta 0,2.
+En todas las tandas de todos los niveles la reserva se mantuvo frente a tus propios cristales: ni una
+muerte ni un tótem perdido por uno de ellos (un remate que mata puede pasar de ella, como se explica
+arriba). En las peleas los cristales del rival pueden dejarte por debajo de la reserva, que solo vigila
+los tuyos. Con el `crystal-aura` de Meteor tu vida bajó hasta 0,2.
 
 **Problemas conocidos:**
 
-- **Mientras te mueves tú** es prudente a propósito y sigue haciendo menos daño que Meteor cuando
-  caminas en círculos o esquivas. Ajustar esa prudencia según lo que te mueves de verdad está previsto
-  para la 0.7.2.
+- **Mientras te mueves tú** es prudente a propósito. Caminando en círculos ya hace más o menos el daño
+  de Meteor en Balanced (en Safe hace menos), pero mientras esquivas sigue haciendo menos y saca el
+  primer tótem más tarde. Ajustar esa prudencia según lo que te mueves de verdad está previsto para la
+  0.7.2.
 - **Contra un rival que se mueve a tu alrededor**, Balanced puede sacar el primer tótem más tarde que
   Meteor: rechaza cristales que te dejarían por debajo de 3,5.
 - **En un intercambio a campo abierto** (los dos atacando, sin cobertura) todavía empata donde gana
-  Meteor.
+  Meteor. Parte de eso es del banco: las explosiones empujan a tu jugador fuera de alcance y no vuelve
+  a caminar hacia el rival (se arregla en la 0.7.2).
 - **En servidores que ocultan la vida de los demás** no hay remate.
-- **Un cristal tuyo que aparece tarde** (lag) se toma por ajeno y puede quedarse sin romper.
+- **Un cristal tuyo que aparece tarde** (lag) se toma por ajeno y, si te haría más daño que
+  `max-damage`, puede quedarse sin romper.
 - **Todavía sin medir:** varios enemigos a la vez.
 - **Safe y Aggressive** son experimentales: Safe guarda más vida y hace claramente menos daño;
   Aggressive guarda 2.

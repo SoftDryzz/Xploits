@@ -29,6 +29,8 @@ All notable changes to Xploits. The format is based on
 - The self-budget now measures how exposed you would really be at each spot you can move to, instead of
   assuming full exposure. It deals more damage where there is a height difference or cover between you
   and the crystal, and still keeps the reserve.
+- While you move, the self-budget uses the same reach check as 0.7.0; the real exposure applies when you
+  stand still or move very little.
 - A spot you could reach that lies inside a block counts as fully exposed (the safer reading), and totem
   detection covers any item that protects from death, not only the totem itself.
 
@@ -37,6 +39,16 @@ All notable changes to Xploits. The format is based on
 - `crystal-aura++` no longer freezes behind one of its own crystals that it may not break: such a crystal
   no longer closes Meteor's placing gate, and while the crystals already standing leave less than the
   reserve, it only uses spots where you would take no damage at all.
+- A crystal of yours that reaches the client late is now counted against your reserve, instead of
+  escaping the self-budget. One that would hurt you more than `max-damage` is still not broken by you.
+- The fast break now uses your totem count as it is at that moment, not the one from a tick earlier.
+
+### Measured
+
+- In the 0.7.1 release bench (28 pairs judged ACCEPT), your health never went below the reserve because of
+  your own crystals in any run, with no death and no totem lost to one of them. Behind cover, with the
+  opponent below you or coming and going, and walking in circles, Balanced deals about as much damage
+  as Meteor's or more; while you dodge, it still deals less.
 
 ## [0.7.0] — 2026-09-28
 
