@@ -179,6 +179,10 @@ final class FightMeasure implements Scenario {
         static final int SETTLE_TICKS = 14;
         /** Past this many ticks after our hit the moment comes even if things have not gone quiet. */
         static final int CLEAR_BOUND_TICKS = 60;
+        /** Ticks after a hit without trust before the warm-up starts over healthy. */
+        static final int RETRY_AFTER_TICKS = 30;
+        /** How many times it may start over. */
+        static final int MAX_RETRIES = 3;
         /** Ticks without a placement sent, and with no end crystal around, that make it quiet. */
         static final int QUIET_TICKS = 6;
         /** How far around us an end crystal counts. */
@@ -191,6 +195,9 @@ final class FightMeasure implements Scenario {
                 private int landedAt = -1;
                 private int lastSent = -1;
                 private int lastPlacementAt;
+                /** Hits of ours the target had taken when the warm-up last started over. */
+                private int hitsBase;
+                private int retries;
 
                 @Override
                 public boolean ready(int waited) {
@@ -199,22 +206,43 @@ final class FightMeasure implements Scenario {
                         lastSent = sent;
                         lastPlacementAt = waited;
                     }
-                    if (landedAt < 0 && bench.sparringStats().hitsFromOthers() > 0) landedAt = waited;
+                    if (landedAt < 0 && bench.sparringStats().hitsFromOthers() > hitsBase) landedAt = waited;
                     if (landedAt < 0) return false;
                     int since = waited - landedAt;
                     if (since < SETTLE_TICKS) return false;
                     // crystal-aura++ has to trust the target before the finishing blow can apply, as in real
                     // play, where trust always comes from earlier hits; a further hit may still form it.
-                    if (plusPlus && !trusting()) return false;
+                    if (plusPlus && !trusting()) {
+                        // One hit does not always leave the target trusted (the health can read a tick behind the
+                        // hit): as in real play, where more hits follow, start the exchange over healthy so the
+                        // aura can hit again, at most a few times inside the warm-up.
+                        if (since >= RETRY_AFTER_TICKS && retries < MAX_RETRIES) {
+                            retries++;
+                            hitsBase = bench.sparringStats().hitsFromOthers();
+                            landedAt = -1;
+                            bench.onServer(srv -> healBoth(srv));
+                            LOG.info("[bench] warm-up hit did not make crystal-aura++ trust the target: both healthy again, "
+                                + "retry {} (log only)", retries);
+                        }
+                        return false;
+                    }
                     // Quiet first: no placement just sent and no end crystal around, so nothing decided while both
                     // were healthy explodes after the health drop, which no aura could have planned for.
                     if (since >= CLEAR_BOUND_TICKS) return true;
                     return waited - lastPlacementAt >= QUIET_TICKS && crystalsAround(bench, player) == 0;
                 }
 
+                private void healBoth(MinecraftServer server) {
+                    ServerPlayerEntity p = Arena.player(server, player);
+                    p.setHealth(p.getMaxHealth());
+                    p.setAbsorptionAmount(0f);
+                    sparring.setHealth(sparring.getMaxHealth());
+                    sparring.setAbsorptionAmount(0f);
+                }
+
                 @Override
                 public boolean landed() {
-                    return landedAt >= 0;
+                    return landedAt >= 0 || retries > 0;
                 }
 
                 @Override
