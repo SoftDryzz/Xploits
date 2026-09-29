@@ -10,6 +10,8 @@ import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import com.mojang.datafixers.util.Pair;
+import net.minecraft.network.packet.s2c.play.EntityEquipmentUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerListS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerRemoveS2CPacket;
 import net.minecraft.server.MinecraftServer;
@@ -194,6 +196,7 @@ public final class Sparring extends FakePlayer {
                 if (fightMode) totemsSpare--;
                 setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
             }
+            showHands();
         }
         return damaged;
     }
@@ -294,6 +297,7 @@ public final class Sparring extends FakePlayer {
         if (!fightMode) throw new BenchException("disarmTotem is fight-mode only");
         setStackInHand(Hand.OFF_HAND, ItemStack.EMPTY);
         totemsSpare = 0;
+        showHands();
     }
 
     /**
@@ -303,6 +307,7 @@ public final class Sparring extends FakePlayer {
      */
     void holdVisibleItem() {
         setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.NETHERITE_SWORD));
+        showHands();
     }
 
     /**
@@ -313,6 +318,19 @@ public final class Sparring extends FakePlayer {
         if (!fightMode) throw new BenchException("rearmTotems is fight-mode only");
         setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         totemsSpare = Arena.FIGHT_TOTEMS - 1;
+        showHands();
+    }
+
+    /**
+     * Sends both hands to the players tracking it. A living entity sends its equipment changes from its own
+     * tick ({@code LivingEntity.tick}), which this fake player never runs (it is stepped by hand), so a change
+     * made after the spawn packet would never reach the client: the client would go on reading the spawn-time
+     * hands (task T2: the offhand totem and an empty main hand after the near-death moment took both away, so
+     * crystal-aura++ could not tell a kill from a pop). Called after every change of the hands, for both auras.
+     */
+    private void showHands() {
+        ((ServerWorld) getEntityWorld()).getChunkManager().sendToNearbyPlayers(this, new EntityEquipmentUpdateS2CPacket(getId(),
+            List.of(Pair.of(EquipmentSlot.MAINHAND, getMainHandStack().copy()), Pair.of(EquipmentSlot.OFFHAND, getOffHandStack().copy()))));
     }
 
     /**
