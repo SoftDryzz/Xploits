@@ -222,6 +222,97 @@ class HealthTrustTest {
     }
 
     @Test
+    void anUnjudgeableNewerHitLeavesTheOlderWindowRunning() {
+        // Trusted, our hit opens a window, a foreign hit (d < 1) is read, then the health never moves: the older
+        // window must still end untrusted (a foreign hit cannot shield trust from the verdict).
+        HealthTrust h = hitThen(20, 17.5);
+        assertTrue(h.trusted(T));
+        h.hit(T, D, 17.5, false);
+        read(h, 17.5);
+        h.hit(T, Double.NaN, 17.5, false);
+        h.hit(T, Math.nextDown(1.0), 17.5, false);
+        read(h, 17.5);
+        read(h, 17.5);
+        assertTrue(h.trusted(T), "still pending");
+        read(h, 17.5);
+        assertFalse(h.trusted(T), "the older window ended with no change");
+    }
+
+    @Test
+    void anUnjudgeableNewerHitDoesNotReplaceTheOlderWindowsBefore() {
+        // The older window keeps its own before: a later qualifying drop still trusts it.
+        HealthTrust h = new HealthTrust();
+        h.hit(T, D, 20, false);
+        read(h, 20);
+        h.hit(T, 0.5, 20, false);
+        read(h, 17.5);
+        assertTrue(h.trusted(T));
+    }
+
+    @Test
+    void theFirstChangeDecidesEvenIfALaterReadingWouldQualify() {
+        // A first change that does not qualify (a random-looking value) untrusts at once; a later qualifying
+        // value is nobody's verdict any more.
+        HealthTrust h = new HealthTrust();
+        h.hit(T, D, 20, false);
+        read(h, 19);
+        assertFalse(h.trusted(T));
+        read(h, 15);
+        assertFalse(h.trusted(T));
+
+        HealthTrust trusted = hitThen(20, 17.5);
+        trusted.hit(T, D, 17.5, false);
+        read(trusted, 17.5);
+        read(trusted, 18.5); // a rise is a change too, and not a qualifying drop
+        assertFalse(trusted.trusted(T), "a trusted target whose first change does not qualify is untrusted");
+        read(trusted, 12);
+        assertFalse(trusted.trusted(T));
+    }
+
+    @Test
+    void aRandomisingServerGetsOneDrawPerHitNotOnePerReading() {
+        // Readings 19, 15, 14, 13: only the first counts; the later ones would each have qualified.
+        assertFalse(hitThen(20, 20, 19, 15, 14).trusted(T));
+        // The same first change qualifying trusts, whatever follows.
+        assertTrue(hitThen(20, 20, 15, 20, 20).trusted(T));
+    }
+
+    @Test
+    void aBadBeforeDropsAPendingHitSoItCannotTrustLater() {
+        HealthTrust h = new HealthTrust();
+        h.hit(T, D, 20, false);
+        h.hit(T, D, Double.NaN, false);
+        read(h, 15);
+        assertFalse(h.trusted(T), "the stale pending hit must be gone");
+    }
+
+    @Test
+    void twoTargetsAreJudgedIndependently() {
+        HealthTrust h = new HealthTrust();
+        h.hit("a", D, 20, false);
+        h.hit("b", D, 20, false);
+        h.advance(Map.of("a", 15.0, "b", 20.0), NO_POPS);
+        assertTrue(h.trusted("a"));
+        assertFalse(h.trusted("b"));
+        h.advance(Map.of("a", 15.0, "b", 15.0), NO_POPS);
+        assertTrue(h.trusted("b"), "b's window is still open on its own");
+        h.hit("a", D, 15, false);
+        h.advance(Map.of("a", 15.0, "b", 15.0), Set.of("a"));
+        assertTrue(h.trusted("a"), "a pop of a leaves b alone and a unchanged");
+        assertTrue(h.trusted("b"));
+    }
+
+    @Test
+    void aPoppedNewerHitRemovesThePendingOlderOne() {
+        HealthTrust h = new HealthTrust();
+        h.hit(T, D, 20, false);
+        read(h, 20);
+        h.hit(T, D, 20, true); // a pop was read in this hit's span
+        read(h, 15); // would have trusted the older hit
+        assertFalse(h.trusted(T));
+    }
+
+    @Test
     void forgettingPendingHitsLeavesTrustAsItWas() {
         HealthTrust h = hitThen(20, 17.5);
         h.hit(T, D, 17.5, false);
