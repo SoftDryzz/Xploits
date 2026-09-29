@@ -1,3 +1,5 @@
+![Xploits](docs/images/banner.png)
+
 [English](README.md) · **Español**
 
 # Xploits
@@ -31,6 +33,28 @@ otros servidores anarchy. Diez módulos que se encienden por separado.
 `crystal-aura++` está **medido, no solo prometido**: cada versión se prueba dentro del juego contra el
 `crystal-aura` de Meteor, y los números están en
 [la tabla de más abajo](#crystal-aura--crystal-aura-con-un-suelo-bajo-tu-vida).
+
+## Capturas
+
+![auto-pvp manejando crystal-aura++ contra el rival del banco, en el momento en que salta su tótem](docs/images/fight.jpg)
+
+`auto-pvp` manejando `crystal-aura++`, en el momento en que salta el tótem del rival. Arriba a la izquierda,
+el panel `xploits-pvp` del HUD: perfil y postura, objetivo y distancia, los módulos que encendió, tus
+recursos y la pelea en curso.
+
+| | |
+|---|---|
+| ![La categoría Xploits en la ClickGUI de Meteor](docs/images/clickgui.jpg) | ![Los ajustes propios de crystal-aura++](docs/images/crystal-aura-pp.jpg) |
+| La categoría **Xploits**, junto a las de Meteor en la ClickGUI. | Los ajustes propios de `crystal-aura++`: `risk`, `self-budget` y `finishing-blow`. |
+
+![La ventana de la consola de Xploits](docs/images/console.png)
+
+La ventana de `console`: el logo, el estado del juego (vida, armadura, lo que llevas en la barra, qué
+módulos están encendidos) y todo lo que dicen los módulos, sin coordenadas. Aquí, el resumen que hace
+`fight-recorder` de la pelea que acaba de terminar.
+
+Las cuatro las saca el banco en un mundo de prueba, sin ningún jugador ni servidor real en pantalla, y se
+vuelven a sacar en cada versión (`tools/shots.ps1`).
 
 ---
 
@@ -563,3 +587,7 @@ Las macros de Meteor que escriben `.toggle consola` no se migran: cámbialas a `
 | [Construir un cliente propio](docs/own-client/) | Si esto deja de ser un addon: licencias, anatomía de Meteor, Baritone por su API y hoja de ruta |
 
 **Compilar:** `./gradlew build` → `build/libs/xploits-<versión>.jar`.
+
+**Imágenes y capturas:** `java tools/ArtRenderer.java` dibuja el icono, la portada y la vista previa para
+GitHub a partir del logo de la consola; `pwsh -NoProfile -File tools/shots.ps1` saca las capturas en el banco
+(mientras dura se abren una ventana del juego y la de la consola).

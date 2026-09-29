@@ -350,6 +350,16 @@ module shows exactly the settings its unit tests cover (`CrystalSetting`).
 `./gradlew benchVerify` alone re-checks an existing `build/bench` report without opening a window, for
 example right after a run that already finished.
 
+**The README's screenshots (`-Pshots`).** `Shots` is not a scenario: `Scenarios` does not list it, so no bench
+run plays it, and only `./gradlew runClientGameTest -Pshots` runs it, alone, with no report and without
+`benchVerify` (`build/bench` is left as it is). `tools/shots.ps1` runs that, captures the `console` window while
+the fight goes on, and copies the pictures to `docs/images`. It keeps the bench's rules: the HUD shows the
+`xploits-pvp` panel alone, chat is hidden, the camera turns with `/rotate` (no position), and the only name on
+screen is the sparring's; kit-requester's couriers, which are player names, are emptied for the run. It adds a
+file under `src/gametest`, so like any bench change it changes the Meteor cache's key once. The icon, the
+banner and GitHub's social preview come from `java tools/ArtRenderer.java`, which draws them from the console's
+logo (`logo.ans`).
+
 ---
 
 ## Reject rather than degrade

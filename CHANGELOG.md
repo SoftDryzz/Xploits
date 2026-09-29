@@ -6,6 +6,18 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- The addon has its own icon, the X of the console's logo, where the mod list shows it (Mod Menu, the
+  meteoraddons.com listing) instead of the default one.
+- The README opens with the Xploits banner and shows screenshots: `auto-pvp` in a fight with its HUD panel,
+  the ClickGUI, `crystal-aura++`'s own settings and the `console` window.
+
+### Fixed
+
+- In a development run (`./gradlew runClient`, the in-game bench) the `console` window opens: it could not
+  find its own classes there. The released jar was never affected.
+
 ## [0.7.1] — 2026-09-29
 
 ### Added

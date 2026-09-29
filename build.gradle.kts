@@ -55,6 +55,18 @@ dependencies {
     "modGametestImplementation"("net.fabricmc.fabric-api:fabric-api:0.141.4+1.21.11")
 }
 
+// The addon as one mod in development runs, its classes and its resources together (fabric.classPathGroups), as in
+// the jar. Without it Fabric knows only the resources folder, where fabric.mod.json is, and the console window,
+// launched with the mod's own paths as its classpath, cannot find its classes. Development runs only: the jar is
+// built as before.
+loom {
+    mods {
+        register("xploits") {
+            sourceSet("main")
+        }
+    }
+}
+
 // The bench's pure core (src/gametest/java/com/xploits/bench/core: the acceptance rules) is compiled with
 // the unit tests too, so ./gradlew build tests it. Only that folder, with its own filter, and never into
 // the shipped jar, which is built from the main source set alone.
@@ -108,6 +120,9 @@ loom.runs.named("clientGameTest") {
     // simulated ping installs no extra handler and was never at risk, and one JVM cannot toggle a static-final
     // system property mid-run scenario by scenario.
     property("fabric.client.gametest.disableNetworkSynchronizer", "true")
+    // -Pshots (tools/shots.ps1): the README's screenshots (Shots) instead of the bench, into build/shots. It writes
+    // no bench report, so benchVerify does not run after it, and build/bench is left as it is.
+    if (project.hasProperty("shots")) property("xploits.shots", layout.buildDirectory.dir("shots").get().asFile.absolutePath)
 }
 
 // The bench's verdict is read here, on the Gradle side, not from the client's exit code: a client that
@@ -120,7 +135,8 @@ val benchOut = layout.buildDirectory.dir("bench")
 val benchReport = benchOut.map { it.file("report-${project.version}.json") }
 
 tasks.named("runClientGameTest") {
-    doFirst { delete(fileTree(benchOut) { exclude("meteor-cache/**") }) }
+    val shots = project.hasProperty("shots")
+    doFirst { if (!shots) delete(fileTree(benchOut) { exclude("meteor-cache/**") }) }
     finalizedBy("benchVerify")
 }
 
@@ -132,6 +148,8 @@ tasks.register("benchVerify") {
     group = "verification"
     description = "Fails unless the in-game bench report says every scenario passed (run by runClientGameTest)."
     dependsOn("compileGametestJava")
+    val shots = project.hasProperty("shots")
+    onlyIf("a -Pshots run writes no bench report") { !shots }
     doLast {
         val file = benchReport.get().asFile
         if (!file.isFile) {

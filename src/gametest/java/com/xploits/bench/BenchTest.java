@@ -118,6 +118,10 @@ public class BenchTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext ctx) {
+        if (System.getProperty(Shots.FOLDER_PROPERTY) != null) {
+            takeShots(ctx);
+            return;
+        }
         Config config = Config.fromSystemProperties();
         Profile profile = config.profile();
         List<Scenario> canonical = select(Scenarios.all(), config.only());
@@ -189,6 +193,17 @@ public class BenchTest implements FabricClientGameTest {
         LOG.info("[bench] {}; report in {}", report.summary(), report.jsonFile().getFileName());
         report.recommendations().forEach(line -> LOG.info("[bench] {}", line));
         if (report.failed()) throw new AssertionError("bench failed: " + report.summary());
+    }
+
+    /**
+     * {@code -Pshots} ({@code tools/shots.ps1}): the README's screenshots ({@link Shots}) instead of the bench, in
+     * one run of their own, with no report; {@code benchVerify} does not run after it.
+     */
+    private static void takeShots(ClientGameTestContext ctx) {
+        Shots.frame(ctx);
+        Run run = runOnce(ctx, new Shots(), Shots.folder(), 0);
+        LOG.info("[bench] shots: {}{}", run.status(), run.error() == null ? "" : " (" + run.error() + ")");
+        if (run.status().fails()) throw new AssertionError("shots failed: " + run.error());
     }
 
     /** Only Meteor's own MEASUREs, {@code ca-*}, are cached ({@link MeteorCache#cacheable}). */
