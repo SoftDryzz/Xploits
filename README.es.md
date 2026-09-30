@@ -5,7 +5,7 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Diez módulos que se encienden por separado.
+otros servidores anarchy. Once módulos que se encienden por separado.
 
 ## Por qué Xploits
 
@@ -378,7 +378,7 @@ o enciéndelo solo; si el `surround` o el `self-trap` de Meteor están encendido
 en las mismas casillas. Todavía no rompe telarañas ni come por ti.
 
 En el laboratorio (2 y 3 atacantes con hacks, 60 s, 3 ejecuciones cada uno) perdiste tantos tótems con él como con el
-`surround` y el `self-trap` de Meteor, con el mismo número de cristales en tu cabeza o uno menos. Es un resultado
+`surround` y el `self-trap` de Meteor, con el mismo número de cristales en tu cabeza o uno menos, con más o menos un bloque más (la obsidiana llorosa con la que empieza). Es un resultado
 equivalente, no una mejora. Su decisión cuesta de media 0,7-0,9 ms por tick.
 
 ### `fight-recorder` — grabar cada pelea y averiguar por qué moriste

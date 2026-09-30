@@ -18,9 +18,9 @@ All notable changes to Xploits. The format is based on
   health or more; walks you into a better hole when you are exposed (your keys always win); fills your opponents' holes;
   closes the shell completely for 5 seconds after a totem pop; `burrow` off by default. It never pins you to the centre
   of the block and never turns itself off when your height changes, the two ways Meteor's `surround` worked against
-  you in the lab's worst cases. In the lab (2 and 3 hacked attackers with an honest city, 60 s, 3 runs each) you lost
+  you in the earlier worst-case lab runs (it switched itself off up to 43 times in a minute). In the lab (2 and 3 hacked attackers with an honest city, 60 s, 3 runs each) you lost
   as many totems with it as with Meteor's `surround` and `self-trap` (7 in the four fights), with the same or one
-  fewer crystals reaching your head.
+  fewer crystals reaching your head, for about one block more (the crying obsidian it opens with).
 - `auto-pvp` has a `shell-module` setting: `meteor` (default: Meteor's `surround` and `hole-filler`) or `xploits++`
   (`surround++` in their place, on for as long as `auto-pvp` is). The HUD panel shows a shell line while `surround++`
   is on.

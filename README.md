@@ -5,7 +5,7 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Ten modules, each switched on separately.
+other anarchy servers. Eleven modules, each switched on separately.
 
 ## Why Xploits
 
@@ -371,7 +371,8 @@ with Meteor's `surround` or `self-trap` on at the same time it warns you, since 
 not break webs or eat for you yet.
 
 In the lab (2 and 3 hacked attackers, 60 s, 3 runs each) you lost as many totems with it as with Meteor's `surround`
-and `self-trap`, with the same or one fewer crystal reaching your head. It is a like-for-like result, not an
+and `self-trap`, with the same or one fewer crystal reaching your head, for about one block more (the crying obsidian it opens
+with). It is a like-for-like result, not an
 improvement. Its decision costs 0.7-0.9 ms a tick on average.
 
 ### `fight-recorder` — record every fight and work out why you died
