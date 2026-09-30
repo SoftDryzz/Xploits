@@ -4,8 +4,11 @@ import com.xploits.pvp.crystal.core.ExposureGrid;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.world.World;
 
 /**
  * Vanilla's explosion exposure ({@code ExplosionImpl.calculateReceivedDamage}, yarn 1.21.11, read from the jar)
@@ -62,5 +65,31 @@ public final class ExposureAt {
             if (result.getType() == HitResult.Type.MISS) hits++;
         }
         return (float) hits / (float) total;
+    }
+
+    /**
+     * How far {@code entity}'s box, moved {@code (dx, 0, dz)} from where it is, can rise before it touches a block, at
+     * most {@code max} (0.7.2, crystal-aura++ under a roof): vanilla's own sweep straight up, {@code
+     * VoxelShapes.calculateMaxOffset} over the block collisions in {@link #sweep} (the same block-only shapes the
+     * overlap guard in {@link #at} reads; yarn 1.21.11, read from the jar), so {@code max} when nothing is in the way.
+     * Under a full block it brings the box's top exactly to the block's underside, which {@link #at} does not count as
+     * an overlap (a box that only touches a block does not intersect it). Not a number when the moved box already
+     * overlaps a block there (a column inside a wall): nothing can be said about its rise.
+     */
+    public static double rise(Entity entity, double dx, double dz, double max) {
+        Box ground = entity.getBoundingBox().offset(dx, 0, dz);
+        World world = entity.getEntityWorld();
+        if (world.getBlockCollisions(entity, ground).iterator().hasNext()) return Double.NaN;
+        return VoxelShapes.calculateMaxOffset(Direction.Axis.Y, ground,
+            world.getBlockCollisions(entity, sweep(entity, dx, dz, max)), max);
+    }
+
+    /**
+     * The space {@code entity}'s box, moved {@code (dx, 0, dz)} from where it is, passes through rising {@code max}:
+     * the moved box stretched up by {@code max}. The blocks with a collision shape in it are the ones that can stop
+     * that rise ({@link #rise}).
+     */
+    public static Box sweep(Entity entity, double dx, double dz, double max) {
+        return entity.getBoundingBox().offset(dx, 0, dz).stretch(0, max, 0);
     }
 }

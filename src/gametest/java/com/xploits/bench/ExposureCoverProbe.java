@@ -21,6 +21,11 @@ import java.util.List;
  * a block (the jump point under the low ceiling) reads 1.0 rather than the false low a ray started inside a
  * collider gives.
  *
+ * <p>0.7.2 (crystal-aura++ under a roof): {@link ExposureAt#rise}, how far our box can really rise, is a full jump in the
+ * open, exactly the room left under the low ceiling ({@code 2 - (double) 1.8f}: the box's height is a float), and not a
+ * number in a column inside the pillar. The box raised by that rise does not overlap the ceiling, so {@link
+ * ExposureAt#at} reads it for real: below 1.0 for every explosion the ceiling partly hides from us where we stand.
+ *
  * <p>Nothing is printed but counts. Explosions are offsets from our feet, computed on the client, never printed.
  */
 final class ExposureCoverProbe implements Scenario {
@@ -45,10 +50,19 @@ final class ExposureCoverProbe implements Scenario {
         new Case("low ceiling", (arena, world) -> arena.fill(world, -1, 2, -1, 1, 2, 1, Blocks.OBSIDIAN)),
         new Case("pillar", (arena, world) -> arena.fill(world, 2, 0, 0, 2, 2, 0, Blocks.OBSIDIAN)));
 
-    /** Explosions as offsets from our feet: where crystals go around a sparring, above, behind and close. */
+    /**
+     * Explosions as offsets from our feet: where crystals go around a sparring, above, behind and close. The last one
+     * (0.7.2) sits above the low ceiling's edge, 3 up and 3 out: the ceiling hides our upper half from it, not our lower.
+     */
     private static final double[][] EXPLOSIONS = {
         {4, 1, 0}, {4, 1, 1}, {5, 1, -1}, {3, 1, 1}, {2.5, 0.5, 0}, {4, 2.5, 0}, {-3, 1, 0}, {3, 0.5, -2}, {1.5, 3, 1},
-        {5, 0.5, 2}};
+        {5, 0.5, 2}, {3, 3, 0}};
+    /** The room over a standing box under the low ceiling, whose underside is 2 above our feet: the box is 1.8f tall. */
+    private static final double ROOM_UNDER_THE_CEILING = 2 - (double) 1.8f;
+    /** How close the measured rise must be to it. */
+    private static final double RISE_TOLERANCE = 1e-9;
+    /** The pillar's column, as an offset from our feet: a box moved there is inside the pillar. */
+    private static final int PILLAR_X = 2;
 
     @Override
     public String name() {
@@ -74,6 +88,7 @@ final class ExposureCoverProbe implements Scenario {
         int compared = 0;
         int partial = 0;
         int insideBlock = 0;
+        int lowered = 0;
         for (Case c : CASES) {
             bench.onServer(srv -> {
                 ServerWorld world = srv.getOverworld();
@@ -101,12 +116,52 @@ final class ExposureCoverProbe implements Scenario {
                 });
                 Bench.check(allFull, "the jump point inside the low ceiling did not read 1.0");
                 insideBlock++;
+                // 0.7.2: the rise a jump really makes under it, and what is read there.
+                double[] under = bench.fromClient(ExposureCoverProbe::underTheCeiling);
+                Bench.check(Math.abs(under[0] - ROOM_UNDER_THE_CEILING) <= RISE_TOLERANCE,
+                    "the rise under the low ceiling is " + under[0] + ", not the " + ROOM_UNDER_THE_CEILING + " left over the box");
+                Bench.check(under[1] == 0, "the box raised to the low ceiling overlaps it");
+                Bench.check(under[2] > 0, "no explosion is partly hidden by the low ceiling where we stand");
+                Bench.check(under[3] == under[2], (int) (under[2] - under[3]) + " of " + (int) under[2]
+                    + " partly hidden explosion(s) read 1.0 at the rise under the low ceiling");
+                lowered = (int) under[2];
+            }
+            if (c.name().equals("open")) {
+                double rise = bench.fromClient(client -> ExposureAt.rise(client.player, 0, 0, JUMP));
+                Bench.check(rise == JUMP, "the rise in the open is " + rise + ", not a full jump");
+            }
+            if (c.name().equals("pillar")) {
+                double rise = bench.fromClient(client -> ExposureAt.rise(client.player, PILLAR_X, 0, JUMP));
+                Bench.check(Double.isNaN(rise), "a column inside the pillar has a rise of " + rise + ", not none");
             }
         }
         Bench.check(partial > 0, "no case exercised a partial exposure: the probe compared only 0 and 1");
         LOG.info("[bench] exposure-cover-probe: {} comparisons in {} layouts equal vanilla, {} with a partial exposure, "
-            + "{} inside-block check(s) read 1.0", compared, CASES.size(), partial, insideBlock);
+            + "{} inside-block check(s) read 1.0, {} partly hidden explosion(s) read below 1.0 at the rise under the low"
+            + " ceiling", compared, CASES.size(), partial, insideBlock, lowered);
         return Metrics.none();
+    }
+
+    /**
+     * Under the low ceiling, on the client thread: the rise at our own column, whether our box raised by it overlaps a
+     * block (1) or not (0), how many explosions the ceiling partly hides from us where we stand (vanilla's exposure
+     * strictly between 0 and 1), and how many of those {@link ExposureAt#at} reads below 1.0 at that rise.
+     */
+    private static double[] underTheCeiling(MinecraftClient client) {
+        PlayerEntity p = client.player;
+        double rise = ExposureAt.rise(p, 0, 0, JUMP);
+        if (!Double.isFinite(rise)) return new double[] {rise, 1, 0, 0};
+        boolean overlaps = p.getEntityWorld().getBlockCollisions(p, p.getBoundingBox().offset(0, rise, 0)).iterator().hasNext();
+        int partial = 0;
+        int below = 0;
+        for (double[] e : EXPLOSIONS) {
+            Vec3d explosion = p.getEntityPos().add(e[0], e[1], e[2]);
+            double standing = ExplosionImpl.calculateReceivedDamage(explosion, p);
+            if (!(standing > 0 && standing < 1)) continue;
+            partial++;
+            if (ExposureAt.at(p, explosion, 0, rise, 0, new ExposureAt.Budget(10_000)) < 1.0) below++;
+        }
+        return new double[] {rise, overlaps ? 1 : 0, partial, below};
     }
 
     /** (vanilla, ours) exposures for every explosion, on the client thread. */
