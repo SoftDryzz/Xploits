@@ -163,7 +163,7 @@ public class SurroundPlusPlus extends XploitsModule {
     }
 
     /** What one tick's packets said about us. */
-    private record Read(boolean popped, boolean oneExplosion) {
+    private record Read(boolean popped, int explosions, int others) {
     }
 
     private final ShellBrain brain = new ShellBrain();
@@ -280,6 +280,12 @@ public class SurroundPlusPlus extends XploitsModule {
         if (p == null || mc.world == null || !p.isAlive()) {
             releaseKeys();
             walkTarget = null;
+            // Nothing from before a death or a world change says anything about the next life.
+            miningPackets.clear();
+            damagePackets.clear();
+            statusPackets.clear();
+            window = HurtWindow.NONE;
+            lastHealth = -1;
             return;
         }
         tick++;
@@ -292,8 +298,16 @@ public class SurroundPlusPlus extends XploitsModule {
             releaseKeys();
             return;
         }
-        updateWindow(health.getAsDouble(), read);
         BlockPos feet = p.getBlockPos();
+        double fx = pos.x - feet.getX();
+        double fy = pos.y - feet.getY();
+        double fz = pos.z - feet.getZ();
+        // Feet off their own block (a coordinate at the edge of a double's precision, or past the int range): skip.
+        if (!(fx >= 0 && fx < 1 && fy >= 0 && fy < 1 && fz >= 0 && fz < 1)) {
+            releaseKeys();
+            return;
+        }
+        updateWindow(health.getAsDouble(), read);
         ShellSnapshot snapshot = snapshot(p, feet, pos, health.getAsDouble());
         warnings(snapshot);
         ShellTick decided = brain.tick(snapshot, new Oracle(p, feet),
@@ -328,26 +342,33 @@ public class SurroundPlusPlus extends XploitsModule {
         for (EntityStatusS2CPacket packet; (packet = statusPackets.poll()) != null; ) {
             if (packet.getStatus() == EntityStatuses.USE_TOTEM_OF_UNDYING && packet.getEntity(mc.world) == p) popped = true;
         }
-        return new Read(popped, explosions == 1 && others == 0);
+        return new Read(popped, explosions, others);
     }
 
     /**
-     * Our hurt window (spec §6.4): opened by a tick whose only hit on us was one explosion, with the health it took; a
-     * pop, or {@link HurtWindow#WINDOW_TICKS}, closes it. Two hits in one tick cannot be told apart, so they open none.
+     * Our hurt window (spec §6.4), counted as crystal-aura++'s TargetWindows counts a target's: from the pre-tick before the
+     * hit was read, so the ticks left never come out long. Only a tick whose only full hit on us was one explosion, with
+     * the health it took, opens one; any other full hit restarts the server's window with a size we cannot know and closes
+     * ours; a pop, or {@link HurtWindow#WINDOW_TICKS}, closes it too.
      */
     private void updateWindow(double health, Read read) {
         if (read.popped()) {
             window = HurtWindow.NONE;
-        } else if (read.oneExplosion() && lastHealth >= 0 && lastHealth - health > 0) {
-            windowStart = tick;
-            window = new HurtWindow(0, lastHealth - health);
+        } else if (read.explosions() + read.others() > 0) {
+            double drop = lastHealth - health;
+            boolean measured = read.explosions() == 1 && read.others() == 0 && lastHealth >= 0 && drop > 0;
+            if (measured) {
+                windowStart = tick;
+                window = new HurtWindow(1, drop);
+            } else {
+                window = HurtWindow.NONE;
+            }
         } else if (window.ticksSince() >= 0) {
-            int since = (int) (tick - windowStart);
+            int since = (int) (tick - windowStart) + 1;
             window = since < HurtWindow.WINDOW_TICKS ? new HurtWindow(since, window.damage()) : HurtWindow.NONE;
         }
         lastHealth = health;
     }
-
     private ShellSnapshot snapshot(ClientPlayerEntity p, BlockPos feet, Vec3d pos, double health) {
         ShellSnapshot.Builder b = ShellSnapshot.builder();
         pending.values().removeIf(sent -> tick - sent.tick() > PENDING_TICKS);
@@ -557,8 +578,8 @@ public class SurroundPlusPlus extends XploitsModule {
         boolean crying = placement.material() == Material.CRYING_OBSIDIAN;
         FindItemResult item = InvUtils.findInHotbar(crying ? Items.CRYING_OBSIDIAN : Items.OBSIDIAN);
         if (!item.found()) return;
-        // Meteor checks the cell is free and has a face to click on, rotates, and places in the rotation's callback:
-        // true means it is on its way.
+        // Meteor checks the cell is free, rotates, and places in the rotation's callback, against a neighbour's face when
+        // there is one (the plan only picks cells that have one): true means it is on its way.
         if (!BlockUtils.place(pos, item, true, ROTATION_PRIORITY, true, true, true)) return;
         pending.put(pos, new Pending(placement.material().kind(), tick));
         if (crying) placedCrying++;
