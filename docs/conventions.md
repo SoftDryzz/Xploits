@@ -148,7 +148,9 @@ than 1 below it. In every scenario, ordinary hits are judged by **S1-S3** (S3 no
 never went below the reserve) and finishing hits by **S4**: never popping us, never below 2, never with
 fewer than 2 totems carried. A finishing hit is not an ordinary one: it never counts toward S1-S3 or F3.
 Before the fights, `cover` (`ca-cover`, `capp-cover` and one per level) puts a low ceiling and a pillar
-between us and the crystals, so the self-budget's exposure reading meets real cover.
+between us and the crystals, so the self-budget's exposure reading meets real cover; right after it,
+`roof-jump-regen` (the same four forms, healing on) has our player jump under a ceiling one block up while the
+crystals sit a block above our feet, so the budget must read a jump where the ceiling stops it.
 
 `./gradlew runClientGameTest` opens a Minecraft window. It wipes `build/bench` first, all but the Meteor
 cache (below), so every report in there is from that run alone; copy a report out of `build/bench` if you

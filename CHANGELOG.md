@@ -45,13 +45,15 @@ All notable changes to Xploits. The format is based on
   opponent trapping your head). Its safety check counts every place you could reach before a crystal explodes, a
   jump included, and under a block that jump was read as a place fully in the open, so every spot looked too
   dangerous. A jump is now read where the block stops it, measured with the game's own collision; while an opponent
-  is mining that block, the full jump still counts. On the bench, under a low ceiling it now places as often as
+  is mining that block, or when it is one a crystal can blow away (anything weaker than obsidian, such as stone), the
+  full jump still counts. On the bench, under a low ceiling it now places as often as
   Meteor's aura (median 472 placements in 30 s at Safe, 474 at Balanced and 470 at Aggressive, from 416, 418 and
   453; Meteor's 465), its lowest health never below 17.8. In a new scene where you jump under a ceiling one block up,
   its lowest health in every run stayed above the reserve: 8.6 at Safe (reserve 5), 6.5 at Balanced (3.5) and 4.6 at
   Aggressive (2). In the worst-case lab, two attackers with the city breaking again at once, it was held back on 8
   ticks of the fight's 1200 instead of 1018 to 1162 (with `surround++` or Meteor's `surround`), and placed 64
-  crystals instead of 18 to 21, popping them 7 or 8 times instead of 3.
+  crystals instead of 18 to 21, popping them 7 or 8 times instead of 3; in the slower city variant with Meteor's
+  `surround` you lost one totem more (5 to 6, from an opponent's hit; the cause is not established).
 
 ## [0.7.1] — 2026-09-29
 

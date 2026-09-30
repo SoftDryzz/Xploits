@@ -230,7 +230,10 @@ opponent's hole does not stop him surrounding himself.
 `crystal-aura++` can hold a placement back on the ticks you move inside a hole: its safety check reads the places your
 movement could take you before the crystal explodes, and one that would put you inside the hole's wall is read as fully
 exposed. A block over your head no longer does this: since 0.7.2 a jump is read where that block stops it, except
-while someone is mining that block (it may be gone before the crystal explodes).
+while someone is mining that block or when a crystal can blow it away (anything weaker than obsidian, such as stone or
+netherrack): then the full jump still counts. A roof can still go without warning between a crystal's placement and
+its explosion (an instant mine, a ghost block resolving), and a jump inside that window can then hurt more than was
+read.
 
 **What to do.** Keep a sword in hand if you get Weakness; get out of webs by hand.
 
