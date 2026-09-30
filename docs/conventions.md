@@ -116,13 +116,13 @@ mode our own death and the sparring's end the run with a `result` (1 win, -1 los
 limit) instead of ERROR, and add `pops_dealt`, `pops_taken`, `net_pops`, `first_pop_taken_s` and
 `min_health_after_own_hit` (our health plus absorption right after each hit from one of our own crystals,
 the lowest over the run — what the self-budget's reserve promises even while the opponent is also hitting
-us; a hit is ours when the recorder gives it to us or its crystal is one we placed, and never when the bench itself
-spawned that crystal: every end crystal a sparring's script or a bench command spawns is recorded (`ScriptCrystals`)
-and left out, since a claim left over from our aura's repeated placement can otherwise take the opponent's next crystal
-on the same block) to the metric table alongside the usual `damage_dealt`, `self_damage`, `min_health` and
-`placements_per_s`; these are new `Metrics` keys that only a fight-mode run puts, and the report and
-`Acceptance` already tolerate a metric being absent (old scenarios) or present (new) since both read the
-metric table by name. 32 ticks after each totem pop of either player — the 1.6 s an enchanted golden apple
+us; a hit is ours when the recorder gives it to us, or when its crystal is one we placed; a crystal the bench itself
+spawned is never one we placed: every end crystal a sparring's script or a bench command spawns is recorded
+(`ScriptCrystals`) and left out of that second route, since a claim left over from our aura's repeated placement can
+otherwise take the opponent's next crystal on the same block) to the metric table alongside the usual `damage_dealt`,
+`self_damage`, `min_health` and `placements_per_s`; these are new `Metrics` keys that only a fight-mode run puts,
+and the report and `Acceptance` already tolerate a metric being absent (old scenarios) or present (new) since both
+read the metric table by name. 32 ticks after each totem pop of either player — the 1.6 s an enchanted golden apple
 takes to eat — the bench applies its effects server-side: Absorption IV, Regeneration II and Resistance I,
 identical for both players and both auras (documented simplification: it does not tie up the eater's hands
 for those ticks, and it leaves out Fire Resistance, which a real notch apple also gives but which never

@@ -263,8 +263,9 @@ the way, it is a candidate for adjusting.
 
 **"`crystal-aura++` broke one of my own crystals and left me below the reserve."** By design, breaking one of
 your own crystals is checked against the 2-health floor rather than the reserve (the reserve is kept when the crystal
-is placed; once it stands, the opponent can set it off anyway), and in the bench's near-death fight, over 144 traced
-runs, the real result of every such break stayed at 5.2 or above.
+is placed; once it stands, the opponent can set it off anyway), and in 144 traced runs of the bench's
+`near-death-totem` fight at Balanced, the real result of every such break, measured on the server, stayed at 5.2 or
+above.
 
 **"I turn on `auto-travel` or `nether-sweep` and nothing happens."** They do not fly when turned on:
 they arm the trip and wait for their command. When you turn them on they tell you so in chat.

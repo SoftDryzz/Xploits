@@ -59,9 +59,9 @@ All notable changes to Xploits. The format is based on
   when that first crystal was destroyed while a later placement was still on its way, the later one made a second
   crystal, and only Meteor's `max-damage` and `anti-suicide` stood between it and you. On the bench such a break was
   predicted to leave you with 0.2 to 0.5 health; each time it landed within the moment of invulnerability after the
-  opponent's previous hit, and nothing got through. Present since 0.7.1. Now the rest of a placement stays yours for a
-  second after its last attempt: breaking such a crystal must leave you at least 2 health, as with every crystal of
-  yours.
+  opponent's previous hit, and nothing got through. Present since 0.7.0, `crystal-aura++`'s first release. Now the
+  rest of a placement stays yours for a second after its last attempt: breaking such a crystal must leave you at
+  least 2 health, as with every crystal of yours.
 - The in-game bench counted some hits from the opponent's own crystals as yours, when the opponent's crystal landed
   on a block where your aura had just tried to place. The one reserve failure of the release bench of 2026-09-30
   (`capp-balanced-near-death-totem`, 2.785 against a reserve of 3.5) was one of those hits, not one of yours. The
