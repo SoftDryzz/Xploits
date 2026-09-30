@@ -155,6 +155,50 @@ class ShellBrainTest {
     }
 
     @Test
+    void whileYouHoldAKeyNothingIsPlacedButTheCrystalIsStillBroken() {
+        // Obsidian floor: (-1,0,0) has its base and deals 10, so it weighs 10 and filling it with obsidian takes all 10
+        // away (the spot it opens above, (-1,1,0), deals nothing). The opponent's crystal at (1,0,0) deals 10 and leaves us
+        // 36 - 10 = 26, over the floor: it is broken. Its cell is taken, as the adapter marks it, so no block goes there.
+        ShellSnapshot s = Scenes.obsidianFloor().crystal(new StandingCrystal(7, c(1, 0, 0), false)).occupied(c(1, 0, 0)).build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10).at(1, 0, 0, 10);
+        ShellTick still = new ShellBrain().tick(s, oracle, STILL);
+        assertEquals(List.of(new Placement(c(-1, 0, 0), Material.OBSIDIAN, ShellReason.SPOT)), still.placements(),
+            "standing still, the spot is filled");
+        ShellTick moving = new ShellBrain().tick(s, oracle, KEYS);
+        assertTrue(moving.placements().isEmpty(), "while you move, a block could wall you in: none is placed");
+        assertEquals(Optional.of(7), moving.breakCrystal(), "the crystal next to you is still broken");
+        assertTrue(moving.keys().isEmpty());
+        assertFalse(moving.centre());
+    }
+
+    @Test
+    void whenYouLetGoOfTheKeysItBuildsOnTheNextTick() {
+        // Open ground, walking east: the head-level cell ahead, (1,1,0), needs its base (1,0,0), the feet-level cell ahead,
+        // and deals 12 (weighs 12 * 0.125 = 1.5). Standing still, crying obsidian there takes the spot away with one block.
+        ShellSnapshot s = Scenes.open().build();
+        FakeOracle oracle = new FakeOracle().at(1, 1, 0, 12);
+        ShellBrain brain = new ShellBrain();
+        assertTrue(brain.tick(s, oracle, KEYS).placements().isEmpty(), "not in front of you while you walk");
+        assertTrue(brain.tick(s, oracle, KEYS).placements().isEmpty(), "nor on the next tick while you still hold the key");
+        assertEquals(List.of(new Placement(c(1, 0, 0), Material.CRYING_OBSIDIAN, ShellReason.BASE)),
+            brain.tick(s, oracle, STILL).placements(), "the tick you let go, it builds");
+    }
+
+    @Test
+    void aPopsClosureAndTheOpponentsHoleWaitWhileYouMove() {
+        ShellBrain brain = new ShellBrain();
+        ShellSnapshot calm = Scenes.open().build();
+        FakeOracle nothing = new FakeOracle();
+        assertTrue(brain.tick(calm, nothing, new ShellBrain.Motion(true, 0, Optional.empty(), true)).placements().isEmpty(),
+            "a pop while you move: no closure yet");
+        List<Placement> stopped = brain.tick(calm, nothing, STILL).placements();
+        assertFalse(stopped.isEmpty(), "you stop within the hold: it closes");
+        assertTrue(stopped.stream().allMatch(p -> p.reason() == ShellReason.CLOSURE));
+        ShellSnapshot theirHole = hole(ShellSnapshot.builder().floor(BlockKind.OTHER), 3, 0).hostile(new Vec(4.5, 0, 0.5)).build();
+        assertTrue(new ShellBrain().tick(theirHole, nothing, KEYS).placements().isEmpty(), "nor is their hole filled");
+    }
+
+    @Test
     void anOpponentsHoleIsFilledWithWhatTheBudgetLeaves() {
         ShellSnapshot calm = hole(ShellSnapshot.builder().floor(BlockKind.OTHER), 3, 0).hostile(new Vec(4.5, 0, 0.5)).build();
         assertEquals(List.of(new Placement(c(3, -1, 0), Material.OBSIDIAN, ShellReason.DENY_HOLE)),

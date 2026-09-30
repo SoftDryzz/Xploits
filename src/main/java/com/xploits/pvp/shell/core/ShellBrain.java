@@ -7,9 +7,11 @@ import java.util.Set;
 
 /**
  * surround++'s decision for one tick (spec §4-§7), in the order that matters: the crystal to break next to us (the one in
- * a mined gap is the worst there is); then a walk under way goes on, or a better hole is chosen, and while walking
- * nothing is built (a block would stand in the way); otherwise the block plan, then an opponent's hole with what the
- * budget leaves; then whether to centre and whether to burrow.
+ * a mined gap is the worst there is); then a walk under way goes on, and while walking nothing is built (a block would
+ * stand in the way); while the player holds a movement key, jump or sneak himself, nothing is built either (his keys
+ * win, spec §2: a block ahead of him would wall him in) and only the crystal is broken, until the tick he lets go;
+ * otherwise a better hole is chosen, or the block plan, then an opponent's hole with what the budget leaves; then
+ * whether to centre and whether to burrow.
  *
  * <p>The planner ranks spots by their weight ({@link Threat#weighted}: a spot that still needs its base counts at
  * {@link ThreatMap#NEEDS_BASE_WEIGHT}); walking to a hole and burrow read a spot's full hit instead ({@link #fullHit}):
@@ -30,7 +32,7 @@ public final class ShellBrain {
     /**
      * What a tick knows about us beyond the world.
      *
-     * @param userKeys  a movement key, jump or sneak held by the player's own hand
+     * @param userKeys  a movement key, jump or sneak held by the player's own hand: nothing is placed while it is
      * @param yaw       where we face, for the walk's keys
      * @param walkingTo the hole the walk under way is heading for, relative to our feet block now; empty when lost
      * @param popped    one of our totems popped since the last tick
@@ -79,6 +81,11 @@ public final class ShellBrain {
             return new ShellTick(List.of(), toBreak, step.keys(), Optional.empty(), step.stopped(), false, false, status(map, s));
         }
         walk.idle();
+        // The player's own keys win (spec §2): while he moves, a block could wall him in, so nothing is placed, not even
+        // the closure after a pop or an opponent's hole; the crystal next to him is still broken.
+        if (motion.userKeys()) {
+            return new ShellTick(List.of(), toBreak, Set.of(), Optional.empty(), false, false, false, status(map, s));
+        }
         List<Threat> threats = map.threats();
         // Whether to leave reads the biggest full hit, not the planner's weight: the threats come by weight, so the first
         // is not necessarily the biggest.
