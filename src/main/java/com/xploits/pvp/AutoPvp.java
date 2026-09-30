@@ -22,8 +22,11 @@ import com.xploits.pvp.core.Plan;
 import com.xploits.pvp.core.PvpStatus;
 import com.xploits.pvp.core.PvpText;
 import com.xploits.pvp.core.Resource;
+import com.xploits.pvp.core.ShellLatch;
+import com.xploits.pvp.core.ShellModule;
 import com.xploits.pvp.core.Skipped;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.shell.SurroundPlusPlus;
 import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.hud.core.PanelInput;
 import com.xploits.pvp.profile.core.AutobreakWatch;
@@ -206,6 +209,22 @@ public class AutoPvp extends XploitsModule {
         .build()
     );
 
+    /** The shell driven this activation (surround++ spec §8), latched like the crystal aura. Before its setting. */
+    private final ShellLatch shellLatch = new ShellLatch(this::isActive, this::releaseAll, this::shellModuleMoved);
+
+    /**
+     * Which defence to keep you in (surround++ spec §8), latched like {@link #crystalModule}: read first thing in
+     * {@link #onActivate}; a change is applied first thing on the next tick, after releasing everything taken. Not in the
+     * style profiles.
+     */
+    private final Setting<ShellModule> shellModule = sgGeneral.add(new EnumSetting.Builder<ShellModule>()
+        .name("shell-module")
+        .description(Texts.startupText(PvpText.SETTING_SHELL_MODULE))
+        .defaultValue(ShellModule.METEOR)
+        .onChanged(shellLatch::requested)
+        .build()
+    );
+
     /**
      * Switches to the next style profile (design §2). Last in General (precise rules "Settings order");
      * Meteor fires it on key release and only while this module is on.
@@ -344,6 +363,7 @@ public class AutoPvp extends XploitsModule {
         // First of all (crystal-aura++ spec P5): the missing-module measure and the already-on warnings
         // below ask about the crystal aura through the latch.
         crystalLatch.latch(crystalModule.get());
+        shellLatch.latch(shellModule.get());
         sayLoadWarning();
         panelReleased.clear();
         director.reset();
@@ -385,6 +405,7 @@ public class AutoPvp extends XploitsModule {
     private void onTick(TickEvent.Post event) {
         // Before anything else: a crystal-module change noted since the last tick is applied now.
         crystalLatch.settle();
+        shellLatch.settle();
         // Whatever notify says: without it the player would see a module in the use-* list that never
         // comes up and would not know why.
         missing.warning(mc.player != null && mc.world != null).ifPresent(this::warning);
@@ -408,7 +429,7 @@ public class AutoPvp extends XploitsModule {
         lastTargetDistance = snapshot.hasTarget() ? snapshot.targetDistance() : null;
         // Named once here: every warning and skip reason that names the aura says the real one.
         Plan plan = crystalLatch.latched().name(
-            director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules()));
+            director.tick(snapshot, approachDistance.get(), threatMargin.get(), allowed(), missing.modules(), shellLatch.latched()));
         lastPlan = plan;
 
         apply(plan);
@@ -431,6 +452,14 @@ public class AutoPvp extends XploitsModule {
         missing = missing.remeasure(name -> byName(name) != null);
         Module aura = byName(CrystalModule.LOGICAL);
         crystalLatch.alreadyOn(aura != null && aura.isActive()).ifPresent(this::warning);
+    }
+
+    /**
+     * After the shell latch moved mid-run (surround++ spec §8): the catalog's {@code surround} is now another module, so
+     * what Meteor lacks is measured again.
+     */
+    private void shellModuleMoved(ShellModule now) {
+        missing = missing.remeasure(name -> byName(name) != null);
     }
 
     /**
@@ -649,7 +678,7 @@ public class AutoPvp extends XploitsModule {
         // Nor is MODULE_MISSING_SKIP: it was said once when auto-pvp was turned on, and .xploits pvp shows it.
         for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
             notes.put(skipped.module().name(), Msg.of(PvpText.NOT_ENABLING,
-                "module", crystalLatch.resolve(skipped.module().name()), "reason", skipped.reason()));
+                "module", realName(skipped.module().name()), "reason", skipped.reason()));
         }
 
         if (notify.get() && plan.state() != CombatState.OUT_OF_RESOURCES) {
@@ -972,20 +1001,29 @@ public class AutoPvp extends XploitsModule {
         }
         if (notify.get()) {
             for (String name : result.newlyReleased()) {
-                info(PvpText.RELEASED, "module", crystalLatch.resolve(name));
+                info(PvpText.RELEASED, "module", realName(name));
             }
         }
     }
 
     /**
-     * Q3: the catalog's {@code crystal-aura} while {@code crystal-aura++} is the one driven, is on and is
-     * holding back on purpose -refusing beside Meteor's aura, or its budget refusing every option that
-     * passed Meteor's checks-; nothing otherwise. The watch does not count those ticks as idle.
+     * The catalog names holding back on purpose this tick, which the watch does not count as idle: {@code crystal-aura}
+     * while crystal-aura++ is driven, on and holding (Q3); {@code surround} while surround++ is driven, on and has nothing
+     * open, since it only places where something can hurt you.
      */
     private Set<String> holding() {
-        if (crystalLatch.latched() != CrystalModule.XPLOITS) return Set.of();
-        CrystalAuraPlusPlus aura = Modules.get().get(CrystalAuraPlusPlus.class);
-        return aura != null && aura.isActive() && aura.holding() ? Set.of(CrystalModule.LOGICAL) : Set.of();
+        Set<String> names = new LinkedHashSet<>();
+        if (crystalLatch.latched() == CrystalModule.XPLOITS) {
+            CrystalAuraPlusPlus aura = Modules.get().get(CrystalAuraPlusPlus.class);
+            if (aura != null && aura.isActive() && aura.holding()) names.add(CrystalModule.LOGICAL);
+        }
+        if (shellLatch.latched() == ShellModule.XPLOITS) {
+            SurroundPlusPlus shell = Modules.get().get(SurroundPlusPlus.class);
+            if (shell != null && shell.isActive() && shell.status().map(s -> s.openThreats() == 0).orElse(true)) {
+                names.add(ShellModule.LOGICAL);
+            }
+        }
+        return Set.copyOf(names);
     }
 
     /** crystal-aura++'s late own crystals (Q2, Q6), for the status line shown while it is driven. */
@@ -1050,7 +1088,12 @@ public class AutoPvp extends XploitsModule {
      * the already-on warning and the status all ask here.
      */
     private Module byName(String name) {
-        return Modules.get().get(crystalLatch.resolve(name));
+        return Modules.get().get(realName(name));
+    }
+
+    /** The real module behind a managed module's catalog name, with the latched crystal aura and shell. */
+    private String realName(String managedName) {
+        return shellLatch.resolve(crystalLatch.resolve(managedName));
     }
 
     /** I5: OUT_OF_RESOURCES is the only loud warning (spec §4.1, §6): chat in warning() and a toast with sound. */
@@ -1070,7 +1113,7 @@ public class AutoPvp extends XploitsModule {
     private Msg outOfResourcesMessage(Plan plan) {
         Object reasons = null;
         for (Skipped skipped : PvpStatus.realSkips(plan.skipped())) {
-            Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", crystalLatch.resolve(skipped.module().name()),
+            Msg item = Msg.of(PvpText.OUT_OF_RESOURCES_ITEM, "module", realName(skipped.module().name()),
                 "reason", skipped.reason());
             reasons = reasons == null ? item : Msg.of(PvpText.JOIN_COMMA, "first", reasons, "rest", item);
         }
@@ -1136,7 +1179,7 @@ public class AutoPvp extends XploitsModule {
     /** The real module names behind catalog names, in their order. */
     private List<String> realNames(Collection<String> names) {
         List<String> real = new ArrayList<>();
-        for (String name : names) real.add(crystalLatch.resolve(name));
+        for (String name : names) real.add(realName(name));
         return real;
     }
 
@@ -1158,7 +1201,7 @@ public class AutoPvp extends XploitsModule {
         Object parts = null;
         for (ActionWatch.Idle verdict : idle) {
             List<String> names = new ArrayList<>();
-            for (ManagedModule module : verdict.modules()) names.add(crystalLatch.resolve(module.name()));
+            for (ManagedModule module : verdict.modules()) names.add(realName(module.name()));
             // The "+" is not decorative: it says those names go together because they share a stack and the
             // verdict cannot be split between them.
             Msg joint = verdict.joint()
@@ -1321,11 +1364,11 @@ public class AutoPvp extends XploitsModule {
         PanelState panel = state.get();
         Plan plan = panel.plan();
         List<String> enabled = new ArrayList<>();
-        for (ManagedModule module : plan.enable()) enabled.add(crystalLatch.resolve(module.name()));
+        for (ManagedModule module : plan.enable()) enabled.add(realName(module.name()));
         List<PanelInput.Idle> idle = new ArrayList<>();
         for (ActionWatch.Idle verdict : panel.idle()) {
             List<String> names = new ArrayList<>();
-            for (ManagedModule module : verdict.modules()) names.add(crystalLatch.resolve(module.name()));
+            for (ManagedModule module : verdict.modules()) names.add(realName(module.name()));
             idle.add(new PanelInput.Idle(verdict.resource().name().toLowerCase(Locale.ROOT), names));
         }
         FightRecorder recorder = Modules.get().get(FightRecorder.class);
@@ -1336,7 +1379,14 @@ public class AutoPvp extends XploitsModule {
             panel.targetDistance(), enabled, realNames(panel.released()), realNames(PvpStatus.profileOffNames(plan.skipped())),
             idle, panel.crystals(), panel.totems(), panel.obsidian(),
             plan.enable().contains(ManagedModules.CRYSTAL_AURA), plan.state() == CombatState.OUT_OF_RESOURCES,
-            fight, showFight, crystalLatch.latched().moduleName());
+            fight, showFight, crystalLatch.latched().moduleName(), shellLine());
+    }
+
+    /** surround++'s line, while it is on, driven or by hand. */
+    private PanelInput.Shell shellLine() {
+        SurroundPlusPlus shell = Modules.get().get(SurroundPlusPlus.class);
+        if (shell == null) return null;
+        return shell.status().map(s -> new PanelInput.Shell(s.headCovered(), s.openThreats(), s.underAttack())).orElse(null);
     }
 
     /**
@@ -1348,7 +1398,7 @@ public class AutoPvp extends XploitsModule {
         for (ManagedModule managed : ManagedModules.ALL) {
             if (owned.contains(managed.name())) continue;
             Module module = byName(managed.name());
-            if (module != null && module.isActive()) result.add(crystalLatch.resolve(managed.name()));
+            if (module != null && module.isActive()) result.add(realName(managed.name()));
         }
         String otherAura = crystalLatch.latched().other().moduleName();
         Module other = Modules.get().get(otherAura);

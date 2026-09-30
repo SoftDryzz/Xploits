@@ -14,6 +14,7 @@ public enum PvpText implements MessageKey {
     SETTING_USE_MODULE,
     SETTING_NEXT_PROFILE,
     SETTING_CRYSTAL_MODULE,
+    SETTING_SHELL_MODULE,
     /** Both crystal auras by name, for the texts fixed at startup that cannot know which one is driven. */
     BOTH_CRYSTAL_AURAS,
     NOTHING,

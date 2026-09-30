@@ -28,6 +28,7 @@ final class PanelInputs {
     private boolean outOfResources = false;
     private PanelInput.LiveFight fight = null;
     private boolean showFight = true;
+    private PanelInput.Shell shell = null;
 
     static PanelInputs base() {
         return new PanelInputs();
@@ -123,9 +124,14 @@ final class PanelInputs {
         return this;
     }
 
+    PanelInputs shell(PanelInput.Shell v) {
+        this.shell = v;
+        return this;
+    }
+
     PanelInput build() {
         return new PanelInput(autoPvpOn, profileName, profileModified, state, posture, target, targetDistance,
             enabled, released, profileOff, idle, crystals, totems, obsidian, crystalAuraEnabled,
-            outOfResources, fight, showFight);
+            outOfResources, fight, showFight, com.xploits.pvp.core.CrystalModule.METEOR.moduleName(), shell);
     }
 }

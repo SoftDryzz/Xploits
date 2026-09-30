@@ -424,6 +424,19 @@ public final class CombatDirector {
      */
     public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed,
                      Set<ManagedModule> missing) {
+        return tick(snapshot, approachDistance, threatMargin, allowed, missing, ShellModule.METEOR);
+    }
+
+    /**
+     * The full signature, with the shell auto-pvp drives (surround++ spec §8). With {@link ShellModule#XPLOITS} the
+     * catalog's {@code surround} is surround++, which decides from its own threat map: it is wanted for as long as
+     * auto-pvp is on, as the crystal aura is; it stays out of the resource filter (with no blocks it still breaks
+     * crystals and walks you to a hole, and says so itself); and Meteor's {@code hole-filler} is never asked for, since
+     * surround++ denies the opponents' holes itself. A profile that does not allow {@code surround} still keeps it off.
+     * The shorter overloads pass {@link ShellModule#METEOR}: the behaviour before surround++.
+     */
+    public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed,
+                     Set<ManagedModule> missing, ShellModule shell) {
         CombatSnapshot effective = rememberTarget(snapshot);
 
         CombatState candidate = classify(effective, approachDistance, state);
@@ -438,7 +451,7 @@ public final class CombatDirector {
 
         ticksInState++;
         boolean retreating = retreat.update(effective);
-        Plan plan = planFor(state, effective, retreating, rememberPosture(effective, threatMargin), allowed, missing);
+        Plan plan = planFor(state, effective, retreating, rememberPosture(effective, threatMargin), allowed, missing, shell);
         previouslyEnabled = rememberEnabled(plan);
         return plan;
     }
@@ -660,7 +673,7 @@ public final class CombatDirector {
     }
 
     private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, CombatPosture posture,
-                         Set<ManagedModule> allowed, Set<ManagedModule> missing) {
+                         Set<ManagedModule> allowed, Set<ManagedModule> missing, ShellModule shell) {
         List<ManagedModule> offensive = offensiveModules(state, snapshot, retreating);
 
         Set<ManagedModule> wanted = new LinkedHashSet<>(offensive);
@@ -684,6 +697,10 @@ public final class CombatDirector {
         wanted.add(ManagedModules.CRYSTAL_AURA);
 
         wanted.addAll(DefensivePolicy.modulesFor(posture, snapshot));
+        if (shell == ShellModule.XPLOITS) {
+            wanted.remove(ManagedModules.HOLE_FILLER);
+            wanted.add(ManagedModules.SURROUND);
+        }
 
         List<ManagedModule> enable = new ArrayList<>();
         List<Skipped> skipped = new ArrayList<>();
@@ -706,6 +723,12 @@ public final class CombatDirector {
             // hole-filler need.
             if (!allowed.contains(module)) {
                 skipped.add(new Skipped(module, Msg.of(PvpText.PROFILE_OFF)));
+                continue;
+            }
+            if (shell == ShellModule.XPLOITS && module.equals(ManagedModules.SURROUND)) {
+                // surround++ spends only where something can hurt you, and does something useful with no blocks at all.
+                belowMinimumTicks.remove(module);
+                enable.add(module);
                 continue;
             }
             if (module.equals(ManagedModules.CRYSTAL_AURA)) {
