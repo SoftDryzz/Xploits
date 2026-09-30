@@ -15,7 +15,7 @@ All notable changes to Xploits. The format is based on
 - **`surround++`**, a computed defensive shell: every tick it works out where a crystal that could hurt you would go
   and covers the most dangerous spot first, with crying obsidian where plain obsidian would give the opponent a new
   base; refills a mined wall the tick it opens; breaks an opponent's crystal next to you when its blast leaves you 2
-  health or more; walks you into a better hole when you are exposed (your keys always win: while you walk, a movement key held and actually moving, it only breaks crystals; held in place by a web or a wall, it keeps refilling); fills your opponents' holes;
+  health or more; walks you into a better hole when you are exposed (your keys always win: while you walk (a movement key held and your feet actually moving, crawling through a web included) it only breaks crystals; held still against a wall, it keeps refilling); fills your opponents' holes;
   closes the shell completely for 5 seconds after a totem pop; `burrow` off by default. It never pins you to the centre
   of the block and never turns itself off when your height changes, the two ways Meteor's `surround` worked against
   you in the earlier worst-case lab runs (it switched itself off up to 43 times in a minute). In the lab (2 and 3 hacked attackers with an honest city, 60 s, 3 runs each) you lost

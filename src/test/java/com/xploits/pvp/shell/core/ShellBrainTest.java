@@ -240,6 +240,23 @@ class ShellBrainTest {
     }
 
     @Test
+    void jumpOrSneakHeldWhileMovingWithoutAMovementKeyItStillBuilds() {
+        ShellSnapshot s = Scenes.obsidianFloor().build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10);
+        ShellBrain.Motion jumping = new ShellBrain.Motion(true, false, true, 0, Optional.empty(), false);
+        assertEquals(List.of(new Placement(c(-1, 0, 0), Material.OBSIDIAN, ShellReason.SPOT)),
+            new ShellBrain().tick(s, oracle, jumping).placements(), "no horizontal key: the feet moving alone does not stop it");
+    }
+
+    @Test
+    void sneakingNeverCentresYou() {
+        ShellSnapshot out = Scenes.obsidianFloor().feet(new Vec(0.9, 0, 0.5)).obsidian(0).cryingObsidian(0).build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10);
+        assertTrue(new ShellBrain().tick(out, oracle, STILL).centre(), "sticking out with something open: it would centre");
+        assertFalse(new ShellBrain().tick(out, oracle, CROUCHED).centre(), "but never while a key, sneak included, is held");
+    }
+
+    @Test
     void walkingStillBreaksTheCrystalButBuildsNothing() {
         ShellSnapshot s = Scenes.obsidianFloor().crystal(new StandingCrystal(7, c(1, 0, 0), false)).occupied(c(1, 0, 0)).build();
         FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10).at(1, 0, 0, 10);
