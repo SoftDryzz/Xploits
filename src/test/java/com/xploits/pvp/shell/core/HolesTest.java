@@ -107,4 +107,20 @@ class HolesTest {
         ShellSnapshot s = hole(hole(open(), 2, 0, BlockKind.OBSIDIAN), -2, 0, BlockKind.CRYING_OBSIDIAN).build();
         assertEquals(Optional.of(c(-2, -1, 0)), Holes.target(s, 5, false));
     }
+
+    @Test
+    void notIntoAHoleWithABlockOverIt() {
+        // The hole is fine, but walking into its column at feet level puts our head into (2,1,0).
+        assertEquals(Optional.empty(), Holes.target(hole(open(), 2, 0, BlockKind.OBSIDIAN).block(2, 1, 0, BlockKind.OTHER).build(), 5, false));
+    }
+
+    @Test
+    void notThroughACornerYourBodyCannotPass() {
+        // The hole at (2,-1,2) is 2.83 away, diagonally. Blocks at (1,0,0) and (0,0,1) leave only the corner between them:
+        // a line passes through it, a box 0.6 wide does not.
+        ShellSnapshot s = hole(open(), 2, 2, BlockKind.OBSIDIAN).block(1, 0, 0, BlockKind.OTHER).block(0, 0, 1, BlockKind.OTHER).build();
+        assertEquals(Optional.empty(), Holes.target(s, 5, false));
+        assertEquals(Optional.of(c(2, -1, 2)), Holes.target(hole(open(), 2, 2, BlockKind.OBSIDIAN).build(), 5, false),
+            "without the two blocks the diagonal is open");
+    }
 }

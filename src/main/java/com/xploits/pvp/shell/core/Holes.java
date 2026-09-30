@@ -13,6 +13,7 @@ public final class Holes {
     /** How much a threat must weigh before we leave where we stand: a hit this size, twice the danger line. */
     public static final double MOVE_THREAT = 4.0;
     private static final double PATH_STEP = 0.25;
+    private static final double EPSILON = 1e-6;
 
     private Holes() {
     }
@@ -85,7 +86,11 @@ public final class Holes {
         return best == null ? Optional.empty() : Optional.of(best.cell());
     }
 
-    /** A straight walk from our feet to the hole: room for our body at every step and ground under it, up to the hole. */
+    /**
+     * A straight walk from our feet to the hole, for a box as wide as ours: at every step, room at feet and head level
+     * and ground under every block the box overlaps; in the hole's own column, room at head level over it (the hole and
+     * the cell above it are the hole's own checks).
+     */
     static boolean pathClear(ShellSnapshot s, Cell target) {
         Vec from = s.feet();
         double tx = target.x() + 0.5;
@@ -93,17 +98,26 @@ public final class Holes {
         double length = Math.hypot(tx - from.x(), tz - from.z());
         int steps = Math.max(1, (int) Math.ceil(length / PATH_STEP));
         int level = s.feetLevel();
+        double half = ShellSnapshot.HALF_WIDTH;
         for (int i = 1; i <= steps; i++) {
             double t = (double) i / steps;
-            int x = (int) Math.floor(from.x() + (tx - from.x()) * t);
-            int z = (int) Math.floor(from.z() + (tz - from.z()) * t);
-            if (x == target.x() && z == target.z()) continue;
-            for (int dy = 0; dy <= 1; dy++) {
-                BlockKind k = s.kind(new Cell(x, level + dy, z));
-                if (k != BlockKind.AIR && k != BlockKind.REPLACEABLE) return false;
+            double x = from.x() + (tx - from.x()) * t;
+            double z = from.z() + (tz - from.z()) * t;
+            for (int cx = (int) Math.floor(x - half); cx <= (int) Math.floor(x + half - EPSILON); cx++) {
+                for (int cz = (int) Math.floor(z - half); cz <= (int) Math.floor(z + half - EPSILON); cz++) {
+                    if (cx == target.x() && cz == target.z()) {
+                        if (!passable(s.kind(new Cell(cx, level + 1, cz)))) return false;
+                        continue;
+                    }
+                    if (!passable(s.kind(new Cell(cx, level, cz))) || !passable(s.kind(new Cell(cx, level + 1, cz)))) return false;
+                    if (!s.kind(new Cell(cx, level - 1, cz)).supports()) return false;
+                }
             }
-            if (!s.kind(new Cell(x, level - 1, z)).supports()) return false;
         }
         return true;
+    }
+
+    private static boolean passable(BlockKind kind) {
+        return kind == BlockKind.AIR || kind == BlockKind.REPLACEABLE;
     }
 }
