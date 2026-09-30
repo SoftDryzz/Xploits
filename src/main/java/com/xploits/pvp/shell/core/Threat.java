@@ -10,7 +10,7 @@ package com.xploits.pvp.shell.core;
  */
 public record Threat(Cell spot, Kind kind, double damage, double open) {
     /** A hit this big outpaces what a player heals between two crystals: below it a spot is not worth a block. */
-    public static final double MIN_DANGER = 2.0;
+    public static final double MIN_DANGER = 1.0;
 
     public enum Kind {
         /** Obsidian or bedrock under it now. */

@@ -97,8 +97,8 @@ class ThreatMapTest {
 
     @Test
     void theRaycastIsOnlyAskedWhereTheBoundCouldMatter() {
-        // Needs its base: a bound of 3 weighs 1.5, under the danger line, so the bound is kept and nothing is raycast.
-        FakeOracle open = new FakeOracle().bound(1, 1, 0, 3);
+        // Needs its base: a bound of 1.9 weighs 0.95, under the danger line, so the bound is kept and nothing is raycast.
+        FakeOracle open = new FakeOracle().bound(1, 1, 0, 1.9);
         new ThreatMap(Scenes.open().build(), open).threatAt(c(1, 1, 0));
         assertFalse(open.askedExact.contains(c(1, 1, 0)));
         // A base already there: 3 weighs 3, over the line, so the raycast is asked for.

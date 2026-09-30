@@ -51,7 +51,7 @@ class CrystalBreakerTest {
 
     @Test
     void aHarmlessCrystalIsLeftAlone() {
-        assertEquals(Optional.empty(), choose(Scenes.obsidianFloor().crystal(GAP), new FakeOracle().at(1, 0, 0, 1.9)));
+        assertEquals(Optional.empty(), choose(Scenes.obsidianFloor().crystal(GAP), new FakeOracle().at(1, 0, 0, 0.9)));
     }
 
     @Test

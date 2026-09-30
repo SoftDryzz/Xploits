@@ -85,8 +85,8 @@ class ShellPlannerTest {
 
     @Test
     void aSpotBelowTheDangerLineIsLeftAlone() {
-        assertTrue(plan(Scenes.obsidianFloor().build(), new FakeOracle().at(1, 0, 0, 1.9), 2).isEmpty());
-        assertEquals(1, plan(Scenes.obsidianFloor().build(), new FakeOracle().at(1, 0, 0, 2.0), 2).size());
+        assertTrue(plan(Scenes.obsidianFloor().build(), new FakeOracle().at(1, 0, 0, 0.9), 2).isEmpty());
+        assertEquals(1, plan(Scenes.obsidianFloor().build(), new FakeOracle().at(1, 0, 0, 1.0), 2).size());
     }
 
     @Test
