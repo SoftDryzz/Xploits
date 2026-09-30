@@ -27,7 +27,8 @@ import java.util.Set;
  *   <li>our OWN crystals are no longer limited by {@code max-damage} (task B1): the reserve decides them, and
  *   {@code anti-suicide} still applies. A crystal of ours that appears after its placement's wait ran out
  *   (late, Q2) is foreign for every other rule but still ours for the budget: it counts in C while it may land,
- *   and breaking it must leave the floor (task C2);</li>
+ *   and breaking it must leave the floor (task C2). So is a later crystal of a burst whose first crystal already
+ *   came ({@link #burstTails}, 0.8.0);</li>
  *   <li>the finishing blow (task B0a, spec Amendment 2026-09-28; condition a tightened fix round 1, owner's
  *   decision 2026-09-29): a finishing-grade crystal (kills the target or pops his totem, {@link #FINISH_MARGIN})
  *   may go through past {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code pause-health},
@@ -103,6 +104,18 @@ public final class CrystalBrain {
     private final Map<Integer, Known> known = new LinkedHashMap<>();
     private final List<Pending> pending = new ArrayList<>();
     private final List<Late> late = new ArrayList<>();
+    /**
+     * 0.8.0, the rest of a placement burst: for each spot whose placement a crystal has settled (in time or late), the
+     * pre-tick of that burst's last packet. Meteor, and this brain with it, sends the placement on the same base every
+     * pre-tick until a crystal appears there ({@link #placed}); if that first crystal is gone (another explosion) while a
+     * later packet of the burst is still on its way, that packet makes a second crystal of ours, with no pending
+     * placement left to claim it. For {@link #LATE_OWN_WINDOW} pre-ticks after the last packet, a crystal on the spot is
+     * therefore ours for the budget ({@link Known#mine}), as a late own crystal is: Meteor's rules still bound it, and
+     * breaking it must also leave the floor ({@link Known#breakView}). Read only by {@link #appeared}, for ownership:
+     * it adds nothing to the budget (a crystal standing on the spot is counted in S whoever placed it), never takes a
+     * finishing-blow slot and never makes a crystal {@code ours}.
+     */
+    private final Map<Long, Long> burstTails = new LinkedHashMap<>();
 
     private long now = NO_TICK;
     private int ticksPassed;
@@ -592,9 +605,10 @@ public final class CrystalBrain {
      * The placement decided this tick went out (lines 1049-1057). It stays pending until a crystal appears
      * at its spot or for max(5, ping + 2) ticks, whichever comes first (Q2). It replaces whatever was pending,
      * or remembered as late, at that spot, as Meteor overwrites its placing spot and timer (lines 1054-1057):
-     * Meteor places on the same base every tick until the crystal arrives, and only one crystal can come of
-     * it. That crystal's landing still counts from the first of those placements: a placement the server missed is
-     * what made it slower.
+     * Meteor places on the same base every tick until the crystal arrives. The first crystal to appear settles it; a
+     * later packet of the same burst can still make a second one if the first is gone first, which {@link #burstTails}
+     * keeps ours. The first crystal's landing still counts from the first of those placements: a placement the server
+     * missed is what made it slower.
      *
      * @param pingTicks your ping in ticks, rounded up; {@link #UNKNOWN_PING_TICKS} when unknown
      */
@@ -1285,11 +1299,17 @@ public final class CrystalBrain {
      * only {@code finish}, never {@code ours}, so this alone is enough to keep condition b's "one at a
      * time" counting it once it is known, continuing the block {@link Late#finish} already gave it while it
      * was only late).
+     *
+     * <p>0.8.0: a crystal that settles a placement, in time or late, starts that burst's tail ({@link #burstTails});
+     * one that settles nothing but lands on a spot whose tail still runs is ours for the budget ({@code mine}), exactly
+     * like a late own crystal, but it carries no finishing mark and takes no landing sample.
      */
     private Known appeared(CrystalSeen c, long at) {
         boolean ours = false;
         long placedTick = CrystalView.NEVER;
         FinishKind override = FinishKind.NONE;
+        // The last packet of the burst this crystal settles, if it settles one: the rest of that burst stays ours.
+        long burstLastPacket = CrystalView.NEVER;
         for (Iterator<Pending> it = pending.iterator(); it.hasNext(); ) {
             Pending p = it.next();
             if (p.pos == c.pos() && at - p.tick < p.lifetime) {
@@ -1297,6 +1317,7 @@ public final class CrystalBrain {
                 ours = true;
                 placedTick = p.firstTick;
                 override = p.finish;
+                burstLastPacket = p.tick;
                 break;
             }
         }
@@ -1310,13 +1331,18 @@ public final class CrystalBrain {
                     lateMatched = true;
                     windows.landed(at, at - l.firstTick);
                     override = l.finish;
+                    burstLastPacket = l.lastPacket;
                     break;
                 }
             }
         }
+        // 0.8.0: a later crystal of a burst whose first crystal already came (burstTails, aged out by expirePending).
+        // Ownership only.
+        boolean tailMatched = !ours && !lateMatched && burstTails.containsKey(c.pos());
+        if (burstLastPacket != CrystalView.NEVER) burstTails.put(c.pos(), burstLastPacket);
         Known k = new Known(c, ours, placedTick);
         k.since = at;
-        k.mine = ours || lateMatched;
+        k.mine = ours || lateMatched || tailMatched;
         k.finish = override;
         known.put(c.id(), k);
         return k;
@@ -1327,10 +1353,11 @@ public final class CrystalBrain {
             Pending p = it.next();
             if (now - p.tick >= p.lifetime) {
                 it.remove();
-                late.add(new Late(p.pos, p.budgetSelfDamage, now, p.firstTick, p.finish));
+                late.add(new Late(p.pos, p.budgetSelfDamage, now, p.tick, p.firstTick, p.finish));
             }
         }
         late.removeIf(l -> now - l.since >= LATE_OWN_WINDOW);
+        burstTails.values().removeIf(last -> now - last >= LATE_OWN_WINDOW);
     }
 
     /**
@@ -1360,12 +1387,13 @@ public final class CrystalBrain {
 
     /**
      * A placement's own {@code firstTick} carried along, so a late-own crystal's own lateness can still be
-     * measured; {@code finish} (task B0a fix round 1) carried from {@link Pending#finish}, so condition
-     * b's "one at a time" keeps blocking while an override crystal's placement has expired (Q2) but its
+     * measured; {@code lastPacket}, the pre-tick of the burst's last packet ({@link Pending#tick}), from which the rest
+     * of the burst stays ours once its crystal lands ({@link #burstTails}); {@code finish} (task B0a fix round 1)
+     * carried from {@link Pending#finish}, so condition b's "one at a time" keeps blocking while an override crystal's placement has expired (Q2) but its
      * crystal has not yet been confirmed gone: neither appeared (still in {@link #late}, see
      * {@link #overrideAvailable}) nor its own {@link #LATE_OWN_WINDOW} elapsed with nothing appearing.
      */
-    private record Late(long pos, double budgetSelfDamage, long since, long firstTick, FinishKind finish) {}
+    private record Late(long pos, double budgetSelfDamage, long since, long lastPacket, long firstTick, FinishKind finish) {}
 
     /** A full hit handed over by {@link #targetHurt}, not yet counted. */
     private record ReadHit(String target, int directSourceId) {}
