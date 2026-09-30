@@ -8,6 +8,7 @@ import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.RiskLevel;
 import com.xploits.pvp.recorder.FightRecorder;
 import com.xploits.pvp.recorder.core.FightTracker;
+import com.xploits.pvp.shell.SurroundPlusPlus;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
@@ -124,7 +125,12 @@ final class LabWorstCase implements Scenario {
         /** Surround's {@code double-height} on: obsidian at head height too, where the face-placed crystals go. */
         DOUBLE_HEIGHT,
         /** Once the hole breaks, the player holds forward through the gap. */
-        WALK_OUT
+        WALK_OUT,
+        /**
+         * surround++ instead of Meteor's surround (and no self-trap): turned on by hand with the {@link Driver#BY_HAND}
+         * driver, and by auto-pvp itself, through {@code shell-module} {@code xploits++}, with {@link Driver#AUTO_PVP}.
+         */
+        SURROUND_PP
     }
 
     record Variant(String name, int attackers, Driver driver, AuraConfig config, Set<Tweak> tweaks, City city, String summary) {
@@ -184,7 +190,9 @@ final class LabWorstCase implements Scenario {
         new Variant("meteor-shell-3-0", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE), City.INSTANT,
             "the baseline against 3 opponents, the city breaking again at once"),
         new Variant("meteor-shell-2-43-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE, Tweak.WALK_OUT),
-            City.VANILLA, "meteor-shell-2-43; once the hole breaks you hold forward through the gap"));
+            City.VANILLA, "meteor-shell-2-43; once the hole breaks you hold forward through the gap"),
+        new Variant("shell-hand-2-43", 2, Driver.BY_HAND, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.VANILLA,
+            "surround++ and crystal-aura++ on by hand, no auto-pvp; 2 opponents, an honest city at vanilla speed"));
 
     private final Variant variant;
     /** Which run of the variant this is, from 1; the trace's name carries it when a variant runs more than once. */
@@ -343,7 +351,12 @@ final class LabWorstCase implements Scenario {
     @Override
     public Metrics act(Bench bench) {
         // His own surround first, as he had it (and the self-trap, where the variant has one), then the aura's driver.
-        bench.onClient(client -> Modules.get().get(Surround.class).enable());
+        if (!variant.has(Tweak.SURROUND_PP)) {
+            bench.onClient(client -> Modules.get().get(Surround.class).enable());
+        } else if (variant.driver() != Driver.AUTO_PVP) {
+            // auto-pvp turns surround++ on itself with shell-module xploits++; by hand otherwise.
+            bench.onClient(client -> Modules.get().get(SurroundPlusPlus.class).enable());
+        }
         if (variant.has(Tweak.SELF_TRAP_FACE) || variant.has(Tweak.SELF_TRAP_FULL)) {
             bench.onClient(client -> Modules.get().get(SelfTrap.class).enable());
         }
@@ -491,14 +504,22 @@ final class LabWorstCase implements Scenario {
         int ourPopsEnd = rows.isEmpty() ? 0 : rows.getLast().ourPops();
         int theirPopsEnd = Arrays.stream(theirLastPops).sum();
         int headCrystals = attacks.stream().mapToInt(LabCrystalAttack::atHead).sum();
+        String shellCounts = variant.has(Tweak.SURROUND_PP) ? bench.fromClient(client -> {
+            SurroundPlusPlus shell = Modules.get().get(SurroundPlusPlus.class);
+            return String.format(Locale.ROOT, "- surround++: %d obsidian and %d crying obsidian placed, %d crystal(s) broken,"
+                    + " centred %d time(s), %d walk(s) to a hole, %d aura override(s).%n", shell.placedObsidian(),
+                shell.placedCrying(), shell.crystalsBroken(), shell.centred(), shell.walks(), shell.auraOverrides());
+        }) : "";
+        String conflicts = variant.has(Tweak.SURROUND_PP)
+            ? String.valueOf((int) bench.<Integer, RuntimeException>fromClient(client -> Modules.get().get(SurroundPlusPlus.class).auraOverrides())) : "-";
         bench.finish();
         List<Path> fights = bench.newFightFiles();
         for (Sparring s : them) Fights.logCounters(variant.name() + " " + s.getGameProfile().name(), 1, s.script());
         int webs = harassment.stream().mapToInt(LabHarass::webs).sum();
         int roofs = harassment.stream().mapToInt(LabHarass::roofs).sum();
         write(rows, end, tick, deathTick, breachTick, walkTick, maxMoved, pulledBackTotal, webTicks, brokenTicks,
-            brokenWithSurroundOn, surroundOffsTotal, webs, roofs, fights, blocksUsed, headCrystals);
-        summarize(end, tick, ourPopsEnd, theirPopsEnd, blocksUsed, headCrystals, pulledBackTotal, "-");
+            brokenWithSurroundOn, surroundOffsTotal, webs, roofs, fights, blocksUsed, headCrystals, shellCounts);
+        summarize(end, tick, ourPopsEnd, theirPopsEnd, blocksUsed, headCrystals, pulledBackTotal, conflicts);
         LOG.info("[bench] lab {}: {} after {} s; hole broken at {}; moved at most {} blocks; pulled back {} time(s)",
             variant.name(), end, String.format(Locale.ROOT, "%.1f", tick / 20.0),
             breachTick < 0 ? "never" : String.format(Locale.ROOT, "%.1f s", breachTick / 20.0),
@@ -529,7 +550,7 @@ final class LabWorstCase implements Scenario {
 
     private void write(List<Row> rows, String end, int ticks, int deathTick, int breachTick, int walkTick, double maxMoved,
                        int pulledBack, int webTicks, int brokenTicks, int brokenWithSurroundOn, int surroundOffs, int webs,
-                       int roofs, List<Path> fights, int blocksUsed, int headCrystals) {
+                       int roofs, List<Path> fights, int blocksUsed, int headCrystals, String shellCounts) {
         StringBuilder md = new StringBuilder();
         md.append("# ").append(variant.name()).append("\n\n").append(variant.summary()).append(".\n\n");
         md.append("Aura settings: ").append(variant.config().description).append(
@@ -565,6 +586,7 @@ final class LabWorstCase implements Scenario {
         if (city != null) md.append("- City attacker: ").append(city.counts()).append(".\n");
         md.append(String.format(Locale.ROOT, "- Obsidian and crying obsidian used: %d. Crystals put at your head: %d.%n",
             blocksUsed, headCrystals));
+        md.append(shellCounts);
         md.append("- Fight recorder file(s): ").append(fights.isEmpty() ? "none"
             : String.join(", ", fights.stream().map(p -> p.getFileName().toString()).toList())).append(".\n");
         try {

@@ -57,4 +57,10 @@ class ModuleRoleTest {
         assertEquals(ModuleRole.OTHER, ModuleRole.of(""));
         assertEquals(ModuleRole.OTHER, ModuleRole.of(null));
     }
+
+    @Test
+    void surroundPlusPlusIsDefenseToo() {
+        assertEquals(ModuleRole.DEFENSE, ModuleRole.of("surround++"));
+        assertEquals(ModuleRole.OTHER, ModuleRole.of("surround+"), "only the exact name");
+    }
 }
