@@ -85,9 +85,10 @@ Worth knowing, because these are **your** modules that the addon turns on, turns
 
 | Who | What it touches | How |
 |---|---|---|
-| `auto-pvp` | The crystal aura `crystal-module` selects — Meteor's `crystal-aura` by default, Xploits' own `crystal-aura++` with `xploits++` — plus `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it. It never touches the aura `crystal-module` did not select |
+| `auto-pvp` | The crystal aura `crystal-module` selects — Meteor's `crystal-aura` by default, Xploits' own `crystal-aura++` with `xploits++` — plus `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround` and `hole-filler` (or Xploits' own `surround++` in their place, with `shell-module` set to `xploits++`), `anti-anvil`, `anti-bed`, `anti-anchor` | Turns them on and off depending on the situation. **It only turns off the ones it turned on**: if you touch one by hand, it stops touching it. It never touches the aura `crystal-module` did not select |
 | `auto-pvp` | Your **Meteor friends list** | Adds your people while it is on, so the five combat modules do not attack them either. When turned off it removes **only the ones it added** |
 | `auto-pvp` | `crystal-aura`'s `anti-suicide` setting | It only **reads** it, to know whether it can trust Meteor not to kill you with your own crystal |
+| `surround++` | `burrow` | Only with its own `burrow` setting on (off by default): turns it on for one burrow, and Meteor's `burrow` turns itself off after it |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
 | `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk — as it does `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (if set) and its own censoring, which stay changed for good |
 
@@ -95,7 +96,7 @@ All of this, with the detail of what persists and what can go wrong, in [Securit
 
 ---
 
-## The ten modules
+## The eleven modules
 
 ### `auto-travel` — fly somewhere without leaving an arrow pointing at your base
 
@@ -207,6 +208,13 @@ still on: breaking the enemy's crystals is enough to keep you alive without one 
 `auto-pvp` also keeps asking for `surround` for a short while after a block of your hole has just been
 broken, not only while the hole is still whole: Meteor's own `surround` refills the four sides, never
 the block under you, so this closes a gap it used to miss.
+
+**`shell-module` picks the defence `auto-pvp` keeps you in**: `meteor` (default) is Meteor's `surround` and
+`hole-filler` as before; `xploits++` is Xploits' own `surround++` in their place — see below. With `xploits++` it
+stays on for as long as `auto-pvp` is, like the crystal aura, because it only places where something can hurt you, and
+it fills your opponents' holes itself, so `hole-filler` is not used. It stays at `meteor` by default until the lab also
+plays an opponent that places crystal bases itself (the lab's attackers never do) and the release bench confirms
+`surround++`.
 
 **Style profiles change auto-pvp's own values and which of the ten modules it may use** — never the
 inner settings of a module it turns on (`crystal-aura`, `surround`...). Three are built in and
@@ -334,6 +342,38 @@ Meteor's `crystal-aura` your health went down to 0.2.
 - Carry totems, obsidian and crystals in the hotbar: `auto-pvp` does not turn on a module without its
   material.
 
+### `surround++` — a shell worked out, not a pattern
+
+Meteor's `surround` puts four blocks around your feet and, in a real fight, works against you: it turns itself off
+whenever your height changes (webs and explosions change it), and with `center` on it pulls you back to the middle of
+the block every tick while the hole is broken. And it leaves your head uncovered, which is where hacked clients put
+their crystals. `surround++` works out, every tick, where a crystal that can hurt you could go, and covers those spots
+first:
+
+- **The most dangerous spot first**, by the exact damage a crystal there would deal you (the calculation
+  `crystal-aura++` uses), and only the spots an opponent can reach. A spot counts from 1 damage; one where the
+  opponent would still have to place a base first weighs an eighth of one whose base is already there.
+- **Crying obsidian where plain obsidian would give them a new base**: a crystal cannot stand on crying obsidian, and
+  it takes as long to mine. Keep some in your hotbar (`use-crying-obsidian`); without it, plain obsidian.
+- **Anti-city**: a mined wall is refilled the tick it opens, and a crystal they put next to you is broken when its
+  blast leaves you 2 health or more (`break-crystals`).
+- **Never pins you**: it centres you only when you stick out of your block and something is left open, never while
+  you press a key, at most once a second. It never turns itself off when your height changes.
+- **A better hole**: in the open and threatened, it walks you into a hole one block down within 3 blocks, bedrock walls
+  first, if there is room for your whole body and head room over the hole (`move-to-hole`). Your own keys always win.
+- **Their holes**: it fills the holes next to your opponents, the nearest to them first (`deny-holes`).
+- **Burrow**, off by default (`burrow`): many anticheats kick for it.
+- **After a totem pop** it closes the shell completely for 5 seconds, roof included.
+
+`blocks-per-tick` (2 by default) caps how many blocks it places in one tick; lower is safer against anticheats. `reach`
+(6) is how far your opponents are assumed to reach. Drive it from `auto-pvp`'s `shell-module`, or turn it on by itself;
+with Meteor's `surround` or `self-trap` on at the same time it warns you, since both place in the same cells. It does
+not break webs or eat for you yet.
+
+In the lab (2 and 3 hacked attackers, 60 s, 3 runs each) you lost as many totems with it as with Meteor's `surround`
+and `self-trap`, with the same or one fewer crystal reaching your head. It is a like-for-like result, not an
+improvement. Its decision costs 0.7-0.9 ms a tick on average.
+
 ### `fight-recorder` — record every fight and work out why you died
 
 Watches every fight you are in — with `auto-pvp` on or off — and keeps a JSON file for each one: who
@@ -412,6 +452,8 @@ otherwise it shows, one line per fact and only when there is something to say:
 - **`profile · state · posture`** — amber while the posture is `THREATENED`.
 - **Target and distance**, or `no target`.
 - **Modules**: on (green), released by you (amber), off by the active profile (grey).
+- **The shell**, while `surround++` is on: whether your head is covered, the spots still open and the blocks next to
+  you being mined — amber while a block is being mined, or while your head is open with a spot left.
 - **Resources**: crystals, totems, obsidian — amber below what the modules currently on need.
 - **The live fight**, while `fight-recorder` has one open: seconds, your pops, theirs, damage taken.
 

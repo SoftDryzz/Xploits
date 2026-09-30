@@ -12,6 +12,18 @@ All notable changes to Xploits. The format is based on
   meteoraddons.com listing) instead of the default one.
 - The README opens with the Xploits banner and shows screenshots: `auto-pvp` in a fight with its HUD panel,
   the ClickGUI, `crystal-aura++`'s own settings and the `console` window.
+- **`surround++`**, a computed defensive shell: every tick it works out where a crystal that could hurt you would go
+  and covers the most dangerous spot first, with crying obsidian where plain obsidian would give the opponent a new
+  base; refills a mined wall the tick it opens; breaks an opponent's crystal next to you when its blast leaves you 2
+  health or more; walks you into a better hole when you are exposed (your keys always win); fills your opponents' holes;
+  closes the shell completely for 5 seconds after a totem pop; `burrow` off by default. It never pins you to the centre
+  of the block and never turns itself off when your height changes, the two ways Meteor's `surround` worked against
+  you in the lab's worst cases. In the lab (2 and 3 hacked attackers with an honest city, 60 s, 3 runs each) you lost
+  as many totems with it as with Meteor's `surround` and `self-trap` (7 in the four fights), with the same or one
+  fewer crystals reaching your head.
+- `auto-pvp` has a `shell-module` setting: `meteor` (default: Meteor's `surround` and `hole-filler`) or `xploits++`
+  (`surround++` in their place, on for as long as `auto-pvp` is). The HUD panel shows a shell line while `surround++`
+  is on.
 
 ### Fixed
 
