@@ -220,19 +220,22 @@ percent closer to safe than it is. Neither showed up on the bench.
 ### `surround++`: what it does not do yet
 
 **Symptom:** stuck in a web inside your shell; a crystal next to you not broken while you have Weakness; an opponent
-building his own surround after his hole was filled; `crystal-aura++` not placing while a block is right over your head.
+building his own surround after his hole was filled; `crystal-aura++` holding a placement back while you move inside
+your hole.
 
 **What happens.** Breaking webs and eating after a pop belong to the survival work that comes next. Attacking a crystal
 under Weakness needs a weapon in hand, and `surround++` does not swap to one (Meteor's crystal aura does). Filling an
 opponent's hole does not stop him surrounding himself.
 
-`crystal-aura++` stops placing while a block is right over your head: its safety check reads the jump it could make as
-fully exposed. This happens with any shell that roofs you in, and when an opponent traps your head.
+`crystal-aura++` can hold a placement back on the ticks you move inside a hole: its safety check reads the places your
+movement could take you before the crystal explodes, and one that would put you inside the hole's wall is read as fully
+exposed. A block over your head no longer does this: since 0.7.2 a jump is read where that block stops it, except
+while someone is mining that block (it may be gone before the crystal explodes).
 
 **What to do.** Keep a sword in hand if you get Weakness; get out of webs by hand.
 
-**Pending fix:** survival (webs, eating), then the offence against surrounded opponents. For the roof case, a change in
-`crystal-aura++`'s safety check, planned for 0.7.2 with its own bench.
+**Pending fix:** survival (webs, eating), then the offence against surrounded opponents. For the moving-in-a-hole case,
+a change in `crystal-aura++`'s safety check with its own bench.
 
 ---
 
