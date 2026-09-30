@@ -10,7 +10,10 @@ import java.util.Optional;
  */
 public final class Holes {
     public static final double MOVE_RADIUS = 3.0;
-    /** How much a threat must weigh before we leave where we stand: a hit this size, twice the danger line. */
+    /**
+     * The full hit a spot must deal before we leave where we stand (its damage with its base placed, times the share of
+     * its rays still open; not the planner's weight): twice the danger line.
+     */
     public static final double MOVE_THREAT = 4.0;
     private static final double PATH_STEP = 0.25;
     private static final double EPSILON = 1e-6;
@@ -64,7 +67,9 @@ public final class Holes {
 
     /**
      * The hole to walk into now, if we should: the setting is on, we stand on the ground in the open, not in a web, not
-     * pressing a movement key, and the worst threat weighs at least {@link #MOVE_THREAT}.
+     * pressing a movement key, and {@code worstThreat}, the biggest full hit among the threats (a spot's damage with its
+     * base placed, times the share of its rays still open, whether or not the base is there yet), is at least
+     * {@link #MOVE_THREAT}.
      */
     public static Optional<Cell> target(ShellSnapshot s, double worstThreat, boolean userKeys) {
         if (!s.settings().moveToHole() || !s.onGround() || userKeys || s.inWeb() || worstThreat < MOVE_THREAT || inHole(s)) {

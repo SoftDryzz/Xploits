@@ -50,9 +50,10 @@ class ShellBrainTest {
     @Test
     void whileWalkingToAHoleNothingIsBuilt() {
         ShellBrain brain = new ShellBrain();
-        // Threatened in the open: (-1,1,0) needs its base and deals 40 (weighs 5, over the 4 that makes us move).
+        // Threatened in the open: (-1,1,0) needs its base and deals 10. Its full hit, 10 with all its rays open, is over
+        // the 4 that makes us move (for the planner it weighs 10 * 0.125 = 1.25).
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 40);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
         ShellTick first = brain.tick(s, oracle, STILL);
         assertEquals(Optional.of(c(2, -1, 0)), first.walkTo());
         assertEquals(Set.of(HoleWalk.Key.LEFT), first.keys(), "facing south, the hole two blocks east is to the left");
@@ -67,7 +68,7 @@ class ShellBrainTest {
     void aLostWalkTargetEndsTheWalk() {
         ShellBrain brain = new ShellBrain();
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 40);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
         brain.tick(s, oracle, STILL);
         ShellTick lost = brain.tick(s, oracle, STILL);
         assertTrue(lost.walkEnded());
@@ -79,12 +80,21 @@ class ShellBrainTest {
     void yourKeysEndTheWalkAndItWaitsBeforeTheNextOne() {
         ShellBrain brain = new ShellBrain();
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 40);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
         brain.tick(s, oracle, STILL);
         assertTrue(brain.tick(s, oracle, new ShellBrain.Motion(true, 0, Optional.of(c(2, -1, 0)), false)).walkEnded());
         ShellTick after = brain.tick(s, oracle, STILL);
         assertEquals(Optional.empty(), after.walkTo(), "it waits before choosing a hole again");
         assertFalse(after.placements().isEmpty(), "and meanwhile it builds");
+    }
+
+    @Test
+    void aNeedsBaseSpotBelowTheLineDoesNotMoveYou() {
+        // (-1,1,0) needs its base and deals 3.9: a full hit of 3.9 * 1 (every ray open), under the 4 that makes us move.
+        ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
+        ShellTick tick = new ShellBrain().tick(s, new FakeOracle().at(-1, 1, 0, 3.9), STILL);
+        assertEquals(Optional.empty(), tick.walkTo());
+        assertTrue(tick.keys().isEmpty());
     }
 
     @Test
@@ -113,6 +123,16 @@ class ShellBrainTest {
         assertFalse(brain.tick(s, oracle, STILL).burrow(), "once; then it waits");
         ShellSnapshot off = inOurHole().obsidian(0).cryingObsidian(0).build();
         assertFalse(new ShellBrain().tick(off, oracle, STILL).burrow(), "off by default");
+    }
+
+    @Test
+    void burrowReadsTheFullHitOfASpotThatStillNeedsItsBase() {
+        // In our hole, no blocks left. The diagonal head spot (1,1,1): its base cell (1,0,1) is air over the deepslate floor,
+        // so it needs its base. It deals 8: a full hit of 8 * 1 (every ray open), over the 6 burrow is for, while for the
+        // planner it weighs 8 * 0.125 = 1 (still left open: the danger line is 1).
+        ShellSettings burrowOn = new ShellSettings(2, true, true, true, true, true, 6);
+        ShellSnapshot s = inOurHole().obsidian(0).cryingObsidian(0).settings(burrowOn).build();
+        assertTrue(new ShellBrain().tick(s, new FakeOracle().at(1, 1, 1, 8), STILL).burrow());
     }
 
     @Test

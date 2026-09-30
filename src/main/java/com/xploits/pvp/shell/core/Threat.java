@@ -9,7 +9,12 @@ package com.xploits.pvp.shell.core;
  * @param open   the share of its rays to us that no block planned this tick closes, 0 to 1
  */
 public record Threat(Cell spot, Kind kind, double damage, double open) {
-    /** A hit this big outpaces what a player heals between two crystals: below it a spot is not worth a block. */
+    /**
+     * The smallest hit worth acting on: the planner's line for a spot's weighted value, and the breaker's for a crystal's
+     * damage. At 1, because a crystal every half second at about 1.5, what the lab's attacker put on a head cell a head
+     * miner had opened, outpaces any regeneration, and a line of 2 left that cell open while it cost totems. A spot that
+     * still needs its base is weighed against it at {@link ThreatMap#NEEDS_BASE_WEIGHT} of its damage: it counts from 8.
+     */
     public static final double MIN_DANGER = 1.0;
 
     public enum Kind {

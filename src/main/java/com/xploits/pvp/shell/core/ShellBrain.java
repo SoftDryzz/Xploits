@@ -11,6 +11,10 @@ import java.util.Set;
  * nothing is built (a block would stand in the way); otherwise the block plan, then an opponent's hole with what the
  * budget leaves; then whether to centre and whether to burrow.
  *
+ * <p>The planner ranks spots by their weight ({@link Threat#weighted}: a spot that still needs its base counts at
+ * {@link ThreatMap#NEEDS_BASE_WEIGHT}); walking to a hole and burrow read a spot's full hit instead ({@link #fullHit}):
+ * the damage if the crystal went there with its base placed.
+ *
  * <p>It remembers only what a tick cannot see: the walk, the {@link #HOLD_TICKS} after a totem pop when the shell is held
  * closed, and the waits between two centrings and two burrows. Centring happens only when our box sticks out of its
  * block and something is left open (or the shell is held closed), never while a key is pressed, at most once every
@@ -20,7 +24,7 @@ public final class ShellBrain {
     public static final int HOLD_TICKS = 100;
     public static final int CENTRE_COOLDOWN_TICKS = 20;
     public static final int BURROW_COOLDOWN_TICKS = 100;
-    /** A spot at our head this heavy, still open after the plan, is what burrow is for. */
+    /** A spot at our head whose full hit ({@link #fullHit}) is this big, still open after the plan, is what burrow is for. */
     public static final double BURROW_THREAT = 6.0;
 
     /**
@@ -76,9 +80,11 @@ public final class ShellBrain {
         }
         walk.idle();
         List<Threat> threats = map.threats();
-        double worst = threats.isEmpty() ? 0 : threats.getFirst().weighted();
+        // Whether to leave reads the biggest full hit, not the planner's weight: the threats come by weight, so the first
+        // is not necessarily the biggest.
+        double biggestHit = threats.stream().mapToDouble(ShellBrain::fullHit).max().orElse(0);
         if (walk.ready()) {
-            Optional<Cell> hole = Holes.target(s, worst, motion.userKeys());
+            Optional<Cell> hole = Holes.target(s, biggestHit, motion.userKeys());
             if (hole.isPresent()) {
                 Set<HoleWalk.Key> keys = walk.start(towards(s, hole.get()), motion.yaw());
                 return new ShellTick(List.of(), toBreak, keys, hole, false, false, false, status(map, s));
@@ -93,10 +99,18 @@ public final class ShellBrain {
         boolean centre = !motion.userKeys() && s.onGround() && centreCooldown == 0 && s.sticksOut() && (hold || !left.isEmpty());
         if (centre) centreCooldown = CENTRE_COOLDOWN_TICKS;
         boolean burrow = s.settings().burrow() && burrowCooldown == 0 && s.onGround() && Holes.inHole(s)
-            && left.stream().anyMatch(t -> t.spot().y() >= s.headLevel() && t.weighted() >= BURROW_THREAT);
+            && left.stream().anyMatch(t -> t.spot().y() >= s.headLevel() && fullHit(t) >= BURROW_THREAT);
         if (burrow) burrowCooldown = BURROW_COOLDOWN_TICKS;
         return new ShellTick(placements, toBreak, Set.of(), Optional.empty(), false, centre, burrow,
             new ShellStatus(headCovered(plan.map()), left.size(), underAttack(s)));
+    }
+
+    /**
+     * What a crystal on this spot would deal us once its base is there, through the rays no planned block closes: its
+     * damage times its open share, never the planner's weight.
+     */
+    static double fullHit(Threat t) {
+        return t.damage() * t.open();
     }
 
     /** The hole's centre minus our feet, on the ground. */
