@@ -322,8 +322,10 @@ final class FightMeasureRun {
         placementsSent = bench.fromClient(client -> PlacementCounter.get().sent()) - placementsAtT0;
         LOG.info("own crystals: {} placements sent, {} crystals claimed as ours (one landing on a spot just placed on); {} hits on us"
             + " came from a claimed crystal the recorder blamed on the opponent; at most {} of ours went gone without an attack of"
-            + " ours (an upper bound that misses a crystal broken in the tick it appeared)", placementsSent, watch.claimedCrystals(),
-            watch.ownHitsBlamedElsewhere(records), watch.ownCrystalsGoneUnattacked());
+            + " ours (an upper bound that misses a crystal broken in the tick it appeared); {} crystal(s) spawned by the opponent's"
+            + " scripts, {} of them taken for ours by the brain or the recorder and left out of our own hits", placementsSent,
+            watch.claimedCrystals(), watch.ownHitsBlamedElsewhere(records), watch.ownCrystalsGoneUnattacked(),
+            bench.scriptCrystals().size(), watch.scriptCrystalsTakenForOurs());
 
         Metrics metrics = new Metrics()
             .put(Metrics.RESULT, result)

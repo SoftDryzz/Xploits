@@ -118,6 +118,8 @@ public class BenchTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext ctx) {
+        // 0.8.0: before any world, so every crystal the bench's scripts spawn is known not to be ours.
+        ScriptCrystals.register();
         if (System.getProperty(Shots.FOLDER_PROPERTY) != null) {
             takeShots(ctx);
             return;

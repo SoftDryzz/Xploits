@@ -67,6 +67,11 @@ public final class Bench {
 
     private int ticksUsed;
     private Sparring sparring;
+    /**
+     * 0.8.0: the ids of the end crystals the bench itself spawned in this run, from a sparring's script or a bench
+     * command ({@link ScriptCrystals}): never ours. Filled on the server thread, read on the test thread.
+     */
+    private final Set<Integer> scriptCrystals = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** The lab's extra opponents, after {@link #sparring} ({@link #spawnMoreForFight}). */
     private final List<Sparring> more = new ArrayList<>();
     /** Keys held through {@link #holdKey}, released at the teardown. */
@@ -178,7 +183,11 @@ public final class Bench {
             ServerCommandSource source = srv.getCommandSource()
                 .withOutput(capture)
                 .withReturnValueConsumer(capture);
-            srv.getCommandManager().parseAndExecute(source, line);
+            // Anything a bench command spawns (Arena.explodeCrystal's crystal) is the bench's, never ours.
+            ScriptCrystals.during(scriptCrystals, () -> {
+                srv.getCommandManager().parseAndExecute(source, line);
+                return null;
+            });
             return capture.ok();
         });
         if (!ok) throw new BenchException("a command was rejected: " + firstWord(command));
@@ -291,6 +300,11 @@ public final class Bench {
         return spawn(script, true, name);
     }
 
+    /** 0.8.0: the end crystals the bench's scripts and commands spawned in this run so far ({@link ScriptCrystals}). */
+    public Set<Integer> scriptCrystals() {
+        return Set.copyOf(scriptCrystals);
+    }
+
     /** Every sparring partner in this run, the first one first. */
     public List<Sparring> sparrings() {
         List<Sparring> all = new ArrayList<>();
@@ -301,14 +315,17 @@ public final class Bench {
 
     private Sparring spawn(Script script, boolean fightMode, String sparringName) {
         String name = player();
-        Sparring spawned = fromServer(srv -> Sparring.spawn(srv, Arena.player(srv, name), arena, script, fightMode, sparringName));
+        Sparring spawned = fromServer(srv -> ScriptCrystals.during(scriptCrystals,
+            () -> Sparring.spawn(srv, Arena.player(srv, name), arena, script, fightMode, sparringName)));
         if (sparring == null) sparring = spawned;
         else more.add(spawned);
         atDespawn(() -> onServer(srv -> spawned.despawn(srv)));
         everyTick(() -> {
             int now = ticksUsed;
             int since = sinceT0();
-            boolean dead = fromServer(srv -> spawned.step(now, since, Arena.player(srv, name)));
+            // Every crystal the script spawns while it steps is the opponent's (ScriptCrystals).
+            boolean dead = fromServer(srv -> ScriptCrystals.during(scriptCrystals,
+                () -> spawned.step(now, since, Arena.player(srv, name))));
             if (dead) {
                 if (fightMode) sparringDied = true;
                 else throw new BenchException("sparring died");

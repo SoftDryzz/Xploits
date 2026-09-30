@@ -53,6 +53,22 @@ public final class OwnHits {
         return ours;
     }
 
+    /**
+     * 0.8.0: the crystals that are ours for {@link #indexes}: those crystal-aura++ remembers as its own ({@code
+     * brainOwn}) and those the recorder claimed from our placements ({@code claimed}), less every crystal a script of
+     * the bench spawned ({@code spawnedByScripts}: the opponent's, never ours). The recorder claims a crystal that lands
+     * on a cell we just placed on, and our aura sends its placement several times until a crystal appears, so a claim
+     * left over from that burst could take the opponent's next crystal on the same cell, and its hit on us counted as
+     * ours (the release bench's one reserve failure, 2026-09-30). A crystal of ours set off by the opponent's autobreak
+     * is still ours: no script spawned it. The recorder's own attribution ({@link AttackerKind#SELF}) is not touched.
+     */
+    public static Set<Integer> ownIds(Set<Integer> brainOwn, Set<Integer> claimed, Set<Integer> spawnedByScripts) {
+        Set<Integer> ids = new HashSet<>(brainOwn);
+        ids.addAll(claimed);
+        ids.removeAll(spawnedByScripts);
+        return Set.copyOf(ids);
+    }
+
     /** The events the recorder itself gave to us ({@link AttackerKind#SELF}). */
     public static Set<Integer> selfIndexes(List<DamageEvent> damage) {
         Set<Integer> self = new HashSet<>();
