@@ -177,4 +177,14 @@ class ShellPlannerTest {
         assertEquals(1, placed.size());
         assertFalse(placed.get(0).cell().equals(c(1, 0, 0)), placed.toString());
     }
+
+    @Test
+    void aBlockNeverGoesOnTheAurasSpotToShieldAnother() {
+        // crystal-aura++ is placing at (1,0,0). (1,1,0) above it deals 12 and needs its base: the only blocks that would
+        // deal with it are a shield or a support at (1,0,0), the aura's spot, and there is no crying obsidian for its base.
+        // The spot is left alone rather than blocking our own aura.
+        List<Placement> placed = plan(Scenes.open().cryingObsidian(0).auraSpot(c(1, 0, 0)).build(),
+            new FakeOracle().at(1, 1, 0, 12), 2);
+        assertTrue(placed.isEmpty(), placed.toString());
+    }
 }
