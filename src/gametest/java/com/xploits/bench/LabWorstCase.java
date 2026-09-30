@@ -11,6 +11,7 @@ import com.xploits.pvp.recorder.core.FightTracker;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
+import meteordevelopment.meteorclient.systems.modules.combat.SelfTrap;
 import meteordevelopment.meteorclient.systems.modules.combat.Surround;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import net.minecraft.block.Blocks;
@@ -91,6 +92,11 @@ final class LabWorstCase implements Scenario {
     enum Tweak {
         /** crystal-aura++ at {@code risk} Aggressive (reserve 2). */
         AGGRESSIVE,
+        /** Meteor's self-trap on, {@code top-mode} AntiFacePlace (the four blocks around the head), re-placing for good. */
+        SELF_TRAP_FACE,
+        /** Meteor's self-trap on, {@code top-mode} Full (the four blocks around the head and the one above), re-placing
+         * for good. */
+        SELF_TRAP_FULL,
         /** Surround's {@code center} set to Never. */
         NO_CENTER,
         /** Surround's {@code toggle-on-y-change} off. */
@@ -131,6 +137,14 @@ final class LabWorstCase implements Scenario {
             "the competitive config on Meteor's crystal-aura by hand"),
         new Variant("yours-3", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(),
             "your setup against 3 attackers"),
+        new Variant("yours-trap-face", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE),
+            "your setup plus Meteor's self-trap covering the four blocks around your head"),
+        new Variant("yours-trap-full", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FULL),
+            "your setup plus Meteor's self-trap covering around your head and above it"),
+        new Variant("yours-3-double", 3, Driver.AUTO_PVP, AuraConfig.OWNER, DOUBLE,
+            "yours-double against 3 attackers"),
+        new Variant("yours-3-trap-full", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FULL),
+            "yours-trap-full against 3 attackers"),
         new Variant("yours-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT),
             "your setup; once the hole breaks you hold forward through the gap"),
         new Variant("yours-walk-nocenter", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT, Tweak.NO_CENTER),
@@ -183,6 +197,12 @@ final class LabWorstCase implements Scenario {
         if (variant.has(Tweak.NO_CENTER)) bench.setting(surround, "General", "center", Surround.Center.Never);
         if (variant.has(Tweak.NO_Y_TOGGLE)) bench.setting(surround, "Toggles", "toggle-on-y-change", false);
         if (variant.has(Tweak.DOUBLE_HEIGHT)) bench.setting(surround, "General", "double-height", true);
+        SelfTrap selfTrap = bench.meteor(SelfTrap.class);
+        if (variant.has(Tweak.SELF_TRAP_FACE) || variant.has(Tweak.SELF_TRAP_FULL)) {
+            bench.setting(selfTrap, "General", "top-mode",
+                variant.has(Tweak.SELF_TRAP_FULL) ? SelfTrap.TopMode.Full : SelfTrap.TopMode.AntiFacePlace);
+            bench.setting(selfTrap, "General", "turn-off", false);
+        }
         bench.meteor(FightRecorder.class);
         bench.arena().fightLoadout();
         bench.arena().give(2, Items.ENCHANTED_GOLDEN_APPLE, 64);
@@ -256,8 +276,11 @@ final class LabWorstCase implements Scenario {
 
     @Override
     public Metrics act(Bench bench) {
-        // His own surround first, as he had it, then the aura's driver.
+        // His own surround first, as he had it (and the self-trap, where the variant has one), then the aura's driver.
         bench.onClient(client -> Modules.get().get(Surround.class).enable());
+        if (variant.has(Tweak.SELF_TRAP_FACE) || variant.has(Tweak.SELF_TRAP_FULL)) {
+            bench.onClient(client -> Modules.get().get(SelfTrap.class).enable());
+        }
         switch (variant.driver()) {
             case AUTO_PVP -> scene.start(bench, true);
             case BY_HAND -> bench.start(true, CrystalAuraPlusPlus.class);
