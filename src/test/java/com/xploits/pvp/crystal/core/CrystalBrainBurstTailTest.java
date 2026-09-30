@@ -44,7 +44,8 @@ class CrystalBrainBurstTailTest {
         b.placed(9, 0);
         CrystalSettings noFast = settings.toBuilder().fastBreak(false).build();
         assertTrue(b.crystalAdded(noFast, crystal(1, 9, 8, self), 20, HANDS).isEmpty());
-        assertEquals(Map.of(1, false), b.ownCrystals(), "the first crystal of the burst is ours");
+        assertEquals(Map.of(1, false), b.ownCrystalsWithBurstTail(), "the first crystal of the burst is ours");
+        assertEquals(Map.of(1, false), b.ownCrystalsWithoutBurstTail(), "and the aura looks after it itself");
         for (long t = 3; t <= last; t++) b.preTick(settings, tick(t).build());
         return b;
     }
@@ -57,7 +58,7 @@ class CrystalBrainBurstTailTest {
         // and 5 < 6.5 (anti-suicide).
         CrystalBrain b = burst(DEFAULTS, 5, 6);
         assertTrue(b.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.5, HANDS).isEmpty());
-        assertEquals(Map.of(2, false), b.ownCrystals());
+        assertEquals(Map.of(2, false), b.ownCrystalsWithBurstTail());
         assertEquals(0, b.lateOwnCrystals(), "it is not late: its burst's first crystal came in time");
     }
 
@@ -125,7 +126,7 @@ class CrystalBrainBurstTailTest {
         CrystalSeen standing = Crystals.outOfBreakRange(crystal(2, 9, 8, 3));
         CrystalBrain b = burst(DEFAULTS, 3, 6);
         assertTrue(b.crystalAdded(DEFAULTS, standing, 9, HANDS).isEmpty());
-        assertEquals(Map.of(2, false), b.ownCrystals());
+        assertEquals(Map.of(2, false), b.ownCrystalsWithBurstTail());
         assertNothing(b.preTick(DEFAULTS, tick(7).health(9).crystals(standing).candidates(spot(10, 8, 3)).build()));
         assertEquals(Reason.OVER_RESERVE, b.lastDecision().reason());
         assertPlaces(10, burst(DEFAULTS, 3, 6).preTick(DEFAULTS, tick(7).health(9).candidates(spot(10, 8, 3)).build()));
@@ -143,7 +144,7 @@ class CrystalBrainBurstTailTest {
         CrystalBrain over = burst(DEFAULTS, 5, end);
         assertEquals(Decision.breakCrystal(2, Reason.FOREIGN_CRYSTAL),
             over.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.5, HANDS).orElseThrow().decision());
-        assertTrue(over.ownCrystals().isEmpty());
+        assertTrue(over.ownCrystalsWithBurstTail().isEmpty());
     }
 
     @Test
@@ -165,7 +166,7 @@ class CrystalBrainBurstTailTest {
         b.preTick(DEFAULTS, tick(7).health(6.5).crystals(crystal(2, 9, 8, 5)).build());
         for (long t = 8; t <= 12; t++) b.preTick(DEFAULTS, tick(t).health(6.5).build());
         assertTrue(b.crystalAdded(DEFAULTS, crystal(3, 9, 8, 5), 6.5, HANDS).isEmpty());
-        assertEquals(Map.of(3, false), b.ownCrystals());
+        assertEquals(Map.of(3, false), b.ownCrystalsWithBurstTail());
     }
 
     @Test
@@ -202,7 +203,70 @@ class CrystalBrainBurstTailTest {
         for (long t = 8; t <= 12; t++) b.preTick(DEFAULTS, tick(t).health(6.5).build());
         assertTrue(b.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.5, HANDS).isEmpty());
         assertEquals(1, b.lateOwnCrystals(), "the second crystal of a late burst is not a second late placement");
-        assertEquals(Map.of(2, false), b.ownCrystals());
+        assertEquals(Map.of(2, false), b.ownCrystalsWithBurstTail());
+    }
+
+    // What surround++ is told (fix round 1, review I1): only what the aura looks after itself
+
+    @Test
+    void aTailCrystalIsOursForTheBenchButNotOneTheShellLeavesToTheAura() {
+        // Known only through the tail, it may as well be an opponent's crystal on a base we just used: surround++
+        // (which skips every crystal the aura looks after) must still be free to break it, as before the tail.
+        CrystalBrain b = burst(DEFAULTS, 5, 6);
+        assertTrue(b.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.5, HANDS).isEmpty());
+        assertEquals(Map.of(2, false), b.ownCrystalsWithBurstTail());
+        assertTrue(b.ownCrystalsWithoutBurstTail().isEmpty());
+    }
+
+    @Test
+    void pendingAndLateCrystalsAreInBothViewsAsBefore() {
+        // A crystal of a pending placement (the burst fixture checks it too) and a late own crystal: both views.
+        CrystalBrain b = new CrystalBrain();
+        assertPlaces(9, b.preTick(DEFAULTS, tick(1).candidates(spot(9, 8, 5)).build()));
+        b.placed(9, 0);
+        for (long t = 2; t <= 6; t++) b.preTick(DEFAULTS, tick(t).build());
+        assertTrue(b.crystalAdded(DEFAULTS, crystal(1, 9, 8, 5), 6.5, HANDS).isEmpty());
+        assertEquals(1, b.lateOwnCrystals());
+        assertEquals(Map.of(1, false), b.ownCrystalsWithBurstTail());
+        assertEquals(Map.of(1, false), b.ownCrystalsWithoutBurstTail());
+    }
+
+    // A late crystal's tail runs from its arrival (fix round 1, review M6)
+
+    @Test
+    void theTailOfALateBurstRunsFromTheLateCrystalsArrival() {
+        // Last packet at 1; the placement expires at 6 and its crystal lands late, first seen at pre-tick 20 (left
+        // standing: 6.5 - 5 < 2). Another explosion takes it away at 21. From the last packet the tail would have ended
+        // at 21; from the arrival it runs to 40: a second crystal of the burst first seen at 39 is ours (the floor
+        // refuses it), one first seen at 40 is foreign again (broken by Meteor's rules alone).
+        for (long seen : new long[] {39, 40}) {
+            CrystalBrain b = new CrystalBrain();
+            assertPlaces(9, b.preTick(DEFAULTS, tick(1).candidates(spot(9, 8, 5)).build()));
+            b.placed(9, 0);
+            for (long t = 2; t <= 20; t++) b.preTick(DEFAULTS, tick(t).build());
+            assertTrue(b.crystalAdded(DEFAULTS, crystal(1, 9, 8, 5), 6.5, HANDS).isEmpty());
+            assertEquals(1, b.lateOwnCrystals());
+            for (long t = 21; t <= seen; t++) b.preTick(DEFAULTS, tick(t).health(6.5).build());
+            var action = b.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.5, HANDS);
+            if (seen < 40) assertTrue(action.isEmpty(), "first seen at " + seen);
+            else assertEquals(Decision.breakCrystal(2, Reason.FOREIGN_CRYSTAL), action.orElseThrow().decision());
+        }
+    }
+
+    // A tail crystal the floor will not break holds every placement back too (fix round 1, review M7)
+
+    @Test
+    void aTailCrystalTheFloorRefusesHoldsEveryPlacementBack() {
+        // Self 5 at health 6.9: 6.9 - 5 = 1.9 < 2, not broken. A spot elsewhere of self 0.4: 6.9 - 5 - 0.4 = 1.5, under
+        // the reserve and, although 0.4 is within safe-self-damage, under the floor: refused. Nothing, BELOW_FLOOR.
+        CrystalBrain b = burst(DEFAULTS, 5, 6);
+        assertTrue(b.crystalAdded(DEFAULTS, crystal(2, 9, 8, 5), 6.9, HANDS).isEmpty());
+        assertNothing(b.preTick(DEFAULTS, tick(7).health(6.9).crystals(crystal(2, 9, 8, 5))
+            .candidates(spot(10, 8, 0.4)).build()));
+        assertTrue(b.holding());
+        assertEquals(Reason.BELOW_FLOOR, b.lastDecision().reason());
+        // Control: with nothing standing the same spot goes (6.9 - 0.4 = 6.5 >= 3.5).
+        assertPlaces(10, burst(DEFAULTS, 5, 6).preTick(DEFAULTS, tick(7).health(6.9).candidates(spot(10, 8, 0.4)).build()));
     }
 
     // The budget off: Meteor's rules only, exactly as before

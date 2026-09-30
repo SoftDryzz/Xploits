@@ -489,10 +489,14 @@ public class SurroundPlusPlus extends XploitsModule {
         return new Cell(pos.getX() - feet.getX(), pos.getY() - feet.getY(), pos.getZ() - feet.getZ());
     }
 
-    /** crystal-aura++'s own crystals, which it looks after itself. */
+    /**
+     * crystal-aura++'s own crystals, which it looks after itself: those of a placement of its own, never one it takes as
+     * its own only through a burst's tail (which may be an opponent's crystal on a base it just used), so this module
+     * stays free to break that one.
+     */
     private Set<Integer> ownCrystals() {
         CrystalAuraPlusPlus aura = Modules.get().get(CrystalAuraPlusPlus.class);
-        return aura != null && aura.isActive() ? aura.ownCrystals().keySet() : Set.of();
+        return aura != null && aura.isActive() ? aura.ownCrystalsWithoutBurstTail().keySet() : Set.of();
     }
 
     /** Where crystal-aura++ is placing right now: the cell above the base its last decision names. */

@@ -27,8 +27,8 @@ import java.util.Set;
  *   <li>our OWN crystals are no longer limited by {@code max-damage} (task B1): the reserve decides them, and
  *   {@code anti-suicide} still applies. A crystal of ours that appears after its placement's wait ran out
  *   (late, Q2) is foreign for every other rule but still ours for the budget: it counts in C while it may land,
- *   and breaking it must leave the floor (task C2). So is a later crystal of a burst whose first crystal already
- *   came ({@link #burstTails}, 0.8.0);</li>
+ *   and breaking it must leave the floor (task C2). A later crystal of a burst whose first crystal already came
+ *   ({@link #burstTails}, 0.8.0) is ours for breaking it too, but it is not counted in C before it appears;</li>
  *   <li>the finishing blow (task B0a, spec Amendment 2026-09-28; condition a tightened fix round 1, owner's
  *   decision 2026-09-29): a finishing-grade crystal (kills the target or pops his totem, {@link #FINISH_MARGIN})
  *   may go through past {@code max-damage}, {@code anti-suicide}, the reserve, the floor or {@code pause-health},
@@ -109,9 +109,10 @@ public final class CrystalBrain {
      * pre-tick of that burst's last packet. Meteor, and this brain with it, sends the placement on the same base every
      * pre-tick until a crystal appears there ({@link #placed}); if that first crystal is gone (another explosion) while a
      * later packet of the burst is still on its way, that packet makes a second crystal of ours, with no pending
-     * placement left to claim it. For {@link #LATE_OWN_WINDOW} pre-ticks after the last packet, a crystal on the spot is
-     * therefore ours for the budget ({@link Known#mine}), as a late own crystal is: Meteor's rules still bound it, and
-     * breaking it must also leave the floor ({@link Known#breakView}). Read only by {@link #appeared}, for ownership:
+     * placement left to claim it. For {@link #LATE_OWN_WINDOW} pre-ticks after the last packet (or after a late
+     * crystal's arrival, if later), a crystal on the spot is therefore ours for the budget ({@link Known#tail}), as a
+     * late own crystal is: Meteor's rules still bound it, and breaking it must also leave the floor ({@link
+     * Known#breakView}). surround++ is not told about it ({@link #ownCrystalsWithoutBurstTail}). Read only by {@link #appeared}, for ownership:
      * it adds nothing to the budget (a crystal standing on the spot is counted in S whoever placed it), never takes a
      * finishing-blow slot and never makes a crystal {@code ours}.
      */
@@ -535,14 +536,30 @@ public final class CrystalBrain {
     }
 
     /**
-     * The crystals of ours still remembered, late own ones included ({@code Known.mine}), each with whether we
-     * attacked it ourselves (read-only, for the bench: a hit on us from one of these is ours for the reserve
-     * rules even when the opponent's autobreak set it off).
+     * Every crystal still remembered that the brain treats as ours for the budget, each with whether we attacked it
+     * ourselves (read-only, for the bench: a hit on us from one of these is ours for the reserve rules even when the
+     * opponent's autobreak set it off): those of a placement of ours, in time or late ({@code Known.mine}), and those
+     * taken as ours through a burst's tail ({@code Known.tail}, {@link #burstTails}).
      */
-    public Map<Integer, Boolean> ownCrystals() {
+    public Map<Integer, Boolean> ownCrystalsWithBurstTail() {
+        return ownCrystals(true);
+    }
+
+    /**
+     * The crystals of a placement of ours still remembered, in time or late ({@code Known.mine}), each with whether we
+     * attacked it ourselves: the ones crystal-aura++ looks after itself, which surround++ therefore leaves to it
+     * ({@code CrystalBreaker}). Fix round 1 of the burst tail (review I1): never a crystal known only through the tail,
+     * which may as well be an opponent's crystal on a base we just used; surround++ must stay free to break it, as it
+     * was before the tail existed.
+     */
+    public Map<Integer, Boolean> ownCrystalsWithoutBurstTail() {
+        return ownCrystals(false);
+    }
+
+    private Map<Integer, Boolean> ownCrystals(boolean withTail) {
         Map<Integer, Boolean> own = new LinkedHashMap<>();
         for (Known k : known.values()) {
-            if (k.mine) own.put(k.seen.id(), k.attackedTick != CrystalView.NEVER);
+            if (k.mine || (withTail && k.tail)) own.put(k.seen.id(), k.attackedTick != CrystalView.NEVER);
         }
         return Map.copyOf(own);
     }
@@ -1331,7 +1348,9 @@ public final class CrystalBrain {
                     lateMatched = true;
                     windows.landed(at, at - l.firstTick);
                     override = l.finish;
-                    burstLastPacket = l.lastPacket;
+                    // Fix round 1 (review M6): from the late crystal's arrival when that is later than the last
+                    // packet, so a lag-delayed burst keeps its whole window.
+                    burstLastPacket = Math.max(l.lastPacket, at);
                     break;
                 }
             }
@@ -1342,7 +1361,8 @@ public final class CrystalBrain {
         if (burstLastPacket != CrystalView.NEVER) burstTails.put(c.pos(), burstLastPacket);
         Known k = new Known(c, ours, placedTick);
         k.since = at;
-        k.mine = ours || lateMatched || tailMatched;
+        k.mine = ours || lateMatched;
+        k.tail = tailMatched;
         k.finish = override;
         known.put(c.id(), k);
         return k;
@@ -1405,9 +1425,19 @@ public final class CrystalBrain {
         /** For one of ours, the pre-tick that first decided its placement; {@link CrystalView#NEVER} otherwise. */
         final long placedTick;
         int attempts;
-        /** The pre-tick it was first seen at, and whether it is one of ours (late ones too): for the stuck count, log only. */
+        /** The pre-tick it was first seen at: for the stuck count, log only. */
         long since;
+        /**
+         * One of a placement of ours, in time or late (task C2): ours for the budget ({@link #breakView}), for the stuck
+         * count, and in both views of the own crystals ({@link #ownCrystalsWithoutBurstTail}).
+         */
         boolean mine;
+        /**
+         * 0.8.0: taken as ours only through a burst's tail ({@link #burstTails}): ours for the budget ({@link
+         * #breakView}) and for the bench ({@link #ownCrystalsWithBurstTail}), but not a crystal surround++ leaves to the
+         * aura (fix round 1, review I1), nor one the stuck count reads.
+         */
+        boolean tail;
         boolean stuckCounted;
         long attackedTick = CrystalView.NEVER;
         long removedTick = CrystalView.NEVER;
@@ -1445,7 +1475,7 @@ public final class CrystalBrain {
          * bomb, so the budget must still leave the floor when breaking it.
          */
         CrystalView breakView(long now) {
-            return view(now, ours || mine);
+            return view(now, ours || mine || tail);
         }
 
         private CrystalView view(long now, boolean own) {

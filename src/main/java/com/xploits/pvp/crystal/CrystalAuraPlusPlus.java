@@ -637,9 +637,20 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return brain.finishingCrystalsAttacked();
     }
 
-    /** The crystals of ours still remembered, each with whether we attacked it (read-only, for the bench). */
-    public Map<Integer, Boolean> ownCrystals() {
-        return brain.ownCrystals();
+    /**
+     * Every crystal the brain treats as ours for the budget, burst tail included, each with whether we attacked it
+     * (read-only, for the bench: {@link CrystalBrain#ownCrystalsWithBurstTail}).
+     */
+    public Map<Integer, Boolean> ownCrystalsWithBurstTail() {
+        return brain.ownCrystalsWithBurstTail();
+    }
+
+    /**
+     * The crystals of a placement of ours, in time or late, each with whether we attacked it: what this module looks
+     * after itself, so surround++ leaves them to it ({@link CrystalBrain#ownCrystalsWithoutBurstTail}).
+     */
+    public Map<Integer, Boolean> ownCrystalsWithoutBurstTail() {
+        return brain.ownCrystalsWithoutBurstTail();
     }
 
     /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */

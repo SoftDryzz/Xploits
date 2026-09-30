@@ -72,7 +72,7 @@ final class FinishingWatch {
                     if (client.world != null && client.world.getEntityById(id) != null) present.add(id);
                 }
                 trusted = module.trustedTargets();
-                own = module.ownCrystals();
+                own = module.ownCrystalsWithBurstTail();
                 for (Integer id : own.keySet()) {
                     if (client.world != null && client.world.getEntityById(id) != null) ownPresent.add(id);
                 }
