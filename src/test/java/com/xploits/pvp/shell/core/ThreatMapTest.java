@@ -155,4 +155,20 @@ class ThreatMapTest {
         ThreatMap map = new ThreatMap(Scenes.obsidianFloor().build(), new FakeOracle().at(5, 0, 0, 10));
         assertEquals(Optional.empty(), map.threatAt(c(5, 0, 0)));
     }
+
+    @Test
+    void aBlockInTheWayOfASpotFurtherAwayIsWorthWhatItShields() {
+        // (2,1,0) deals 12 and needs its base: weighs 6. Its ray to our eyes crosses (1,1,0); the two lower rays go
+        // through (2,0,0) and (1,0,0). Obsidian at (1,1,0) closes one ray in three: 12 * 0.5 * 2/3 = 4, so 6 - 4 = 2.
+        ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(2, 1, 0, 12));
+        assertEquals(2.0, map.value(List.of(new Placement(c(1, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
+    }
+
+    @Test
+    void aBlockThatGivesAnOpponentSomethingToPlaceAgainstCostsTheSpotItOpens() {
+        // (1,2,0) deals 12, but its base cell (1,1,0) has nothing around it: no threat. Obsidian at (2,1,0) gives that
+        // cell a face to place against, so (1,2,0) turns into a spot that needs its base: 12 * 0.5 = 6 more threat.
+        ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(1, 2, 0, 12));
+        assertEquals(-6.0, map.value(List.of(new Placement(c(2, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
+    }
 }
