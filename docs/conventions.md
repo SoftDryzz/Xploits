@@ -309,7 +309,10 @@ the merge, from the complete report (never by an individual shard, since shards 
 lives in a disposable worktree). **A release may use a sharded run only with `-Pbench.full -Pbench.fresh` and
 a clean merged gate — the same rule as always, just checked once, on the merged report.**
 
-Each shard's own gradlew process runs with a hidden console (`-Pbench.shard` also caps its heap at `-Xmx3G`,
+The whole sharded run plays at below-normal priority, so the desktop stays responsive while 4 clients render:
+`bench/parallel.ps1` lowers its own priority and passes `--no-daemon`, so every shard's Gradle and Minecraft processes
+are its children and inherit it (no measurement setting changes). Each shard's own gradlew process runs with a hidden
+console (`-Pbench.shard` also caps its heap at `-Xmx3G`,
 measured on the owner's machine at roughly 2 GB for a short two-scenario run, so 3 GB is real headroom, not a
 guess): closing what looks like an empty leftover console window sends that process CTRL_CLOSE and kills the
 shard, so `bench/parallel.ps1` never shows one. Only the Minecraft client's own window (separate from the
