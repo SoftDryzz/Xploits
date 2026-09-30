@@ -430,8 +430,9 @@ public final class CombatDirector {
     /**
      * The full signature, with the shell auto-pvp drives (surround++ spec §8). With {@link ShellModule#XPLOITS} the
      * catalog's {@code surround} is surround++, which decides from its own threat map: it is wanted for as long as
-     * auto-pvp is on, as the crystal aura is; it stays out of the resource filter (with no blocks it still breaks
-     * crystals and walks you to a hole, and says so itself); and Meteor's {@code hole-filler} is never asked for, since
+     * auto-pvp is on, as the crystal aura is; it is never left out for a shortage (with no blocks it still breaks
+     * crystals and walks you to a hole, and says so itself), but it still sets aside Meteor's surround's share of the
+     * obsidian, so auto-trap does not drain its stack (I3); and Meteor's {@code hole-filler} is never asked for, since
      * surround++ denies the opponents' holes itself. A profile that does not allow {@code surround} still keeps it off.
      * The shorter overloads pass {@link ShellModule#METEOR}: the behaviour before surround++.
      */
@@ -726,9 +727,12 @@ public final class CombatDirector {
                 continue;
             }
             if (shell == ShellModule.XPLOITS && module.equals(ManagedModules.SURROUND)) {
-                // surround++ spends only where something can hurt you, and does something useful with no blocks at all.
+                // surround++ spends only where something can hurt you, and does something useful with no blocks at all:
+                // never left out for a shortage. But it swaps to the same stack as auto-trap, so it still sets aside
+                // Meteor's surround's share first (I3), or whatever is left of it.
                 belowMinimumTicks.remove(module);
                 enable.add(module);
+                claim(module, snapshot, remaining, claimedBy);
                 continue;
             }
             if (module.equals(ManagedModules.CRYSTAL_AURA)) {
