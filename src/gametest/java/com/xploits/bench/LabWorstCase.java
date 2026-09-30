@@ -3,6 +3,7 @@ package com.xploits.bench;
 import com.xploits.bench.core.GappleSchedule;
 import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.Plan;
+import com.xploits.pvp.core.ShellModule;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.Decision;
 import com.xploits.pvp.crystal.core.RiskLevel;
@@ -192,7 +193,17 @@ final class LabWorstCase implements Scenario {
         new Variant("meteor-shell-2-43-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE, Tweak.WALK_OUT),
             City.VANILLA, "meteor-shell-2-43; once the hole breaks you hold forward through the gap"),
         new Variant("shell-hand-2-43", 2, Driver.BY_HAND, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.VANILLA,
-            "surround++ and crystal-aura++ on by hand, no auto-pvp; 2 opponents, an honest city at vanilla speed"));
+            "surround++ and crystal-aura++ on by hand, no auto-pvp; 2 opponents, an honest city at vanilla speed"),
+        new Variant("shell-2-43", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.VANILLA,
+            "surround++ driven by auto-pvp (shell-module xploits++) instead of Meteor's surround and self-trap; 2 opponents"),
+        new Variant("shell-2-0", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.INSTANT,
+            "surround++ against 2 opponents, the city breaking again at once"),
+        new Variant("shell-3-43", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.VANILLA,
+            "surround++ against 3 opponents"),
+        new Variant("shell-3-0", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP), City.INSTANT,
+            "surround++ against 3 opponents, the city breaking again at once"),
+        new Variant("shell-2-43-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SURROUND_PP, Tweak.WALK_OUT),
+            City.VANILLA, "shell-2-43; once the hole breaks you hold forward through the gap"));
 
     private final Variant variant;
     /** Which run of the variant this is, from 1; the trace's name carries it when a variant runs more than once. */
@@ -256,7 +267,8 @@ final class LabWorstCase implements Scenario {
 
     @Override
     public void arrange(Bench bench) {
-        scene = AutoPvpScene.arrange(bench, "balanced", CrystalModule.XPLOITS);
+        scene = AutoPvpScene.arrange(bench, "balanced", CrystalModule.XPLOITS,
+            variant.has(Tweak.SURROUND_PP) ? ShellModule.XPLOITS : ShellModule.METEOR);
         configure(bench);
         Surround surround = bench.meteor(Surround.class);
         if (variant.has(Tweak.NO_CENTER)) bench.setting(surround, "General", "center", Surround.Center.Never);
@@ -478,8 +490,14 @@ final class LabWorstCase implements Scenario {
                 String aura = secondReasons.entrySet().stream()
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                     .limit(2).map(e -> e.getKey() + " ×" + e.getValue()).reduce((a, b) -> a + ", " + b).orElse("");
+                String surroundColumn = variant.has(Tweak.SURROUND_PP)
+                    ? bench.fromClient(client -> Modules.get().get(SurroundPlusPlus.class).status()
+                        .map(st -> (st.headCovered() ? "head covered" : "head open") + ", " + st.openThreats() + " open, "
+                            + st.underAttack() + " mined")
+                        .orElse("off"))
+                    : now.surroundOn() ? "on" : "off";
                 rows.add(new Row((tick + 19) / 20, now.health(), ourPops, theirPops, alive, hole, secondWeb,
-                    now.surroundOn() ? "on" : "off", secondMoved, secondPulled, autoPvp, plusPlusOn, placed - placedBefore,
+                    surroundColumn, secondMoved, secondPulled, autoPvp, plusPlusOn, placed - placedBefore,
                     aura, secondHolding, secondSurroundOffs, secondYChanged, secondOnGround));
                 placedBefore = placed;
                 secondReasons.clear();
@@ -507,8 +525,9 @@ final class LabWorstCase implements Scenario {
         String shellCounts = variant.has(Tweak.SURROUND_PP) ? bench.fromClient(client -> {
             SurroundPlusPlus shell = Modules.get().get(SurroundPlusPlus.class);
             return String.format(Locale.ROOT, "- surround++: %d obsidian and %d crying obsidian placed, %d crystal(s) broken,"
-                    + " centred %d time(s), %d walk(s) to a hole, %d aura override(s).%n", shell.placedObsidian(),
-                shell.placedCrying(), shell.crystalsBroken(), shell.centred(), shell.walks(), shell.auraOverrides());
+                    + " centred %d time(s), %d walk(s) to a hole, %d aura override(s); the decision took %d us a tick on"
+                    + " average, %d at worst.%n", shell.placedObsidian(), shell.placedCrying(), shell.crystalsBroken(),
+                shell.centred(), shell.walks(), shell.auraOverrides(), shell.averageMicros(), shell.worstMicros());
         }) : "";
         String conflicts = variant.has(Tweak.SURROUND_PP)
             ? String.valueOf((int) bench.<Integer, RuntimeException>fromClient(client -> Modules.get().get(SurroundPlusPlus.class).auraOverrides())) : "-";
@@ -556,7 +575,7 @@ final class LabWorstCase implements Scenario {
         md.append("Aura settings: ").append(variant.config().description).append(
             variant.has(Tweak.AGGRESSIVE) ? "; risk Aggressive" : "").append(".\n\n");
         md.append("First opponent's city: ").append(variant.city().description).append(".\n\n");
-        md.append("| s | health | your pops | their pops | they alive | your hole | web | surround | moved | pulled back"
+        md.append("| s | health | your pops | their pops | they alive | your hole | web | surround (or surround++) | moved | pulled back"
             + " | auto-pvp | ++ on | placed | ++ decided (ticks) | ++ held by reserve | surround went off | y changed | on ground |\n"
             + "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         for (Row r : rows) {

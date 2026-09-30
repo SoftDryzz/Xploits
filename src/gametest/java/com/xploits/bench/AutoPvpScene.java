@@ -6,7 +6,9 @@ import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.Plan;
+import com.xploits.pvp.core.ShellModule;
 import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
+import com.xploits.pvp.shell.SurroundPlusPlus;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
@@ -33,8 +35,13 @@ final class AutoPvpScene {
         return arrange(bench, profile, CrystalModule.METEOR);
     }
 
-    /** The resets and the profile, with that {@code crystal-module}; call it first in {@code arrange}, before the loadout. */
+    /** The resets and the profile, with that {@code crystal-module} and Meteor's shell; call it first in {@code arrange}. */
     static AutoPvpScene arrange(Bench bench, String profile, CrystalModule crystal) {
+        return arrange(bench, profile, crystal, ShellModule.METEOR);
+    }
+
+    /** The resets and the profile, with that crystal-module and shell-module; call it first in arrange, before the loadout. */
+    static AutoPvpScene arrange(Bench bench, String profile, CrystalModule crystal, ShellModule shell) {
         CrystalAura aura = MeasureRun.crystalAura(bench);
         CrystalAuraPlusPlus plusPlus = MeasureRun.crystalAuraPlusPlus(bench);
         bench.onClient(client -> {
@@ -49,11 +56,15 @@ final class AutoPvpScene {
         AutoPvp autoPvp = bench.meteor(AutoPvp.class);
         // Set even when it is the default: every auto-pvp CHECK states the aura it drives.
         bench.setting(autoPvp, "General", "crystal-module", crystal);
+        bench.setting(autoPvp, "General", "shell-module", shell);
         boolean applied = bench.fromClient(client -> autoPvp.useProfile(profile).ok());
         if (!applied) throw new BenchException("the " + profile + " profile was not applied");
         bench.onClient(client -> {
             if (aura.isActive()) aura.disable();
             if (plusPlus.isActive()) plusPlus.disable();
+            SurroundPlusPlus shellPlusPlus = Modules.get().get(SurroundPlusPlus.class);
+            shellPlusPlus.settings.reset();
+            if (shellPlusPlus.isActive()) shellPlusPlus.disable();
         });
         return new AutoPvpScene(autoPvp);
     }

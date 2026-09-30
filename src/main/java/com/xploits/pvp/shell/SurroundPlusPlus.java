@@ -188,6 +188,9 @@ public class SurroundPlusPlus extends XploitsModule {
     private int crystalsBroken;
     private int centred;
     private int walks;
+    private long brainNanos;
+    private long worstBrainNanos;
+    private long brainTicks;
 
     public SurroundPlusPlus() {
         super(XploitsAddon.CATEGORY, "surround++", Texts.startupText(ShellText.MODULE_DESC));
@@ -214,6 +217,9 @@ public class SurroundPlusPlus extends XploitsModule {
         crystalsBroken = 0;
         centred = 0;
         walks = 0;
+        brainNanos = 0;
+        worstBrainNanos = 0;
+        brainTicks = 0;
         releaseKeys();
     }
 
@@ -264,6 +270,16 @@ public class SurroundPlusPlus extends XploitsModule {
         return brain.auraOverrides();
     }
 
+    /** The decision's average cost per tick since activation, in microseconds (for the lab: spec §11). */
+    public long averageMicros() {
+        return brainTicks == 0 ? 0 : brainNanos / brainTicks / 1000;
+    }
+
+    /** The decision's worst tick since activation, in microseconds (for the lab). */
+    public long worstMicros() {
+        return worstBrainNanos / 1000;
+    }
+
     // Events
 
     /** Netty thread: queue only; the world is not touched here. */
@@ -310,8 +326,13 @@ public class SurroundPlusPlus extends XploitsModule {
         updateWindow(health.getAsDouble(), read);
         ShellSnapshot snapshot = snapshot(p, feet, pos, health.getAsDouble());
         warnings(snapshot);
+        long started = System.nanoTime();
         ShellTick decided = brain.tick(snapshot, new Oracle(p, feet),
             new ShellBrain.Motion(userKeys(), p.getYaw(), walkingTo(feet), read.popped()));
+        long spent = System.nanoTime() - started;
+        brainNanos += spent;
+        brainTicks++;
+        worstBrainNanos = Math.max(worstBrainNanos, spent);
         status = decided.status();
         execute(decided, feet);
     }
