@@ -98,6 +98,42 @@ class ShellBrainTest {
     }
 
     @Test
+    void aSpotBehindCoverWhoseBoundAloneReachesTheLineDoesNotMoveYou() {
+        // (-1,1,0) needs its base. Its bound (distance only, no raycast) is 6: weighted 6 * 0.125 = 0.75, under the danger
+        // line, so the map keeps the bound, and its full hit reads 6 * 1 (every ray open) = 6, over the 4 that makes us
+        // move. Measured with its raycast it deals 2 (cover in the way): a full hit of 2 * 1, under 4. We stay.
+        // (0,1,1) also needs its base, with a bound of 3: a full hit of 3, under 4 already, so it is not raycast.
+        ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
+        FakeOracle covered = new FakeOracle().bound(-1, 1, 0, 6).exact(-1, 1, 0, 2).bound(0, 1, 1, 3);
+        ShellTick tick = new ShellBrain().tick(s, covered, STILL);
+        assertEquals(Optional.empty(), tick.walkTo());
+        assertTrue(tick.keys().isEmpty());
+        assertEquals(Set.of(c(-1, 1, 0)), covered.askedExact, "only the spot over the line is measured again");
+    }
+
+    @Test
+    void aSpotWhoseMeasuredHitStillReachesTheLineMovesYou() {
+        // The same spot, measured at 5: a full hit of 5 * 1, over 4. We walk to the hole two blocks east.
+        ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
+        ShellTick tick = new ShellBrain().tick(s, new FakeOracle().bound(-1, 1, 0, 6).exact(-1, 1, 0, 5), STILL);
+        assertEquals(Optional.of(c(2, -1, 0)), tick.walkTo());
+        assertEquals(Set.of(HoleWalk.Key.LEFT), tick.keys());
+    }
+
+    @Test
+    void atMostThreeSpotsAreMeasuredAgainBeforeAWalk() {
+        // Four spots that need their base, bounds 7.5, 7, 6.5 and 6: each weighted under 1 (7.5 * 0.125 = 0.9375), so the
+        // map keeps the bounds and raycasts none; full hits 7.5, 7, 6.5 and 6, all over 4. The three biggest measure 2 each.
+        // The fourth would measure 5, but only the three biggest are measured again: we stay, and it is never raycast.
+        ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
+        FakeOracle oracle = new FakeOracle().bound(-1, 1, 0, 7.5).exact(-1, 1, 0, 2).bound(0, 1, 1, 7).exact(0, 1, 1, 2)
+            .bound(0, 1, -1, 6.5).exact(0, 1, -1, 2).bound(-1, 1, 1, 6).exact(-1, 1, 1, 5);
+        ShellTick tick = new ShellBrain().tick(s, oracle, STILL);
+        assertEquals(Optional.empty(), tick.walkTo());
+        assertEquals(Set.of(c(-1, 1, 0), c(0, 1, 1), c(0, 1, -1)), oracle.askedExact);
+    }
+
+    @Test
     void itCentresOnlyWhenYouStickOutAndSomethingIsLeftOpen() {
         // No blocks to place, so (-1,0,0), dealing 10 on an obsidian floor, stays open.
         ShellSnapshot out = Scenes.obsidianFloor().feet(new Vec(0.9, 0, 0.5)).obsidian(0).cryingObsidian(0).build();

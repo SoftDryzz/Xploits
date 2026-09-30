@@ -251,7 +251,7 @@ public final class ThreatMap {
         return value;
     }
 
-    private static double checked(double damage) {
+    static double checked(double damage) {
         return Double.isFinite(damage) && damage >= 0 ? damage : UNKNOWN_DAMAGE;
     }
 }

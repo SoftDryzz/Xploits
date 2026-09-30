@@ -1,6 +1,7 @@
 package com.xploits.pvp.shell.core;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -15,7 +16,8 @@ import java.util.Set;
  *
  * <p>The planner ranks spots by their weight ({@link Threat#weighted}: a spot that still needs its base counts at
  * {@link ThreatMap#NEEDS_BASE_WEIGHT}); walking to a hole and burrow read a spot's full hit instead ({@link #fullHit}):
- * the damage if the crystal went there with its base placed.
+ * the damage if the crystal went there with its base placed. Before a walk starts, the biggest are measured again with
+ * their raycast ({@link #REMEASURED_BEFORE_WALK}): the map may hold only a spot's distance bound.
  *
  * <p>It remembers only what a tick cannot see: the walk, the {@link #HOLD_TICKS} after a totem pop when the shell is held
  * closed, and the waits between two centrings and two burrows. Centring happens only when our box sticks out of its
@@ -28,6 +30,8 @@ public final class ShellBrain {
     public static final int BURROW_COOLDOWN_TICKS = 100;
     /** A spot at our head whose full hit ({@link #fullHit}) is this big, still open after the plan, is what burrow is for. */
     public static final double BURROW_THREAT = 6.0;
+    /** How many spots, the biggest full hits first, are measured again with their raycast before a walk starts. */
+    public static final int REMEASURED_BEFORE_WALK = 3;
 
     /**
      * What a tick knows about us beyond the world.
@@ -92,7 +96,7 @@ public final class ShellBrain {
         double biggestHit = threats.stream().mapToDouble(ShellBrain::fullHit).max().orElse(0);
         if (walk.ready()) {
             Optional<Cell> hole = Holes.target(s, biggestHit, motion.userKeys());
-            if (hole.isPresent()) {
+            if (hole.isPresent() && stillThreatened(threats, oracle)) {
                 Set<HoleWalk.Key> keys = walk.start(towards(s, hole.get()), motion.yaw());
                 return new ShellTick(List.of(), toBreak, keys, hole, false, false, false, status(map, s));
             }
@@ -118,6 +122,22 @@ public final class ShellBrain {
      */
     static double fullHit(Threat t) {
         return t.damage() * t.open();
+    }
+
+    /**
+     * Whether a threat, measured with its raycast, still reaches {@link Holes#MOVE_THREAT}: the last check before a walk
+     * starts. The map keeps a spot's distance bound, with no raycast, where the bound weighted stays under the danger line;
+     * for a spot that still needs its base that is any bound under 8, over the walk's line, so a spot behind cover could
+     * start a walk on its bound alone. The biggest full hits, at most {@link #REMEASURED_BEFORE_WALK}, are measured again
+     * (their exact damage times their open share); one under the line on its bound cannot reach it (the exact value is
+     * never above the bound) and costs no raycast.
+     */
+    private static boolean stillThreatened(List<Threat> threats, DamageOracle oracle) {
+        return threats.stream()
+            .sorted(Comparator.comparingDouble(ShellBrain::fullHit).reversed())
+            .limit(REMEASURED_BEFORE_WALK)
+            .filter(t -> fullHit(t) >= Holes.MOVE_THREAT)
+            .anyMatch(t -> ThreatMap.checked(oracle.exact(t.spot())) * t.open() >= Holes.MOVE_THREAT);
     }
 
     /** The hole's centre minus our feet, on the ground. */
