@@ -128,6 +128,8 @@ loom.runs.named("clientGameTest") {
     project.findProperty("bench.lab")?.let {
         property("xploits.lab", it.toString())
         property("xploits.lab.out", layout.buildDirectory.dir("bench-lab").get().asFile.absolutePath)
+        // -Pbench.lab.runs=N: every variant N times in a row, each trace named <variant>-r<k>.md.
+        project.findProperty("bench.lab.runs")?.let { runs -> property("xploits.lab.runs", runs.toString()) }
     }
 }
 

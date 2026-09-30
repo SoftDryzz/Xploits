@@ -57,6 +57,10 @@ final class LabWorstCase implements Scenario {
     static final String PROPERTY = "xploits.lab";
     /** Where the traces go ({@code build/bench-lab}). */
     static final String OUT_PROPERTY = "xploits.lab.out";
+    /** The system property {@code -Pbench.lab.runs} sets: how many times each variant runs (1 when absent). */
+    static final String RUNS_PROPERTY = "xploits.lab.runs";
+    /** The one-line-per-run table every run appends to, next to the traces. */
+    static final String SUMMARY = "summary.md";
     static final int RUN_TICKS = 1200;
     /** A drop in how far we have got, within one tick, larger than this while walking: something put us back. */
     private static final double PULLED_BACK = 0.15;
@@ -88,6 +92,22 @@ final class LabWorstCase implements Scenario {
         }
     }
 
+    /** Which wall-mining attacker the first opponent is. */
+    enum City {
+        /** The bench's own {@link SurroundMiner}: instant, and its crystal spawned without the base rule (the first runs). */
+        SURROUND_MINER("the bench's instant city, crystal without the base rule"),
+        /** {@link LabCityAttack} at vanilla speed. */
+        VANILLA("an honest city at vanilla speed, " + LabCityAttack.VANILLA_TICKS + " ticks a block"),
+        /** {@link LabCityAttack} breaking again at once: the worst case. */
+        INSTANT("an honest city breaking again at once, the worst case");
+
+        final String description;
+
+        City(String description) {
+            this.description = description;
+        }
+    }
+
     /** What a variant changes from the plain setup. */
     enum Tweak {
         /** crystal-aura++ at {@code risk} Aggressive (reserve 2). */
@@ -107,7 +127,12 @@ final class LabWorstCase implements Scenario {
         WALK_OUT
     }
 
-    record Variant(String name, int attackers, Driver driver, AuraConfig config, Set<Tweak> tweaks, String summary) {
+    record Variant(String name, int attackers, Driver driver, AuraConfig config, Set<Tweak> tweaks, City city, String summary) {
+        /** The variants from before the honest city: the bench's own. */
+        Variant(String name, int attackers, Driver driver, AuraConfig config, Set<Tweak> tweaks, String summary) {
+            this(name, attackers, driver, config, tweaks, City.SURROUND_MINER, summary);
+        }
+
         boolean has(Tweak tweak) {
             return tweaks.contains(tweak);
         }
@@ -148,30 +173,62 @@ final class LabWorstCase implements Scenario {
         new Variant("yours-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT),
             "your setup; once the hole breaks you hold forward through the gap"),
         new Variant("yours-walk-nocenter", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.WALK_OUT, Tweak.NO_CENTER),
-            "yours-walk with surround's center set to Never"));
+            "yours-walk with surround's center set to Never"),
+        new Variant("meteor-shell-2-43", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE), City.VANILLA,
+            "the baseline: Meteor's surround plus self-trap around your head, auto-pvp driving crystal-aura++ with your settings;"
+                + " 2 opponents"),
+        new Variant("meteor-shell-2-0", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE), City.INSTANT,
+            "the baseline against 2 opponents, the city breaking again at once"),
+        new Variant("meteor-shell-3-43", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE), City.VANILLA,
+            "the baseline against 3 opponents"),
+        new Variant("meteor-shell-3-0", 3, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE), City.INSTANT,
+            "the baseline against 3 opponents, the city breaking again at once"),
+        new Variant("meteor-shell-2-43-walk", 2, Driver.AUTO_PVP, AuraConfig.OWNER, Set.of(Tweak.SELF_TRAP_FACE, Tweak.WALK_OUT),
+            City.VANILLA, "meteor-shell-2-43; once the hole breaks you hold forward through the gap"));
 
     private final Variant variant;
+    /** Which run of the variant this is, from 1; the trace's name carries it when a variant runs more than once. */
+    private final int run;
+    private final int runs;
     private AutoPvpScene scene;
     private final List<LabHarass> harassment = new ArrayList<>();
     private final List<LabCrystalAttack> attacks = new ArrayList<>();
     private final LabHeadMiner headMiner = new LabHeadMiner();
+    private LabCityAttack city;
 
-    LabWorstCase(Variant variant) {
+    LabWorstCase(Variant variant, int run, int runs) {
         this.variant = variant;
+        this.run = run;
+        this.runs = runs;
     }
 
-    /** The variants {@code -Pbench.lab} names, in the order given; {@code all} is every one. */
+    /**
+     * The variants {@code -Pbench.lab} names, in the order given ({@code all} is every one), each {@code -Pbench.lab.runs}
+     * times in a row.
+     */
     static List<LabWorstCase> selected(String names) {
-        if (names.strip().equals("all")) return VARIANTS.stream().map(LabWorstCase::new).toList();
-        List<LabWorstCase> chosen = new ArrayList<>();
-        for (String name : names.split(",")) {
-            String wanted = name.strip();
-            if (wanted.isEmpty()) continue;
-            Variant v = VARIANTS.stream().filter(x -> x.name().equals(wanted)).findFirst()
-                .orElseThrow(() -> new AssertionError("no lab variant is called " + wanted));
-            chosen.add(new LabWorstCase(v));
+        int runs = Math.max(1, Integer.getInteger(RUNS_PROPERTY, 1));
+        List<Variant> chosen = new ArrayList<>();
+        if (names.strip().equals("all")) {
+            chosen.addAll(VARIANTS);
+        } else {
+            for (String name : names.split(",")) {
+                String wanted = name.strip();
+                if (wanted.isEmpty()) continue;
+                chosen.add(VARIANTS.stream().filter(x -> x.name().equals(wanted)).findFirst()
+                    .orElseThrow(() -> new AssertionError("no lab variant is called " + wanted)));
+            }
         }
-        return chosen;
+        List<LabWorstCase> result = new ArrayList<>();
+        for (Variant v : chosen) {
+            for (int r = 1; r <= runs; r++) result.add(new LabWorstCase(v, r, runs));
+        }
+        return result;
+    }
+
+    /** The trace's file name: the variant's, with the run when it runs more than once. */
+    private String fileName() {
+        return runs == 1 ? variant.name() : variant.name() + "-r" + run;
     }
 
     @Override
@@ -208,12 +265,21 @@ final class LabWorstCase implements Scenario {
         bench.arena().give(2, Items.ENCHANTED_GOLDEN_APPLE, 64);
         // auto-pvp only turns auto-city on with a pickaxe in the hotbar; he had one.
         bench.arena().give(3, Items.NETHERITE_PICKAXE, 1);
+        // Crying obsidian in the hotbar for every honest-city variant, whichever defence runs: the same hand for both.
+        if (variant.city() != City.SURROUND_MINER) bench.arena().give(4, Items.CRYING_OBSIDIAN, 64);
 
         LabHarass harass = new LabHarass();
         harassment.add(harass);
         LabCrystalAttack second = new LabCrystalAttack(new Vec3i(0, 0, -3));
         attacks.add(second);
-        bench.spawnForFight(new ComposedFight(new SurroundMiner(new Vec3i(2, 0, 0), Direction.EAST),
+        Script first;
+        if (variant.city() == City.SURROUND_MINER) {
+            first = new SurroundMiner(new Vec3i(2, 0, 0), Direction.EAST);
+        } else {
+            city = new LabCityAttack(new Vec3i(2, 0, 0), variant.city() == City.VANILLA ? LabCityAttack.VANILLA_TICKS : 0);
+            first = city;
+        }
+        bench.spawnForFight(new ComposedFight(first,
             List.of(new HoleWalls(Vec3i.ZERO), new SelfSurround(), new Autobreak())));
         bench.spawnMoreForFight(new ComposedFight(second,
             List.of(new SelfSurround(), new Autobreak(), harass, new SpotBlock(), headMiner)), "Sparring2");
@@ -293,6 +359,7 @@ final class LabWorstCase implements Scenario {
         int[] theirLastPops = new int[them.size()];
         for (int i = 0; i < them.size(); i++) theirGapples[i] = new GappleSchedule();
         int placedAtStart = bench.fromClient(client -> PlacementCounter.get().sent());
+        int blocksAtStart = bench.fromClient(LabWorstCase::blocks);
 
         List<Row> rows = new ArrayList<>();
         int deathTick = -1;
@@ -420,13 +487,18 @@ final class LabWorstCase implements Scenario {
         }
         if (walkTick >= 0) bench.holdKey(options -> options.forwardKey, false);
 
+        int blocksUsed = blocksAtStart - bench.fromClient(LabWorstCase::blocks);
+        int ourPopsEnd = rows.isEmpty() ? 0 : rows.getLast().ourPops();
+        int theirPopsEnd = Arrays.stream(theirLastPops).sum();
+        int headCrystals = attacks.stream().mapToInt(LabCrystalAttack::atHead).sum();
         bench.finish();
         List<Path> fights = bench.newFightFiles();
         for (Sparring s : them) Fights.logCounters(variant.name() + " " + s.getGameProfile().name(), 1, s.script());
         int webs = harassment.stream().mapToInt(LabHarass::webs).sum();
         int roofs = harassment.stream().mapToInt(LabHarass::roofs).sum();
         write(rows, end, tick, deathTick, breachTick, walkTick, maxMoved, pulledBackTotal, webTicks, brokenTicks,
-            brokenWithSurroundOn, surroundOffsTotal, webs, roofs, fights);
+            brokenWithSurroundOn, surroundOffsTotal, webs, roofs, fights, blocksUsed, headCrystals);
+        summarize(end, tick, ourPopsEnd, theirPopsEnd, blocksUsed, headCrystals, pulledBackTotal, "-");
         LOG.info("[bench] lab {}: {} after {} s; hole broken at {}; moved at most {} blocks; pulled back {} time(s)",
             variant.name(), end, String.format(Locale.ROOT, "%.1f", tick / 20.0),
             breachTick < 0 ? "never" : String.format(Locale.ROOT, "%.1f s", breachTick / 20.0),
@@ -457,11 +529,12 @@ final class LabWorstCase implements Scenario {
 
     private void write(List<Row> rows, String end, int ticks, int deathTick, int breachTick, int walkTick, double maxMoved,
                        int pulledBack, int webTicks, int brokenTicks, int brokenWithSurroundOn, int surroundOffs, int webs,
-                       int roofs, List<Path> fights) {
+                       int roofs, List<Path> fights, int blocksUsed, int headCrystals) {
         StringBuilder md = new StringBuilder();
         md.append("# ").append(variant.name()).append("\n\n").append(variant.summary()).append(".\n\n");
         md.append("Aura settings: ").append(variant.config().description).append(
             variant.has(Tweak.AGGRESSIVE) ? "; risk Aggressive" : "").append(".\n\n");
+        md.append("First opponent's city: ").append(variant.city().description).append(".\n\n");
         md.append("| s | health | your pops | their pops | they alive | your hole | web | surround | moved | pulled back"
             + " | auto-pvp | ++ on | placed | ++ decided (ticks) | ++ held by reserve | surround went off | y changed | on ground |\n"
             + "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
@@ -489,19 +562,52 @@ final class LabWorstCase implements Scenario {
             md.append("- Crystal attacker ").append(i + 2).append(": ").append(attacks.get(i).counts()).append(".\n");
         }
         md.append("- Head blocks of yours it mined: ").append(headMiner.mined()).append(".\n");
+        if (city != null) md.append("- City attacker: ").append(city.counts()).append(".\n");
+        md.append(String.format(Locale.ROOT, "- Obsidian and crying obsidian used: %d. Crystals put at your head: %d.%n",
+            blocksUsed, headCrystals));
         md.append("- Fight recorder file(s): ").append(fights.isEmpty() ? "none"
             : String.join(", ", fights.stream().map(p -> p.getFileName().toString()).toList())).append(".\n");
         try {
             Path out = Path.of(System.getProperty(OUT_PROPERTY, "build/bench-lab"));
             Files.createDirectories(out);
-            Files.writeString(out.resolve(variant.name() + ".md"), md.toString(), StandardCharsets.UTF_8);
+            Files.writeString(out.resolve(fileName() + ".md"), md.toString(), StandardCharsets.UTF_8);
             // The game's run folder is emptied on every launch: the fight file goes next to its trace.
             for (int i = 0; i < fights.size(); i++) {
-                Files.copy(fights.get(i), out.resolve(variant.name() + "-fight" + (i == 0 ? "" : "-" + (i + 1)) + ".json"),
+                Files.copy(fights.get(i), out.resolve(fileName() + "-fight" + (i == 0 ? "" : "-" + (i + 1)) + ".json"),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             throw new BenchException("the lab trace could not be written (" + e.getClass().getSimpleName() + ")");
+        }
+    }
+
+    /** Obsidian and crying obsidian in our whole inventory. Client thread. */
+    private static int blocks(MinecraftClient client) {
+        if (client.player == null) return 0;
+        return client.player.getInventory().count(Items.OBSIDIAN) + client.player.getInventory().count(Items.CRYING_OBSIDIAN);
+    }
+
+    /**
+     * One line per run in {@value #SUMMARY}, next to the traces, so the acceptance can be read at a glance (spec §9). The
+     * header is written with the first line. {@code conflicts} is what surround++ counts (its aura overrides), "-" without it.
+     */
+    private void summarize(String end, int ticks, int ourPops, int theirPops, int blocksUsed, int headCrystals, int pulledBack,
+                           String conflicts) {
+        try {
+            Path out = Path.of(System.getProperty(OUT_PROPERTY, "build/bench-lab"));
+            Files.createDirectories(out);
+            Path summary = out.resolve(SUMMARY);
+            StringBuilder line = new StringBuilder();
+            if (!Files.exists(summary)) {
+                line.append("| variant | run | end | s | your pops | their pops | blocks used | head crystals | pulled back"
+                    + " | conflicts |\n|---|---|---|---|---|---|---|---|---|---|\n");
+            }
+            line.append(String.format(Locale.ROOT, "| %s | %d | %s | %.1f | %d | %d | %d | %d | %d | %s |%n", variant.name(), run,
+                end, ticks / 20.0, ourPops, theirPops, blocksUsed, headCrystals, pulledBack, conflicts));
+            Files.writeString(summary, line.toString(), StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            throw new BenchException("the lab summary could not be written (" + e.getClass().getSimpleName() + ")");
         }
     }
 }

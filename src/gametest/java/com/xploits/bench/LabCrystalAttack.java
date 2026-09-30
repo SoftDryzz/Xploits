@@ -149,4 +149,10 @@ final class LabCrystalAttack implements Script, FightBehaviour {
         return spawned + " crystal(s): " + atFeet + " at your feet, " + atHead + " at your head, " + aboveHead
             + " above it; " + explosions + " set off by it, " + brokenFirst + " broken first";
     }
+
+    /** Crystals it put level with our head so far. Server thread. */
+    int atHead() {
+        return atHead;
+    }
 }
+
