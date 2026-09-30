@@ -17,8 +17,15 @@ class ShellBrainTest {
     }
 
     private static final ShellBrain.Motion STILL = ShellBrain.Motion.still();
-    private static final ShellBrain.Motion POPPED = new ShellBrain.Motion(false, 0, Optional.empty(), true);
-    private static final ShellBrain.Motion KEYS = new ShellBrain.Motion(true, 0, Optional.empty(), false);
+    private static final ShellBrain.Motion POPPED = new ShellBrain.Motion(false, false, false, 0, Optional.empty(), true);
+    /** Walking: a movement key held and the feet really moving. */
+    private static final ShellBrain.Motion KEYS = new ShellBrain.Motion(true, true, true, 0, Optional.empty(), false);
+    /** A movement key held, the feet not moving: held by a web or pressed against a wall. */
+    private static final ShellBrain.Motion HELD = new ShellBrain.Motion(true, true, false, 0, Optional.empty(), false);
+    /** No movement key, the feet moving: knocked back or carried. */
+    private static final ShellBrain.Motion KNOCKED = new ShellBrain.Motion(false, false, true, 0, Optional.empty(), false);
+    /** Only jump or sneak held, the feet not moving: in a hole. */
+    private static final ShellBrain.Motion CROUCHED = new ShellBrain.Motion(true, false, false, 0, Optional.empty(), false);
 
     /** A hole one block down at (x,-1,z), obsidian walls. */
     private static ShellSnapshot.Builder hole(ShellSnapshot.Builder s, int x, int z) {
@@ -58,7 +65,7 @@ class ShellBrainTest {
         assertEquals(Optional.of(c(2, -1, 0)), first.walkTo());
         assertEquals(Set.of(HoleWalk.Key.LEFT), first.keys(), "facing south, the hole two blocks east is to the left");
         assertTrue(first.placements().isEmpty());
-        ShellTick second = brain.tick(s, oracle, new ShellBrain.Motion(false, 0, Optional.of(c(2, -1, 0)), false));
+        ShellTick second = brain.tick(s, oracle, new ShellBrain.Motion(false, false, false, 0, Optional.of(c(2, -1, 0)), false));
         assertEquals(Set.of(HoleWalk.Key.LEFT), second.keys());
         assertTrue(second.placements().isEmpty());
         assertFalse(second.walkEnded());
@@ -82,7 +89,7 @@ class ShellBrainTest {
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
         FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
         brain.tick(s, oracle, STILL);
-        assertTrue(brain.tick(s, oracle, new ShellBrain.Motion(true, 0, Optional.of(c(2, -1, 0)), false)).walkEnded());
+        assertTrue(brain.tick(s, oracle, new ShellBrain.Motion(true, false, false, 0, Optional.of(c(2, -1, 0)), false)).walkEnded());
         ShellTick after = brain.tick(s, oracle, STILL);
         assertEquals(Optional.empty(), after.walkTo(), "it waits before choosing a hole again");
         assertFalse(after.placements().isEmpty(), "and meanwhile it builds");
@@ -208,6 +215,41 @@ class ShellBrainTest {
     }
 
     @Test
+    void heldInPlaceByAWebOrAWallItStillBuilds() {
+        // Same scene as above: the spot at (-1,0,0) has its base and deals 10; obsidian there takes it away.
+        ShellSnapshot s = Scenes.obsidianFloor().build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10);
+        List<Placement> want = List.of(new Placement(c(-1, 0, 0), Material.OBSIDIAN, ShellReason.SPOT));
+        assertEquals(want, new ShellBrain().tick(s, oracle, HELD).placements(), "a key held but the feet not moving: it builds");
+    }
+
+    @Test
+    void knockedBackWithoutAKeyItStillBuilds() {
+        ShellSnapshot s = Scenes.obsidianFloor().build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10);
+        List<Placement> want = List.of(new Placement(c(-1, 0, 0), Material.OBSIDIAN, ShellReason.SPOT));
+        assertEquals(want, new ShellBrain().tick(s, oracle, KNOCKED).placements(), "moving without a key: it builds");
+    }
+
+    @Test
+    void jumpingOrSneakingInPlaceInAHoleItStillBuilds() {
+        ShellSnapshot s = Scenes.obsidianFloor().build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10);
+        List<Placement> want = List.of(new Placement(c(-1, 0, 0), Material.OBSIDIAN, ShellReason.SPOT));
+        assertEquals(want, new ShellBrain().tick(s, oracle, CROUCHED).placements(), "jump or sneak only, not moving: it builds");
+    }
+
+    @Test
+    void walkingStillBreaksTheCrystalButBuildsNothing() {
+        ShellSnapshot s = Scenes.obsidianFloor().crystal(new StandingCrystal(7, c(1, 0, 0), false)).occupied(c(1, 0, 0)).build();
+        FakeOracle oracle = new FakeOracle().at(-1, 0, 0, 10).at(1, 0, 0, 10);
+        ShellTick walking = new ShellBrain().tick(s, oracle, KEYS);
+        assertTrue(walking.placements().isEmpty());
+        assertEquals(Optional.of(7), walking.breakCrystal());
+        assertEquals(Optional.of(7), new ShellBrain().tick(s, oracle, HELD).breakCrystal(), "held in place, it breaks it too");
+    }
+
+    @Test
     void whenYouLetGoOfTheKeysItBuildsOnTheNextTick() {
         // Open ground, walking east: the head-level cell ahead, (1,1,0), needs its base (1,0,0), the feet-level cell ahead,
         // and deals 12 (weighs 12 * 0.125 = 1.5). Standing still, crying obsidian there takes the spot away with one block.
@@ -225,7 +267,7 @@ class ShellBrainTest {
         ShellBrain brain = new ShellBrain();
         ShellSnapshot calm = Scenes.open().build();
         FakeOracle nothing = new FakeOracle();
-        assertTrue(brain.tick(calm, nothing, new ShellBrain.Motion(true, 0, Optional.empty(), true)).placements().isEmpty(),
+        assertTrue(brain.tick(calm, nothing, new ShellBrain.Motion(true, true, true, 0, Optional.empty(), true)).placements().isEmpty(),
             "a pop while you move: no closure yet");
         List<Placement> stopped = brain.tick(calm, nothing, STILL).placements();
         assertFalse(stopped.isEmpty(), "you stop within the hold: it closes");

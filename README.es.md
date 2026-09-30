@@ -364,8 +364,8 @@ tapa esos huecos primero:
 - **Anti-city**: un muro picado se rellena el mismo tick en que se abre, y un cristal que te pongan al lado se rompe
   cuando su explosión te deja con 2 de vida o más (`break-crystals`).
 - **Nunca te clava**: te centra solo cuando sobresales de tu bloque y queda algo abierto, nunca mientras pulsas una
-  tecla, como mucho una vez por segundo. Nunca se apaga porque cambie tu altura. Mientras te mueves, solo rompe
-  cristales.
+  tecla, como mucho una vez por segundo. Nunca se apaga porque cambie tu altura. Mientras caminas (una tecla de movimiento pulsada y moviéndote de verdad) solo rompe
+  cristales; retenido por una telaraña o una pared, sigue rellenando.
 - **Un agujero mejor**: al descubierto y amenazado, te mete andando en un agujero un bloque más abajo a 3 bloques o
   menos, primero los de roca madre, si hay sitio para todo tu cuerpo y espacio para la cabeza sobre el agujero
   (`move-to-hole`). Tus teclas siempre mandan.

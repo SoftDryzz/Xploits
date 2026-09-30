@@ -176,6 +176,8 @@ public class SurroundPlusPlus extends XploitsModule {
     private final Map<Integer, Long> attacked = new HashMap<>();
     private final EnumSet<HoleWalk.Key> pressed = EnumSet.noneOf(HoleWalk.Key.class);
     private BlockPos walkTarget;
+    /** The absolute feet position of the last tick, in memory only; null when there is none. */
+    private Vec3d lastFeet;
     private long tick;
     private double lastHealth = -1;
     private long windowStart;
@@ -206,6 +208,7 @@ public class SurroundPlusPlus extends XploitsModule {
         pending.clear();
         attacked.clear();
         walkTarget = null;
+        lastFeet = null;
         tick = 0;
         lastHealth = -1;
         window = HurtWindow.NONE;
@@ -296,6 +299,7 @@ public class SurroundPlusPlus extends XploitsModule {
         if (p == null || mc.world == null || !p.isAlive()) {
             releaseKeys();
             walkTarget = null;
+            lastFeet = null;
             // Nothing from before a death or a world change says anything about the next life.
             miningPackets.clear();
             damagePackets.clear();
@@ -312,6 +316,7 @@ public class SurroundPlusPlus extends XploitsModule {
         // A health or a position that is not a number (a broken or spoofing server): nothing is decided on it this tick.
         if (health.isEmpty() || !Double.isFinite(pos.x) || !Double.isFinite(pos.y) || !Double.isFinite(pos.z)) {
             releaseKeys();
+            lastFeet = null;
             return;
         }
         BlockPos feet = p.getBlockPos();
@@ -321,14 +326,18 @@ public class SurroundPlusPlus extends XploitsModule {
         // Feet off their own block (a coordinate at the edge of a double's precision, or past the int range): skip.
         if (!(fx >= 0 && fx < 1 && fy >= 0 && fy < 1 && fz >= 0 && fz < 1)) {
             releaseKeys();
+            lastFeet = null;
             return;
         }
         updateWindow(health.getAsDouble(), read);
+        // Horizontal feet movement since the last tick, in memory only: no previous position reads as not moving.
+        boolean moving = lastFeet != null && Math.hypot(pos.x - lastFeet.x, pos.z - lastFeet.z) > ShellBrain.MOVING;
+        lastFeet = pos;
         ShellSnapshot snapshot = snapshot(p, feet, pos, health.getAsDouble());
         warnings(snapshot);
         long started = System.nanoTime();
         ShellTick decided = brain.tick(snapshot, new Oracle(p, feet),
-            new ShellBrain.Motion(userKeys(), p.getYaw(), walkingTo(feet), read.popped()));
+            new ShellBrain.Motion(anyKey(), movementKeys(), moving, p.getYaw(), walkingTo(feet), read.popped()));
         long spent = System.nanoTime() - started;
         brainNanos += spent;
         brainTicks++;
@@ -510,11 +519,15 @@ public class SurroundPlusPlus extends XploitsModule {
         return walkTarget == null ? Optional.empty() : Optional.of(cell(walkTarget, feet));
     }
 
-    /** A movement key, jump or sneak held by the player's own hand: Meteor's record of the keys, not the bindings we press. */
-    private boolean userKeys() {
+    /** Forward, back, left or right held by the player's own hand: Meteor's record of the keys, not the bindings we press. */
+    private boolean movementKeys() {
         return Input.isPressed(mc.options.forwardKey) || Input.isPressed(mc.options.backKey)
-            || Input.isPressed(mc.options.leftKey) || Input.isPressed(mc.options.rightKey)
-            || Input.isPressed(mc.options.jumpKey) || Input.isPressed(mc.options.sneakKey);
+            || Input.isPressed(mc.options.leftKey) || Input.isPressed(mc.options.rightKey);
+    }
+
+    /** Any key of the player's own hand, jump and sneak too: a walk to a hole never starts or goes on while one is held. */
+    private boolean anyKey() {
+        return movementKeys() || Input.isPressed(mc.options.jumpKey) || Input.isPressed(mc.options.sneakKey);
     }
 
     private void warnings(ShellSnapshot s) {

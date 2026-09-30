@@ -358,8 +358,8 @@ first:
 - **Anti-city**: a mined wall is refilled the tick it opens, and a crystal they put next to you is broken when its
   blast leaves you 2 health or more (`break-crystals`).
 - **Never pins you**: it centres you only when you stick out of your block and something is left open, never while
-  you press a key, at most once a second. It never turns itself off when your height changes. While you move, it only
-  breaks crystals.
+  you press a key, at most once a second. It never turns itself off when your height changes. While you walk (a movement key held and actually moving) it
+  only breaks crystals; held in place by a web or a wall, it keeps refilling.
 - **A better hole**: in the open and threatened, it walks you into a hole one block down within 3 blocks, bedrock walls
   first, if there is room for your whole body and head room over the hole (`move-to-hole`). Your own keys always win.
 - **Their holes**: it fills the holes next to your opponents, the nearest to them first (`deny-holes`).

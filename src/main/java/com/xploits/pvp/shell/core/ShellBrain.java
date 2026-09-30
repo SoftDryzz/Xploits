@@ -32,18 +32,31 @@ public final class ShellBrain {
     public static final double BURROW_THREAT = 6.0;
     /** How many spots, the biggest full hits first, are measured again with their raycast before a walk starts. */
     public static final int REMEASURED_BEFORE_WALK = 3;
+    /**
+     * Blocks of horizontal movement in one tick above which the player "really walks". Vanilla, per tick: walking
+     * about 0.22, sneaking about 0.065, walking in a cobweb about a quarter of walking (0.05). A player pressed
+     * against a wall, or held in place in a hole whose walls stop his feet, moves about 0, and only that case is
+     * meant to read as not moving. 0.03 sits well under every real walk (even the web crawl and sneaking), so a
+     * walk is never read as standing, and well over the rounding noise of a player who does not move.
+     */
+    public static final double MOVING = 0.03;
 
     /**
      * What a tick knows about us beyond the world.
      *
-     * @param userKeys  a movement key, jump or sneak held by the player's own hand: nothing is placed while it is
+     * @param anyKey    any key held by the player's own hand, jump and sneak included: a walk never starts or goes on
+     *                  while one is ({@code HoleWalk}, {@code Holes}: his keys win)
+     * @param movementKeys forward, back, left or right held by the player's own hand
+     * @param moving    his feet moved horizontally more than {@link #MOVING} blocks since the last tick; with
+     *                  {@code movementKeys} it means he really walks, and nothing is built
      * @param yaw       where we face, for the walk's keys
      * @param walkingTo the hole the walk under way is heading for, relative to our feet block now; empty when lost
      * @param popped    one of our totems popped since the last tick
      */
-    public record Motion(boolean userKeys, float yaw, Optional<Cell> walkingTo, boolean popped) {
+    public record Motion(boolean anyKey, boolean movementKeys, boolean moving, float yaw, Optional<Cell> walkingTo,
+                         boolean popped) {
         public static Motion still() {
-            return new Motion(false, 0f, Optional.empty(), false);
+            return new Motion(false, false, false, 0f, Optional.empty(), false);
         }
     }
 
@@ -81,13 +94,14 @@ public final class ShellBrain {
         Optional<Integer> toBreak = CrystalBreaker.choose(s, oracle).map(StandingCrystal::id);
 
         if (walk.walking()) {
-            HoleWalk.Step step = walk.step(motion.walkingTo().map(c -> towards(s, c)), motion.userKeys(), s.inWeb(), motion.yaw());
+            HoleWalk.Step step = walk.step(motion.walkingTo().map(c -> towards(s, c)), motion.anyKey(), s.inWeb(), motion.yaw());
             return new ShellTick(List.of(), toBreak, step.keys(), Optional.empty(), step.stopped(), false, false, status(map, s));
         }
         walk.idle();
-        // The player's own keys win (spec §2): while he moves, a block could wall him in, so nothing is placed, not even
-        // the closure after a pop or an opponent's hole; the crystal next to him is still broken.
-        if (motion.userKeys()) {
+        // The player's own keys win (spec §2): while he really walks (a movement key held and his feet moving), a block
+        // could wall him in, so nothing is placed, not even the closure after a pop or an opponent's hole; the crystal
+        // next to him is still broken. Held in place by a web or a wall, or only sneaking or jumping, he is built for.
+        if (motion.movementKeys() && motion.moving()) {
             return new ShellTick(List.of(), toBreak, Set.of(), Optional.empty(), false, false, false, status(map, s));
         }
         List<Threat> threats = map.threats();
@@ -95,7 +109,7 @@ public final class ShellBrain {
         // is not necessarily the biggest.
         double biggestHit = threats.stream().mapToDouble(ShellBrain::fullHit).max().orElse(0);
         if (walk.ready()) {
-            Optional<Cell> hole = Holes.target(s, biggestHit, motion.userKeys());
+            Optional<Cell> hole = Holes.target(s, biggestHit, motion.anyKey());
             if (hole.isPresent() && stillThreatened(threats, oracle)) {
                 Set<HoleWalk.Key> keys = walk.start(towards(s, hole.get()), motion.yaw());
                 return new ShellTick(List.of(), toBreak, keys, hole, false, false, false, status(map, s));
@@ -107,7 +121,7 @@ public final class ShellBrain {
         List<Placement> placements = new ArrayList<>(plan.placements());
         denyHole(plan.map(), placements, s);
         List<Threat> left = open(plan.map());
-        boolean centre = !motion.userKeys() && s.onGround() && centreCooldown == 0 && s.sticksOut() && (hold || !left.isEmpty());
+        boolean centre = !motion.anyKey() && s.onGround() && centreCooldown == 0 && s.sticksOut() && (hold || !left.isEmpty());
         if (centre) centreCooldown = CENTRE_COOLDOWN_TICKS;
         boolean burrow = s.settings().burrow() && burrowCooldown == 0 && s.onGround() && Holes.inHole(s)
             && left.stream().anyMatch(t -> t.spot().y() >= s.headLevel() && fullHit(t) >= BURROW_THREAT);
