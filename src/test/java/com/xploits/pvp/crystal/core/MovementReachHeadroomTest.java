@@ -32,8 +32,8 @@ class MovementReachHeadroomTest {
         return o -> o.dy() > truth.at(o.dx(), o.dz()) ? 1.0 : open;
     }
 
-    /** A headroom of {@code free} everywhere, mined where {@code mined} says. */
-    private static Headroom mined(double free, BiPredicate<Double, Double> mined) {
+    /** A headroom of {@code free} everywhere, whose roof may vanish where {@code vanish} says. */
+    private static Headroom vanishing(double free, BiPredicate<Double, Double> vanish) {
         return new Headroom() {
             @Override
             public double at(double dx, double dz) {
@@ -41,8 +41,8 @@ class MovementReachHeadroomTest {
             }
 
             @Override
-            public boolean mined(double dx, double dz) {
-                return mined.test(dx, dz);
+            public boolean mayVanish(double dx, double dz) {
+                return vanish.test(dx, dz);
             }
         };
     }
@@ -148,7 +148,8 @@ class MovementReachHeadroomTest {
             Headroom free = (dx, dz) -> high;
             List<Offset> reach = MovementReach.reachPoints(vx, vz, ticks);
             assertEquals(reach, MovementReach.clipped(reach, free));
-            float today = MovementReach.worstReachRaw(ex, ey, ez, vx, vz, ticks, e, floor);
+            // Today's still branch as it was before the headroom existed: the reach points, ranked, branch and bound.
+            float today = MovementReach.worstRawDamage(MovementReach.rankedByWorstRaw(ex, ey, ez, reach), e, floor);
             float now = MovementReach.worstReachRaw(ex, ey, ez, vx, vz, ticks, free, e, floor);
             assertEquals(Float.floatToRawIntBits(today), Float.floatToRawIntBits(now), "trial " + i);
             checked++;
@@ -202,7 +203,7 @@ class MovementReachHeadroomTest {
                 }
 
                 @Override
-                public boolean mined(double dx, double dz) {
+                public boolean mayVanish(double dx, double dz) {
                     asked.incrementAndGet();
                     return false;
                 }
@@ -244,16 +245,17 @@ class MovementReachHeadroomTest {
         assertTrue(lowered > 1000, "the property must lower points: " + lowered);
     }
 
-    // 11. The owner's decision: a roof someone is mining keeps its column's full jump.
+    // 11. The owner's decision: a roof that may vanish (someone is mining it, or a crystal can break it) keeps its
+    // column's full jump.
 
     @Test
-    void aColumnWhoseRoofIsBeingMinedKeepsItsJumpAsToday() {
-        // The lab case again, but someone is mining the block over our head: it may be gone before the crystal
-        // explodes, and a jump would then reach the full height. Only that column is left as it is.
+    void aColumnWhoseRoofMayVanishKeepsItsJumpAsToday() {
+        // The lab case again, but the block over our head may be gone before the crystal explodes (mined, or blown
+        // away), and a jump would then reach the full height. Only that column is left as it is.
         ExposureFunction e = inside((dx, dz) -> 0.2, 0.0);
-        Headroom overUs = mined(0.2, (dx, dz) -> Math.abs(dx) < 0.8 && Math.abs(dz) < 0.8);
+        Headroom overUs = vanishing(0.2, (dx, dz) -> Math.abs(dx) < 0.8 && Math.abs(dz) < 0.8);
         assertEquals(59.826668f, MovementReach.worstReachRaw(2.2, 0, -1.2, 0, 0, 6, overUs, e, 1.0f), 0f);
-        Headroom elsewhere = mined(0.2, (dx, dz) -> Math.abs(dx) >= 0.8 || Math.abs(dz) >= 0.8);
+        Headroom elsewhere = vanishing(0.2, (dx, dz) -> Math.abs(dx) >= 0.8 || Math.abs(dz) >= 0.8);
         assertEquals(1.0f, MovementReach.worstReachRaw(2.2, 0, -1.2, 0, 0, 6, elsewhere, e, 1.0f), 0f);
         assertEquals(new Offset(0, 1.25, 0), MovementReach.clipped(new Offset(0, 1.25, 0), overUs));
         assertEquals(new Offset(0, 0.2, 0), MovementReach.clipped(new Offset(0, 1.25, 0), elsewhere));

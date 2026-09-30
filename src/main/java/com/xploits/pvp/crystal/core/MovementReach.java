@@ -299,11 +299,11 @@ public final class MovementReach {
         double at(double dx, double dz);
 
         /**
-         * Whether someone else is mining one of the blocks that stop the rise in the column {@code (dx, dz)} (the
-         * owner's decision, 0.7.2): that block may be gone by the time the crystal explodes, so the column keeps its
-         * full jump. No, unless the adapter has seen it.
+         * Whether a block that stops the rise in the column {@code (dx, dz)} may be gone by the time the crystal
+         * explodes (0.7.2): someone else is mining it (the owner's decision), or an end crystal's explosion can break it
+         * ({@link CrystalBlast#canBreak}). Then the column keeps its full jump. No, unless the adapter has seen either.
          */
-        default boolean mined(double dx, double dz) {
+        default boolean mayVanish(double dx, double dz) {
             return false;
         }
     }
@@ -314,14 +314,15 @@ public final class MovementReach {
      * box meets a block. Before this, such a point was read as a box inside the roof, at exposure 1.0: a place you
      * could never be, which under any roof made every spot look fully exposed and held every placement back. Left as it
      * is: a point at or below your feet; a headroom that is not a number, is below 0, or is at or above the point's
-     * height; a column someone is mining ({@link Headroom#mined}). A point lowered all the way down is {@code +0.0}
-     * high, so that it is the very same point as standing where you are.
+     * height; a column whose roof may vanish before the crystal explodes ({@link Headroom#mayVanish}: mined, or
+     * breakable by a crystal). A point lowered all the way down is {@code +0.0} high, so that it is the very same point
+     * as standing where you are.
      */
     public static Offset clipped(Offset o, Headroom headroom) {
         if (!(o.dy() > 0)) return o;
         double free = headroom.at(o.dx(), o.dz());
         if (!(free >= 0) || free >= o.dy()) return o;
-        if (headroom.mined(o.dx(), o.dz())) return o;
+        if (headroom.mayVanish(o.dx(), o.dz())) return o;
         return new Offset(o.dx(), free + 0.0, o.dz());
     }
 

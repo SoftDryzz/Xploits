@@ -476,12 +476,17 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private final Queue<EntityStatusS2CPacket> statusPackets = new ConcurrentLinkedQueue<>();
     /**
      * Block-breaking reports received since the last pre-tick (0.7.2: a roof someone is mining keeps its column's full
-     * jump, {@link MovementReach.Headroom#mined}), the same way as {@link #damagePackets}: filled on the Netty thread,
-     * read on the game thread by {@link #readMining}, the way surround++ reads them.
+     * jump, {@link MovementReach.Headroom#mayVanish}), the same way as {@link #damagePackets}: filled on the Netty
+     * thread, read on the game thread by {@link #readMining}, the way surround++ reads them.
      */
     private final Queue<BlockBreakingProgressS2CPacket> miningPackets = new ConcurrentLinkedQueue<>();
-    /** The blocks another player is mining now, by position (memory only), with the pre-tick of their last report. */
+    /** The blocks another player is mining now, by position (memory only), with the {@link #miningClock} of their last report. */
     private final Map<BlockPos, Long> mining = new HashMap<>();
+    /**
+     * Pre-ticks read by {@link #readMining}: every pre-tick with a player and a world, measured or skipped (a refusal,
+     * a health that is not a number), as surround++ counts them, so a mark ages in real pre-ticks.
+     */
+    private long miningClock;
     /** The world {@link #mining} was read in: another one (a world change) forgets it. */
     private ClientWorld miningWorld;
     /** A mining report not renewed for this many pre-ticks is dropped (a miner who left without a word), as surround++ does. */
@@ -780,10 +785,12 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /**
      * Other players' mining reports since the last pre-tick (0.7.2, the owner's decision; read the way surround++ reads
      * them): a stage 0-9 marks its block as being mined, anything else (a break finished or given up) unmarks it, and a
-     * mark not renewed for {@value #MINING_STALE_TICKS} pre-ticks goes. Our own mining is no attack on our roof. A death
-     * or a world change forgets every mark, and the reports not read yet: they were about another life or place.
+     * mark not renewed for {@value #MINING_STALE_TICKS} pre-ticks goes ({@link #miningClock}, which counts the skipped
+     * pre-ticks too). Our own mining is no attack on our roof. A death or a world change forgets every mark, and the
+     * reports not read yet: they were about another life or place.
      */
     private void readMining(ClientPlayerEntity p) {
+        miningClock++;
         if (!p.isAlive() || mc.world != miningWorld) {
             forgetMining();
             miningWorld = mc.world;
@@ -794,9 +801,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             BlockPos pos = packet.getPos().toImmutable();
             int stage = packet.getProgress();
             if (stage < 0 || stage > 9) mining.remove(pos);
-            else mining.put(pos, tick);
+            else mining.put(pos, miningClock);
         }
-        mining.values().removeIf(at -> tick - at > MINING_STALE_TICKS);
+        mining.values().removeIf(at -> miningClock - at > MINING_STALE_TICKS);
     }
 
     private void forgetMining() {
@@ -1024,21 +1031,23 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     /**
      * This pre-tick's {@link MovementReach.Headroom} (0.7.2): how far our box can rise in each column the reach asks
      * about ({@link ExposureAt#rise}, vanilla's own collision, block collisions only, as {@link ExposureAt#at}'s own
-     * guard), and whether a block that stops that rise is being mined by someone else ({@link #minedIn}). It only
-     * measures: {@link MovementReach#clipped(MovementReach.Offset, MovementReach.Headroom)} decides. Each column is
+     * guard), and whether that rise may grow before the crystal explodes: a block in the way is being mined by someone
+     * else ({@link #minedIn}), or a block that stops the rise is one a crystal can break ({@link
+     * ExposureAt#stoppedByBreakable}). It only measures: {@link MovementReach#clipped(MovementReach.Offset,
+     * MovementReach.Headroom)} decides. Each column is
      * measured once and remembered for the rest of the pre-tick (the reach points follow only this pre-tick's velocity
      * and landing bound, so every crystal and spot asks about the same few columns); {@link #forget} at every pre-tick,
      * and a new measurement as soon as our box is not the one measured from (a fast-break read after we moved).
      */
     private final class Columns implements MovementReach.Headroom {
         private final Map<Column, Double> free = new HashMap<>();
-        private final Map<Column, Boolean> mined = new HashMap<>();
+        private final Map<Column, Boolean> vanish = new HashMap<>();
         /** The box the answers above were measured from; null before any. */
         private Box measuredFrom;
 
         void forget() {
             free.clear();
-            mined.clear();
+            vanish.clear();
             measuredFrom = null;
         }
 
@@ -1047,7 +1056,7 @@ public class CrystalAuraPlusPlus extends XploitsModule {
             Box box = mc.player.getBoundingBox();
             if (box.equals(measuredFrom)) return;
             free.clear();
-            mined.clear();
+            vanish.clear();
             measuredFrom = box;
         }
 
@@ -1059,10 +1068,19 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         }
 
         @Override
-        public boolean mined(double dx, double dz) {
+        public boolean mayVanish(double dx, double dz) {
             follow();
-            return mined.computeIfAbsent(new Column(dx, dz),
-                c -> minedIn(ExposureAt.sweep(mc.player, dx, dz, MovementReach.JUMP_HEIGHT)));
+            Column column = new Column(dx, dz);
+            Boolean known = vanish.get(column);
+            if (known != null) return known;
+            boolean answer = minedIn(ExposureAt.sweep(mc.player, dx, dz, MovementReach.JUMP_HEIGHT));
+            if (!answer) {
+                double rise = at(dx, dz);
+                // Only a rise a block really stops has a block that could be blown away.
+                answer = rise >= 0 && rise < MovementReach.JUMP_HEIGHT && ExposureAt.stoppedByBreakable(mc.player, dx, dz, rise);
+            }
+            vanish.put(column, answer);
+            return answer;
         }
     }
 

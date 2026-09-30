@@ -1,11 +1,17 @@
 package com.xploits.pvp.crystal;
 
+import com.xploits.pvp.crystal.core.CrystalBlast;
 import com.xploits.pvp.crystal.core.ExposureGrid;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.ShapeContext;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.world.World;
@@ -91,5 +97,40 @@ public final class ExposureAt {
      */
     public static Box sweep(Entity entity, double dx, double dz, double max) {
         return entity.getBoundingBox().offset(dx, 0, dz).stretch(0, max, 0);
+    }
+
+    /** How thick the layer over a raised box is that {@link #stoppedByBreakable} reads: far thinner than any block. */
+    private static final double CONTACT = 1e-3;
+
+    /**
+     * Whether a block that stops {@code entity}'s box, moved {@code (dx, 0, dz)} and raised {@code rise} (its {@link
+     * #rise} there), is one an end crystal's explosion can break ({@link CrystalBlast#canBreak}, 0.7.2): a block with a
+     * collision shape in the thin layer right over the raised box, under the same shape context the block collisions
+     * use for an entity. Its resistance is the one an explosion reads ({@code ExplosionBehavior.getBlastResistance}: the
+     * larger of the block's and its fluid's; yarn 1.21.11, read from the jar). Only the blocks that stop the rise count:
+     * one higher up, over a block a crystal cannot break, cannot let the box rise any further if it goes.
+     */
+    public static boolean stoppedByBreakable(Entity entity, double dx, double dz, double rise) {
+        Box raised = entity.getBoundingBox().offset(dx, rise, dz);
+        Box contact = new Box(raised.minX, raised.maxY, raised.minZ, raised.maxX, raised.maxY + CONTACT, raised.maxZ);
+        World world = entity.getEntityWorld();
+        ShapeContext context = ShapeContext.of(entity);
+        for (BlockPos pos : BlockPos.iterate(MathHelper.floor(contact.minX), MathHelper.floor(contact.minY),
+            MathHelper.floor(contact.minZ), MathHelper.floor(contact.maxX), MathHelper.floor(contact.maxY),
+            MathHelper.floor(contact.maxZ))) {
+            BlockState state = world.getBlockState(pos);
+            if (!touches(state.getCollisionShape(world, pos, context), pos, contact)) continue;
+            float resistance = Math.max(state.getBlock().getBlastResistance(), world.getFluidState(pos).getBlastResistance());
+            if (CrystalBlast.canBreak(resistance)) return true;
+        }
+        return false;
+    }
+
+    /** Whether {@code shape}, the block's at {@code pos}, reaches into {@code space}. */
+    private static boolean touches(VoxelShape shape, BlockPos pos, Box space) {
+        for (Box part : shape.getBoundingBoxes()) {
+            if (part.offset(pos).intersects(space)) return true;
+        }
+        return false;
     }
 }

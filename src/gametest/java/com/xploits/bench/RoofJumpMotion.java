@@ -9,9 +9,11 @@ import net.minecraft.util.math.Vec3d;
  * OUR player's jumps under {@link RoofJump}'s ceiling (0.7.2): in place, with the same arc and timing as
  * {@link SelfCircleMotion}'s ({@link CircleWalk#jumpHeight}: every {@value CircleWalk#JUMP_EVERY} ticks from tick
  * {@value CircleWalk#FIRST_JUMP}, a parabola {@value CircleWalk#JUMP_HEIGHT} blocks high), but capped where our box
- * meets the ceiling, as vanilla's collision caps a real jump there: the ceiling's height less our box's own height
- * ({@code Entity.getHeight()}, the float the game builds the box from), less {@value #GAP} so the box only ever comes
- * up to the ceiling and never into it (the server refuses a move into a block). Real client movement, the same
+ * meets the ceiling: the ceiling's height less our box's own height ({@code Entity.getHeight()}, the float the game
+ * builds the box from), less {@value #GAP} so the box only ever comes up to the ceiling and never into it (the server
+ * refuses a move into a block). The cap holds the box at the ceiling for every tick the parabola is above it, three a
+ * jump, where vanilla, which stops the upward speed on contact, would start falling at once: more time at the top, the
+ * worst place in this scenario, so the scenario is stricter than a real jump, not weaker. Real client movement, the same
  * mechanism as {@link SelfCircleMotion}: only the position and the ground state are set here, every bench tick after
  * T0, and the client's own per-tick packet carries them to the server.
  */

@@ -24,7 +24,10 @@ import java.util.List;
  * <p>0.7.2 (crystal-aura++ under a roof): {@link ExposureAt#rise}, how far our box can really rise, is a full jump in the
  * open, exactly the room left under the low ceiling ({@code 2 - (double) 1.8f}: the box's height is a float), and not a
  * number in a column inside the pillar. The box raised by that rise does not overlap the ceiling, so {@link
- * ExposureAt#at} reads it for real: below 1.0 for every explosion the ceiling partly hides from us where we stand.
+ * ExposureAt#at} reads it for real: below 1.0 for every explosion the ceiling partly hides from us where we stand. And
+ * {@link ExposureAt#stoppedByBreakable}, the half of crystal-aura++'s {@code Headroom.mayVanish} that does not come from
+ * mining, reads the block that stops the rise: an obsidian ceiling is not one a crystal can break, a stone one is, and
+ * stone laid over the obsidian ceiling does not count (it does not stop the rise).
  *
  * <p>Nothing is printed but counts. Explosions are offsets from our feet, computed on the client, never printed.
  */
@@ -44,11 +47,21 @@ final class ExposureCoverProbe implements Scenario {
     private record Case(String name, Layout layout) {
     }
 
+    /** The low ceiling in stone, which a crystal can break (0.7.2). */
+    private static final String STONE_CEILING = "stone ceiling";
+    /** The obsidian low ceiling with stone over it: the stone does not stop the rise, the obsidian does (0.7.2). */
+    private static final String STONE_OVER_OBSIDIAN = "stone over an obsidian ceiling";
+
     private static final List<Case> CASES = List.of(
         new Case("open", (arena, world) -> { }),
         new Case("half wall", (arena, world) -> arena.fill(world, 2, 0, -3, 2, 0, 3, Blocks.OBSIDIAN)),
         new Case("low ceiling", (arena, world) -> arena.fill(world, -1, 2, -1, 1, 2, 1, Blocks.OBSIDIAN)),
-        new Case("pillar", (arena, world) -> arena.fill(world, 2, 0, 0, 2, 2, 0, Blocks.OBSIDIAN)));
+        new Case("pillar", (arena, world) -> arena.fill(world, 2, 0, 0, 2, 2, 0, Blocks.OBSIDIAN)),
+        new Case(STONE_CEILING, (arena, world) -> arena.fill(world, -1, 2, -1, 1, 2, 1, Blocks.STONE)),
+        new Case(STONE_OVER_OBSIDIAN, (arena, world) -> {
+            arena.fill(world, -1, 2, -1, 1, 2, 1, Blocks.OBSIDIAN);
+            arena.fill(world, -1, 3, -1, 1, 3, 1, Blocks.STONE);
+        }));
 
     /**
      * Explosions as offsets from our feet: where crystals go around a sparring, above, behind and close. The last one
@@ -89,6 +102,7 @@ final class ExposureCoverProbe implements Scenario {
         int partial = 0;
         int insideBlock = 0;
         int lowered = 0;
+        int roofs = 0;
         for (Case c : CASES) {
             bench.onServer(srv -> {
                 ServerWorld world = srv.getOverworld();
@@ -126,6 +140,17 @@ final class ExposureCoverProbe implements Scenario {
                     + " partly hidden explosion(s) read 1.0 at the rise under the low ceiling");
                 lowered = (int) under[2];
             }
+            // 0.7.2, fix round 1: whether the block that stops the rise is one a crystal can break (the adapter's
+            // measurement behind Headroom.mayVanish): obsidian no, stone yes, stone over obsidian no.
+            if (c.name().equals("low ceiling") || c.name().equals(STONE_CEILING) || c.name().equals(STONE_OVER_OBSIDIAN)) {
+                double[] stop = bench.fromClient(ExposureCoverProbe::stop);
+                Bench.check(Math.abs(stop[0] - ROOM_UNDER_THE_CEILING) <= RISE_TOLERANCE,
+                    c.name() + ": the rise is " + stop[0] + ", not the " + ROOM_UNDER_THE_CEILING + " left over the box");
+                boolean breakable = c.name().equals(STONE_CEILING);
+                Bench.check((stop[1] == 1) == breakable, c.name() + ": the block that stops the rise reads as "
+                    + (stop[1] == 1 ? "" : "not ") + "breakable by a crystal");
+                roofs++;
+            }
             if (c.name().equals("open")) {
                 double rise = bench.fromClient(client -> ExposureAt.rise(client.player, 0, 0, JUMP));
                 Bench.check(rise == JUMP, "the rise in the open is " + rise + ", not a full jump");
@@ -138,8 +163,21 @@ final class ExposureCoverProbe implements Scenario {
         Bench.check(partial > 0, "no case exercised a partial exposure: the probe compared only 0 and 1");
         LOG.info("[bench] exposure-cover-probe: {} comparisons in {} layouts equal vanilla, {} with a partial exposure, "
             + "{} inside-block check(s) read 1.0, {} partly hidden explosion(s) read below 1.0 at the rise under the low"
-            + " ceiling", compared, CASES.size(), partial, insideBlock, lowered);
+            + " ceiling, {} ceiling(s) read right as breakable or not", compared, CASES.size(), partial, insideBlock, lowered,
+            roofs);
         return Metrics.none();
+    }
+
+    /**
+     * On the client thread: the rise at our own column, and whether the block that stops it is one a crystal can break
+     * (1) or not (0), as crystal-aura++'s headroom reads it ({@link ExposureAt#stoppedByBreakable}, only for a rise a
+     * block really stops).
+     */
+    private static double[] stop(MinecraftClient client) {
+        PlayerEntity p = client.player;
+        double rise = ExposureAt.rise(p, 0, 0, JUMP);
+        boolean breakable = rise >= 0 && rise < JUMP && ExposureAt.stoppedByBreakable(p, 0, 0, rise);
+        return new double[] {rise, breakable ? 1 : 0};
     }
 
     /**
