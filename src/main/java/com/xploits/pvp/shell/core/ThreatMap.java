@@ -26,7 +26,7 @@ public final class ThreatMap {
     public static final int SPOT_RADIUS = 4;
     public static final int SPOT_BELOW = 1;
     public static final int SPOT_ABOVE = 3;
-    public static final double NEEDS_BASE_WEIGHT = 0.5;
+    public static final double NEEDS_BASE_WEIGHT = 0.25;
     /** An opponent closes this much of the distance in the time we take to react: we plan against where he will reach. */
     public static final double REACH_MARGIN = 1.0;
     /** What a damage that is not a number reads as: the worst, so it is covered first. */

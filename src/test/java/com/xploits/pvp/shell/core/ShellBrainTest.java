@@ -50,9 +50,9 @@ class ShellBrainTest {
     @Test
     void whileWalkingToAHoleNothingIsBuilt() {
         ShellBrain brain = new ShellBrain();
-        // Threatened in the open: (-1,1,0) needs its base and deals 10 (weighs 5, over the 4 that makes us move).
+        // Threatened in the open: (-1,1,0) needs its base and deals 20 (weighs 5, over the 4 that makes us move).
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 20);
         ShellTick first = brain.tick(s, oracle, STILL);
         assertEquals(Optional.of(c(2, -1, 0)), first.walkTo());
         assertEquals(Set.of(HoleWalk.Key.LEFT), first.keys(), "facing south, the hole two blocks east is to the left");
@@ -67,7 +67,7 @@ class ShellBrainTest {
     void aLostWalkTargetEndsTheWalk() {
         ShellBrain brain = new ShellBrain();
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 20);
         brain.tick(s, oracle, STILL);
         ShellTick lost = brain.tick(s, oracle, STILL);
         assertTrue(lost.walkEnded());
@@ -79,7 +79,7 @@ class ShellBrainTest {
     void yourKeysEndTheWalkAndItWaitsBeforeTheNextOne() {
         ShellBrain brain = new ShellBrain();
         ShellSnapshot s = hole(Scenes.open(), 2, 0).build();
-        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 10);
+        FakeOracle oracle = new FakeOracle().at(-1, 1, 0, 20);
         brain.tick(s, oracle, STILL);
         assertTrue(brain.tick(s, oracle, new ShellBrain.Motion(true, 0, Optional.of(c(2, -1, 0)), false)).walkEnded());
         ShellTick after = brain.tick(s, oracle, STILL);

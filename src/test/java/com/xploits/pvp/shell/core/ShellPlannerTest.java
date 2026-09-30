@@ -40,24 +40,24 @@ class ShellPlannerTest {
 
     @Test
     void cryingObsidianIsUsedWhereObsidianWouldMakeANewSpot() {
-        // (1,0,0) deals 10; (1,1,0) above it deals 8 and now needs its base (weighs 4). Obsidian at (1,0,0): 10 goes, and
-        // (1,1,0) turns real with one ray in three open, 8/3: 10 + 4 - 2.67 = 11.33. Crying obsidian: 10 + 4 = 14.
+        // (1,0,0) deals 10; (1,1,0) above it deals 8 and now needs its base (weighs 2). Obsidian at (1,0,0): 10 goes, and
+        // (1,1,0) turns real with one ray in three open, 8/3: 10 + 2 - 2.67 = 9.33. Crying obsidian: 10 + 2 = 12.
         List<Placement> placed = plan(Scenes.obsidianFloor().build(), new FakeOracle().at(1, 0, 0, 10).at(1, 1, 0, 8), 2);
         assertEquals(List.of(p(1, 0, 0, Material.CRYING_OBSIDIAN, ShellReason.SPOT)), placed);
     }
 
     @Test
     void cryingObsidianGoesWhereTheirBaseWouldGo() {
-        // Deepslate floor, (1,1,0) at your head deals 12 and needs its base: weighs 6. Filling it is impossible (nothing
-        // around it to place against). Crying obsidian at (1,0,0): 6 per block. The wall and the block over it: 6 for two.
+        // Deepslate floor, (1,1,0) at your head deals 12 and needs its base: weighs 3. Filling it is impossible (nothing
+        // around it to place against). Crying obsidian at (1,0,0): 3 per block. The wall and the block over it: 3 for two.
         List<Placement> placed = plan(Scenes.open().build(), new FakeOracle().at(1, 1, 0, 12), 2);
         assertEquals(List.of(p(1, 0, 0, Material.CRYING_OBSIDIAN, ShellReason.BASE)), placed);
     }
 
     @Test
     void withoutCryingObsidianItBuildsTheWallAndTheBlockOverIt() {
-        // No crying obsidian. Obsidian at (1,0,0) alone makes (1,1,0) real with one ray in three open: 6 - 4 = 2 for one
-        // block. The wall and then the block over it: 6 for two, 3 per block.
+        // No crying obsidian. Obsidian at (1,0,0) alone makes (1,1,0) real with one ray in three open: 3 - 4 = -1 for one
+        // block, a loss. The wall and then the block over it: 3 for two, 1.5 per block.
         List<Placement> placed = plan(Scenes.open().cryingObsidian(0).build(), new FakeOracle().at(1, 1, 0, 12), 2);
         assertEquals(List.of(p(1, 0, 0, Material.OBSIDIAN, ShellReason.SUPPORT), p(1, 1, 0, Material.OBSIDIAN, ShellReason.SPOT)),
             placed);
@@ -71,9 +71,9 @@ class ShellPlannerTest {
 
     @Test
     void aTwoBlockOptionNeedsTwoBlocksInTheHotbar() {
-        // One obsidian: the pair is not offered; the wall alone as a shield (2) is the best one block does.
+        // One obsidian: the pair (3 for two) is not offered, and the wall alone as a shield costs (3 - 4 = -1): nothing.
         List<Placement> placed = plan(Scenes.open().obsidian(1).cryingObsidian(0).build(), new FakeOracle().at(1, 1, 0, 12), 2);
-        assertEquals(List.of(p(1, 0, 0, Material.OBSIDIAN, ShellReason.SHIELD)), placed);
+        assertTrue(placed.isEmpty(), placed.toString());
     }
 
     @Test
@@ -171,11 +171,12 @@ class ShellPlannerTest {
 
     @Test
     void aCellAnotherEntityStandsInIsNeverPlanned() {
-        // One obsidian, so no pair, only a shield on the spot's rays: (1,0,0) is one of them, and an opponent stands in it.
-        ShellSnapshot s = Scenes.open().obsidian(1).cryingObsidian(0).occupied(c(1, 0, 0)).build();
+        // One obsidian, so no pair, only a shield on the rays of (2,1,0), which deals 12 and needs its base (weighs 3).
+        // (1,0,0) would close its two lower rays (3 - 1 = 2), but an opponent stands in it; (1,1,0), held by the block
+        // over it, closes the ray to our eyes (3 - 2 = 1); (2,0,0) would make the spot real (3 - 4 = -1).
+        ShellSnapshot s = Scenes.open().block(1, 2, 0, BlockKind.OTHER).obsidian(1).cryingObsidian(0).occupied(c(1, 0, 0)).build();
         List<Placement> placed = plan(s, new FakeOracle().at(2, 1, 0, 12), 2);
-        assertEquals(1, placed.size());
-        assertFalse(placed.get(0).cell().equals(c(1, 0, 0)), placed.toString());
+        assertEquals(List.of(p(1, 1, 0, Material.OBSIDIAN, ShellReason.SHIELD)), placed);
     }
 
     @Test

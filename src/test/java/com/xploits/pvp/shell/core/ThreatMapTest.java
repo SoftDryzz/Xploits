@@ -34,12 +34,12 @@ class ThreatMapTest {
     }
 
     @Test
-    void aSpotWhoseBaseTheOpponentMustPlaceFirstWeighsHalf() {
-        // Deepslate floor: the cell at feet level is air over a solid block, so a base can be placed there.
+    void aSpotWhoseBaseTheOpponentMustPlaceFirstWeighsAQuarter() {
+        // Deepslate floor: the cell at feet level is air over a solid block, so a base can be placed there. 12 * 0.25 = 3.
         ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(1, 1, 0, 12));
         Threat t = map.threatAt(c(1, 1, 0)).orElseThrow();
         assertEquals(Threat.Kind.NEEDS_BASE, t.kind());
-        assertEquals(6.0, t.weighted(), 1e-9);
+        assertEquals(3.0, t.weighted(), 1e-9);
     }
 
     @Test
@@ -97,8 +97,8 @@ class ThreatMapTest {
 
     @Test
     void theRaycastIsOnlyAskedWhereTheBoundCouldMatter() {
-        // Needs its base: a bound of 1.9 weighs 0.95, under the danger line, so the bound is kept and nothing is raycast.
-        FakeOracle open = new FakeOracle().bound(1, 1, 0, 1.9);
+        // Needs its base: a bound of 3.9 weighs 0.975, under the danger line, so the bound is kept and nothing is raycast.
+        FakeOracle open = new FakeOracle().bound(1, 1, 0, 3.9);
         new ThreatMap(Scenes.open().build(), open).threatAt(c(1, 1, 0));
         assertFalse(open.askedExact.contains(c(1, 1, 0)));
         // A base already there: 3 weighs 3, over the line, so the raycast is asked for.
@@ -128,10 +128,10 @@ class ThreatMapTest {
     @Test
     void theValueOfABlockIsHowMuchTheThreatsDrop() {
         ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(1, 1, 0, 12));
-        // Crying obsidian under the spot: 6 (needs its base, half of 12) goes to 0.
-        assertEquals(6.0, map.value(List.of(new Placement(c(1, 0, 0), Material.CRYING_OBSIDIAN, ShellReason.BASE))), 1e-9);
-        // Obsidian there: the spot becomes real (12) with one ray in three open (4). 6 - 4 = 2.
-        assertEquals(2.0, map.value(List.of(new Placement(c(1, 0, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
+        // Crying obsidian under the spot: 3 (needs its base, a quarter of 12) goes to 0.
+        assertEquals(3.0, map.value(List.of(new Placement(c(1, 0, 0), Material.CRYING_OBSIDIAN, ShellReason.BASE))), 1e-9);
+        // Obsidian there: the spot becomes real (12) with one ray in three open (4). 3 - 4 = -1: it costs.
+        assertEquals(-1.0, map.value(List.of(new Placement(c(1, 0, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
         assertTrue(map.planned().isEmpty(), "valuing a block does not plan it");
     }
 
@@ -158,17 +158,17 @@ class ThreatMapTest {
 
     @Test
     void aBlockInTheWayOfASpotFurtherAwayIsWorthWhatItShields() {
-        // (2,1,0) deals 12 and needs its base: weighs 6. Its ray to our eyes crosses (1,1,0); the two lower rays go
-        // through (2,0,0) and (1,0,0). Obsidian at (1,1,0) closes one ray in three: 12 * 0.5 * 2/3 = 4, so 6 - 4 = 2.
+        // (2,1,0) deals 12 and needs its base: weighs 3. Its ray to our eyes crosses (1,1,0); the two lower rays go
+        // through (2,0,0) and (1,0,0). Obsidian at (1,1,0) closes one ray in three: 12 * 0.25 * 2/3 = 2, so 3 - 2 = 1.
         ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(2, 1, 0, 12));
-        assertEquals(2.0, map.value(List.of(new Placement(c(1, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
+        assertEquals(1.0, map.value(List.of(new Placement(c(1, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
     }
 
     @Test
     void aBlockThatGivesAnOpponentSomethingToPlaceAgainstCostsTheSpotItOpens() {
         // (1,2,0) deals 12, but its base cell (1,1,0) has nothing around it: no threat. Obsidian at (2,1,0) gives that
-        // cell a face to place against, so (1,2,0) turns into a spot that needs its base: 12 * 0.5 = 6 more threat.
+        // cell a face to place against, so (1,2,0) turns into a spot that needs its base: 12 * 0.25 = 3 more threat.
         ThreatMap map = new ThreatMap(Scenes.open().build(), new FakeOracle().at(1, 2, 0, 12));
-        assertEquals(-6.0, map.value(List.of(new Placement(c(2, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
+        assertEquals(-3.0, map.value(List.of(new Placement(c(2, 1, 0), Material.OBSIDIAN, ShellReason.SHIELD))), 1e-9);
     }
 }
