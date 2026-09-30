@@ -54,6 +54,18 @@ All notable changes to Xploits. The format is based on
   ticks of the fight's 1200 instead of 1018 to 1162 (with `surround++` or Meteor's `surround`), and placed 64
   crystals instead of 18 to 21, popping them 7 or 8 times instead of 3; in the slower city variant with Meteor's
   `surround` you lost one totem more (5 to 6, from an opponent's hit; the cause is not established).
+- `crystal-aura++` could take a second crystal of its own for an opponent's and break it without checking your
+  reserve or the 2-health floor. Like Meteor's aura it sends a placement again every tick until the crystal appears;
+  when that first crystal was destroyed while a later placement was still on its way, the later one made a second
+  crystal, and only Meteor's `max-damage` and `anti-suicide` stood between it and you. On the bench such a break was
+  predicted to leave you with 0.2 to 0.5 health; each time it landed within the moment of invulnerability after the
+  opponent's previous hit, and nothing got through. Present since 0.7.1. Now the rest of a placement stays yours for a
+  second after its last attempt: breaking such a crystal must leave you at least 2 health, as with every crystal of
+  yours.
+- The in-game bench counted some hits from the opponent's own crystals as yours, when the opponent's crystal landed
+  on a block where your aura had just tried to place. The one reserve failure of the release bench of 2026-09-30
+  (`capp-balanced-near-death-totem`, 2.785 against a reserve of 3.5) was one of those hits, not one of yours. The
+  game itself was never affected.
 
 ## [0.7.1] — 2026-09-29
 
