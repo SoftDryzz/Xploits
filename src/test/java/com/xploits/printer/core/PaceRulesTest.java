@@ -5,7 +5,11 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 
+import static com.xploits.printer.core.PaceRules.Kind.ACTION_OTHER;
 import static com.xploits.printer.core.PaceRules.Kind.CLICK_SLOT;
+import static com.xploits.printer.core.PaceRules.Kind.CLOSE_SCREEN;
+import static com.xploits.printer.core.PaceRules.Kind.RELEASE_USE;
+import static com.xploits.printer.core.PaceRules.Kind.USE_ITEM;
 import static com.xploits.printer.core.PaceRules.Kind.DIG_ABORT;
 import static com.xploits.printer.core.PaceRules.Kind.DIG_START;
 import static com.xploits.printer.core.PaceRules.Kind.DIG_STOP;
@@ -201,5 +205,61 @@ class PaceRulesTest {
         assertEquals(0, r.tick());
         assertEquals(List.of(), r.violations());
         assertEquals(Optional.empty(), r.lastRotation());
+    }
+
+    @Test
+    void anInstantBreakLeavesNoDigOpenAndStartsTheCooldown() {
+        PaceRules.Packet instant = PaceRules.Packet.digStart(true, true);
+        assertEquals(List.of(), rules(run(instant, ours(SWING), MOVE, END, END, PaceRules.Packet.slot(3, true),
+            ours(PLACE), ours(SWING), MOVE, END)));
+        PaceRules r = run(instant, ours(SWING), MOVE, END, END, END, PaceRules.Packet.digStart(true, false), ours(SWING), MOVE, END);
+        assertEquals(List.of(new PaceRules.Violation(Rule.DIG_GAP, 3)), r.violations());
+    }
+
+    @Test
+    void everyPacketAfterTheMoveFlagsOncePerTick() {
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, ours(SWING), END)));
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, theirs(CLOSE_SCREEN), END)));
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, theirs(RELEASE_USE), END)));
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, theirs(ACTION_OTHER), END)));
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, PaceRules.Packet.slot(3, true), END)));
+        assertEquals(List.of(Rule.ACTION_AFTER_MOVE), rules(run(MOVE, ours(CLICK_SLOT), END)));
+        assertEquals(List.of(), rules(run(MOVE, PaceRules.Packet.sprint(true), END)), "sprint after the look is vanilla's");
+        assertEquals(List.of(), rules(run(MOVE, PaceRules.Packet.input(true), END)));
+    }
+
+    @Test
+    void otherPlayerPacketsBlockTheSlotChangeToo() {
+        for (PaceRules.Kind k : List.of(USE_ITEM, RELEASE_USE, ACTION_OTHER)) {
+            assertEquals(List.of(Rule.SLOT_AFTER_ACTION), rules(run(theirs(k), PaceRules.Packet.slot(3, true), MOVE, END)), k.name());
+            assertFalse(run(theirs(k)).slotChangeAllowed(), k.name());
+        }
+    }
+
+    @Test
+    void aPlaceAfterAUseInTheSameGrimTickFlags() {
+        assertEquals(List.of(Rule.PLACE_AFTER_USE), rules(run(theirs(USE_ITEM), ours(PLACE), ours(SWING), MOVE, END)));
+        assertEquals(List.of(Rule.PLACE_AFTER_USE), rules(run(theirs(RELEASE_USE), ours(PLACE), ours(SWING), MOVE, END)));
+        assertEquals(List.of(), rules(run(ours(PLACE), ours(SWING), theirs(USE_ITEM), MOVE, END)));
+    }
+
+    @Test
+    void theAimIsNotHeldWithAMovementPacketAlreadySentThisTick() {
+        PaceRules r = run(PaceRules.Packet.move(true, 10f, 20f), END);
+        assertTrue(r.aimHeld(new Aim.Rotation(10f, 20f)));
+        r.accept(MOVE);
+        assertFalse(r.aimHeld(new Aim.Rotation(10f, 20f)));
+    }
+
+    @Test
+    void aSignedZeroIsTheSameAim() {
+        PaceRules r = run(PaceRules.Packet.move(true, 5f, -0.0f), END);
+        assertTrue(r.aimHeld(new Aim.Rotation(5f, 0.0f)));
+    }
+
+    @Test
+    void closingAScreenWhileMovingFlags() {
+        assertEquals(List.of(Rule.CLICK_WHILE_MOVING), rules(run(PaceRules.Packet.input(true), ours(CLOSE_SCREEN))));
+        assertEquals(List.of(), rules(run(PaceRules.Packet.input(false), ours(CLOSE_SCREEN))));
     }
 }

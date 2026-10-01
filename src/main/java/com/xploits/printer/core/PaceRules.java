@@ -20,7 +20,8 @@ public final class PaceRules {
      * One outgoing packet, classified.
      *
      * @param rotation a movement packet that carries a rotation
-     * @param flag     INPUT: moving, jumping or sneaking; SPRINT: start (true) or stop (false)
+     * @param flag     INPUT: moving, jumping or sneaking; SPRINT: start (true) or stop (false); DIG_START: the block
+     *                 breaks at once (no STOP or ABORT follows, spec §5.4)
      * @param slot     SLOT: the slot selected; -1 otherwise
      */
     public record Packet(Kind kind, boolean ours, boolean rotation, float yaw, float pitch, boolean flag, int slot) {
@@ -40,6 +41,10 @@ public final class PaceRules {
             return new Packet(Kind.SPRINT, false, false, 0f, 0f, start, -1);
         }
 
+        public static Packet digStart(boolean ours, boolean instant) {
+            return new Packet(Kind.DIG_START, ours, false, 0f, 0f, instant, -1);
+        }
+
         public static Packet slot(int slot, boolean ours) {
             return new Packet(Kind.SLOT, ours, false, 0f, 0f, false, slot);
         }
@@ -47,7 +52,7 @@ public final class PaceRules {
 
     public enum Rule {
         MOVES_IN_A_TICK, ACTIONS_IN_A_GRIM_TICK, PLACE_AND_DIG, NO_SWING, ACTION_AFTER_MOVE, SLOT_AFTER_ACTION,
-        SAME_SLOT_TWICE, SLOT_DURING_DIG, DIG_TICK_WITHOUT_SWING, DIG_GAP, CLICK_WHILE_MOVING
+        SAME_SLOT_TWICE, SLOT_DURING_DIG, DIG_TICK_WITHOUT_SWING, DIG_GAP, CLICK_WHILE_MOVING, PLACE_AFTER_USE
     }
 
     /** A rule broken in client tick {@code tick} (0 = the first tick seen). */
@@ -62,6 +67,7 @@ public final class PaceRules {
     private long tick;
     private int moves;
     private boolean movedThisTick;
+    private boolean afterMoveFlagged;
     private boolean swungThisTick;
     private boolean foreignThisTick;
     private boolean digTouched;
@@ -75,6 +81,7 @@ public final class PaceRules {
     private int digPackets;
     private boolean grimSwing;
     private boolean slotBlocked;
+    private boolean usedInGrim;
     private boolean foreignInGrim;
     // Session state.
     private Aim.Rotation lastRotation;
@@ -100,12 +107,13 @@ public final class PaceRules {
             case MOVE -> {
                 moves++;
                 movedThisTick = true;
-                if (p.rotation()) lastRotation = new Aim.Rotation(p.yaw(), p.pitch());
+                if (p.rotation()) lastRotation = new Aim.Rotation(p.yaw() + 0.0f, p.pitch() + 0.0f);
                 closeGrimTick();
             }
             case TICK_END -> endClientTick();
             case PLACE -> {
                 action(p);
+                if (usedInGrim) violate(Rule.PLACE_AFTER_USE);
                 places++;
                 slotBlocked = true;
                 if (p.ours()) oursSent++;
@@ -113,10 +121,12 @@ public final class PaceRules {
             case USE_ITEM, INTERACT_ENTITY -> {
                 action(p);
                 slotBlocked = true;
+                if (p.kind() == Kind.USE_ITEM) usedInGrim = true;
             }
             case RELEASE_USE -> {
-                foreign(p);
+                action(p);
                 slotBlocked = true;
+                usedInGrim = true;
             }
             case DIG_START -> {
                 action(p);
@@ -124,7 +134,13 @@ public final class PaceRules {
                 digPackets++;
                 digTouched = true;
                 if (lastDigEnd >= 0 && tick - lastDigEnd < digGap) violate(Rule.DIG_GAP);
-                digging = true;
+                if (p.flag()) {
+                    // An instant break: START only, the dig is over at once and the cooldown begins.
+                    digging = false;
+                    lastDigEnd = tick;
+                } else {
+                    digging = true;
+                }
                 if (p.ours()) oursSent++;
             }
             case DIG_STOP -> {
@@ -143,7 +159,10 @@ public final class PaceRules {
                 digging = false;
                 lastDigEnd = tick;
             }
-            case ACTION_OTHER -> foreign(p);
+            case ACTION_OTHER -> {
+                action(p);
+                slotBlocked = true;
+            }
             case SLOT -> {
                 action(p);
                 if (slotBlocked) violate(Rule.SLOT_AFTER_ACTION);
@@ -156,9 +175,11 @@ public final class PaceRules {
                 if (inputMoving || sprinting) violate(Rule.CLICK_WHILE_MOVING);
             }
             case CLOSE_SCREEN -> {
+                afterMove();
                 if (inputMoving || sprinting) violate(Rule.CLICK_WHILE_MOVING);
             }
             case SWING -> {
+                afterMove();
                 swungThisTick = true;
                 grimSwing = true;
             }
@@ -178,6 +199,7 @@ public final class PaceRules {
         tick = 0;
         moves = 0;
         movedThisTick = false;
+        afterMoveFlagged = false;
         swungThisTick = false;
         foreignThisTick = false;
         digTouched = false;
@@ -213,15 +235,21 @@ public final class PaceRules {
 
     /** §5.3 (a): at most one movement packet in the last tick, and the rotation the server last received is this one. */
     public boolean aimHeld(Aim.Rotation wanted) {
-        return movesLastTick <= 1 && wanted.equals(lastRotation);
+        return moves == 0 && movesLastTick <= 1 && wanted.equals(lastRotation);
     }
 
-    /** Someone else's place, use, attack or other action packet in the last completed client tick (§5.3 "acting"). */
+    /**
+     * Someone else's place, use, attack, release, other player command, hotbar slot change or inventory click in the last
+     * completed client tick (§5.3 "acting"). A player scrolling the hotbar counts as acting: conservative on purpose.
+     */
     public boolean foreignActionLastTick() {
         return foreignLastTick;
     }
 
-    /** Someone else's action in the Grim tick still open: an action of ours now would share it. */
+    /**
+     * Someone else's action in the Grim tick still open: an action of ours now would share it. Foreign slot changes and
+     * inventory clicks count too (conservative on purpose).
+     */
     public boolean foreignActionThisGrimTick() {
         return foreignInGrim;
     }
@@ -242,8 +270,16 @@ public final class PaceRules {
     }
 
     private void action(Packet p) {
-        if (movedThisTick) violate(Rule.ACTION_AFTER_MOVE);
+        afterMove();
         foreign(p);
+    }
+
+    /** Grim {@code Post} / {@code PacketOrderO}: one flag per client tick however many packets follow the move. */
+    private void afterMove() {
+        if (movedThisTick && !afterMoveFlagged) {
+            afterMoveFlagged = true;
+            violate(Rule.ACTION_AFTER_MOVE);
+        }
     }
 
     private void foreign(Packet p) {
@@ -260,6 +296,7 @@ public final class PaceRules {
         foreignLastTick = foreignThisTick;
         moves = 0;
         movedThisTick = false;
+        afterMoveFlagged = false;
         swungThisTick = false;
         foreignThisTick = false;
         abortThisTick = false;
@@ -280,6 +317,7 @@ public final class PaceRules {
         digPackets = 0;
         grimSwing = false;
         slotBlocked = false;
+        usedInGrim = false;
         foreignInGrim = false;
     }
 
