@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -136,9 +137,9 @@ class PendingBlocksTest {
         assertEquals(0, p.failures(A));
     }
 
-    private static final java.util.function.Predicate<Pos> NOT_PLACED = pos -> false;
-    private static final java.util.function.Predicate<Pos> STILL_THERE = pos -> true;
-    private static final java.util.function.Predicate<Pos> GONE = pos -> false;
+    private static final Predicate<Pos> NOT_PLACED = pos -> false;
+    private static final Predicate<Pos> STILL_THERE = pos -> true;
+    private static final Predicate<Pos> GONE = pos -> false;
 
     private static PendingBlocks.Settled dug(PendingBlocks.Outcome outcome) {
         return new PendingBlocks.Settled(A, PendingBlocks.DIG, outcome);
@@ -147,7 +148,7 @@ class PendingBlocksTest {
     @Test
     void aDigIsSettledByTheWorldUpdate() {
         PendingBlocks p = pending();
-        p.digSent(A, 1, 10);
+        p.digSent(A, 1, 10, 0);
         assertEquals(List.of(), p.settle(11, 0, NOT_PLACED, STILL_THERE));
         assertEquals(Set.of(A), p.digging());
         assertFalse(p.idle());
@@ -159,18 +160,64 @@ class PendingBlocksTest {
     }
 
     @Test
-    void anAcknowledgementAloneNeverSettlesADig() {
+    void anAcknowledgedDigWithTheBlockStillThereStaysInFlight() {
         PendingBlocks p = pending();
-        p.digSent(A, 1, 10);
+        p.digSent(A, 1, 10, 0);
         p.acknowledged(1, 11);
-        assertEquals(List.of(dug(PendingBlocks.Outcome.FAILED)), p.settle(11, 0, NOT_PLACED, STILL_THERE),
-            "answered with the block still there: refused, not dug");
+        assertEquals(List.of(), p.settle(11, 0, NOT_PLACED, STILL_THERE), "the server may still break it after the ack");
+        assertEquals(Set.of(A), p.digging());
+        assertEquals(0, p.failures(A));
+    }
+
+    @Test
+    void theBlockVanishingAfterTheAcknowledgementIsDugWithNoFailure() {
+        PendingBlocks p = pending();
+        p.digSent(A, 1, 10, 0);
+        p.acknowledged(1, 11);
+        assertEquals(List.of(), p.settle(12, 0, NOT_PLACED, STILL_THERE));
+        assertEquals(List.of(dug(PendingBlocks.Outcome.DUG)), p.settle(14, 0, NOT_PLACED, GONE));
+        assertEquals(0, p.failures(A));
+    }
+
+    @Test
+    void anAcknowledgedDigStillThereAfterItsWindowExpiresAndCounts() {
+        PendingBlocks p = pending();
+        p.digSent(A, 1, 10, 0);
+        p.acknowledged(1, 11);
+        assertEquals(List.of(), p.settle(14, 0, NOT_PLACED, STILL_THERE));
+        assertEquals(List.of(dug(PendingBlocks.Outcome.EXPIRED)), p.settle(15, 0, NOT_PLACED, STILL_THERE));
+        assertEquals(1, p.failures(A));
+    }
+
+    @Test
+    void theGraceExtendsTheDigWindow() {
+        PendingBlocks p = pending();
+        p.digSent(A, 1, 10, 20);
+        assertEquals(List.of(), p.settle(10 + 4 + 10, 0, NOT_PLACED, STILL_THERE), "window 4 + 10: grace 20 not used up");
+        assertEquals(List.of(), p.settle(10 + 4 + 20, 0, NOT_PLACED, STILL_THERE));
+        assertEquals(List.of(dug(PendingBlocks.Outcome.EXPIRED)), p.settle(10 + 4 + 21, 0, NOT_PLACED, STILL_THERE));
+    }
+
+    @Test
+    void theThreeArgumentSettleReadsEveryDugBlockAsStillThere() {
+        PendingBlocks p = pending();
+        p.digSent(A, 1, 10, 0);
+        assertEquals(List.of(), p.settle(12, 0, pos -> false), "it cannot see a dug block go");
+        assertEquals(List.of(dug(PendingBlocks.Outcome.EXPIRED)), p.settle(15, 0, pos -> false));
+        assertEquals(1, p.failures(A));
+    }
+
+    @Test
+    void aPlacementWithoutAMaterialIsRejected() {
+        PendingBlocks p = pending();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> p.sent(A, "", 1, 1));
+        org.junit.jupiter.api.Assertions.assertThrows(NullPointerException.class, () -> p.sent(A, null, 1, 1));
     }
 
     @Test
     void aDigWithNoAnswerExpiresAfterTheWindow() {
         PendingBlocks p = pending();
-        p.digSent(A, 1, 10);
+        p.digSent(A, 1, 10, 0);
         assertEquals(List.of(), p.settle(14, 0, NOT_PLACED, STILL_THERE), "4 ticks: still within the window");
         assertEquals(Set.of(A), p.digging());
         assertEquals(List.of(dug(PendingBlocks.Outcome.EXPIRED)), p.settle(15, 0, NOT_PLACED, STILL_THERE));
@@ -182,9 +229,9 @@ class PendingBlocksTest {
     void aFailedDigCountsTowardsK() {
         PendingBlocks p = pending();
         for (int i = 1; i <= 3; i++) {
-            p.digSent(A, i, 10 * i);
+            p.digSent(A, i, 10 * i, 0);
             p.acknowledged(i, 10 * i + 1);
-            p.settle(10 * i + 1, 0, NOT_PLACED, STILL_THERE);
+            p.settle(10 * i + 5, 0, NOT_PLACED, STILL_THERE);
             assertEquals(i == 3, p.skipped(A));
         }
     }
@@ -192,7 +239,7 @@ class PendingBlocksTest {
     @Test
     void aDigDoesNotShowAsAPlacementInFlight() {
         PendingBlocks p = pending();
-        p.digSent(A, 1, 10);
+        p.digSent(A, 1, 10, 0);
         assertFalse(p.pending(A));
         assertEquals(Set.of(), p.inFlight());
     }

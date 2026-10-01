@@ -8,6 +8,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Predicate;
@@ -16,11 +17,12 @@ import java.util.function.Predicate;
  * Placements sent and not yet confirmed (printer spec §5.6), copied from surround++'s pending rule (M4) with the window
  * from the measured round trip. Placed = the world shows the target; failed = an acknowledgement covering our sequence
  * arrived and the world does not show it; expired = neither within the window. Failures and expiries count towards K.
- * Digs (ruling P4) are tracked alongside: dug = the world no longer shows the block; failed = acknowledged with the block
- * still there; expired = neither within the window; the last two count towards K like placements.
+ * Digs (rulings P4, P23) are tracked alongside: dug = the world no longer shows the block; expired = still there after the
+ * window plus the grace given at {@code digSent}, which counts towards K. A dig is never FAILED: vanilla can break a block
+ * after it acknowledged our STOP, so an acknowledgement settles nothing for a dig (it only feeds the round-trip sample).
  */
 public final class PendingBlocks {
-    /** {@code DUG} is only ever the outcome of a dig; a dig's FAILED and EXPIRED are told apart by {@link Settled#dig()}. */
+    /** {@code DUG} is only ever the outcome of a dig; a dig's EXPIRED is told from a placement's by {@link Settled#dig()}. */
     public enum Outcome { PLACED, FAILED, EXPIRED, DUG }
 
     /** The {@code material} of a settled dig. */
@@ -57,9 +59,11 @@ public final class PendingBlocks {
         final Pos pos;
         final int sequence;
         final long sent;
+        final int grace;
         boolean acked;
 
-        Dig(Pos pos, int sequence, long sent) {
+        Dig(Pos pos, int sequence, long sent, int grace) {
+            this.grace = grace;
             this.pos = pos;
             this.sequence = sequence;
             this.sent = sent;
@@ -77,12 +81,14 @@ public final class PendingBlocks {
     }
 
     public void sent(Pos pos, String material, int sequence, long tick) {
+        Objects.requireNonNull(material, "material");
+        if (material.isEmpty()) throw new IllegalArgumentException("a placement needs a material");
         entries.add(new Entry(pos, material, sequence, tick));
     }
 
     /** Our STOP packet (or an instant START) for {@code pos}: in flight until the world shows the block gone. */
-    public void digSent(Pos pos, int sequence, long tick) {
-        digs.add(new Dig(pos, sequence, tick));
+    public void digSent(Pos pos, int sequence, long tick, int graceTicks) {
+        digs.add(new Dig(pos, sequence, tick, Math.max(0, graceTicks)));
     }
 
     /** {@code PlayerActionResponseS2CPacket}: the server has handled every sequence up to this one. */
@@ -116,7 +122,10 @@ public final class PendingBlocks {
         return null;
     }
 
-    /** Placements only: a dig in flight is never settled by this overload (it reads every dug block as still there). */
+    /**
+     * Same as the 4-argument form with every dug block read as still there: digs can only EXPIRE through it (counting
+     * towards K). The module must use the 4-argument form.
+     */
     public List<Settled> settle(long tick, int pingTicks, Predicate<Pos> placedInWorld) {
         return settle(tick, pingTicks, placedInWorld, pos -> true);
     }
@@ -160,10 +169,9 @@ public final class PendingBlocks {
             if (!dugBlockStillThere.test(d.pos)) {
                 if (!d.acked) record(tick - d.sent);
                 outcome = Outcome.DUG;
-            } else if (d.acked) outcome = Outcome.FAILED;
-            else if (tick - d.sent > window) outcome = Outcome.EXPIRED;
+            } else if (tick - d.sent > window + d.grace) outcome = Outcome.EXPIRED;
             else continue;
-            if (outcome != Outcome.DUG) failures.merge(d.pos, 1, Integer::sum);
+            if (outcome == Outcome.EXPIRED) failures.merge(d.pos, 1, Integer::sum);
             out.add(new Settled(d.pos, DIG, outcome));
             dit.remove();
         }

@@ -67,4 +67,10 @@ class HotbarPlanTest {
         assertEquals(new HotbarPlan.Select(6), HotbarPlan.forMaterial(inv, 0, STONE));
         assertEquals(new HotbarPlan.Ready(6), HotbarPlan.forMaterial(inv, 6, STONE));
     }
+
+    @Test
+    void aSelectedSlotOutsideTheHotbarIsRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> HotbarPlan.forMaterial(inventory(), 9, STONE));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> HotbarPlan.forMaterial(inventory(), -1, STONE));
+    }
 }

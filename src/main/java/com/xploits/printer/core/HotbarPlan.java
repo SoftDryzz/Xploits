@@ -44,6 +44,7 @@ public final class HotbarPlan {
 
     public static Step forMaterial(List<Slot> inventory, int selected, String material) {
         if (inventory.size() != 36) throw new IllegalArgumentException("36 slots expected, got " + inventory.size());
+        if (selected < 0 || selected > 8) throw new IllegalArgumentException("selected hotbar slot " + selected);
         if (inventory.get(selected).holds(material)) return new Ready(selected);
         for (int i = 0; i < 9; i++) {
             if (inventory.get(i).holds(material)) return new Select(i);
