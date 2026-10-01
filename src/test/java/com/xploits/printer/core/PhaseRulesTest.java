@@ -71,8 +71,9 @@ class PhaseRulesTest {
         // The adapter gives both leaves the same id whatever their distance/persistent values.
         assertTrue(PhaseRules.matches(block("oak_leaves").props().build(), block("oak_leaves").props().build()));
         assertFalse(PhaseRules.matches(stone(), block("cobblestone").build()));
-        // Same id, different measured facts (the world's state carries properties the target's does not): still a match.
-        assertTrue(PhaseRules.matches(block("oak_leaves").build(), block("oak_leaves").props().build()), "id only");
+        // The same waterloggable block, dry in the schematic and wet in the world: same id, so a match.
+        assertTrue(PhaseRules.matches(block("copper_grate").props().waterloggable().build(),
+            block("copper_grate").props().waterloggable().fluid().build()), "id only");
         assertTrue(PhaseRules.ignoredProperty("snowy"));
         assertTrue(PhaseRules.ignoredProperty("distance"));
         assertTrue(PhaseRules.ignoredProperty("note"));
@@ -173,7 +174,11 @@ class PhaseRulesTest {
 
     private static PhaseRules.BreakView view(Cell cell, Map<Face, BlockFacts> neighbours, boolean standingOn,
                                              boolean brokenBefore, int ticks) {
-        return new PhaseRules.BreakView(cell, neighbours, standingOn, brokenBefore, ticks, 100);
+        return new PhaseRules.BreakView(cell, neighbours, standingOn, false, brokenBefore, ticks, 100);
+    }
+
+    private static PhaseRules.BreakView viewWithHangingEntity(Cell cell, Map<Face, BlockFacts> neighbours) {
+        return new PhaseRules.BreakView(cell, neighbours, false, true, false, 23, 100);
     }
 
     private static final Cell WRONG = cell(0, 0, 0, Target.of(stone()), block("cobblestone").build());
@@ -213,6 +218,63 @@ class PhaseRulesTest {
         assertEquals(Optional.of(NeverBreak.TOO_SLOW), why(view(WRONG, around(Face.UP, stone()), false, false, -1)), "no tool at all");
         assertEquals(Optional.empty(), why(view(WRONG, around(Face.UP, stone()), false, false, 100)), "the cap itself qualifies");
         assertEquals(Optional.of(NeverBreak.ALREADY_BROKEN), why(view(WRONG, around(Face.UP, stone()), false, true, 23)));
+    }
+
+    @Test
+    void theBlockAboveIsProtectedWhateverFamilyItStandsIn() {
+        for (String id : new String[]{"lantern", "soul_lantern", "copper_lantern", "waxed_oxidized_copper_lantern", "bell",
+            "amethyst_cluster", "small_amethyst_bud", "medium_amethyst_bud", "large_amethyst_bud", "glow_lichen",
+            "sculk_vein", "resin_clump", "mangrove_propagule", "twisting_vines", "twisting_vines_plant",
+            "candle_cake", "red_candle_cake", "chorus_plant", "chorus_flower"}) {
+            assertEquals(Optional.of(NeverBreak.HOLDS_ATTACHED),
+                why(view(WRONG, around(Face.UP, block(id).props().notFull().build()), false, false, 23)), id + " above");
+            assertTrue(PhaseRules.needsSupportBelow("minecraft:" + id), id + " in the table");
+        }
+        // The hanging and side tables are consulted for the block above too (over-protective on purpose).
+        assertEquals(Optional.of(NeverBreak.HOLDS_ATTACHED), why(view(WRONG, around(Face.UP, block("ladder").props().notFull().build()), false, false, 23)));
+        assertEquals(Optional.of(NeverBreak.HOLDS_ATTACHED), why(view(WRONG, around(Face.UP, block("pointed_dripstone").props().notFull().build()), false, false, 23)));
+    }
+
+    @Test
+    void redstoneWireAndCopperGolemStatuesAreInteractiveSoNeverASupport() {
+        for (String id : new String[]{"minecraft:redstone_wire", "minecraft:copper_golem_statue",
+            "minecraft:waxed_weathered_copper_golem_statue", "minecraft:oxidized_copper_golem_statue"}) {
+            assertTrue(PhaseRules.interactive(id), id);
+            assertFalse(PhaseRules.support(block(id).props().notFull().build()), id);
+        }
+    }
+
+    @Test
+    void nyliumChangesByItselfAndBecomesNetherrack() {
+        for (String id : new String[]{"crimson_nylium", "warped_nylium"}) {
+            assertTrue(PhaseRules.changesByItself("minecraft:" + id), id);
+            assertFalse(PhaseRules.phaseOne(block(id).build()), id);
+            assertTrue(PhaseRules.naturalConversion("minecraft:" + id, "minecraft:netherrack"), id);
+        }
+        assertFalse(PhaseRules.naturalConversion("minecraft:netherrack", "minecraft:crimson_nylium"));
+    }
+
+    @Test
+    void aNeighbourWithoutAValueIsUnknownNotAnError() {
+        Map<Face, BlockFacts> nulled = around(Face.UP, stone());
+        nulled.put(Face.SOUTH, null);
+        assertEquals(Optional.of(NeverBreak.NEIGHBOURS_UNKNOWN), why(view(WRONG, nulled, false, false, 23)));
+    }
+
+    @Test
+    void aNetherPortalOnAnySideIsNeverBrokenAgainst() {
+        BlockFacts portal = block("nether_portal").props().notFull().build();
+        for (Face f : Face.values()) {
+            assertEquals(Optional.of(NeverBreak.HOLDS_ATTACHED), why(view(WRONG, around(f, portal), false, false, 23)), f.name());
+        }
+    }
+
+    @Test
+    void aBlockHoldingAnItemFrameOrPaintingIsNeverBroken() {
+        assertEquals(Optional.of(NeverBreak.HOLDS_HANGING_ENTITY), why(viewWithHangingEntity(WRONG, around(Face.UP, stone()))));
+        // ordered with the other safety rules: before the slow-tool and loop-guard ones
+        assertEquals(Optional.of(NeverBreak.HOLDS_HANGING_ENTITY), why(new PhaseRules.BreakView(WRONG, around(Face.UP, stone()),
+            false, true, true, 150, 100)));
     }
 
     @Test

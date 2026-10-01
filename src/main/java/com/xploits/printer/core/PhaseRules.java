@@ -22,7 +22,7 @@ public final class PhaseRules {
     /** Why a block is not broken (§5.1 item 4), in the order {@link #neverBreak} tests them. */
     public enum NeverBreak {
         OUTSIDE, UNKNOWN, AIR_TARGET, NOT_DIFFERENT, BLOCK_ENTITY, UNBREAKABLE, NEIGHBOURS_UNKNOWN, STANDING_ON,
-        HOLDS_FALLING, HOLDS_ATTACHED, NEXT_TO_FLUID, TOO_SLOW, ALREADY_BROKEN
+        HOLDS_FALLING, HOLDS_ATTACHED, HOLDS_HANGING_ENTITY, NEXT_TO_FLUID, TOO_SLOW, ALREADY_BROKEN
     }
 
     /**
@@ -30,12 +30,13 @@ public final class PhaseRules {
      *
      * @param neighbours        the world's six neighbours; a missing one is unknown, and unknown is never "safe"
      * @param standingOn        the player's feet rest on this block
+     * @param holdsHangingEntity an item frame, glow item frame or painting hangs on this block (it would drop)
      * @param brokenBefore      the printer already broke this position in this session (the loop guard)
      * @param ticksWithBestTool held-mining ticks with the best usable hotbar tool, -1 when no tool qualifies
      * @param capTicks          {@link PrinterLimits#breakCapTicks()}
      */
-    public record BreakView(Cell cell, Map<Face, BlockFacts> neighbours, boolean standingOn, boolean brokenBefore,
-                            int ticksWithBestTool, int capTicks) {
+    public record BreakView(Cell cell, Map<Face, BlockFacts> neighbours, boolean standingOn,
+                            boolean holdsHangingEntity, boolean brokenBefore, int ticksWithBestTool, int capTicks) {
     }
 
     private static final List<String> COLORS = List.of("white", "orange", "magenta", "light_blue", "yellow", "lime",
@@ -57,9 +58,9 @@ public final class PhaseRules {
         "repeater", "comparator", "daylight_detector", "cake", "composter", "respawn_anchor", "flower_pot",
         "decorated_pot", "chiseled_bookshelf", "structure_block", "jigsaw", "test_block", "test_instance_block",
         "campfire", "soul_campfire", "dragon_egg", "redstone_ore", "deepslate_redstone_ore", "vault", "trial_spawner",
-        "sweet_berry_bush", "cave_vines", "cave_vines_plant");
+        "sweet_berry_bush", "cave_vines", "cave_vines_plant", "redstone_wire");
     static final List<String> INTERACTIVE_SUFFIXES = List.of("_door", "_trapdoor", "_fence_gate", "_button", "_bed",
-        "shulker_box", "_sign", "candle_cake", "_shelf", "chest", "anvil", "cauldron", "_bulb", "command_block");
+        "shulker_box", "_sign", "candle_cake", "_shelf", "chest", "anvil", "cauldron", "_bulb", "command_block", "copper_golem_statue");
     static final List<String> INTERACTIVE_PREFIXES = List.of("minecraft:potted_");
 
     /** Blocks that turn into something else on their own (§5.1 item 1). */
@@ -67,7 +68,7 @@ public final class PhaseRules {
         "ice", "snow", "sponge", "wet_sponge", "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper",
         "cut_copper", "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "chiseled_copper",
         "exposed_chiseled_copper", "weathered_chiseled_copper", "oxidized_chiseled_copper", "tube_coral_block",
-        "brain_coral_block", "bubble_coral_block", "fire_coral_block", "horn_coral_block"),
+        "brain_coral_block", "bubble_coral_block", "fire_coral_block", "horn_coral_block", "crimson_nylium", "warped_nylium"),
         suffixed(COLORS, "_concrete_powder"));
 
     /** A target → what nature makes of it; such a block is neither matching nor wrong (§5.1 item 3). */
@@ -91,9 +92,11 @@ public final class PhaseRules {
         "carrots", "potatoes", "beetroots", "melon_stem", "pumpkin_stem", "attached_melon_stem", "attached_pumpkin_stem",
         "nether_wart", "sweet_berry_bush", "scaffolding", "azalea", "flowering_azalea", "big_dripleaf",
         "big_dripleaf_stem", "small_dripleaf", "pink_petals", "wildflowers", "leaf_litter", "lever", "kelp",
-        "kelp_plant", "seagrass", "tall_seagrass", "turtle_egg", "frogspawn");
+        "kelp_plant", "seagrass", "tall_seagrass", "turtle_egg", "frogspawn", "lantern", "soul_lantern", "bell",
+        "amethyst_cluster", "small_amethyst_bud", "medium_amethyst_bud", "large_amethyst_bud", "glow_lichen", "sculk_vein",
+        "resin_clump", "mangrove_propagule", "twisting_vines", "twisting_vines_plant", "chorus_plant", "chorus_flower");
     static final List<String> NEEDS_SUPPORT_BELOW_SUFFIXES = List.of("_carpet", "_pressure_plate", "_sapling",
-        "_banner", "_sign", "_door", "_candle", "_tulip", "_button", "_coral", "_coral_fan");
+        "_banner", "_sign", "_door", "_candle", "_tulip", "_button", "_coral", "_coral_fan", "_lantern", "candle_cake");
 
     /** Blocks that may hang on the side of the block next to them (the facing is not checked: safe side). */
     static final Set<String> HANGS_ON_SIDE = ids("ladder", "lever", "tripwire_hook", "vine", "glow_lichen",
@@ -108,6 +111,9 @@ public final class PhaseRules {
         "glow_lichen", "sculk_vein", "resin_clump", "bell", "small_amethyst_bud", "medium_amethyst_bud",
         "large_amethyst_bud", "amethyst_cluster", "mangrove_propagule", "pale_hanging_moss", "lever");
     static final List<String> HANGS_BELOW_SUFFIXES = List.of("_hanging_sign", "_lantern", "_button");
+
+    /** A portal breaks when any frame block next to it goes. */
+    private static final String NETHER_PORTAL = "minecraft:nether_portal";
 
     // ---- the tables as functions -------------------------------------------------------------------------------
 
@@ -197,10 +203,13 @@ public final class PhaseRules {
         BlockFacts w = v.cell().world();
         if (w.blockEntity()) return Optional.of(NeverBreak.BLOCK_ENTITY);
         if (w.unbreakable()) return Optional.of(NeverBreak.UNBREAKABLE);
-        if (v.neighbours().size() < Face.values().length) return Optional.of(NeverBreak.NEIGHBOURS_UNKNOWN);
+        for (Face f : Face.values()) {
+            if (v.neighbours().get(f) == null) return Optional.of(NeverBreak.NEIGHBOURS_UNKNOWN);
+        }
         if (v.standingOn()) return Optional.of(NeverBreak.STANDING_ON);
         if (v.neighbours().get(Face.UP).falling()) return Optional.of(NeverBreak.HOLDS_FALLING);
         if (holdsAttached(v.neighbours())) return Optional.of(NeverBreak.HOLDS_ATTACHED);
+        if (v.holdsHangingEntity()) return Optional.of(NeverBreak.HOLDS_HANGING_ENTITY);
         if (w.fluid() || v.neighbours().values().stream().anyMatch(BlockFacts::fluid)) {
             return Optional.of(NeverBreak.NEXT_TO_FLUID);
         }
@@ -210,7 +219,12 @@ public final class PhaseRules {
     }
 
     private static boolean holdsAttached(Map<Face, BlockFacts> n) {
-        if (needsSupportBelow(n.get(Face.UP).id())) return true;
+        for (BlockFacts b : n.values()) {
+            if (b.id().equals(NETHER_PORTAL)) return true;
+        }
+        // Above: stands on it, or (over-protective on purpose) hangs from or leans on it, whichever table says so.
+        String up = n.get(Face.UP).id();
+        if (needsSupportBelow(up) || hangsBelow(up) || hangsOnSide(up)) return true;
         for (Face side : List.of(Face.NORTH, Face.SOUTH, Face.WEST, Face.EAST)) {
             if (hangsOnSide(n.get(side).id())) return true;
         }
@@ -253,6 +267,8 @@ public final class PhaseRules {
         put(m, "wet_sponge", "sponge");
         put(m, "ice", "water");
         put(m, "mud", "clay");
+        put(m, "crimson_nylium", "netherrack");
+        put(m, "warped_nylium", "netherrack");
         for (String form : List.of("copper", "cut_copper", "chiseled_copper")) {
             String fresh = form.equals("copper") ? "copper_block" : form;
             put(m, fresh, "exposed_" + form, "weathered_" + form, "oxidized_" + form);
