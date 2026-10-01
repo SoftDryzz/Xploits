@@ -90,4 +90,101 @@ class StandSpotTest {
         assertEquals(Optional.of(new Pos(-1, 0, 5)), new StandSpot(PrinterLimits.DEFAULTS)
             .next(index, CARRIED, true, new Point(0.5, 0, 5.5), 4.5, FLAT));
     }
+
+    @Test
+    void aSpotNeverStandsOnAWrongBlock() {
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(2, 0, 0))));
+        for (int x = 0; x <= 2; x++) index.set(new Pos(x, 0, 0), Status.MATCHES, STONE);
+        index.set(new Pos(1, 0, 0), Status.WRONG, STONE);
+        StandSpot.World onTop = new StandSpot.World() {
+            @Override
+            public boolean standable(Pos feet) {
+                return feet.y() == 1;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return false;
+            }
+        };
+        // The player stands on the wrong block; the nearest others tie at distance 1, the lower x first.
+        assertEquals(Optional.of(new Pos(0, 1, 0)), new StandSpot(PrinterLimits.DEFAULTS)
+            .next(index, CARRIED, true, new Point(1.5, 1, 0.5), 4.5, onTop));
+    }
+
+    @Test
+    void theHeadCellMustAlsoBeFree() {
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 1, 5), new Pos(2, 1, 5))));
+        for (int x = 0; x <= 2; x++) index.set(new Pos(x, 1, 5), Status.MISSING, STONE);
+        StandSpot.World floor = new StandSpot.World() {
+            @Override
+            public boolean standable(Pos feet) {
+                return feet.y() == 0;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return block.y() == 0;
+            }
+        };
+        // Feet (0,0,5) are free but its head cell is a target; (-1,0,5), (0,0,4), (0,0,6) tie at 1, the lower x wins.
+        assertEquals(Optional.of(new Pos(-1, 0, 5)), new StandSpot(PrinterLimits.DEFAULTS)
+            .next(index, CARRIED, true, new Point(0.5, 0, 5.5), 4.5, floor));
+    }
+
+    @Test
+    void anUnknownOrLaterCellIsNeverStoodIn() {
+        for (Status blocked : new Status[]{Status.UNKNOWN, Status.LATER}) {
+            BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 1), new Pos(2, 0, 5))));
+            for (Pos p : index.nextToScan(100)) index.set(p, Status.AIR_TARGET, null);
+            index.set(new Pos(0, 0, 5), Status.MISSING, STONE);
+            index.set(new Pos(0, 0, 1), blocked, null);
+            assertEquals(Optional.of(new Pos(-1, 0, 1)), new StandSpot(PrinterLimits.DEFAULTS)
+                .next(index, CARRIED, true, new Point(0.5, 0, 1.5), 4.5, FLAT), blocked.name());
+        }
+    }
+
+    @Test
+    void aHigherLayerIsTriedWhenTheLowestHasNoSupportedTarget() {
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 5), new Pos(0, 1, 5))));
+        index.set(new Pos(0, 0, 5), Status.MISSING, STONE);
+        index.set(new Pos(0, 1, 5), Status.MISSING, STONE);
+        // Only the block at (0,0,4) can be clicked, which supports the upper target through its south neighbour... of (0,1,4).
+        StandSpot.World world = new StandSpot.World() {
+            @Override
+            public boolean standable(Pos feet) {
+                return feet.y() == 0;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return block.equals(new Pos(0, 1, 4));
+            }
+        };
+        Optional<Pos> spot = new StandSpot(PrinterLimits.DEFAULTS)
+            .next(index, CARRIED, true, new Point(0.5, 0, 1.5), 4.5, world);
+        assertTrue(spot.isPresent(), "the lowest layer has no click, the upper one does");
+    }
+
+    @Test
+    void targetsWithoutAClickAreDroppedBeforeTheCap() {
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(100, 0, 0))));
+        for (int x = 0; x <= 100; x++) index.set(new Pos(x, 0, 0), Status.MISSING, STONE);
+        StandSpot.World world = new StandSpot.World() {
+            @Override
+            public boolean standable(Pos feet) {
+                return feet.y() == 0;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return block.y() == -1 && block.x() == 100;
+            }
+        };
+        // 101 targets in a row; only the farthest (x = 100) has a support, beyond the 64 nearest.
+        Optional<Pos> spot = new StandSpot(PrinterLimits.DEFAULTS)
+            .next(index, CARRIED, true, new Point(0.5, 0, 0.5), 4.5, world);
+        assertTrue(spot.isPresent());
+        assertTrue(spot.get().x() >= 96, "next to the supported target: " + spot.get());
+    }
 }

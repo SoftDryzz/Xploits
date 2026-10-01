@@ -180,6 +180,21 @@ public final class BuildIndex {
         return OptionalInt.empty();
     }
 
+    /** The layers that have an actionable target, lowest first. */
+    public List<Integer> actionableLayers(Set<String> carried, boolean fixWrong) {
+        List<Integer> out = new ArrayList<>();
+        for (Map.Entry<Integer, Map<Short, int[]>> e : layers.entrySet()) {
+            for (Map.Entry<Short, int[]> m : e.getValue().entrySet()) {
+                if (!carried.contains(materials.get(m.getKey()))) continue;
+                if (m.getValue()[0] > 0 || (fixWrong && m.getValue()[1] > 0)) {
+                    out.add(e.getKey());
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
     public List<Pos> actionableAt(int y, Set<String> carried, boolean fixWrong) {
         List<Pos> out = new ArrayList<>();
         for (int b = 0; b < boxes.size(); b++) {

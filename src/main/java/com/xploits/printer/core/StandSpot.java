@@ -5,7 +5,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -39,35 +38,49 @@ public final class StandSpot {
 
     public Optional<Pos> next(BuildIndex index, Set<String> carried, boolean fixWrong, Point playerFeet, double reach,
                               World world) {
-        OptionalInt layer = index.lowestLayer(carried, fixWrong);
-        if (layer.isEmpty()) return Optional.empty();
-        List<Pos> targets = new ArrayList<>(index.actionableAt(layer.getAsInt(), carried, fixWrong));
-        targets.sort(Comparator.<Pos>comparingDouble(t -> t.distanceSq(playerFeet))
-            .thenComparingInt(Pos::x).thenComparingInt(Pos::z));
         double cappedReach = Math.min(reach, limits.maxReach());
-        Pos best = null;
-        double bestD = Double.POSITIVE_INFINITY;
-        for (Pos t : targets.subList(0, Math.min(TARGETS, targets.size()))) {
-            boolean missing = index.status(t) == BuildIndex.Status.MISSING;
-            for (int dy = -3; dy <= 1; dy++) {
-                for (int dx = -4; dx <= 4; dx++) {
-                    for (int dz = -4; dz <= 4; dz++) {
-                        Pos feet = new Pos(t.x() + dx, t.y() + dy, t.z() + dz);
-                        if (unreachable.contains(feet)) continue;
-                        if (!free(index, feet) || !free(index, feet.offset(Face.UP))) continue;
-                        if (!world.standable(feet)) continue;
-                        Point eye = new Point(feet.x() + 0.5, feet.y() + EYE, feet.z() + 0.5);
-                        if (!reachable(t, missing, eye, cappedReach, world)) continue;
-                        double d = new Point(feet.x() + 0.5, feet.y(), feet.z() + 0.5).distanceSq(playerFeet);
-                        if (d < bestD || (d == bestD && before(feet, best))) {
-                            bestD = d;
-                            best = feet;
+        for (int layer : index.actionableLayers(carried, fixWrong)) {
+            List<Pos> targets = new ArrayList<>();
+            for (Pos t : index.actionableAt(layer, carried, fixWrong)) {
+                if (index.status(t) != BuildIndex.Status.MISSING || hasSupport(t, world)) targets.add(t);
+            }
+            targets.sort(Comparator.<Pos>comparingDouble(t -> t.distanceSq(playerFeet))
+                .thenComparingInt(Pos::x).thenComparingInt(Pos::z));
+            Pos best = null;
+            double bestD = Double.POSITIVE_INFINITY;
+            for (Pos t : targets.subList(0, Math.min(TARGETS, targets.size()))) {
+                boolean missing = index.status(t) == BuildIndex.Status.MISSING;
+                for (int dy = -3; dy <= 1; dy++) {
+                    for (int dx = -4; dx <= 4; dx++) {
+                        for (int dz = -4; dz <= 4; dz++) {
+                            Pos feet = new Pos(t.x() + dx, t.y() + dy, t.z() + dz);
+                            if (unreachable.contains(feet)) continue;
+                            if (!free(index, feet) || !free(index, feet.offset(Face.UP))) continue;
+                            // Standing on a wrong block protects it from breaking: the walk would loop.
+                            if (index.status(feet.offset(Face.DOWN)) == BuildIndex.Status.WRONG) continue;
+                            if (!world.standable(feet)) continue;
+                            Point eye = new Point(feet.x() + 0.5, feet.y() + EYE, feet.z() + 0.5);
+                            if (!reachable(t, missing, eye, cappedReach, world)) continue;
+                            double d = new Point(feet.x() + 0.5, feet.y(), feet.z() + 0.5).distanceSq(playerFeet);
+                            if (d < bestD || (d == bestD && before(feet, best))) {
+                                bestD = d;
+                                best = feet;
+                            }
                         }
                     }
                 }
             }
+            if (best != null) return Optional.of(best);
         }
-        return Optional.ofNullable(best);
+        return Optional.empty();
+    }
+
+    /** A missing target can be clicked only from a supporting neighbour. */
+    private static boolean hasSupport(Pos t, World world) {
+        for (Face f : Face.values()) {
+            if (world.support(t.offset(f))) return true;
+        }
+        return false;
     }
 
     public void unreachable(Pos spot) {

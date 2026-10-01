@@ -64,4 +64,14 @@ class EndStatesTest {
         assertEquals(Optional.of(End.NOTHING_REACHABLE), decide(c, true, true, false, true, true, 0), "no spot, nothing missing");
         assertEquals(Optional.of(End.NOTHING_REACHABLE), decide(c, true, true, false, false, false, 0), "no Mover, nothing missing");
     }
+
+    @Test
+    void unexploredPartsAreExploredBeforeAnyEndWhileExploringIsPossible() {
+        BuildIndex.Counts c = counts(500, 10, 3, 0, 0, 0);
+        assertEquals(Optional.empty(), decide(c, true, false, true, false, 0), "material missing, parts unknown");
+        assertEquals(Optional.empty(), decide(c, true, true, true, true, 0), "no spot, parts unknown");
+        assertEquals(Optional.of(End.MATERIAL_MISSING), decide(c, true, false, true, false, 4), "goals used up");
+        assertEquals(Optional.of(End.NOTHING_REACHABLE), decide(c, true, true, true, true, 4), "goals used up");
+        assertEquals(Optional.of(End.MATERIAL_MISSING), decide(c, true, false, false, false, 0), "no Mover");
+    }
 }

@@ -14,10 +14,10 @@ public final class EndStates {
 
     /**
      * @param anyActionable      some known missing or wrong target has its material carried
-     * @param anyMaterialMissing some known missing or wrong target's material is not carried
+     * @param anyMaterialMissing missing targets, and wrong ones when fix-wrong-blocks is on, whose material is not carried
      * @param noSpot             the walk is exhausted, or no stand spot reaches an actionable target
      * @param unknownGoalsUsed   {@code #goto x z} goals already sent towards unknown parts
-     * @param pendingIdle        no placement in flight
+     * @param pendingIdle        no placement or dig in flight
      * @param scanComplete       the index has made one full pass
      */
     public record Inputs(BuildIndex.Counts counts, boolean fixWrong, boolean anyActionable, boolean anyMaterialMissing,
@@ -38,8 +38,12 @@ public final class EndStates {
             if (in.unknownGoalsUsed() >= limits.unknownGoals()) return Optional.of(End.NOTHING_KNOWN);
             return Optional.empty();
         }
-        if (!in.anyActionable()) return Optional.of(End.MATERIAL_MISSING);
+        // Unexplored parts may hold what is needed: explore first while a Mover and goals are left.
+        boolean explore = c.unknown() + c.unscanned() > 0 && in.moverAvailable()
+            && in.unknownGoalsUsed() < limits.unknownGoals();
+        if (!in.anyActionable()) return explore ? Optional.empty() : Optional.of(End.MATERIAL_MISSING);
         if (!in.moverAvailable() || in.noSpot()) {
+            if (explore) return Optional.empty();
             return Optional.of(in.anyMaterialMissing() ? End.MATERIAL_MISSING : End.NOTHING_REACHABLE);
         }
         return Optional.empty();
