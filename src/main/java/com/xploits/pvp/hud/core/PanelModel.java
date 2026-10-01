@@ -2,6 +2,7 @@ package com.xploits.pvp.hud.core;
 
 import com.xploits.pvp.core.CombatPosture;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.pvp.core.CrystalModule;
 import com.xploits.pvp.core.ManagedModule;
 import com.xploits.pvp.core.ManagedModules;
 import com.xploits.pvp.core.PvpText;
@@ -34,6 +35,7 @@ public final class PanelModel {
         lines.add(header(in));
         lines.add(target(in));
         modules(in, lines);
+        shell(in, lines);
         resources(in, lines);
         fight(in, lines);
         return List.copyOf(lines);
@@ -55,7 +57,7 @@ public final class PanelModel {
             3, 2, 5,
             true, false,
             new PanelInput.LiveFight(12, 1, 2, 18.5),
-            true);
+            true, CrystalModule.METEOR.moduleName(), new PanelInput.Shell(true, 1, 1));
         return lines(sample);
     }
 
@@ -118,6 +120,18 @@ public final class PanelModel {
         if (!in.profileOff().isEmpty()) {
             lines.add(new PanelLine(Msg.of(HudText.MODULES_OFF_BY_PROFILE, "modules", join(in.profileOff())), Tone.MUTED));
         }
+    }
+
+    // --- 4b. surround++ ------------------------------------------------------------------------------
+
+    /** Amber while a block next to you is being mined, or while your head is open with a spot left. */
+    private static void shell(PanelInput in, List<PanelLine> lines) {
+        PanelInput.Shell shell = in.shell();
+        if (shell == null) return;
+        Msg text = Msg.of(HudText.SHELL, "head", shell.headCovered() ? HudText.SHELL_HEAD_COVERED : HudText.SHELL_HEAD_OPEN,
+            "open", shell.openThreats(), "mined", shell.underAttack());
+        boolean warn = shell.underAttack() > 0 || (!shell.headCovered() && shell.openThreats() > 0);
+        lines.add(new PanelLine(text, warn ? Tone.WARN : Tone.NORMAL));
     }
 
     // --- 5. resources --------------------------------------------------------------------------------

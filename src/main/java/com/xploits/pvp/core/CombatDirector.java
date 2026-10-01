@@ -207,6 +207,19 @@ public final class CombatDirector {
     public static final int BREACH_MEMORY_TICKS = 40;
 
     /**
+     * How long the damage aimed at you has to stay below the margin before the posture goes back to
+     * {@code CALM}; a threat is taken at once (the owner's real fight, 2026-09-29). What the posture reads,
+     * {@code PlayerUtils.possibleHealthReductions()}, is the strongest crystal that exists this tick, whoever
+     * placed it: with two crystal auras placing and breaking every few ticks it comes and goes with each crystal,
+     * and a posture that followed it went THREATENED, CALM, THREATENED ten times in two seconds, turning the
+     * defensive modules off between two crystals. Three seconds is six crystal cycles at the invulnerability pace
+     * an aura keeps: a real lull, not the gap between two crystals. Staying threatened a little longer is cheap
+     * (see {@link DefensivePolicy#THREAT_MARGIN}: those modules neither immobilise you nor spend more than a loose
+     * block at a time); dropping them between two crystals is what was not.
+     */
+    public static final int CALM_HOLD_TICKS = 60;
+
+    /**
      * Maximum real distance to the surround block to classify {@code SURROUNDED} (spec §4.2.1,
      * second correction). Checked against the {@code meteor-client:1.21.11-SNAPSHOT} sources
      * (`AutoCity.java`): the module turns itself off -inside its own
@@ -277,6 +290,10 @@ public final class CombatDirector {
     private CombatSnapshot lastSeenTarget;
     private int missingTargetTicks;
 
+    /** The posture with its memory, and how long the calm has held while it is still threatened ({@link #rememberPosture}). */
+    private CombatPosture posture = CombatPosture.CALM;
+    private int calmTicks;
+
     /**
      * The modules the {@link Plan} of the previous tick returned in {@code enable()}. It is the
      * memory needed for the hysteresis of the resource filter (spec §6.2): without it,
@@ -315,7 +332,7 @@ public final class CombatDirector {
         return retreat.retreating();
     }
 
-    /** Forgets the phase, the counters and which modules it had on. Called when the module is turned on. */
+    /** Forgets the phase, the counters, which modules it had on and the posture's memory. Called when the module is turned on. */
     public void reset() {
         state = CombatState.NO_COMBAT;
         pending = null;
@@ -326,6 +343,8 @@ public final class CombatDirector {
         retreat.reset();
         lastSeenTarget = null;
         missingTargetTicks = 0;
+        posture = CombatPosture.CALM;
+        calmTicks = 0;
     }
 
     /** A whole cycle of the judgement with the default defensive margin and every module allowed. */
@@ -405,6 +424,20 @@ public final class CombatDirector {
      */
     public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed,
                      Set<ManagedModule> missing) {
+        return tick(snapshot, approachDistance, threatMargin, allowed, missing, ShellModule.METEOR);
+    }
+
+    /**
+     * The full signature, with the shell auto-pvp drives (surround++ spec §8). With {@link ShellModule#XPLOITS} the
+     * catalog's {@code surround} is surround++, which decides from its own threat map: it is wanted for as long as
+     * auto-pvp is on, as the crystal aura is; it is never left out for a shortage (with no blocks it still breaks
+     * crystals and walks you to a hole, and says so itself), but it still sets aside Meteor's surround's share of the
+     * obsidian, so auto-trap does not drain its stack (I3); and Meteor's {@code hole-filler} is never asked for, since
+     * surround++ denies the opponents' holes itself. A profile that does not allow {@code surround} still keeps it off.
+     * The shorter overloads pass {@link ShellModule#METEOR}: the behaviour before surround++.
+     */
+    public Plan tick(CombatSnapshot snapshot, int approachDistance, double threatMargin, Set<ManagedModule> allowed,
+                     Set<ManagedModule> missing, ShellModule shell) {
         CombatSnapshot effective = rememberTarget(snapshot);
 
         CombatState candidate = classify(effective, approachDistance, state);
@@ -419,7 +452,7 @@ public final class CombatDirector {
 
         ticksInState++;
         boolean retreating = retreat.update(effective);
-        Plan plan = planFor(state, effective, retreating, threatMargin, allowed, missing);
+        Plan plan = planFor(state, effective, retreating, rememberPosture(effective, threatMargin), allowed, missing, shell);
         previouslyEnabled = rememberEnabled(plan);
         return plan;
     }
@@ -623,8 +656,25 @@ public final class CombatDirector {
         return modules;
     }
 
-    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, double threatMargin,
-                         Set<ManagedModule> allowed, Set<ManagedModule> missing) {
+    /**
+     * This tick's posture, with its memory ({@link #CALM_HOLD_TICKS}): {@code THREATENED} as soon as the damage
+     * aimed at you leaves you at or below the margin, and back to {@code CALM} only once it has stayed above it
+     * for the whole wait. The defensive axis decides in every phase, {@code NO_COMBAT} included, so the memory
+     * does too; only {@link #reset()} forgets it.
+     */
+    private CombatPosture rememberPosture(CombatSnapshot snapshot, double threatMargin) {
+        if (DefensivePolicy.postureFor(snapshot, threatMargin) == CombatPosture.THREATENED) {
+            posture = CombatPosture.THREATENED;
+            calmTicks = 0;
+        } else if (posture == CombatPosture.THREATENED && ++calmTicks >= CALM_HOLD_TICKS) {
+            posture = CombatPosture.CALM;
+            calmTicks = 0;
+        }
+        return posture;
+    }
+
+    private Plan planFor(CombatState state, CombatSnapshot snapshot, boolean retreating, CombatPosture posture,
+                         Set<ManagedModule> allowed, Set<ManagedModule> missing, ShellModule shell) {
         List<ManagedModule> offensive = offensiveModules(state, snapshot, retreating);
 
         Set<ManagedModule> wanted = new LinkedHashSet<>(offensive);
@@ -639,10 +689,19 @@ public final class CombatDirector {
         // crystals on you from inside the burrow and, since "protected" did not count, the ledger turned off your
         // autobreak against the only one who could kill you. It leans the way §10 says: leaving it on
         // too long costs a few crystals; turning it off costs the fight.
-        if (snapshot.hostilesInCrystalRange() > 0) wanted.add(ManagedModules.CRYSTAL_AURA);
+        //
+        // And since the owner's real fights of 2026-09-30 it is wanted always, whatever the phase and whoever is in range:
+        // with the aura already on when the opponents arrived he won 21 totems to 4 against four; when auto-pvp had to turn
+        // it on as they came in range, 0 to 11. Turned on late, the aura starts cold (it has not learnt how long its
+        // crystals take to land) and misses the first crystals placed against you; with nobody to hit it does nothing.
+        // The totem floor below still holds it back when nothing protects you.
+        wanted.add(ManagedModules.CRYSTAL_AURA);
 
-        CombatPosture posture = DefensivePolicy.postureFor(snapshot, threatMargin);
         wanted.addAll(DefensivePolicy.modulesFor(posture, snapshot));
+        if (shell == ShellModule.XPLOITS) {
+            wanted.remove(ManagedModules.HOLE_FILLER);
+            wanted.add(ManagedModules.SURROUND);
+        }
 
         List<ManagedModule> enable = new ArrayList<>();
         List<Skipped> skipped = new ArrayList<>();
@@ -665,6 +724,15 @@ public final class CombatDirector {
             // hole-filler need.
             if (!allowed.contains(module)) {
                 skipped.add(new Skipped(module, Msg.of(PvpText.PROFILE_OFF)));
+                continue;
+            }
+            if (shell == ShellModule.XPLOITS && module.equals(ManagedModules.SURROUND)) {
+                // surround++ spends only where something can hurt you, and does something useful with no blocks at all:
+                // never left out for a shortage. But it swaps to the same stack as auto-trap, so it still sets aside
+                // Meteor's surround's share first (I3), or whatever is left of it.
+                belowMinimumTicks.remove(module);
+                enable.add(module);
+                claim(module, snapshot, remaining, claimedBy);
                 continue;
             }
             if (module.equals(ManagedModules.CRYSTAL_AURA)) {

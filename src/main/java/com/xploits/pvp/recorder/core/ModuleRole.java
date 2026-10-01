@@ -20,6 +20,8 @@ public enum ModuleRole {
     private static final Set<String> TRAP = Set.of("auto-trap", "auto-web", "auto-anvil", "auto-city");
     // Those auto-pvp never manages (they lock you in), but that still defend you when you turn them on.
     private static final Set<String> SELF_DEFENSE = Set.of("self-trap", "self-web", "self-anvil", "burrow");
+    // surround++, the computed shell auto-pvp drives in surround's place (shell-module xploits++): defence like it.
+    private static final Set<String> XPLOITS_DEFENSE = Set.of("surround++");
     private static final Set<String> TOTEMS = Set.of("auto-totem", "offhand");
 
     /** The role of a Meteor or Xploits module by its name; anything unknown is {@link #OTHER}. */
@@ -28,7 +30,7 @@ public enum ModuleRole {
         if (CRYSTAL.contains(module)) return CRYSTAL_OFFENSE;
         if (MELEE.contains(module)) return MELEE_OFFENSE;
         if (TRAP.contains(module)) return TRAP_OFFENSE;
-        if (ManagedModules.isDefensive(module) || SELF_DEFENSE.contains(module)) return DEFENSE;
+        if (ManagedModules.isDefensive(module) || SELF_DEFENSE.contains(module) || XPLOITS_DEFENSE.contains(module)) return DEFENSE;
         if (TOTEMS.contains(module)) return TOTEM;
         return OTHER;
     }

@@ -12,11 +12,60 @@ All notable changes to Xploits. The format is based on
   meteoraddons.com listing) instead of the default one.
 - The README opens with the Xploits banner and shows screenshots: `auto-pvp` in a fight with its HUD panel,
   the ClickGUI, `crystal-aura++`'s own settings and the `console` window.
+- **`surround++`**, a computed defensive shell: every tick it works out where a crystal that could hurt you would go
+  and covers the most dangerous spot first, with crying obsidian where plain obsidian would give the opponent a new
+  base; refills a mined wall the tick it opens; breaks an opponent's crystal next to you when its blast leaves you 2
+  health or more; walks you into a better hole when you are exposed (your keys always win: while you walk (a movement key held and your feet actually moving, crawling through a web included) it only breaks crystals; held still against a wall, it keeps refilling); fills your opponents' holes;
+  closes the shell completely for 5 seconds after a totem pop; `burrow` off by default. It never pins you to the centre
+  of the block and never turns itself off when your height changes, the two ways Meteor's `surround` worked against
+  you in the earlier worst-case lab runs (it switched itself off up to 43 times in a minute). In the lab (2 and 3 hacked attackers with an honest city, 60 s, 3 runs each) you lost
+  as many totems with it as with Meteor's `surround` and `self-trap` (7 in the four fights), with the same or one
+  fewer crystals reaching your head, for about one block more (the crying obsidian it opens with).
+- `auto-pvp` has a `shell-module` setting: `meteor` (default: Meteor's `surround` and `hole-filler`) or `xploits++`
+  (`surround++` in their place, on for as long as `auto-pvp` is). The HUD panel shows a shell line while `surround++`
+  is on.
 
 ### Fixed
 
+- `auto-pvp` no longer turns its defensive modules on and off several times a second in a crystal fight.
+  It judged the danger from the crystals standing at that instant, which come and go with every crystal
+  either side places and breaks, so it went from threatened to calm and back again between two crystals.
+  Now it goes on guard at once and stands down only after 3 seconds with nothing aimed at you. In the
+  bench scene that reproduced it, the defensive modules went from 10 switches in the first second to 2.
+  This is the first part of the critical `auto-pvp` fix announced with 0.7.1; the survival response
+  (a broken hole, a popped totem, webs, several attackers) comes next.
+- `auto-pvp` keeps the crystal aura on for as long as it is on itself, instead of turning it on only once
+  an opponent was in range. Turned on late, the aura started cold and missed the first crystals placed
+  against you: in the owner's real fights, with the aura already on he won 21 totems to 4 against four
+  opponents, and with `auto-pvp` turning it on as they arrived he lost 11 to 0. Without totems and with
+  nothing protecting you, it still stays off.
 - In a development run (`./gradlew runClient`, the in-game bench) the `console` window opens: it could not
   find its own classes there. The released jar was never affected.
+- `crystal-aura++` no longer stops placing while a block is right over your head (your own shell's roof, or an
+  opponent trapping your head). Its safety check counts every place you could reach before a crystal explodes, a
+  jump included, and under a block that jump was read as a place fully in the open, so every spot looked too
+  dangerous. A jump is now read where the block stops it, measured with the game's own collision; while an opponent
+  is mining that block, or when it is one a crystal can blow away (anything weaker than obsidian, such as stone), the
+  full jump still counts. On the bench, under a low ceiling it now places as often as
+  Meteor's aura (median 472 placements in 30 s at Safe, 474 at Balanced and 470 at Aggressive, from 416, 418 and
+  453; Meteor's 465), its lowest health never below 17.8. In a new scene where you jump under a ceiling one block up,
+  its lowest health in every run stayed above the reserve: 8.6 at Safe (reserve 5), 6.5 at Balanced (3.5) and 4.6 at
+  Aggressive (2). In the worst-case lab, two attackers with the city breaking again at once, it was held back on 8
+  ticks of the fight's 1200 instead of 1018 to 1162 (with `surround++` or Meteor's `surround`), and placed 64
+  crystals instead of 18 to 21, popping them 7 or 8 times instead of 3; in the slower city variant with Meteor's
+  `surround` you lost one totem more (5 to 6, from an opponent's hit; the cause is not established).
+- `crystal-aura++` could take a second crystal of its own for an opponent's and break it without checking your
+  reserve or the 2-health floor. Like Meteor's aura it sends a placement again every tick until the crystal appears;
+  when that first crystal was destroyed while a later placement was still on its way, the later one made a second
+  crystal, and only Meteor's `max-damage` and `anti-suicide` stood between it and you. On the bench such a break was
+  predicted to leave you with 0.2 to 0.5 health; each time it landed within the moment of invulnerability after the
+  opponent's previous hit, and nothing got through. Present since 0.7.0, `crystal-aura++`'s first release. Now the
+  rest of a placement stays yours for a second after its last attempt: breaking such a crystal must leave you at
+  least 2 health, as with every crystal of yours.
+- The in-game bench counted some hits from the opponent's own crystals as yours, when the opponent's crystal landed
+  on a block where your aura had just tried to place. The one reserve failure of the release bench of 2026-09-30
+  (`capp-balanced-near-death-totem`, 2.785 against a reserve of 3.5) was one of those hits, not one of yours. The
+  game itself was never affected.
 
 ## [0.7.1] — 2026-09-29
 

@@ -251,18 +251,85 @@ public final class MovementReach {
     }
 
     /**
-     * The exact worst raw damage over what we can reach (task C3), the one entry the adapter uses. Radius at most
-     * {@link #STILL_RADIUS}: {@link #reachPoints} at real exposure by branch and bound ({@link #rankedByWorstRaw},
-     * {@link #worstRawDamage(List, ExposureFunction, float)}). Above it: 0.7.0's {@link #worstRawDamage(double,
-     * double, double, double, double, long)} (exposure 1.0 over {@link #offsets}, no exposure asked), maxed with
-     * {@code floor} (the current position's real value), as 0.7.0's caller did; never below {@code floor} either
-     * way, and a NaN propagates in both. {@code exposure} is not called at all above the radius.
+     * The exact worst raw damage over what we can reach (task C3), with nothing over our head anywhere: {@link
+     * #worstReachRaw(double, double, double, double, double, long, Headroom, ExposureFunction, float)} with {@link
+     * Headroom#UNLIMITED}, which lowers no point, so exactly the result it gave before 0.7.2.
      */
     public static float worstReachRaw(double ex, double ey, double ez, double vx, double vz, long landingTicks,
                                       ExposureFunction exposure, float floor) {
+        return worstReachRaw(ex, ey, ez, vx, vz, landingTicks, Headroom.UNLIMITED, exposure, floor);
+    }
+
+    /**
+     * The exact worst raw damage over what we can reach (task C3), the one entry the adapter uses. Radius at most
+     * {@link #STILL_RADIUS}: {@link #reachPoints}, each raised one first lowered to its own column's {@code headroom}
+     * ({@link #clipped(List, Headroom)}, 0.7.2), at real exposure by branch and bound ({@link #rankedByWorstRaw},
+     * {@link #worstRawDamage(List, ExposureFunction, float)}). The points are lowered after their halfway points are
+     * added, never before: a halfway point is a place of its own, in its own column, with its own headroom. They are
+     * ranked by where they are once lowered, so each point's real raw still never exceeds its ceiling. Above the radius:
+     * 0.7.0's {@link #worstRawDamage(double, double, double, double, double, long)} (exposure 1.0 over {@link #offsets},
+     * no exposure asked), maxed with {@code floor} (the current position's real value), as 0.7.0's caller did; neither
+     * {@code exposure} nor {@code headroom} is called at all there. Never below {@code floor} either way, and a NaN
+     * propagates in both.
+     */
+    public static float worstReachRaw(double ex, double ey, double ez, double vx, double vz, long landingTicks,
+                                      Headroom headroom, ExposureFunction exposure, float floor) {
         if (!readsRealExposure(vx, vz, landingTicks)) {
             return Math.max(floor, worstRawDamage(ex, ey, ez, vx, vz, landingTicks));
         }
-        return worstRawDamage(rankedByWorstRaw(ex, ey, ez, reachPoints(vx, vz, landingTicks)), exposure, floor);
+        List<Offset> reach = clipped(reachPoints(vx, vz, landingTicks), headroom);
+        return worstRawDamage(rankedByWorstRaw(ex, ey, ez, reach), exposure, floor);
+    }
+
+    /**
+     * How far a box as big as yours can rise in one column before it touches a block above it (0.7.2, crystal-aura++
+     * under a roof). The column is your box moved {@code (dx, 0, dz)} from where it is now; the adapter measures the
+     * rise with vanilla's own collision, and {@link #clipped(Offset, Headroom)} decides what to do with it.
+     */
+    @FunctionalInterface
+    public interface Headroom {
+        /** Nothing over your head anywhere: every point stays where it is. */
+        Headroom UNLIMITED = (dx, dz) -> Double.POSITIVE_INFINITY;
+
+        /**
+         * The free rise, in blocks, in the column {@code (dx, dz)} from where you stand: at least {@link
+         * MovementReach#JUMP_HEIGHT} when nothing is in the way. Not a number, or below 0: not measured (the column's
+         * box already sits in a wall, say), and the point stays where it is.
+         */
+        double at(double dx, double dz);
+
+        /**
+         * Whether a block that stops the rise in the column {@code (dx, dz)} may be gone by the time the crystal
+         * explodes (0.7.2): someone else is mining it (the owner's decision), or an end crystal's explosion can break it
+         * ({@link CrystalBlast#canBreak}). Then the column keeps its full jump. No, unless the adapter has seen either.
+         */
+        default boolean mayVanish(double dx, double dz) {
+            return false;
+        }
+    }
+
+    /**
+     * {@code o} lowered to the rise its own column allows (0.7.2): a point above your feet whose column's {@link
+     * Headroom} is below its height is brought down to it, never up and never sideways, since a jump stops where the
+     * box meets a block. Before this, such a point was read as a box inside the roof, at exposure 1.0: a place you
+     * could never be, which under any roof made every spot look fully exposed and held every placement back. Left as it
+     * is: a point at or below your feet; a headroom that is not a number, is below 0, or is at or above the point's
+     * height; a column whose roof may vanish before the crystal explodes ({@link Headroom#mayVanish}: mined, or
+     * breakable by a crystal). A point lowered all the way down is {@code +0.0} high, so that it is the very same point
+     * as standing where you are.
+     */
+    public static Offset clipped(Offset o, Headroom headroom) {
+        if (!(o.dy() > 0)) return o;
+        double free = headroom.at(o.dx(), o.dz());
+        if (!(free >= 0) || free >= o.dy()) return o;
+        if (headroom.mayVanish(o.dx(), o.dz())) return o;
+        return new Offset(o.dx(), free + 0.0, o.dz());
+    }
+
+    /** Every point of {@code points}, in order, {@link #clipped(Offset, Headroom) lowered} to its own column's headroom. */
+    public static List<Offset> clipped(List<Offset> points, Headroom headroom) {
+        List<Offset> lowered = new ArrayList<>(points.size());
+        for (Offset o : points) lowered.add(clipped(o, headroom));
+        return List.copyOf(lowered);
     }
 }

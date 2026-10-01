@@ -55,8 +55,10 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.ShapeContext;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifierSlot;
 import net.minecraft.entity.Entity;
@@ -73,6 +75,7 @@ import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
+import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.util.Hand;
@@ -82,6 +85,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.world.explosion.Explosion;
@@ -116,14 +120,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   health, hands and totem count read at that moment) and the in-flight ledger;</li>
  *   <li>{@code PacketEvent.Receive} for {@code EntityDamageS2CPacket}: on the Netty thread, only queued; the next
  *   {@code TickEvent.Pre} hands the full hits on other players to {@link CrystalBrain#targetHurt} before its break
- *   phase, so they count as read at the previous pre-tick;</li>
+ *   phase, so they count as read at the previous pre-tick; and {@code BlockBreakingProgressS2CPacket}, the same way,
+ *   read at the next pre-tick into who is mining which block ({@link #readMining});</li>
  *   <li>{@code TickEvent.Pre} at {@code LOWEST - 666}: Meteor's last-rotation hold (lines 722-727).</li>
  * </ul>
  *
  * <p>Every self-damage budget number (spots, standing and in-flight crystals) is the worst over every
  * position you could reach before that crystal explodes, not only where you stand right now ({@link
  * #exactSelfDamage}, task R3-16): {@link #velocityThisTick}, set once per pre-tick, and {@link
- * CrystalBrain#landingTicksBound()} feed {@link MovementReach}.
+ * CrystalBrain#landingTicksBound()} feed {@link MovementReach}; so does {@link #columns} (0.7.2), how far our box can
+ * really rise in each column, so a jump under a roof is read where it stops.
  *
  * <p>While Meteor's crystal-aura is on it does nothing, warns once each time that starts and never turns
  * itself off (Q3); when Meteor's is off again it starts afresh, as on activation, because Meteor's aura acted
@@ -468,6 +474,25 @@ public class CrystalAuraPlusPlus extends XploitsModule {
      * game thread, where {@code mc.world} is safe to read.
      */
     private final Queue<EntityStatusS2CPacket> statusPackets = new ConcurrentLinkedQueue<>();
+    /**
+     * Block-breaking reports received since the last pre-tick (0.7.2: a roof someone is mining keeps its column's full
+     * jump, {@link MovementReach.Headroom#mayVanish}), the same way as {@link #damagePackets}: filled on the Netty
+     * thread, read on the game thread by {@link #readMining}, the way surround++ reads them.
+     */
+    private final Queue<BlockBreakingProgressS2CPacket> miningPackets = new ConcurrentLinkedQueue<>();
+    /** The blocks another player is mining now, by position (memory only), with the {@link #miningClock} of their last report. */
+    private final Map<BlockPos, Long> mining = new HashMap<>();
+    /**
+     * Pre-ticks read by {@link #readMining}: every pre-tick with a player and a world, measured or skipped (a refusal,
+     * a health that is not a number), as surround++ counts them, so a mark ages in real pre-ticks.
+     */
+    private long miningClock;
+    /** The world {@link #mining} was read in: another one (a world change) forgets it. */
+    private ClientWorld miningWorld;
+    /** A mining report not renewed for this many pre-ticks is dropped (a miner who left without a word), as surround++ does. */
+    private static final int MINING_STALE_TICKS = 40;
+    /** How far our box can rise in each column the reach asks about, this pre-tick (0.7.2). */
+    private final Columns columns = new Columns();
     /** This activation's pre-tick number. */
     private long tick;
 
@@ -512,6 +537,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         deferredBefore = 0;
         damagePackets.clear();
         statusPackets.clear();
+        forgetMining();
+        miningWorld = mc.world;
+        columns.forget();
         tick = 0;
         refusal.update(false);
         forgetTick();
@@ -531,6 +559,8 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         forgetTick();
         damagePackets.clear();
         statusPackets.clear();
+        miningPackets.clear();
+        columns.forget();
         lastRotationPos = null;
         refusal.update(false);
     }
@@ -607,9 +637,20 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         return brain.finishingCrystalsAttacked();
     }
 
-    /** The crystals of ours still remembered, each with whether we attacked it (read-only, for the bench). */
-    public Map<Integer, Boolean> ownCrystals() {
-        return brain.ownCrystals();
+    /**
+     * Every crystal the brain treats as ours for the budget, burst tail included, each with whether we attacked it
+     * (read-only, for the bench: {@link CrystalBrain#ownCrystalsWithBurstTail}).
+     */
+    public Map<Integer, Boolean> ownCrystalsWithBurstTail() {
+        return brain.ownCrystalsWithBurstTail();
+    }
+
+    /**
+     * The crystals of a placement of ours, in time or late, each with whether we attacked it: what this module looks
+     * after itself, so surround++ leaves them to it ({@link CrystalBrain#ownCrystalsWithoutBurstTail}).
+     */
+    public Map<Integer, Boolean> ownCrystalsWithoutBurstTail() {
+        return brain.ownCrystalsWithoutBurstTail();
     }
 
     /** How many of this pre-tick's targets have a trusted reported health (task B0b, read-only, for the bench). */
@@ -644,6 +685,9 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // exactSelfDamage's own budget-off skip; this still costs only two subtractions when it does run.
         velocityThisTick = selfBudget.get() ? horizontalVelocity(feet) : Vec3d.ZERO;
         exposureBudget.reset(EXPOSURE_RAYCASTS_PER_TICK);
+        // 0.7.2: who is mining which block now; then every column's rise is measured afresh, once, as it is asked for.
+        readMining(p);
+        columns.forget();
 
         List<TargetView> seen = measureTargets();
         List<CrystalSeen> standing = new ArrayList<>();
@@ -709,6 +753,11 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         damagePackets.clear();
         statusPackets.clear();
         brain.forgetWindows();
+        columns.forget();
+        // The mining reports keep being read (a refusal that ends does not start blind); with no player or no world
+        // (a world change) they are forgotten.
+        if (mc.player == null || mc.world == null) forgetMining();
+        else readMining(mc.player);
     }
 
     /**
@@ -741,6 +790,36 @@ public class CrystalAuraPlusPlus extends XploitsModule {
     private void onPacketReceive(PacketEvent.Receive event) {
         if (event.packet instanceof EntityDamageS2CPacket damage) damagePackets.add(damage);
         else if (event.packet instanceof EntityStatusS2CPacket status) statusPackets.add(status);
+        else if (event.packet instanceof BlockBreakingProgressS2CPacket breaking) miningPackets.add(breaking);
+    }
+
+    /**
+     * Other players' mining reports since the last pre-tick (0.7.2, the owner's decision; read the way surround++ reads
+     * them): a stage 0-9 marks its block as being mined, anything else (a break finished or given up) unmarks it, and a
+     * mark not renewed for {@value #MINING_STALE_TICKS} pre-ticks goes ({@link #miningClock}, which counts the skipped
+     * pre-ticks too). Our own mining is no attack on our roof. A death or a world change forgets every mark, and the
+     * reports not read yet: they were about another life or place.
+     */
+    private void readMining(ClientPlayerEntity p) {
+        miningClock++;
+        if (!p.isAlive() || mc.world != miningWorld) {
+            forgetMining();
+            miningWorld = mc.world;
+            if (!p.isAlive()) return;
+        }
+        for (BlockBreakingProgressS2CPacket packet; (packet = miningPackets.poll()) != null; ) {
+            if (packet.getEntityId() == p.getId()) continue;
+            BlockPos pos = packet.getPos().toImmutable();
+            int stage = packet.getProgress();
+            if (stage < 0 || stage > 9) mining.remove(pos);
+            else mining.put(pos, miningClock);
+        }
+        mining.values().removeIf(at -> miningClock - at > MINING_STALE_TICKS);
+    }
+
+    private void forgetMining() {
+        miningPackets.clear();
+        mining.clear();
     }
 
     /**
@@ -945,14 +1024,91 @@ public class CrystalAuraPlusPlus extends XploitsModule {
         // raycast budget cannot pay for reads at exposure 1.0, the cautious value.
         ClientPlayerEntity p = mc.player;
         // One radius decides (task C3): up to MovementReach.STILL_RADIUS the real exposure above, beyond it exactly
-        // 0.7.0's exposure-1.0 worst case, so nothing here asks for a raycast while we move.
+        // 0.7.0's exposure-1.0 worst case, so nothing here asks for a raycast while we move. Up to it, a raised point is
+        // first lowered to the rise its column really allows (0.7.2, columns), so a roof reads where a jump stops.
         float worst = MovementReach.worstReachRaw(explosion.x - feet.x, explosion.y - feet.y, explosion.z - feet.z,
-            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound(),
+            velocityThisTick.x, velocityThisTick.z, brain.landingTicksBound(), columns,
             o -> o.dx() == 0 && o.dy() == 0 && o.dz() == 0 ? currentExposure
                 : ExposureAt.at(p, explosion, o.dx(), o.dy(), o.dz(), exposureBudget), floor);
         worstCaseNanos += System.nanoTime() - start;
         worstCaseCalls++;
         return worst;
+    }
+
+    /** One column the reach asks about: our box moved {@code (dx, 0, dz)} from where it is. */
+    private record Column(double dx, double dz) {
+    }
+
+    /**
+     * This pre-tick's {@link MovementReach.Headroom} (0.7.2): how far our box can rise in each column the reach asks
+     * about ({@link ExposureAt#rise}, vanilla's own collision, block collisions only, as {@link ExposureAt#at}'s own
+     * guard), and whether that rise may grow before the crystal explodes: a block in the way is being mined by someone
+     * else ({@link #minedIn}), or a block that stops the rise is one a crystal can break ({@link
+     * ExposureAt#stoppedByBreakable}). It only measures: {@link MovementReach#clipped(MovementReach.Offset,
+     * MovementReach.Headroom)} decides. Each column is
+     * measured once and remembered for the rest of the pre-tick (the reach points follow only this pre-tick's velocity
+     * and landing bound, so every crystal and spot asks about the same few columns); {@link #forget} at every pre-tick,
+     * and a new measurement as soon as our box is not the one measured from (a fast-break read after we moved).
+     */
+    private final class Columns implements MovementReach.Headroom {
+        private final Map<Column, Double> free = new HashMap<>();
+        private final Map<Column, Boolean> vanish = new HashMap<>();
+        /** The box the answers above were measured from; null before any. */
+        private Box measuredFrom;
+
+        void forget() {
+            free.clear();
+            vanish.clear();
+            measuredFrom = null;
+        }
+
+        /** Forgets every answer measured from another box than ours now. */
+        private void follow() {
+            Box box = mc.player.getBoundingBox();
+            if (box.equals(measuredFrom)) return;
+            free.clear();
+            vanish.clear();
+            measuredFrom = box;
+        }
+
+        @Override
+        public double at(double dx, double dz) {
+            follow();
+            return free.computeIfAbsent(new Column(dx, dz),
+                c -> ExposureAt.rise(mc.player, dx, dz, MovementReach.JUMP_HEIGHT));
+        }
+
+        @Override
+        public boolean mayVanish(double dx, double dz) {
+            follow();
+            Column column = new Column(dx, dz);
+            Boolean known = vanish.get(column);
+            if (known != null) return known;
+            boolean answer = minedIn(ExposureAt.sweep(mc.player, dx, dz, MovementReach.JUMP_HEIGHT));
+            if (!answer) {
+                double rise = at(dx, dz);
+                // Only a rise a block really stops has a block that could be blown away.
+                answer = rise >= 0 && rise < MovementReach.JUMP_HEIGHT && ExposureAt.stoppedByBreakable(mc.player, dx, dz, rise);
+            }
+            vanish.put(column, answer);
+            return answer;
+        }
+    }
+
+    /**
+     * Whether a block another player is mining ({@link #mining}) has a collision shape in {@code sweep}, the space our
+     * box would rise through in one column ({@link ExposureAt#sweep}): one of the blocks that can stop that column's
+     * jump. Its shape as vanilla's block collisions see it for us ({@code ShapeContext.of} our player, the context they
+     * use for an entity).
+     */
+    private boolean minedIn(Box sweep) {
+        for (BlockPos pos : mining.keySet()) {
+            VoxelShape shape = mc.world.getBlockState(pos).getCollisionShape(mc.world, pos, ShapeContext.of(mc.player));
+            for (Box part : shape.getBoundingBoxes()) {
+                if (part.offset(pos).intersects(sweep)) return true;
+            }
+        }
+        return false;
     }
 
     /**

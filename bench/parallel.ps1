@@ -15,6 +15,13 @@
     silently not be what any of them measured. If a shard fails, the others' reports are kept, the failed
     shard is named, and this script fails without attempting a merge (no partial merge ever passes the gate).
 
+    Runs at below-normal priority (the owner's decision, 2026-10-01): with 4 clients rendering at full rate the
+    desktop slowed down badly. This script lowers its own priority first; Windows gives a process created by a
+    below-normal one the same class, so every shard's gradlew, its Gradle JVM and the Minecraft client that JVM
+    starts inherit it. `--no-daemon` keeps that chain whole: an idle Gradle daemon left over from another build is
+    not our child, would keep its normal priority, and the client it started would too. No measurement setting
+    changes.
+
 .PARAMETER Shards
     How many clients to run at once, 1..4 (the owner's machine: 4 comfortably). 1 just runs the plain,
     unsharded bench (./gradlew runClientGameTest) — no worktree juggling needed.
@@ -63,6 +70,11 @@ if ($Status) { Fail "the tree is dirty; commit or set the change aside before a 
 $Commit = (git rev-parse HEAD).Trim()
 Write-Host "bench: sharding $Shards way(s) at commit $Commit"
 
+# Below-normal priority for everything this run starts (see .DESCRIPTION): set on this process before any child
+# exists, and inherited from here down to each Minecraft client.
+(Get-Process -Id $PID).PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal
+Write-Host "bench: running at below-normal priority (inherited by every shard's Gradle and Minecraft processes)"
+
 # The usual bench flags, forwarded identically to every shard (ReportMerge refuses a mismatch).
 $ShardFlags = [System.Collections.Generic.List[string]]::new()
 if ($Full) { $ShardFlags.Add("-Pbench.full") }
@@ -76,7 +88,7 @@ if ($Shards -eq 1) {
     Write-Host "bench: -Shards 1 — running the plain (unsharded) bench, no worktrees needed"
     $Flags = @($ShardFlags)
     if ($UpdateBaseline) { $Flags += "-Pbench.updateBaseline" }
-    & .\gradlew.bat runClientGameTest @Flags
+    & .\gradlew.bat --no-daemon runClientGameTest @Flags
     exit $LASTEXITCODE
 }
 
@@ -127,7 +139,7 @@ for ($k = 1; $k -le $Shards; $k++) {
     # Only the Minecraft client's own window (a separate top-level window the JVM creates later, not this
     # console) stays visible, since the gametest needs it.
     $Proc = Start-Process -FilePath (Join-Path $Dir "gradlew.bat") `
-        -ArgumentList (@("runClientGameTest") + $KFlags) `
+        -ArgumentList (@("--no-daemon", "runClientGameTest") + $KFlags) `
         -WorkingDirectory $Dir -RedirectStandardOutput $Log -RedirectStandardError $ErrLog -PassThru -WindowStyle Hidden
     $Procs += [PSCustomObject]@{ K = $k; Dir = $Dir; Process = $Proc; Log = $Log }
 }

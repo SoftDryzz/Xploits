@@ -76,6 +76,13 @@ class ScenarioSelectionTest {
         for (RiskLevel level : List.of(BALANCED, AGGRESSIVE)) {
             all.add(new Mirrored("capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-cover", true, level, "ca-cover"));
         }
+        // 0.7.2: the roof-jump pair (healing on, so -regen), right after cover.
+        all.add(new Mirrored("ca-roof-jump-regen", true, null, null));
+        all.add(new Mirrored("capp-roof-jump-regen", true, SAFE, "ca-roof-jump-regen"));
+        for (RiskLevel level : List.of(BALANCED, AGGRESSIVE)) {
+            all.add(new Mirrored("capp-" + level.name().toLowerCase(java.util.Locale.ROOT) + "-roof-jump-regen", true, level,
+                "ca-roof-jump-regen"));
+        }
         // Task A3: the real fights, last, ca-<f> then capp-<f> (Safe) then capp-<level>-<f> for each other
         // level, for every fight of the group, exactly as every block above; city between the two groups.
         addRealFights(all, REAL_FIGHTS_BEFORE_CITY);
@@ -103,9 +110,9 @@ class ScenarioSelectionTest {
     }
 
     @Test
-    void theBenchHas77Scenarios() {
-        assertEquals(77, scenarios().size());
-        assertEquals(77, names(scenarios()).stream().distinct().count());
+    void theBenchHas81Scenarios() {
+        assertEquals(81, scenarios().size());
+        assertEquals(81, names(scenarios()).stream().distinct().count());
     }
 
     @Test
@@ -118,18 +125,19 @@ class ScenarioSelectionTest {
             "capp-balanced-above-regen", "capp-balanced-below-regen", "capp-balanced-approach-regen",
             "capp-balanced-strafe-regen", "ca-self-circle-regen", "ca-self-strafe-regen",
             "capp-balanced-self-circle-regen", "capp-balanced-self-strafe-regen", "ca-cover", "capp-balanced-cover",
+            "ca-roof-jump-regen", "capp-balanced-roof-jump-regen",
             // Task A3: the real fights' Meteor and Balanced pairs (Safe and Aggressive are experimental).
             "ca-exchange", "ca-hole-standoff", "capp-balanced-exchange", "capp-balanced-hole-standoff",
             "ca-city", "capp-balanced-city", "ca-near-death", "ca-near-death-totem",
             "capp-balanced-near-death", "capp-balanced-near-death-totem"));
         assertEquals(expected, names(played));
-        assertEquals(44, played.size());
+        assertEquals(46, played.size());
     }
 
     @Test
     void theEverydayRunSkipsSafeAndAggressiveOnly() {
         List<Mirrored> skipped = scenarios().stream().filter(s -> !Profile.EVERYDAY.plays(s.measure(), s.risk())).toList();
-        assertEquals(33, skipped.size());
+        assertEquals(35, skipped.size());
         for (Mirrored s : skipped) {
             boolean experimental = s.risk() == SAFE || s.risk() == AGGRESSIVE;
             assertEquals(true, s.measure() && experimental, s.name());
@@ -143,16 +151,16 @@ class ScenarioSelectionTest {
 
     @Test
     void theFullRunPlaysEveryScenario() {
-        assertEquals(77, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
+        assertEquals(81, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
     }
 
     @Test
-    void theCacheServesExactlySeventeenMeteorMeasures() {
+    void theCacheServesExactlyEighteenMeteorMeasures() {
         List<String> cacheable = names(scenarios().stream()
             .filter(s -> MeteorCache.cacheable(s.measure(), s.name(), s.risk() != null, s.compareWith() != null)).toList());
         assertEquals(List.of("ca-still", "ca-circler", "ca-defender", "ca-still-regen", "ca-circler-regen",
             "ca-above-regen", "ca-below-regen", "ca-approach-regen", "ca-strafe-regen", "ca-self-circle-regen",
-            "ca-self-strafe-regen", "ca-cover",
+            "ca-self-strafe-regen", "ca-cover", "ca-roof-jump-regen",
             // Task A3: the real fights' own Meteor measures are cacheable the same way (measure, ca-*, no risk,
             // no compare).
             "ca-exchange", "ca-hole-standoff", "ca-city", "ca-near-death", "ca-near-death-totem"), cacheable);
@@ -161,9 +169,9 @@ class ScenarioSelectionTest {
     /**
      * SHA-256 of {@code Scenarios.java}, line endings normalized, when this mirror was last checked against the
      * real {@code Scenarios.all()} (task A3: the real fights added, last, city between the two
-     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; every earlier scenario's name, kind, level and twin unchanged).
+     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; 0.7.2: the roof-jump pair right after cover; every earlier scenario's name, kind, level and twin unchanged).
      */
-    private static final String SCENARIOS_FINGERPRINT = "f3f5f32f35fef1ebdc452d2018a9ca798aebde24aef4ead570c25d5076e05ae9";
+    private static final String SCENARIOS_FINGERPRINT = "ef9b5cae683a13c22d22eae71dbbc9dfd88cb5fca8fadaef72eb833fe1691635";
 
     /**
      * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},

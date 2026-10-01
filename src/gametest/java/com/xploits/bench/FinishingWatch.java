@@ -72,7 +72,7 @@ final class FinishingWatch {
                     if (client.world != null && client.world.getEntityById(id) != null) present.add(id);
                 }
                 trusted = module.trustedTargets();
-                own = module.ownCrystals();
+                own = module.ownCrystalsWithBurstTail();
                 for (Integer id : own.keySet()) {
                     if (client.world != null && client.world.getEntityById(id) != null) ownPresent.add(id);
                 }
@@ -150,13 +150,29 @@ final class FinishingWatch {
      * Task C2 (I2): the events among {@code damage} that are ours for the reserve rules: the recorder's own
      * attribution plus every hit whose direct source was a crystal we placed, even one the opponent's autobreak
      * set off ({@link OwnHits}). Without crystal-aura++ under test only the recorder's attribution is known.
+     * 0.8.0: never a crystal the bench's own scripts spawned ({@link OwnHits#ownIds}, {@link Bench#scriptCrystals}).
      */
     Set<Integer> ownIndexes(List<DamageEvent> damage) {
         // Meteor's runs too: the recorder claims crystals from the placement packets, whichever module sent them.
         List<HitSource> sources = bench.fromClient(client -> Modules.get().get(FightRecorder.class).hitSources());
-        Set<Integer> ids = new HashSet<>(ownIds);
-        ids.addAll(bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalIds()));
-        return OwnHits.indexes(damage, sources, ids);
+        return OwnHits.indexes(damage, sources, ownIds());
+    }
+
+    /** Our crystals for {@link #ownIndexes}: the brain's and the recorder's claimed ones, less the bench's own. */
+    private Set<Integer> ownIds() {
+        Set<Integer> claimed = bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalIds());
+        return OwnHits.ownIds(ownIds, claimed, bench.scriptCrystals());
+    }
+
+    /**
+     * 0.8.0, log only: how many crystals the brain or the recorder took for ours although a script of the bench spawned
+     * them (the opponent's), which {@link #ownIndexes} leaves out.
+     */
+    int scriptCrystalsTakenForOurs() {
+        Set<Integer> taken = new HashSet<>(ownIds);
+        taken.addAll(bench.fromClient(client -> Modules.get().get(FightRecorder.class).claimedCrystalIds()));
+        taken.retainAll(bench.scriptCrystals());
+        return taken.size();
     }
 
     /** Health lost to hits that are ours ({@link #ownIndexes}), finishing hits included. */

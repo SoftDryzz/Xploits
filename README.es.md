@@ -5,22 +5,24 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Diez módulos que se encienden por separado.
+otros servidores anarchy. Once módulos que se encienden por separado.
 
 ## Por qué Xploits
 
 - **`crystal-aura++` va a por la muerte, y nunca te mata a ti.** Con el rival al borde de la muerte lo
-  remata en todos los niveles de riesgo, donde la 0.7.0 no hacía nada. Solo pasa de tu reserva para
-  matar, solo mientras llevas un tótem y otro de repuesto, y nunca por debajo de 2 de vida en los demás
-  casos.
-- **Hace más daño que el `crystal-aura` de Meteor donde importa.** Tras una cobertura, 540 de daño
-  frente a 490; con el rival más bajo que tú, 304 frente a 288; con él yendo y viniendo, 37 frente a 31.
-  Donde va por detrás (mientras esquivas, y el intercambio a campo abierto) lo dice: mira los
+  remata en todos los niveles de riesgo, donde la 0.7.0 no hacía nada (7 de 9 tandas en el banco de la
+  0.8.0; en las otras dos no hizo ningún daño, como también le pasa a veces al aura de Meteor en esa
+  escena). Solo pasa de tu reserva para matar, solo mientras llevas un tótem y otro de repuesto, y nunca
+  por debajo de 2 de vida en los demás casos.
+- **Hace más daño que el `crystal-aura` de Meteor donde importa.** Con el rival yendo y viniendo, 38 de
+  daño frente a 31; con él más alto que tú, 297 frente a 287; más bajo, 309 frente a 303; tras una
+  cobertura, 500 frente a 490. Donde va por detrás (mientras te mueves, y el intercambio a campo
+  abierto) lo dice: mira los
   [problemas conocidos](docs/known-issues.md).
 - **Tus propios cristales nunca te dejaron por debajo de tu reserva en ninguna tanda del banco de la
-  0.7.1**: 77 escenarios, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
+  0.8.0**: 81 escenarios, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
   contra rivales que atacan, rompen tus cristales y te bloquean los sitios. El `crystal-aura` de Meteor
-  bajó hasta 0,2 de vida en el mismo banco.
+  bajó hasta 0,1 de vida en el mismo banco.
 - **`auto-pvp` enciende los módulos de combate adecuados en el momento adecuado** — cristales, trampas,
   telarañas, surround, rellenar agujeros y el resto — y solo apaga los que encendió él.
 - **`fight-recorder` te dice por qué moriste**: un fichero JSON por pelea con el reparto de daño, tus
@@ -88,9 +90,10 @@ Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga
 
 | Quién | Qué toca | Cómo |
 |---|---|---|
-| `auto-pvp` | El aura de cristal que elige `crystal-module` — `crystal-aura` de Meteor de fábrica, `crystal-aura++` propia de Xploits con `xploits++` — más `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround`, `hole-filler`, `anti-anvil`, `anti-bed`, `anti-anchor` | Los enciende y apaga según la situación. **Solo apaga los que encendió él**: si tocas uno a mano, deja de tocarlo. Nunca toca el aura que `crystal-module` no eligió |
+| `auto-pvp` | El aura de cristal que elige `crystal-module` — `crystal-aura` de Meteor de fábrica, `crystal-aura++` propia de Xploits con `xploits++` — más `auto-trap`, `auto-web`, `auto-anvil`, `auto-city`, `surround` y `hole-filler` (o, en su lugar, `surround++` propio de Xploits, con `shell-module` en `xploits++`), `anti-anvil`, `anti-bed`, `anti-anchor` | Los enciende y apaga según la situación. **Solo apaga los que encendió él**: si tocas uno a mano, deja de tocarlo. Nunca toca el aura que `crystal-module` no eligió |
 | `auto-pvp` | Tu **lista de amigos de Meteor** | Mete a los tuyos mientras está encendido, para que los cinco módulos de combate tampoco les ataquen. Al apagarlo quita **solo los que puso él** |
 | `auto-pvp` | El ajuste `anti-suicide` de `crystal-aura` | Solo lo **lee**, para saber si puede fiarse de que Meteor no te mate con tu propio cristal |
+| `surround++` | `burrow` | Solo con su ajuste `burrow` encendido (apagado de fábrica): lo enciende para un solo burrow, y el `burrow` de Meteor se apaga solo después |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
 | `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco — igual que `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (si se puso) y su propia censura, que quedan cambiados para siempre |
 
@@ -98,7 +101,7 @@ Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad
 
 ---
 
-## Los diez módulos
+## Los once módulos
 
 ### `auto-travel` — volar a algún sitio sin dejar una flecha hacia tu base
 
@@ -181,7 +184,11 @@ si tocas uno a mano, deja de tocarlo.
 
 Decide por **dos ejes a la vez**: en qué fase está el enemigo (acercándose, en superficie, rodeado,
 enterrado, huyendo) y qué te está apuntando a ti. Lo segundo con el daño que ya tienes encima
-—cristales colocados, gente con espada—, no con un contador de tótems.
+—cristales colocados, gente con espada—, no con un contador de tótems. En cuanto algo te apunta se pone
+en guardia y no la baja hasta que lleva 3 segundos sin apuntarte nada, así que sus módulos defensivos no
+se apagan entre dos cristales. El aura de cristales que elige `crystal-module` se queda encendida mientras
+`auto-pvp` lo esté: si solo se encendía con un rival ya a tiro, empezaba en frío y se perdía los primeros
+cristales que te ponían.
 
 **No ataca a los tuyos**: tus amigos de Meteor, los couriers de `kit-requester` y tu lista de
 `auto-tpy`. Y como los cinco módulos de combate eligen su propio objetivo, mientras está encendido
@@ -207,6 +214,13 @@ con vida sin tener uno en la mano.
 solo mientras el agujero está entero: el `surround` de Meteor rellena los cuatro lados, nunca el
 bloque de debajo, así que esto cierra un hueco que se le escapaba.
 
+**`shell-module` elige la defensa en la que te mantiene `auto-pvp`**: `meteor` (de fábrica) es el `surround` y el
+`hole-filler` de Meteor como hasta ahora; `xploits++` es `surround++`, el propio de Xploits, en su lugar — ver más
+abajo. Con `xploits++` se queda encendido mientras lo esté `auto-pvp`, como el aura de cristal, porque solo coloca donde
+algo puede hacerte daño, y rellena él mismo los agujeros de tus rivales, así que `hole-filler` no se usa. Sigue en
+`meteor` de fábrica hasta que el laboratorio también juegue contra un rival que ponga él mismo bases para cristales (los
+atacantes del laboratorio nunca lo hacen) y el banco de la versión confirme `surround++`.
+
 **Los perfiles de estilo cambian los valores propios de auto-pvp y qué módulos de los diez puede
 usar** — nunca los ajustes internos de un módulo que enciende (`crystal-aura`, `surround`...). Hay
 tres de fábrica siempre disponibles, más hasta 20 tuyos:
@@ -228,13 +242,16 @@ un campo de texto — apagado, usa `.xploits pvp profile use`.
 ### `crystal-aura++` — crystal-aura con un suelo bajo tu vida
 
 El comportamiento del `crystal-aura` de Meteor — las mismas reglas de colocar y romper, los mismos
-valores de fábrica — más un presupuesto de daño propio que nunca deja que tu vida (más absorción) baje
-de una reserva. Suma todos los cristales que todavía pueden hacerte daño, ya puestos o de camino a
-explotar, y calcula el daño exacto de un golpe (Meteor lo redondea hacia abajo).
+valores de fábrica — más un presupuesto de daño propio: solo coloca un cristal si tu vida (más
+absorción) seguiría en una reserva o por encima aunque estallaran ese cristal y todos los demás que
+todavía pueden hacerte daño, y solo rompe uno de tus propios cristales si te deja al menos 2. La única
+excepción es `finishing-blow`, más abajo. Suma todos los cristales que todavía pueden hacerte daño, ya
+puestos o de camino a explotar, y calcula el daño exacto de un golpe (Meteor lo redondea hacia
+abajo).
 
-> **Experimental en la 0.7.1.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
+> **Experimental en la 0.8.0.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
 > pero todavía se está afinando: en algunas situaciones hace menos daño que el `crystal-aura` de Meteor
-> (mira la tabla y los problemas conocidos más abajo). Las próximas 0.7.x siguen mejorando su ataque.
+> (mira la tabla y los problemas conocidos más abajo). Las próximas versiones siguen mejorando su ataque.
 
 **Úsalo desde el ajuste `crystal-module` de `auto-pvp`** (`meteor` de fábrica | `xploits++`), o
 enciende `crystal-aura++` por su cuenta. **No hace nada mientras el `crystal-aura` de Meteor esté
@@ -274,7 +291,7 @@ encendido) deja que un cristal que remata al rival pase de la reserva:
 - **En servidores que ocultan la vida de los demás** (plugins al estilo 2b2t) no hace nada: nunca se
   fía de la vida del rival.
 
-**Medido** (banco de pruebas de la 0.7.1, 29-09-2026; 100 ms de ping simulado; cristales ilimitados;
+**Medido** (banco de pruebas de la 0.8.0, 01-10-2026; 100 ms de ping simulado; cristales ilimitados;
 regeneración de vida natural solo donde se indica; mediana de 3 tandas; los rivales de las primeras
 filas de la tabla nunca atacan, y en las peleas del final el rival ataca). Primeras filas: daño hecho /
 tu vida más baja de las 3 tandas, Balanced frente al `crystal-aura` de Meteor. Filas de pelea: resultado
@@ -284,38 +301,39 @@ perdiste tú) y el momento del primer golpe al rival, cuando se midió:
 | Situación | Meteor | Balanced |
 |---|---|---|
 | Rival quieto | 30 / 3,4 | 30 / 3,5 |
-| Rival dando vueltas | 20 / 3,8 | 20 / 3,9 |
+| Rival dando vueltas | 20 / 3,7 | 20 / 3,9 |
 | Quieto, con regeneración | 40 / 0,2 | 40,8 / 3,5 |
-| Dando vueltas, con regeneración | 30 / 0,7 | 26 / 3,8 |
-| Rival 3 bloques más alto | 303 / 18,8 | 296 / 18,8 |
-| Rival 3 bloques más bajo | 288 / 18,8 | 304 / 18,8 |
-| Rival yendo y viniendo | 31 / 0,5 | 37 / 3,5 |
-| Rival esquivando a los lados | 38 / 0,3 | 31 / 3,5 |
-| Tú caminando en círculos | 32 / 0,4 | 31 / 4,4 |
-| Tú esquivando, rival dando vueltas | 29,8 / 0,4 | 27 / 3,8 |
-| Tras una cobertura | 490 / 18,0 | 540 / 17,3 |
-| Pelea: rival casi muerto, sin tótem | 2-1-0, saldo 0, 0,5 s | 3-0-0, saldo 0, 0,6 s |
-| Pelea: rival casi muerto, con tótem | 3-0-0, saldo 6, 0,45 s | 3-0-0, saldo 5 |
-| Pelea: intercambio a campo abierto | 3-0-0, saldo 8 | 0-3-0, saldo 2 |
+| Dando vueltas, con regeneración | 30 / 0,6 | 28,8 / 4,4 |
+| Rival 3 bloques más alto | 287 / 18,8 | 297 / 18,8 |
+| Rival 3 bloques más bajo | 303 / 18,8 | 309 / 18,8 |
+| Rival yendo y viniendo | 31 / 0,5 | 37,7 / 3,5 |
+| Rival esquivando a los lados | 30 / 0,3 | 30,9 / 3,5 |
+| Tú caminando en círculos | 40 / 0,1 | 30,8 / 4,3 |
+| Tú esquivando, rival dando vueltas | 30 / 0,2 | 27 / 4,0 |
+| Tras una cobertura | 490 / 18,0 | 500 / 17,9 |
+| Tú saltando bajo un techo, con regeneración | 90 / 0,2 | 71,9 / 6,5 |
+| Pelea: rival casi muerto, sin tótem | 3-0-0, saldo 0, 0,45 s | 2-1-0, saldo 0, 0,58 s |
+| Pelea: rival casi muerto, con tótem | 3-0-0, saldo 6, 0,5 s | 3-0-0, saldo 6 |
+| Pelea: intercambio a campo abierto | 2-1-0, saldo 8 | 0-3-0, saldo 2 |
 | Pelea: los dos en un agujero | 0-3-0, saldo 0 | 0-3-0, saldo 0 |
 | Pelea: rival minando tu agujero | 0-3-0, saldo 1 | 0-3-0, saldo 0 |
 
 En todas las tandas de todos los niveles la reserva se mantuvo frente a tus propios cristales: ni una
 muerte ni un tótem perdido por uno de ellos (un remate que mata puede pasar de ella, como se explica
 arriba). En las peleas los cristales del rival pueden dejarte por debajo de la reserva, que solo vigila
-los tuyos. Con el `crystal-aura` de Meteor tu vida bajó hasta 0,2.
+los tuyos. Con el `crystal-aura` de Meteor tu vida bajó hasta 0,1.
 
 **Problemas conocidos:**
 
-- **Mientras te mueves tú** es prudente a propósito. Caminando en círculos ya hace más o menos el daño
-  de Meteor en Balanced (en Safe hace menos), pero mientras esquivas sigue haciendo menos y saca el
-  primer tótem más tarde. Ajustar esa prudencia según lo que te mueves de verdad está previsto para la
-  0.7.2.
+- **Mientras te mueves tú** es prudente a propósito: en Balanced, caminando en círculos hace 31 frente
+  a los 40 de Meteor (20 en Safe), esquivando 27 frente a 30 y saca el primer tótem más tarde, y saltando
+  bajo un techo 72 frente a 90, dejándote en 6,5 donde Meteor bajó a 0,2. Ajustar esa prudencia según
+  lo que te mueves de verdad está previsto para más adelante.
 - **Contra un rival que se mueve a tu alrededor**, Balanced puede sacar el primer tótem más tarde que
   Meteor: rechaza cristales que te dejarían por debajo de 3,5.
 - **En un intercambio a campo abierto** (los dos atacando, sin cobertura) todavía empata donde gana
   Meteor. Parte de eso es del banco: las explosiones empujan a tu jugador fuera de alcance y no vuelve
-  a caminar hacia el rival (se arregla en la 0.7.2).
+  a caminar hacia el rival (hay un arreglo previsto para más adelante).
 - **En servidores que ocultan la vida de los demás** no hay remate.
 - **Un cristal tuyo que aparece tarde** (lag) se toma por ajeno y, si te haría más daño que
   `max-damage`, puede quedarse sin romper.
@@ -335,6 +353,40 @@ los tuyos. Con el `crystal-aura` de Meteor tu vida bajó hasta 0,2.
 - **Enciende `fight-recorder`** para que una pelea perdida se pueda revisar.
 - Lleva tótems, obsidiana y cristales en la barra rápida: `auto-pvp` no enciende un módulo sin su
   material.
+
+### `surround++` — una coraza calculada, no un patrón
+
+El `surround` de Meteor pone cuatro bloques alrededor de tus pies y, en una pelea de verdad, juega en tu contra: se
+apaga solo cada vez que cambia tu altura (las telarañas y las explosiones la cambian) y, con `center` encendido, te
+devuelve al centro del bloque cada tick mientras el agujero está roto. Y deja tu cabeza al aire, que es donde los
+clientes con hacks ponen sus cristales. `surround++` calcula, cada tick, dónde podría ir un cristal que te haga daño y
+tapa esos huecos primero:
+
+- **Primero el hueco más peligroso**, por el daño exacto que te haría un cristal ahí (el cálculo que usa
+  `crystal-aura++`), y solo los huecos a los que llega un rival. Un hueco cuenta desde 1 de daño; uno en el que el rival
+  todavía tendría que poner una base pesa un octavo de uno cuya base ya está.
+- **Obsidiana llorosa donde la normal les daría una base nueva**: un cristal no se puede poner sobre obsidiana llorosa,
+  y se tarda lo mismo en picarla. Lleva algo en la barra rápida (`use-crying-obsidian`); sin ella, obsidiana normal.
+- **Anti-city**: un muro picado se rellena el mismo tick en que se abre, y un cristal que te pongan al lado se rompe
+  cuando su explosión te deja con 2 de vida o más (`break-crystals`).
+- **Nunca te clava**: te centra solo cuando sobresales de tu bloque y queda algo abierto, nunca mientras pulsas una
+  tecla, como mucho una vez por segundo. Nunca se apaga porque cambie tu altura. Mientras caminas (con una tecla de movimiento pulsada y los pies moviéndose de verdad, también
+  arrastrándote por una telaraña) solo rompe cristales; si estás quieto contra una pared, sigue reponiendo.
+- **Un agujero mejor**: al descubierto y amenazado, te mete andando en un agujero un bloque más abajo a 3 bloques o
+  menos, primero los de roca madre, si hay sitio para todo tu cuerpo y espacio para la cabeza sobre el agujero
+  (`move-to-hole`). Tus teclas siempre mandan.
+- **Sus agujeros**: rellena los agujeros junto a tus rivales, primero el más cercano a ellos (`deny-holes`).
+- **Burrow**, apagado de fábrica (`burrow`): muchos anticheats expulsan por ello.
+- **Tras un pop de tótem** cierra la coraza del todo durante 5 segundos, techo incluido.
+
+`blocks-per-tick` (2 de fábrica) limita cuántos bloques pone en un tick; cuanto más bajo, más seguro frente a los
+anticheats. `reach` (6) es hasta dónde se supone que llegan tus rivales. Llévalo desde el `shell-module` de `auto-pvp`,
+o enciéndelo solo; si el `surround` o el `self-trap` de Meteor están encendidos a la vez te avisa, porque los dos colocan
+en las mismas casillas. Todavía no rompe telarañas ni come por ti.
+
+En el laboratorio (2 y 3 atacantes con hacks, 60 s, 3 ejecuciones cada uno) perdiste tantos tótems con él como con el
+`surround` y el `self-trap` de Meteor, con el mismo número de cristales en tu cabeza o uno menos, con más o menos un bloque más (la obsidiana llorosa con la que empieza). Es un resultado
+equivalente, no una mejora. Su decisión cuesta de media 0,7-0,9 ms por tick.
 
 ### `fight-recorder` — grabar cada pelea y averiguar por qué moriste
 
@@ -417,6 +469,9 @@ decir:
 - **`perfil · estado · postura`** — ámbar mientras la postura es `THREATENED`.
 - **Objetivo y distancia**, o `sin objetivo`.
 - **Módulos**: encendidos (verde), sueltos por ti (ámbar), apagados por el perfil (gris).
+- **La coraza**, mientras `surround++` esté encendido: si tu cabeza está tapada, los huecos que quedan abiertos y los
+  bloques de tu lado que te están picando — ámbar mientras te pican un bloque, o mientras tu cabeza está al aire con un
+  hueco abierto.
 - **Recursos**: cristales, tótems, obsidiana — ámbar por debajo de lo que necesitan los módulos
   encendidos ahora.
 - **La pelea en vivo**, mientras `fight-recorder` tenga una abierta: segundos, tus pops, los suyos,
@@ -545,11 +600,14 @@ Lo más habitual:
 ## Próximamente
 
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
-  daño propio que guarda una reserva de vida.
-- **Lo siguiente, en una 0.7.x:** un modo de ataque para `crystal-aura++`, `Maximum` — coloca
-  cristales aunque hagan poco daño, pone obsidiana cuando no hay sitio donde colocar y un face-place
-  más fácil. También un ajuste más fino mientras te mueves: el radio de alcance se calculará según lo
-  que te mueves de verdad (0.7.2).
+  daño propio que guarda una reserva de vida; `surround++` — un escudo defensivo calculado, desde el
+  ajuste `shell-module` de `auto-pvp`.
+- **Lo siguiente:** la segunda parte del arreglo crítico de `auto-pvp`, la respuesta de supervivencia
+  (comer tras perder un tótem, salir de las telarañas, dejar un agujero roto), y `surround++` de fábrica
+  cuando se haya probado contra atacantes que ponen sus propias bases. Después, un modo de ataque
+  para `crystal-aura++`, `Maximum` — coloca cristales aunque hagan poco daño, pone obsidiana cuando no
+  hay sitio donde colocar y un face-place más fácil — y un ajuste más fino mientras te mueves: el radio
+  de alcance calculado según lo que te mueves de verdad.
 - **Después, la pelea completa:** protegerte a ti primero — notar al instante que te están minando el
   agujero y taparlo enseguida, y decidir qué hacer si ya hay un cristal metido en el hueco; anclas de
   reaparición, atacando con ellas y con una defensa propia, ya que el `anti-anchor` de Meteor no está

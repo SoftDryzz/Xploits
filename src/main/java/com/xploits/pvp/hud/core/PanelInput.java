@@ -45,6 +45,7 @@ import java.util.Objects;
  * @param crystalModule      the real name of the crystal aura auto-pvp drives ({@code crystal-aura} or
  *                           {@code crystal-aura++}), for the lines that name it; {@link #enabled} and the
  *                           other name lists already carry real names
+ * @param shell               surround++'s state while it is on, or {@code null}: no shell line
  */
 public record PanelInput(
     boolean autoPvpOn,
@@ -65,7 +66,8 @@ public record PanelInput(
     boolean outOfResources,
     LiveFight fight,
     boolean showFight,
-    String crystalModule
+    String crystalModule,
+    Shell shell
 ) {
     public PanelInput {
         Objects.requireNonNull(profileName, "profileName");
@@ -76,6 +78,17 @@ public record PanelInput(
         released = List.copyOf(released);
         profileOff = List.copyOf(profileOff);
         idle = List.copyOf(idle);
+    }
+
+    /** Without a surround++ line. */
+    public PanelInput(boolean autoPvpOn, String profileName, boolean profileModified, CombatState state,
+                      CombatPosture posture, String target, double targetDistance, List<String> enabled,
+                      List<String> released, List<String> profileOff, List<Idle> idle, int crystals, int totems,
+                      int obsidian, boolean crystalAuraEnabled, boolean outOfResources, LiveFight fight,
+                      boolean showFight, String crystalModule) {
+        this(autoPvpOn, profileName, profileModified, state, posture, target, targetDistance, enabled, released,
+            profileOff, idle, crystals, totems, obsidian, crystalAuraEnabled, outOfResources, fight, showFight,
+            crystalModule, null);
     }
 
     /** With Meteor's {@code crystal-aura}, the aura auto-pvp drives by default. */
@@ -107,5 +120,12 @@ public record PanelInput(
      * without importing the recorder core, so this package only ever depends on {@code pvp.core}).
      */
     public record LiveFight(int seconds, int yourPops, int theirPops, double damageTaken) {
+    }
+
+    /**
+     * surround++'s shell (spec §8), as the panel needs it: whether every cell next to your head holds a block, the crystal
+     * spots still worth a block, and the blocks next to you someone is mining.
+     */
+    public record Shell(boolean headCovered, int openThreats, int underAttack) {
     }
 }

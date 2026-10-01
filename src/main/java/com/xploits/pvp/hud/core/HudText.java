@@ -29,6 +29,10 @@ public enum HudText implements MessageKey {
     RESOURCE_OBSIDIAN,
     /** Line 6, the recorder's live totals. */
     FIGHT,
+    /** Line 5b, surround++'s shell: {@code {head}} is one of the two below, {@code {open}} and {@code {mined}} counts. */
+    SHELL,
+    SHELL_HEAD_COVERED,
+    SHELL_HEAD_OPEN,
     /** Danger (a): no totems while in a fight. */
     DANGER_NO_TOTEMS,
     /** Danger (c): a watched resource idle. {@code {material}} is a {@code PvpText.MATERIAL_*} value. */

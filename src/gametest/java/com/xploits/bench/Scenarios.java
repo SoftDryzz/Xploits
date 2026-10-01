@@ -138,6 +138,16 @@ public final class Scenarios {
             String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
             all.add(CrystalAuraMeasure.plusPlus(prefix + "cover", "ca-cover", Cover::new, level));
         }
+        // 0.7.2: a jump stopped by a ceiling (RoofJump, RoofJumpMotion): ca-roof-jump-regen, capp-roof-jump-regen
+        // (Safe), then each other level, healing on and our own player jumping, right after cover.
+        all.add(CrystalAuraMeasure.meteor("ca-roof-jump", RoofJump::new).healing().movingSelf(RoofJumpMotion::new));
+        all.add(CrystalAuraMeasure.plusPlus("capp-roof-jump", "ca-roof-jump", RoofJump::new).healing()
+            .movingSelf(RoofJumpMotion::new));
+        for (RiskLevel level : OTHER_LEVELS) {
+            String prefix = "capp-" + level.toString().toLowerCase(Locale.ROOT) + "-";
+            all.add(CrystalAuraMeasure.plusPlus(prefix + "roof-jump", "ca-roof-jump", RoofJump::new, level).healing()
+                .movingSelf(RoofJumpMotion::new));
+        }
         // Task A3: the real crystal-PvP fights, last, in the brief's own order (exchange, hole-standoff, city,
         // near-death, near-death-totem); city is its own scenario class ({@link CityMeasure}, since auto-pvp
         // drives our own side there) but keeps the same ca-*, then capp-* Safe, then each other level shape

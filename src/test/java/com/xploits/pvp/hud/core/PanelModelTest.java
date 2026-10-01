@@ -264,6 +264,33 @@ class PanelModelTest {
         assertFalse(lines.stream().anyMatch(l -> l.tone() == Tone.DANGER), render(lines, EN).toString());
     }
 
+    // --- the shell line ------------------------------------------------------------------------------
+
+    @Test
+    void theShellLineSaysTheHeadTheOpenSpotsAndTheMining() {
+        PanelInput in = PanelInputs.base().shell(new PanelInput.Shell(true, 2, 1)).build();
+        PanelLine line = PanelModel.lines(in).stream().filter(l -> EN.render(l.text()).startsWith("shell:")).findFirst().orElseThrow();
+        assertEquals("shell: head covered · spots open 2 · being mined 1", EN.render(line.text()));
+        assertEquals("coraza: cabeza tapada · huecos abiertos 2 · picando 1", ES.render(line.text()));
+        assertEquals(Tone.WARN, line.tone(), "a block being mined");
+    }
+
+    @Test
+    void theShellLineIsQuietWhenTheHeadIsCoveredAndNothingIsMined() {
+        PanelInput in = PanelInputs.base().shell(new PanelInput.Shell(true, 0, 0)).build();
+        PanelLine line = PanelModel.lines(in).stream().filter(l -> EN.render(l.text()).startsWith("shell:")).findFirst().orElseThrow();
+        assertEquals(Tone.NORMAL, line.tone());
+        PanelInput open = PanelInputs.base().shell(new PanelInput.Shell(false, 1, 0)).build();
+        PanelLine warn = PanelModel.lines(open).stream().filter(l -> EN.render(l.text()).startsWith("shell:")).findFirst().orElseThrow();
+        assertEquals("shell: head open · spots open 1 · being mined 0", EN.render(warn.text()));
+        assertEquals(Tone.WARN, warn.tone(), "the head open with a spot left");
+    }
+
+    @Test
+    void noShellLineWithoutSurroundPlusPlus() {
+        assertTrue(render(PanelModel.lines(PanelInputs.base().build()), EN).stream().noneMatch(l -> l.startsWith("shell:")));
+    }
+
     // --- sample() -------------------------------------------------------------------------------------
 
     @Test
@@ -287,6 +314,7 @@ class PanelModelTest {
         assertTrue(rendered.stream().anyMatch(l -> l.startsWith("totems ")), rendered.toString());
         assertTrue(rendered.stream().anyMatch(l -> l.startsWith("obsidian ")), rendered.toString());
         assertTrue(rendered.stream().anyMatch(l -> l.contains("your pops")), rendered.toString());
+        assertTrue(rendered.stream().anyMatch(l -> l.startsWith("shell:")), rendered.toString());
     }
 
     // --- ES/EN rendering safety --------------------------------------------------------------------------
@@ -301,7 +329,8 @@ class PanelModelTest {
             PanelInputs.base().outOfResources(true).build(),
             PanelInputs.base().idle(new PanelInput.Idle("obsidian", List.of("auto-trap", "surround", "hole-filler"))).build(),
             PanelInputs.base().crystalAuraEnabled(true).crystals(0).build(),
-            PanelInputs.base().fight(new PanelInput.LiveFight(30, 2, 3, 42.5)).build()
+            PanelInputs.base().fight(new PanelInput.LiveFight(30, 2, 3, 42.5)).build(),
+            PanelInputs.base().shell(new PanelInput.Shell(false, 3, 2)).build()
         );
         for (PanelInput in : inputs) {
             for (PanelLine line : PanelModel.lines(in)) {

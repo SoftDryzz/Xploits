@@ -137,9 +137,9 @@ notice, because they only talk through files.
 ### `crystal-aura++` still deals less damage than Meteor's while you dodge
 
 **Symptom:** while you dodge (with the opponent circling), Balanced deals a little less damage than
-Meteor's `crystal-aura` (27 against 29.8 in the release bench) and takes the first totem later (5.75 s
-against 1.4 s). Walking in circles, Balanced now deals about what Meteor does (31 against 32); at Safe
-it deals 20, where 0.7.0 dealt about 32.
+Meteor's `crystal-aura` (27 against 30 in the 0.8.0 release bench) and takes the first totem later (4.7 s
+against 1.65 s). Walking in circles, Balanced deals 31 against Meteor's 40 in that bench (32 in 0.7.1's); at
+Safe it deals 20, where 0.7.0 dealt about 32.
 
 While you move, the self-budget uses the same reach check as 0.7.0; the real-exposure measurement
 of 0.7.1 applies when you stand still or move very little.
@@ -155,7 +155,7 @@ would take you below it. Meteor's `crystal-aura` gets there sooner by taking you
 **What to do.** If you prefer Meteor's damage there, set `auto-pvp`'s `crystal-module` to `meteor`.
 `Aggressive` (experimental) keeps 2 instead of 3.5.
 
-**Pending fix:** 0.7.2 — size the reach radius from how far you really move. A first attempt in 0.7.1
+**Pending fix:** a later version — size the reach radius from how far you really move. A first attempt in 0.7.1
 made the strafing case worse and was taken out.
 
 ### `crystal-aura++` still draws an open-ground exchange where Meteor wins
@@ -167,7 +167,7 @@ fight in a draw where Meteor's `crystal-aura` wins.
 them. The reserve held in the bench runs. Part of the difference is an artefact of the bench: the
 explosions knock our player out of range and it never walks back to re-engage, which a real player does.
 
-**Pending fix:** 0.7.2 — keep the bench player in place or make it re-engage, the same for both auras.
+**Pending fix:** a later version — keep the bench player in place or make it re-engage, the same for both auras.
 
 **What to do.** If you prefer Meteor's damage in that kind of fight, set `crystal-module` to `meteor`.
 
@@ -217,6 +217,29 @@ percent closer to safe than it is. Neither showed up on the bench.
 
 **Pending fix:** widen the late-crystal window and aim a point at each crystal's direction.
 
+### `surround++`: what it does not do yet
+
+**Symptom:** stuck in a web inside your shell; a crystal next to you not broken while you have Weakness; an opponent
+building his own surround after his hole was filled; `crystal-aura++` holding a placement back while you move inside
+your hole.
+
+**What happens.** Breaking webs and eating after a pop belong to the survival work that comes next. Attacking a crystal
+under Weakness needs a weapon in hand, and `surround++` does not swap to one (Meteor's crystal aura does). Filling an
+opponent's hole does not stop him surrounding himself.
+
+`crystal-aura++` can hold a placement back on the ticks you move inside a hole: its safety check reads the places your
+movement could take you before the crystal explodes, and one that would put you inside the hole's wall is read as fully
+exposed. A block over your head no longer does this: since 0.8.0 a jump is read where that block stops it, except
+while someone is mining that block or when a crystal can blow it away (anything weaker than obsidian, such as stone or
+netherrack): then the full jump still counts. A roof can still go without warning between a crystal's placement and
+its explosion (an instant mine, a ghost block resolving), and a jump inside that window can then hurt more than was
+read.
+
+**What to do.** Keep a sword in hand if you get Weakness; get out of webs by hand.
+
+**Pending fix:** survival (webs, eating), then the offence against surrounded opponents. For the moving-in-a-hole case,
+a change in `crystal-aura++`'s safety check with its own bench.
+
 ---
 
 ## Unmeasured calibrations
@@ -237,6 +260,12 @@ the way, it is a candidate for adjusting.
 ---
 
 ## Things that look like failures and are not
+
+**"`crystal-aura++` broke one of my own crystals and left me below the reserve."** By design, breaking one of
+your own crystals is checked against the 2-health floor rather than the reserve (the reserve is kept when the crystal
+is placed; once it stands, the opponent can set it off anyway), and in 144 traced runs of the bench's
+`near-death-totem` fight at Balanced, the real result of every such break, measured on the server, stayed at 5.2 or
+above.
 
 **"I turn on `auto-travel` or `nether-sweep` and nothing happens."** They do not fly when turned on:
 they arm the trip and wait for their command. When you turn them on they tell you so in chat.
