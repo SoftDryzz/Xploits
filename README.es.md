@@ -7,6 +7,10 @@
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
 otros servidores anarchy. Once módulos que se encienden por separado.
 
+> **Lo próximo, antes de la 1.0.0: construcción.** En la siguiente versión o en las siguientes, Xploits añade un
+> printer que construye el esquema que cargues en Litematica y, cuando se queda sin un bloque, va solo a buscarlo a
+> tus cofres y shulkers, vuelve y sigue. Mira [Próximamente](#próximamente).
+
 ## Por qué Xploits
 
 - **`crystal-aura++` va a por la muerte, y nunca te mata a ti.** Con el rival al borde de la muerte lo
@@ -599,6 +603,13 @@ Lo más habitual:
 
 ## Próximamente
 
+- **Construcción, en la siguiente versión o en las siguientes, antes de la 1.0.0:** un printer que construye el
+  esquema que cargues en Litematica y, cuando se queda sin un bloque, va a buscarlo —a los cofres que marques
+  (miras uno y pulsas una tecla) o a los contenedores que recuerda `stash-keeper`, siempre el más cercano, shulkers
+  incluidos—, vuelve y sigue donde lo dejó. Coloca un bloque por tick, a alcance legítimo y nunca en el aire, y se
+  para y te avisa si se acerca otro jugador (un ajuste que puedes apagar). Después, map art, túneles y autopistas, y
+  bases. **Instala Litematica para usarlo:** Xploits funciona sin ella, pero el printer construye a partir del
+  esquema que cargas ahí. Va hasta tus cofres con Baritone.
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
   daño propio que guarda una reserva de vida; `surround++` — un escudo defensivo calculado, desde el
   ajuste `shell-module` de `auto-pvp`.
