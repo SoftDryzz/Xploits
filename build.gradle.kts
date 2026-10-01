@@ -22,6 +22,26 @@ repositories {
         name = "meteor-maven-snapshots"
         url = uri("https://maven.meteordev.org/snapshots")
     }
+    // Litematica and malilib (printer spec §3): Modrinth's maven, only for the group it serves.
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = uri("https://api.modrinth.com/maven")
+            }
+        }
+        filter { includeGroup("maven.modrinth") }
+    }
+    // conditional-mixin: nested in Litematica and malilib; Loom strips nested jars from dev mods (bench profile only).
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "FallenBreath"
+                url = uri("https://maven.fallenbreath.me/releases")
+            }
+        }
+        filter { includeGroup("me.fallenbreath") }
+    }
 }
 
 dependencies {
@@ -32,6 +52,10 @@ dependencies {
 
     // Meteor
     modImplementation(libs.meteor.client)
+    // Litematica + malilib (printer spec §3): compile-only, never in the jar, never required at runtime. Every class
+    // that names them lives in com.xploits.printer.litematica and loads only after FabricLoader says they are there.
+    modCompileOnly("maven.modrinth:litematica:0.26.14")
+    modCompileOnly("maven.modrinth:malilib:0.27.19")
 
     // Tests (Gradle 9 exige declarar el launcher)
     testImplementation(platform("org.junit:junit-bom:5.13.4"))

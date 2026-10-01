@@ -29,7 +29,12 @@ class BoundaryTest {
     private static final Pattern DIRECT_CHAT = Pattern.compile("ChatUtils\\.(info|warning|error)(Prefix)?\\(");
     private static final String MARKER = "// console: logged separately";
     private static final List<String> GAME_PACKAGES =
-        List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.");
+        List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.", "fi.dy.masa.",
+            "com.viaversion.", "me.aleksilassila.");
+    /** Litematica and malilib are optional (printer spec §3, M3): only this package may name them. */
+    private static final String LITEMATICA_PACKAGE = "com/xploits/printer/litematica/";
+    /** ViaFabricPlus and litematica-printer live in nested or foreign jars: reached by reflection only. */
+    private static final List<String> REFLECTION_ONLY = List.of("com.viaversion.", "me.aleksilassila.");
 
     private static Map<String, List<String>> sources() throws IOException {
         Map<String, List<String>> all = new TreeMap<>();
@@ -89,6 +94,24 @@ class BoundaryTest {
             }
         });
         assertEquals(List.of(), bad, "this cannot run outside the game");
+    }
+
+    @Test
+    void optionalModsAreNamedOnlyWhereTheyAreGuarded() throws IOException {
+        List<String> bad = new ArrayList<>();
+        sources().forEach((path, lines) -> {
+            for (String l : lines) {
+                if (!l.startsWith("import ")) continue;
+                String imported = l.replace("import static ", "").replace("import ", "").trim();
+                if (imported.startsWith("fi.dy.masa.") && !path.startsWith(LITEMATICA_PACKAGE)) {
+                    bad.add(path + " imports " + imported);
+                }
+                for (String prefix : REFLECTION_ONLY) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
+                }
+            }
+        });
+        assertEquals(List.of(), bad, "an optional mod's class would load without the mod installed");
     }
 
     /**
