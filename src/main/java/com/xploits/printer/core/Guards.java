@@ -14,7 +14,8 @@ import java.util.Optional;
  * ticks pause, {@code N_CLEAR} clear ticks end the pause, the third pause stops. The reasons name a combat module
  * ({@code COMBAT}, {@code COMBAT_REPEATED}) when one is active, otherwise {@code OTHER_ROTATION} and
  * {@code OTHER_ROTATION_REPEATED} with no module; last come the lag pause and the eating pause. The enable-time refusals
- * run in the table's order, see {@link #refuse}.
+ * run in the order {@link #refuse} documents. Once a {@link Stop} is returned every later tick returns it again: a stop
+ * never restarts by itself.
  */
 public final class Guards {
     public enum Effect { REFUSE, STOP, PAUSE, END }
@@ -56,7 +57,7 @@ public final class Guards {
     public sealed interface Verdict permits Run, Pause, Stop {
     }
 
-    /** Carry on; {@code yielding}: a combat module acts this tick, so no click (§5.3). */
+    /** Carry on; {@code yielding}: a foreign rotation or action happens this tick (a combat module or any other), so no click (§5.3). */
     public record Run(boolean yielding) implements Verdict {
     }
 
@@ -98,24 +99,34 @@ public final class Guards {
     public static final List<String> CONFLICTING_MODULES = List.of("instant-rebreak", "speed-mine", "packet-mine",
         "auto-tool", "anti-afk", "auto-walk", "auto-replenish", "inventory-tweaks", "scaffold", "air-place",
         "no-ghost-blocks", "nuker", "vein-miner", "highway-builder", "liquid-filler", "excavator", "infinity-miner",
-        "echest-farmer");
+        "echest-farmer", "spawn-proofer", "timer");
 
     private final PrinterLimits limits;
     private int actingStreak;
     private int clearStreak;
     private int pauses;
     private boolean combatPaused;
+    private Reason pauseReason;
+    private String pauseDetail = "";
+    private Stop latched;
 
     public Guards(PrinterLimits limits) {
         this.limits = limits;
     }
 
     public Verdict tick(Inputs in) {
+        if (latched != null) return latched;
+        Verdict verdict = decide(in);
+        if (verdict instanceof Stop stop) latched = stop;
+        return verdict;
+    }
+
+    private Verdict decide(Inputs in) {
         if (in.died()) return new Stop(Reason.DIED, "");
         if (in.dimensionChanged()) return new Stop(Reason.DIMENSION, "");
         if (in.autoPvpEngaged()) return new Stop(Reason.AUTO_PVP_ENGAGED, "");
         if (in.attackedByPlayer()) return new Stop(Reason.ATTACKED, "");
-        if (in.health() < in.minHealth()) return new Stop(Reason.LOW_HEALTH, "");
+        if (!(in.health() >= in.minHealth())) return new Stop(Reason.LOW_HEALTH, "");
         if (in.stopNearPlayers() && in.playerNear()) return new Stop(Reason.PLAYER_NEAR, "");
         if (in.setback()) return new Stop(Reason.SETBACK, "");
         if (in.sourceStop() != null) return new Stop(in.sourceStop(), "");
@@ -126,7 +137,7 @@ public final class Guards {
         boolean named = !in.activeCombat().isEmpty();
         if (combatPaused) {
             clearStreak = in.acting() ? 0 : clearStreak + 1;
-            if (clearStreak < limits.clearTicks()) return new Pause(named ? Reason.COMBAT : Reason.OTHER_ROTATION, names);
+            if (clearStreak < limits.clearTicks()) return new Pause(pauseReason, pauseDetail);
             combatPaused = false;
             clearStreak = 0;
             actingStreak = 0;
@@ -141,7 +152,9 @@ public final class Guards {
                 }
                 combatPaused = true;
                 clearStreak = 0;
-                return new Pause(named ? Reason.COMBAT : Reason.OTHER_ROTATION, names);
+                pauseReason = named ? Reason.COMBAT : Reason.OTHER_ROTATION;
+                pauseDetail = names;
+                return new Pause(pauseReason, pauseDetail);
             }
         } else {
             actingStreak = 0;
@@ -151,11 +164,17 @@ public final class Guards {
         return new Run(in.acting());
     }
 
-    /** Combat pauses so far in this session. */
+    /** Combat and other-rotation pauses so far in this session. */
     public int combatPauses() {
         return pauses;
     }
 
+    /**
+     * The first reason the printer will not start, or empty. Order: no world, dead, camera not the player, riding, Meteor's
+     * queue unreadable, the source's refusal, auto-travel running, nether-sweep running, a conflicting module, auto-pvp
+     * engaged (whatever {@code stop-near-players} says), a near player (with the setting on), low health (NaN counts as
+     * low), an unusable Baritone prefix (only with Baritone installed).
+     */
     public static Optional<Refusal> refuse(EnableInputs in) {
         if (!in.world()) return refusal(Reason.NO_WORLD);
         if (!in.alive()) return refusal(Reason.DEAD);
@@ -170,7 +189,7 @@ public final class Guards {
         }
         if (in.autoPvpEngaged()) return refusal(Reason.AUTO_PVP_ENGAGED);
         if (in.stopNearPlayers() && in.playerNear()) return refusal(Reason.PLAYER_NEAR);
-        if (in.health() < in.minHealth()) return refusal(Reason.LOW_HEALTH);
+        if (!(in.health() >= in.minHealth())) return refusal(Reason.LOW_HEALTH);
         if (in.baritoneInstalled() && !in.prefixValid()) return refusal(Reason.PREFIX_INVALID);
         return Optional.empty();
     }

@@ -209,6 +209,113 @@ class GuardsTest {
             List.of(), false, false, 20, false, false)), "an unusable prefix matters only with Baritone");
     }
 
+    /** Each running stop, set on an otherwise calm tick; the reason it must give. */
+    private static List<java.util.function.Consumer<In>> allStops() {
+        return List.of(i -> i.died = true, i -> i.dimension = true, i -> i.engaged = true, i -> i.attacked = true,
+            i -> i.health = 1, i -> i.near = true, i -> i.setback = true, i -> i.source = Reason.PLACEMENT_CHANGED,
+            i -> i.conflicting = List.of("nuker"), i -> i.notSent = true, i -> i.mismatch = true);
+    }
+
+    @Test
+    void everyStopBeatsLagEatingAndAYieldStreak() {
+        for (java.util.function.Consumer<In> stop : allStops()) {
+            Guards g = guards();
+            In acting = new In();
+            acting.acting = true;
+            for (int i = 1; i <= 19; i++) g.tick(acting.build());
+            In in = new In();
+            in.acting = true;
+            in.lag = 2.0;
+            in.eating = true;
+            stop.accept(in);
+            assertEquals(Guards.Effect.STOP, ((Guards.Stop) g.tick(in.build())).reason().effect());
+        }
+        In lagAlone = new In();
+        lagAlone.lag = 2.0;
+        lagAlone.eating = true;
+        assertEquals(new Guards.Pause(Reason.LAG, ""), guards().tick(lagAlone.build()));
+    }
+
+    @Test
+    void everyStopBeatsARunningCombatPause() {
+        for (java.util.function.Consumer<In> stop : allStops()) {
+            Guards g = guards();
+            In acting = new In();
+            acting.acting = true;
+            acting.combat = List.of("surround++");
+            for (int i = 1; i <= 20; i++) g.tick(acting.build());
+            In in = new In();
+            in.combat = List.of("surround++");
+            stop.accept(in);
+            assertEquals(Guards.Effect.STOP, ((Guards.Stop) g.tick(in.build())).reason().effect());
+        }
+    }
+
+    @Test
+    void aPauseKeepsItsNameUntilItEnds() {
+        Guards g = guards();
+        In acting = new In();
+        acting.acting = true;
+        acting.combat = List.of("surround++");
+        for (int i = 1; i <= 20; i++) g.tick(acting.build());
+        In clearOther = new In();
+        assertEquals(new Guards.Pause(Reason.COMBAT, "surround++"), g.tick(clearOther.build()));
+        In clearNamed = new In();
+        clearNamed.combat = List.of("kill-aura");
+        assertEquals(new Guards.Pause(Reason.COMBAT, "surround++"), g.tick(clearNamed.build()));
+
+        Guards h = guards();
+        In other = new In();
+        other.acting = true;
+        for (int i = 1; i <= 20; i++) h.tick(other.build());
+        assertEquals(new Guards.Pause(Reason.OTHER_ROTATION, ""), h.tick(clearNamed.build()));
+    }
+
+    @Test
+    void aStopIsLatched() {
+        Guards g = guards();
+        In died = new In();
+        died.died = true;
+        Guards.Verdict stop = g.tick(died.build());
+        assertEquals(new Guards.Stop(Reason.DIED, ""), stop);
+        assertEquals(stop, g.tick(new In().build()));
+        In other = new In();
+        other.setback = true;
+        assertEquals(stop, g.tick(other.build()));
+    }
+
+    @Test
+    void nanHealthStopsAndRefuses() {
+        In in = new In();
+        in.health = Double.NaN;
+        assertEquals(new Guards.Stop(Reason.LOW_HEALTH, ""), guards().tick(in.build()));
+        assertEquals(Reason.LOW_HEALTH, Guards.refuse(enable(true, true, true, false, true, null, false, false,
+            List.of(), false, false, Double.NaN, false, true)).orElseThrow().reason());
+    }
+
+    private static Guards.EnableInputs enableWith(boolean alive, boolean riding, boolean sweep, boolean engaged,
+                                                  boolean near, boolean stopNear) {
+        return new Guards.EnableInputs(true, alive, true, riding, true, null, false, sweep, List.of(), engaged, near,
+            stopNear, 20, 10, false, true);
+    }
+
+    @Test
+    void eachRefusalAndTheAutoPvpRuleAlone() {
+        assertEquals(Reason.DEAD, Guards.refuse(enableWith(false, false, false, false, false, true)).orElseThrow().reason());
+        assertEquals(Reason.RIDING, Guards.refuse(enableWith(true, true, false, false, false, true)).orElseThrow().reason());
+        assertEquals(Reason.SWEEP_RUNNING, Guards.refuse(enableWith(true, false, true, false, false, true)).orElseThrow().reason());
+        assertEquals(Reason.AUTO_PVP_ENGAGED, Guards.refuse(enableWith(true, false, false, true, false, true)).orElseThrow().reason());
+        assertEquals(Reason.AUTO_PVP_ENGAGED, Guards.refuse(enableWith(true, false, false, true, false, false)).orElseThrow().reason(),
+            "auto-pvp refuses with stop-near-players off");
+        assertEquals(Reason.PLAYER_NEAR, Guards.refuse(enableWith(true, false, false, false, true, true)).orElseThrow().reason());
+        assertEquals(Optional.empty(), Guards.refuse(enableWith(true, false, false, false, true, false)),
+            "a near player is no refusal with the setting off");
+        In in = new In();
+        in.engaged = true;
+        in.stopNear = false;
+        assertEquals(new Guards.Stop(Reason.AUTO_PVP_ENGAGED, ""), guards().tick(in.build()));
+    }
+
     @Test
     void everyReasonHasItsEffect() {
         assertEquals(Guards.Effect.REFUSE, Reason.METEOR_API.effect());
@@ -226,6 +333,6 @@ class GuardsTest {
             "bow-aimbot", "bed-aura", "self-trap", "burrow"), Guards.COMBAT_MODULES);
         assertEquals(List.of("instant-rebreak", "speed-mine", "packet-mine", "auto-tool", "anti-afk", "auto-walk",
             "auto-replenish", "inventory-tweaks", "scaffold", "air-place", "no-ghost-blocks", "nuker", "vein-miner",
-            "highway-builder", "liquid-filler", "excavator", "infinity-miner", "echest-farmer"), Guards.CONFLICTING_MODULES);
+            "highway-builder", "liquid-filler", "excavator", "infinity-miner", "echest-farmer", "spawn-proofer", "timer"), Guards.CONFLICTING_MODULES);
     }
 }
