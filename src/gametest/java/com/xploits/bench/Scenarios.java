@@ -88,6 +88,7 @@ public final class Scenarios {
             new AutoPvpAntiResources(),
             new Panel(),
             new ExposureCoverProbe(),
+            new BaritoneNet(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),

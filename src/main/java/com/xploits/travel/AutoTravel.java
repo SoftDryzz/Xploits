@@ -4,6 +4,7 @@ import com.xploits.XploitsAddon;
 import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.baritone.BaritoneLink;
 import com.xploits.shared.Texts;
 import com.xploits.shared.core.PositionedMsg;
 import com.xploits.shared.core.i18n.Msg;
@@ -21,9 +22,7 @@ import com.xploits.travel.core.SafetyNet;
 import com.xploits.travel.core.StallWatch;
 import com.xploits.travel.core.TravelText;
 import com.xploits.travel.core.Waypoint;
-import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -35,7 +34,6 @@ import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraFly;
-import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
@@ -45,9 +43,6 @@ import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ChatCommandSignedC2SPacket;
-import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
-import net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.List;
@@ -74,8 +69,8 @@ import java.util.Optional;
  * Baritone's prefix. On an anarchy server, an {@code #elytra} that slips out announces to the whole
  * server that you are flying, and where to.
  *
- * <p>That net lives in {@link ChatNet}, <b>subscribed to the bus on its own</b> and not as part of
- * the module, because Meteor unsubscribes the module right before {@code onDeactivate()} -which is
+ * <p>That net lives in {@link BaritoneLink}, shared with nether-sweep and later restock, <b>subscribed to the bus
+ * on its own</b> and not as part of the module, because Meteor unsubscribes the module right before {@code onDeactivate()} -which is
  * when the restoration sends its six commands-. And the decision of which text is one of our
  * commands is in {@link SafetyNet}, in the core and with tests.
  */
@@ -442,41 +437,11 @@ public class AutoTravel extends XploitsModule {
     private final BorrowedModule elytraReplace = new BorrowedModule("elytra-replace", true);
 
     /**
-     * The safety net's listener (spec §7), <b>subscribed to the bus on its own</b> and not as part
-     * of the module. This is not a design whim: it is the fix for a hole verified in Meteor's
-     * sources.
-     *
-     * <p>{@code Module.toggle()} unsubscribes the module from the bus <b>before</b> calling {@code
-     * onDeactivate()}, and {@code Modules.onGameLeft} does exactly the same. If the net lived in an
-     * {@code @EventHandler} of the module, the restoration -six prefixed commands, {@code cancel}
-     * included- would be sent with the module already unsubscribed: the net would not run, nothing
-     * would be cancelled, and the six lines would go out to public chat precisely in the two exits
-     * in which the player is still connected and the packets really leave. Turning the module off is
-     * the natural panic reaction, and it is what a bind does.
-     *
-     * <p>A standalone object depends on none of that: it subscribes on arming and unsubscribes in
-     * {@link #disarmNet()}, after the last command. Checked against the orbit 0.2.4 sources: {@code
-     * EventBus.subscribe(Object)} reflects over the annotated methods of the object's class and
-     * builds the listener with the lambda factory of the addon's package -{@code com.xploits}, which
-     * {@code MeteorClient} registers through {@code MeteorAddon.getPackage()}-, so any class of ours
-     * will do. And it is always the <b>same instance</b>, because {@code EventBus} caches listeners
-     * by object identity and {@code unsubscribe} needs to find the same ones there.
+     * The safety net (spec §7), shared with nether-sweep and later restock: {@link BaritoneLink} keeps the listener
+     * subscribed on its own, not as part of this module, because Meteor unsubscribes a module before
+     * {@code onDeactivate()}, which is when the restoration sends its commands. The whole reasoning is in its javadoc.
      */
-    private final ChatNet net = new ChatNet();
-
-    /**
-     * Whether the safety net is armed, which now means exactly whether {@link #net} is subscribed
-     * to the bus. The module can be on with no trip under way, and then it has no business eating
-     * the commands the player types by hand: the net is armed before the first command is sent and
-     * disarmed when none is left to send.
-     */
-    private boolean netArmed;
-
-    /** Whether the command {@link #send(String)} is sending right now is ours. */
-    private boolean emitting;
-
-    /** Whether the net killed our last command: set by the listener, read by {@link #send(String)}. */
-    private boolean sendCaught;
+    private final BaritoneLink link = new BaritoneLink(this::warnNetCaught);
 
     /** Whether the player was already told that the net had to cancel something on this trip (spec §7: only once). */
     private boolean netCaughtWarned;
@@ -574,50 +539,6 @@ public class AutoTravel extends XploitsModule {
     private void onGameLeft(GameLeftEvent event) {
         leavingWorld = true;
         finish(TravelText.REASON_LEFT_WORLD, false);
-    }
-
-    /**
-     * The half of the safety net (spec §7) that needs Minecraft: getting from the outgoing packet
-     * which channel it goes through and what text it carries. Deciding whether that text is one of
-     * the Baritone commands we are directing belongs to {@link SafetyNet}, which is tested without
-     * starting the game.
-     *
-     * <p>Meteor's {@code ClientConnectionMixin} posts this event on entering {@code
-     * ClientConnection.send} and cancels the send if the event is cancelled, so this is not a
-     * warning: the packet dies inside the client.
-     *
-     * <p><b>Our own commands</b> are cancelled too, and that is deliberate: if the net has to act it
-     * is because Baritone is not intercepting, and then our command has nobody to reach either. What
-     * cannot be done is to take the restoration as good afterwards, and that is what {@link
-     * #sendCaught} is for.
-     */
-    private final class ChatNet {
-        @EventHandler
-        private void onPacketSend(PacketEvent.Send event) {
-            if (!netArmed) return;
-
-            SafetyNet.Channel channel;
-            String payload;
-            if (event.packet instanceof ChatMessageC2SPacket chat) {
-                channel = SafetyNet.Channel.CHAT;
-                payload = chat.chatMessage();
-            }
-            else if (event.packet instanceof CommandExecutionC2SPacket command) {
-                channel = SafetyNet.Channel.COMMAND;
-                payload = command.command();
-            }
-            else if (event.packet instanceof ChatCommandSignedC2SPacket command) {
-                channel = SafetyNet.Channel.COMMAND;
-                payload = command.command();
-            }
-            else return;
-
-            if (!SafetyNet.directs(activePrefix, channel, payload)) return;
-
-            event.cancel();
-            if (emitting) sendCaught = true;
-            warnNetCaught(SafetyNet.typedText(channel, payload));
-        }
     }
 
     /**
@@ -1039,19 +960,15 @@ public class AutoTravel extends XploitsModule {
         fireworkWatch.reset();
     }
 
-    /** Subscribes the net's listener to the bus. Idempotent: arming twice does not duplicate the subscription. */
+    /** Arms the shared net for this trip's prefix. Idempotent: arming twice does not duplicate the subscription. */
     private void armNet() {
         netCaughtWarned = false;
-        if (netArmed) return;
-        netArmed = true;
-        MeteorClient.EVENT_BUS.subscribe(net);
+        link.arm(activePrefix);
     }
 
-    /** Unsubscribes the listener. Idempotent, which is what makes the {@code onDeactivate} call safe. */
+    /** Disarms it. Idempotent, which is what makes the {@code onDeactivate} call safe. */
     private void disarmNet() {
-        if (!netArmed) return;
-        netArmed = false;
-        MeteorClient.EVENT_BUS.unsubscribe(net);
+        link.disarm();
     }
 
     /** Notes down how the module is and leaves it in its flight state. */
@@ -1104,33 +1021,11 @@ public class AutoTravel extends XploitsModule {
     }
 
     /**
-     * Sends a command through the player's chat. Path checked against the {@code
-     * meteor-client:1.21.11-SNAPSHOT} sources: {@code ChatUtils.sendPlayerMsg} sends the text "as if
-     * the user had typed it in the chat", which is exactly what Baritone listens to. {@code
-     * addToHistory = false} is passed so as not to fill the chat history with hash commands, where
-     * the up key would leave them one enter away from being published.
-     *
-     * <p>Without a player nothing is sent: {@code sendPlayerMsg} dereferences it without checking.
-     *
-     * @return whether the command left the client towards Baritone. {@code false} means the net had
-     *         to cancel it -Baritone did not intercept it, so it had nobody to reach- or that there
-     *         was no player. The whole path is synchronous: {@code sendPlayerMsg} ends in {@code
-     *         ClientConnection.send}, where the mixin posts the event and our listener answers
-     *         before this call returns, so {@link #sendCaught} is already settled here.
+     * Sends a command through the player's chat ({@link BaritoneLink#send}). {@code false}: the net had to cancel it
+     * -Baritone did not intercept it, so it had nobody to reach- or there was no player.
      */
     private boolean send(String command) {
-        if (mc.player == null) return false;
-
-        boolean outer = emitting;
-        emitting = true;
-        sendCaught = false;
-        try {
-            ChatUtils.sendPlayerMsg(command, false);
-        }
-        finally {
-            emitting = outer;
-        }
-        return !sendCaught;
+        return link.send(command);
     }
 
     /**
@@ -1202,7 +1097,7 @@ public class AutoTravel extends XploitsModule {
         }
         return Msg.of(TravelText.STATUS_FLYING, "pattern", pattern.get().name(), "index", index + 1,
             "total", waypoints.size(), "position", position, "progress", progress,
-            "net", netArmed ? TravelText.NET_ARMED : TravelText.NET_DISARMED,
+            "net", link.armed() ? TravelText.NET_ARMED : TravelText.NET_DISARMED,
             "caught", netCaughtWarned ? TravelText.STATUS_NET_CAUGHT : TravelText.NOTHING);
     }
 
