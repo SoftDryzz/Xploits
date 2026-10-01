@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-01
+
 ### Added
 
 - The addon has its own icon, the X of the console's logo, where the mod list shows it (Mod Menu, the
