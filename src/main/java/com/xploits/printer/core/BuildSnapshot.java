@@ -12,23 +12,28 @@ import java.util.Set;
  * @param cells        every position within reach plus two blocks, so each target's neighbours are known
  * @param entityBlocked target positions where {@code World.canPlace} says an entity is in the way
  * @param standingOn   blocks under the player's feet
+ * @param hangingHolders blocks that hold a hanging entity (frame, painting, leash knot)
  * @param pending      placements sent and not yet confirmed
  * @param digging      digs sent whose block the server still shows (in flight until it is gone)
  * @param skipped      positions skipped after K failed placements
+ * @param unseen       positions whose every face the ray check rejected; the adapter clears them when the eye moves
+ *                     or after 40 ticks
  * @param broken       positions the printer broke in this session (the loop guard)
  * @param carried      item id → count in the hotbar and the main inventory
  * @param breakChoices wrong positions → the best qualifying hotbar tool; absent when none qualifies
  */
 public record BuildSnapshot(Point eye, float yaw, double reach, boolean fixWrongBlocks, Map<Pos, Cell> cells,
-                            Set<Pos> entityBlocked, Set<Pos> standingOn, Set<Pos> pending, Set<Pos> digging,
-                            Set<Pos> skipped, Set<Pos> broken, Map<String, Integer> carried, Map<Pos, BreakPlan.Choice> breakChoices) {
+                            Set<Pos> entityBlocked, Set<Pos> standingOn, Set<Pos> hangingHolders, Set<Pos> pending,
+                            Set<Pos> digging, Set<Pos> skipped, Set<Pos> unseen, Set<Pos> broken, Map<String, Integer> carried, Map<Pos, BreakPlan.Choice> breakChoices) {
     public BuildSnapshot {
         cells = Map.copyOf(cells);
         entityBlocked = Set.copyOf(entityBlocked);
         standingOn = Set.copyOf(standingOn);
+        hangingHolders = Set.copyOf(hangingHolders);
         pending = Set.copyOf(pending);
         digging = Set.copyOf(digging);
         skipped = Set.copyOf(skipped);
+        unseen = Set.copyOf(unseen);
         broken = Set.copyOf(broken);
         carried = Map.copyOf(carried);
         breakChoices = Map.copyOf(breakChoices);

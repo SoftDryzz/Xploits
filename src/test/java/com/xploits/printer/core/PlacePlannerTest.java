@@ -30,9 +30,11 @@ class PlacePlannerTest {
         final Map<Pos, Cell> cells = new HashMap<>();
         final Set<Pos> blocked = new HashSet<>();
         final Set<Pos> standing = new HashSet<>();
+        final Set<Pos> hanging = new HashSet<>();
         final Set<Pos> pending = new HashSet<>();
         final Set<Pos> digging = new HashSet<>();
         final Set<Pos> skipped = new HashSet<>();
+        final Set<Pos> unseen = new HashSet<>();
         final Set<Pos> broken = new HashSet<>();
         final Map<String, Integer> carried = new HashMap<>(Map.of("minecraft:stone", 64, "minecraft:red_carpet", 8));
         final Map<Pos, BreakPlan.Choice> tools = new HashMap<>();
@@ -57,7 +59,7 @@ class PlacePlannerTest {
         }
 
         BuildSnapshot build() {
-            return new BuildSnapshot(eye, 0f, reach, fix, cells, blocked, standing, pending, digging, skipped, broken, carried, tools);
+            return new BuildSnapshot(eye, 0f, reach, fix, cells, blocked, standing, hanging, pending, digging, skipped, unseen, broken, carried, tools);
         }
     }
 
@@ -216,8 +218,8 @@ class PlacePlannerTest {
         PrinterLimits one = new PrinterLimits(100, 10, 0.1, 3, 20, 40, 3, 3, 4, -101, 4, 4.5, 6, 1.5, 16384, 4_194_304L,
             1, 200, 0.5);
         PlacePlanner.RayOracle never = (b, s, r) -> false;
-        assertEquals(new PlacePlanner.Idle(PlacePlanner.IdleReason.RAY_BUDGET),
-            new PlacePlanner(one).decide(twoTargets().build(), never));
+        assertEquals(PlacePlanner.IdleReason.RAY_BUDGET, new PlacePlanner(one).decide(twoTargets().build(), never)
+            instanceof PlacePlanner.Idle i ? i.reason() : null);
     }
 
     @Test
@@ -232,5 +234,84 @@ class PlacePlannerTest {
         PlacePlanner.Place p = assertInstanceOf(PlacePlanner.Place.class, PLANNER.decide(s.build(), ALL));
         assertEquals(new Pos(1, 0, 0), p.target());
         assertEquals(new Pos(1, -1, 0), p.support());
+    }
+
+    private static final BlockFacts GRASS = block("short_grass").notFull().replaceable().build();
+
+    @Test
+    void aBlockInFlightIsNeverLeanedOn() {
+        // A = (1,0,2) is a wrong block whose dig was sent; C = (0,0,2) beside it has the floor below.
+        Snap s = wrongAt102().want(0, 0, 2, stone(), air());
+        s.digging.add(new Pos(1, 0, 2));
+        PlacePlanner.Place p = assertInstanceOf(PlacePlanner.Place.class, PLANNER.decide(s.build(), ALL));
+        assertEquals(new Pos(0, 0, 2), p.target());
+        assertEquals(new Pos(0, -1, 2), p.support());
+        assertEquals(Face.UP, p.side());
+    }
+
+    @Test
+    void withoutAFloorABlockBesideOneInFlightHasNoFace() {
+        Snap s = wrongAt102().want(0, 0, 2, stone(), air());
+        s.cells.put(new Pos(0, -1, 2), outside(0, -1, 2, air()));
+        s.digging.add(new Pos(1, 0, 2));
+        assertEquals(PlacePlanner.IdleReason.NO_FACE, assertInstanceOf(PlacePlanner.Idle.class, PLANNER.decide(s.build(), ALL)).reason());
+    }
+
+    @Test
+    void aCarpetIsNotLaidOnABlockInFlight() {
+        BlockFacts carpet = block("red_carpet").notFull().build();
+        Snap s = wrongAt102().want(1, 1, 2, carpet, air());
+        s.digging.add(new Pos(1, 0, 2));
+        assertEquals(new PlacePlanner.Idle(PlacePlanner.IdleReason.NOTHING_TO_DO), PLANNER.decide(s.build(), ALL));
+    }
+
+    @Test
+    void aBlockHoldingAHangingEntityIsPassedOver() {
+        Snap s = wrongAt102();
+        s.hanging.add(new Pos(1, 0, 2));
+        assertEquals(new PlacePlanner.Idle(PlacePlanner.IdleReason.NOTHING_TO_DO), PLANNER.decide(s.build(), ALL));
+        s.want(0, 0, 3, stone(), air());
+        assertEquals(new Pos(0, 0, 3), assertInstanceOf(PlacePlanner.Place.class, PLANNER.decide(s.build(), ALL)).target());
+    }
+
+    @Test
+    void hiddenCandidatesAreReportedExhaustedAndParkedOnesAreNeverChosen() {
+        PrinterLimits four = new PrinterLimits(100, 10, 0.1, 3, 20, 40, 3, 3, 4, -101, 4, 4.5, 6, 1.5, 16384, 4_194_304L,
+            4, 200, 0.5);
+        PlacePlanner planner = new PlacePlanner(four);
+        Snap s = new Snap().want(0, 0, 4, stone(), air());
+        for (int x = -1; x <= 1; x++) for (int z = 2; z <= 3; z++) s.want(x, 0, z, stone(), air());
+        PlacePlanner.RayOracle onlyFar = (b, side, r) -> b.equals(new Pos(0, -1, 4));
+        // six hidden candidates come before the visible one, each with one option; the budget of 4 covers 4 of them
+        PlacePlanner.Idle first = assertInstanceOf(PlacePlanner.Idle.class, planner.decide(s.build(), onlyFar));
+        assertEquals(PlacePlanner.IdleReason.RAY_BUDGET, first.reason());
+        assertEquals(4, first.exhausted().size());
+        s.unseen.addAll(first.exhausted());
+        PlacePlanner.Place p = assertInstanceOf(PlacePlanner.Place.class, planner.decide(s.build(), onlyFar));
+        assertEquals(new Pos(0, 0, 4), p.target());
+        // a parked position is never chosen
+        Snap t = twoTargets();
+        t.unseen.add(new Pos(1, 0, 2));
+        assertEquals(new Pos(0, 0, 3), assertInstanceOf(PlacePlanner.Place.class, PLANNER.decide(t.build(), ALL)).target());
+    }
+
+    @Test
+    void aReplaceableBlockIsPlacedIntoByClickingItsOwnCell() {
+        Snap s = new Snap().want(0, 0, 2, stone(), GRASS);
+        PlacePlanner.RayOracle grassOnly = (b, side, r) -> b.equals(new Pos(0, 0, 2)) && side == Face.UP;
+        PlacePlanner.Place p = assertInstanceOf(PlacePlanner.Place.class, PLANNER.decide(s.build(), grassOnly));
+        assertEquals(new Pos(0, 0, 2), p.target());
+        assertEquals(new Pos(0, 0, 2), p.support());
+        assertEquals(Face.UP, p.side());
+        assertEquals(1.0, p.hit().y(), 1e-9);
+    }
+
+    @Test
+    void waterAndAirAreNeverClickedIntoDirectly() {
+        PlacePlanner.RayOracle self = (b, side, r) -> b.equals(new Pos(0, 0, 2));
+        assertEquals(PlacePlanner.IdleReason.NO_FACE, assertInstanceOf(PlacePlanner.Idle.class,
+            PLANNER.decide(new Snap().want(0, 0, 2, stone(), Fixtures.water()).build(), self)).reason());
+        assertEquals(PlacePlanner.IdleReason.NO_FACE, assertInstanceOf(PlacePlanner.Idle.class,
+            PLANNER.decide(new Snap().want(0, 0, 2, stone(), air()).build(), self)).reason());
     }
 }

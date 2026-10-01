@@ -6,6 +6,8 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * At most one action per tick (printer spec §4, §5.2): one place or one dig, lowest first, then nearest, among what is in
@@ -28,7 +30,15 @@ public final class PlacePlanner {
 
     public enum IdleReason { NOTHING_TO_DO, NO_FACE, RAY_BUDGET }
 
-    public record Idle(IdleReason reason) implements Action {
+    /** @param exhausted positions whose every option the oracle rejected in this call (the adapter parks them as unseen) */
+    public record Idle(IdleReason reason, Set<Pos> exhausted) implements Action {
+        public Idle {
+            exhausted = Set.copyOf(exhausted);
+        }
+
+        public Idle(IdleReason reason) {
+            this(reason, Set.of());
+        }
     }
 
     /** The loop guard: a block the printer broke in this session is wrong again; stop and say so. */
@@ -57,7 +67,7 @@ public final class PlacePlanner {
         List<Candidate> candidates = new ArrayList<>();
         for (Cell cell : s.cells().values()) {
             Pos p = cell.pos();
-            if (s.pending().contains(p) || s.digging().contains(p) || s.skipped().contains(p)) continue;
+            if (s.pending().contains(p) || s.digging().contains(p) || s.skipped().contains(p) || s.unseen().contains(p)) continue;
             PhaseRules.Contents c = PhaseRules.classify(cell);
             if (c != PhaseRules.Contents.MISSING && c != PhaseRules.Contents.DIFFERENT) continue;
             String material = cell.target().block().item();
@@ -66,7 +76,7 @@ public final class PlacePlanner {
                 if (s.entityBlocked().contains(p)) continue;
                 if (PhaseRules.carpet(cell.target().block().id())) {
                     Cell below = s.cells().get(p.offset(Face.DOWN));
-                    if (below == null || below.world().air()) continue;
+                    if (below == null || below.world().air() || s.digging().contains(below.pos())) continue;
                 }
                 candidates.add(new Candidate(cell, true));
             } else {
@@ -86,11 +96,14 @@ public final class PlacePlanner {
             .thenComparingInt(c -> c.cell().pos().z()));
         double reach = Math.min(s.reach(), limits.maxReach());
         int rays = 0;
+        Set<Pos> exhausted = new HashSet<>();
         for (Candidate candidate : candidates) {
             List<Option> options = candidate.missing() ? placeOptions(s, candidate.cell(), reach)
                 : digOptions(s, candidate.cell(), reach);
+            boolean tried = false;
             for (Option o : options) {
-                if (rays >= limits.rayBudget()) return new Idle(IdleReason.RAY_BUDGET);
+                if (rays >= limits.rayBudget()) return new Idle(IdleReason.RAY_BUDGET, exhausted);
+                tried = true;
                 rays++;
                 if (!oracle.sees(o.block(), o.side(), o.rotation())) continue;
                 String material = candidate.cell().target().block().item();
@@ -100,8 +113,9 @@ public final class PlacePlanner {
                 return new Dig(candidate.cell().pos(), o.side(), o.hit(), o.rotation(),
                     s.breakChoices().get(candidate.cell().pos()), material);
             }
+            if (tried) exhausted.add(candidate.cell().pos());
         }
-        return new Idle(IdleReason.NO_FACE);
+        return new Idle(IdleReason.NO_FACE, exhausted);
     }
 
     /** The never-break view of a cell from this snapshot (also used by the adapter's scanner). */
@@ -113,13 +127,19 @@ public final class PlacePlanner {
         }
         BreakPlan.Choice tool = s.breakChoices().get(cell.pos());
         return new PhaseRules.BreakView(cell, neighbours, s.standingOn().contains(cell.pos()),
-            false, s.broken().contains(cell.pos()), tool == null ? -1 : tool.ticks(), limits.breakCapTicks());
+            s.hangingHolders().contains(cell.pos()), s.broken().contains(cell.pos()), tool == null ? -1 : tool.ticks(), limits.breakCapTicks());
     }
 
     private List<Option> placeOptions(BuildSnapshot s, Cell cell, double reach) {
         List<Option> options = new ArrayList<>();
+        BlockFacts here = cell.world();
+        if (!here.air() && !here.fluid() && here.replaceable()) {
+            // §5.1 item 3a: a replaceable block (grass, a snow layer) is placed into by clicking that very cell
+            for (Face f : Face.values()) addIfReachable(options, s, cell.pos(), f, reach);
+        }
         for (Face f : Face.values()) {
             Pos support = cell.pos().offset(f);
+            if (s.digging().contains(support)) continue;
             Face side = f.opposite();
             Cell sc = s.cells().get(support);
             if (sc == null || !PhaseRules.support(sc.world())) continue;
