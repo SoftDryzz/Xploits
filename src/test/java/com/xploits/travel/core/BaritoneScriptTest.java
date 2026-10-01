@@ -184,4 +184,16 @@ class BaritoneScriptTest {
         assertFalse(any(commands, "elytraFireworkSpeed 1 "), commands.toString());
         assertTrue(commands.contains("#set elytraFireworkSpeed 1.2"), commands.toString());
     }
+
+    @Test
+    void thePrinterBuildersCarryThePrefixAndRefuseAnEmptyOne() {
+        assertEquals("#set allowBreak false", BaritoneScript.set("#", "allowBreak", "false"));
+        assertEquals("#set reset allowPlace", BaritoneScript.reset("#", "allowPlace"));
+        assertEquals("#goto 10 64 -3", BaritoneScript.goToBlock("#", 10, 64, -3));
+        assertEquals(">goto 10 -3", BaritoneScript.goToColumn(">", 10, -3));
+        assertThrows(IllegalArgumentException.class, () -> BaritoneScript.set("", "allowBreak", "false"));
+        assertThrows(IllegalArgumentException.class, () -> BaritoneScript.reset("", "allowBreak"));
+        assertThrows(IllegalArgumentException.class, () -> BaritoneScript.goToBlock("", 1, 2, 3));
+        assertThrows(IllegalArgumentException.class, () -> BaritoneScript.goToColumn("", 1, 2));
+    }
 }
