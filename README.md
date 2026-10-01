@@ -10,15 +10,17 @@ other anarchy servers. Eleven modules, each switched on separately.
 ## Why Xploits
 
 - **`crystal-aura++` goes for the kill, and never kills you.** With the opponent at the edge of death it
-  finishes him at every risk level, where 0.7.0 dealt nothing there. It goes past your reserve only for a
-  kill, only while you hold a totem and carry a spare, and never below 2 health in the other cases.
-- **It deals more than Meteor's own `crystal-aura` where it counts.** Behind cover, 540 damage against
-  490; with the opponent below you, 304 against 288; with him coming and going, 37 against 31. Where it
-  is behind (while you dodge, and the open-ground exchange) it says so: see the
+  finishes him at every risk level, where 0.7.0 dealt nothing there (7 of 9 runs in the 0.8.0 bench; in
+  the other two it dealt no damage at all, as Meteor's aura also sometimes does in that scene). It goes
+  past your reserve only for a kill, only while you hold a totem and carry a spare, and never below 2
+  health in the other cases.
+- **It deals more than Meteor's own `crystal-aura` where it counts.** With the opponent coming and going,
+  38 damage against 31; with him above you, 297 against 287; below you, 309 against 303; behind cover,
+  500 against 490. Where it is behind (while you move, and the open-ground exchange) it says so: see the
   [known issues](docs/known-issues.md).
-- **Your own crystals never took you below your reserve in any run of the 0.7.1 bench**: 77 scenarios,
+- **Your own crystals never took you below your reserve in any run of the 0.8.0 bench**: 81 scenarios,
   three runs of each measured one, at every risk level, against opponents that attack, break your
-  crystals and block your spots. Meteor's `crystal-aura` went down to 0.2 health in the same bench.
+  crystals and block your spots. Meteor's `crystal-aura` went down to 0.1 health in the same bench.
 - **`auto-pvp` switches the right combat modules on at the right moment** — crystals, traps, webs,
   surround, hole-filling and the rest — and only turns off the ones it turned on.
 - **`fight-recorder` tells you why you died**: a JSON file per fight with the damage split, your totems
@@ -237,13 +239,15 @@ on release, with `auto-pvp` on and not while typing in a text field — with it 
 ### `crystal-aura++` — crystal-aura with a floor under your health
 
 Meteor's `crystal-aura` behaviour — the same placing and breaking rules, the same defaults — plus a
-self-damage budget that never lets your health (plus absorption) drop below a reserve. It counts every
-crystal that can still hurt you, already placed or on its way to exploding, and works out the exact
-damage a hit would deal (Meteor rounds it down).
+self-damage budget: it places a crystal only if your health (plus absorption) would stay at or above a
+reserve were that crystal and every other one that can still hurt you to go off, and it breaks one of
+your own crystals only if that leaves you at least 2. The one exception is `finishing-blow`, below. It
+counts every crystal that can still hurt you, already placed or on its way to exploding, and works out
+the exact damage a hit would deal (Meteor rounds it down).
 
-> **Experimental in 0.7.1.** It kept your health above the reserve in every measured run, but it is still
+> **Experimental in 0.8.0.** It kept your health above the reserve in every measured run, but it is still
 > being tuned: in some situations it deals less damage than Meteor's `crystal-aura` (see the table and the
-> known issues below). The next 0.7.x releases keep improving its attack.
+> known issues below). The next releases keep improving its attack.
 
 **Use it from `auto-pvp`'s `crystal-module` setting** (`meteor` default | `xploits++`), or turn
 `crystal-aura++` on by itself. **It does nothing while Meteor's `crystal-aura` is on** — two auras
@@ -282,7 +286,7 @@ finishes the opponent go past the reserve:
 - **On servers that hide other players' health** (2b2t-style plugins) it does nothing: his health is
   never trusted.
 
-**Measured** (the 0.7.1 release bench, 2026-09-29; 100 ms simulated ping; unlimited crystals; natural
+**Measured** (the 0.8.0 release bench, 2026-10-01; 100 ms simulated ping; unlimited crystals; natural
 health regeneration only where noted; median of 3 runs; the sparring opponents in the table's first rows
 never attack, and in the fights at the bottom the opponent attacks back). First rows: damage dealt /
 your lowest health across the 3 runs, Balanced against Meteor's `crystal-aura`. Fight rows: result
@@ -292,37 +296,39 @@ blow on the opponent, where measured:
 | Situation | Meteor | Balanced |
 |---|---|---|
 | Opponent standing still | 30 / 3.4 | 30 / 3.5 |
-| Opponent circling | 20 / 3.8 | 20 / 3.9 |
+| Opponent circling | 20 / 3.7 | 20 / 3.9 |
 | Standing still, with regeneration | 40 / 0.2 | 40.8 / 3.5 |
-| Circling, with regeneration | 30 / 0.7 | 26 / 3.8 |
-| Opponent 3 blocks higher | 303 / 18.8 | 296 / 18.8 |
-| Opponent 3 blocks lower | 288 / 18.8 | 304 / 18.8 |
-| Opponent coming and going | 31 / 0.5 | 37 / 3.5 |
-| Opponent dodging sideways | 38 / 0.3 | 31 / 3.5 |
-| You walking in circles | 32 / 0.4 | 31 / 4.4 |
-| You dodging, opponent circling | 29.8 / 0.4 | 27 / 3.8 |
-| Behind cover | 490 / 18.0 | 540 / 17.3 |
-| Fight: opponent almost dead, no totem | 2-1-0, net 0, 0.5 s | 3-0-0, net 0, 0.6 s |
-| Fight: opponent almost dead, with totem | 3-0-0, net 6, 0.45 s | 3-0-0, net 5 |
-| Fight: open-ground exchange | 3-0-0, net 8 | 0-3-0, net 2 |
+| Circling, with regeneration | 30 / 0.6 | 28.8 / 4.4 |
+| Opponent 3 blocks higher | 287 / 18.8 | 297 / 18.8 |
+| Opponent 3 blocks lower | 303 / 18.8 | 309 / 18.8 |
+| Opponent coming and going | 31 / 0.5 | 37.7 / 3.5 |
+| Opponent dodging sideways | 30 / 0.3 | 30.9 / 3.5 |
+| You walking in circles | 40 / 0.1 | 30.8 / 4.3 |
+| You dodging, opponent circling | 30 / 0.2 | 27 / 4.0 |
+| Behind cover | 490 / 18.0 | 500 / 17.9 |
+| You jumping under a ceiling, with regeneration | 90 / 0.2 | 71.9 / 6.5 |
+| Fight: opponent almost dead, no totem | 3-0-0, net 0, 0.45 s | 2-1-0, net 0, 0.58 s |
+| Fight: opponent almost dead, with totem | 3-0-0, net 6, 0.5 s | 3-0-0, net 6 |
+| Fight: open-ground exchange | 2-1-0, net 8 | 0-3-0, net 2 |
 | Fight: both in a hole | 0-3-0, net 0 | 0-3-0, net 0 |
 | Fight: opponent mining your hole | 0-3-0, net 1 | 0-3-0, net 0 |
 
 In every run of every level the reserve held against your own crystals: no death and no totem lost to
 one of them (a finishing blow that kills may go past it, as described above). In the fights the
 opponent's own crystals can take you lower than the reserve, which only guards against yours. With
-Meteor's `crystal-aura` your health went down to 0.2.
+Meteor's `crystal-aura` your health went down to 0.1.
 
 **Known issues:**
 
-- **While you move** it is deliberately cautious. Walking in circles it now deals about what Meteor does
-  at Balanced (at Safe it deals less), but while you dodge it still deals less and takes the first totem
-  later. Sizing that caution from how far you really move is planned for 0.7.2.
+- **While you move** it is deliberately cautious: at Balanced, walking in circles it deals 31 against
+  Meteor's 40 (20 at Safe), dodging 27 against 30 and takes the first totem later, and jumping under a
+  ceiling 72 against 90 while keeping you at 6.5 where Meteor went down to 0.2. Sizing that caution
+  from how far you really move is planned for a later version.
 - **Against an opponent who moves around you** Balanced can take the first totem later than Meteor: it
   refuses crystals that would take you below 3.5.
 - **In an open-ground exchange** (both of you attacking, no cover) it still draws where Meteor wins.
   Part of that is the bench: explosions knock your player out of range and it never walks back
-  (fixed in 0.7.2).
+  (a fix is planned for a later version).
 - **On servers that hide other players' health** there is no finishing blow.
 - **A crystal of yours that appears late** (lag) is treated as someone else's and, when it would hurt you
   more than `max-damage`, may stay unbroken.
@@ -583,11 +589,14 @@ The most common:
 ## Coming soon
 
 - **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
-  that keeps a health reserve.
-- **Next, in a 0.7.x:** an attack mode for `crystal-aura++`, `Maximum` — places crystals even when
-  they would do little damage, drops obsidian when there is no spot to place on and an easier
-  face-place. Also tighter tuning while you move: the reach radius is sized from how far you really
-  move (0.7.2).
+  that keeps a health reserve; `surround++` — a computed defensive shell, from `auto-pvp`'s
+  `shell-module`.
+- **Next:** the second part of `auto-pvp`'s critical fix, the survival response (eating after a totem
+  pop, getting out of webs, leaving a broken hole), and `surround++` as the default once it has been
+  tested against attackers that place their own bases. Then an attack mode for `crystal-aura++`,
+  `Maximum` — places crystals even when they would do little damage, drops obsidian when there is no
+  spot to place on and an easier face-place — and tighter tuning while you move: the reach radius
+  sized from how far you really move.
 - **Then, a full fight:** self-protection first — notice the instant your hole is being mined and
   patch it at once, and decide what to do if a crystal is already sitting in the gap; respawn anchors,
   both attacking with them and a defence of our own, since Meteor's `anti-anchor` is not in this
