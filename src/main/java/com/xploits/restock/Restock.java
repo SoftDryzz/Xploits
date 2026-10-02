@@ -244,6 +244,12 @@ public class Restock extends XploitsModule {
         return Optional.ofNullable(lastDrained);
     }
 
+    /** Borrowed shulker boxes the player still carries (this session; the bench reads it). */
+    public int borrowedCount() {
+        RestockSession s = session;
+        return s == null ? 0 : s.borrowedCarried();
+    }
+
     /** The session lets an unpack finish for this stop (and its detail, for the reason's text). */
     void drained(RestockReason why, String detail) {
         lastDrained = why;

@@ -319,6 +319,30 @@ final class RestockScene {
         return bench.fromClient(client -> restock.lastDrained());
     }
 
+    /** The borrowed shulker boxes the player still carries, as restock counts them. */
+    int borrowed(Bench bench) {
+        return bench.fromClient(client -> restock.borrowedCount());
+    }
+
+    /** The bench builds the whole schematic itself, on the server: the build is done (the fake printer places nothing). */
+    void fillBuild(Bench bench) {
+        bench.onServer(srv -> {
+            ServerWorld w = srv.getOverworld();
+            schematic.blocks().forEach((cell, block) -> w.setBlockState(origin.add(cell), block.getDefaultState()));
+        });
+    }
+
+    /** Server thread read: what the chest at {@code at} holds, by id, what its shulker boxes hold included. */
+    Map<String, Long> chest(Bench bench, Vec3i at) {
+        return bench.fromServer(srv -> {
+            Map<String, Long> counts = new TreeMap<>();
+            if (srv.getOverworld().getBlockEntity(origin.add(at)) instanceof ChestBlockEntity be) {
+                for (int i = 0; i < be.size(); i++) add(counts, be.getStack(i));
+            }
+            return counts;
+        });
+    }
+
     Restock restock() {
         return restock;
     }

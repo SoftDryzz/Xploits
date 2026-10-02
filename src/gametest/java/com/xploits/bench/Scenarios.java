@@ -100,6 +100,7 @@ public final class Scenarios {
             new RestockReplacedChest(),
             new RestockDoubleChest(),
             new RestockShulkerCarried(),
+            new RestockShulkerBorrowed(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),
