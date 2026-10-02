@@ -9,6 +9,7 @@ import static com.xploits.restock.core.RestockTrip.Aiming.HELD;
 import static com.xploits.restock.core.RestockTrip.Aiming.WANTED;
 import static com.xploits.restock.core.RestockTrip.Click.REFUSED;
 import static com.xploits.restock.core.RestockTrip.Click.SENT;
+import static com.xploits.restock.core.RestockTrip.Click.WITHHELD;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -181,6 +182,16 @@ class RestockTripTest {
         RestockTrip t = atChest();
         t.step(f().aiming(HELD).build());
         assertEquals(new RestockTrip.Stopped(RestockReason.CONTAINER_REFUSED, false), t.step(f().click(REFUSED).build()));
+    }
+
+    @Test
+    void aClickWithheldBecauseTheBlockIsNoLongerAContainerMakesItUnusable() {
+        // Deferred L80: the adapter's last look before the packet found no container there (ruling R27), so nothing was
+        // sent: the source is unusable, as when the aim finds none — not CONTAINER_REFUSED, whose text names Easy Place.
+        RestockTrip t = atChest();
+        assertEquals(new RestockTrip.ClickContainer(CHEST), t.step(f().aiming(HELD).build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().click(WITHHELD).build()));
+        assertEquals(RestockTrip.Phase.CHOOSING, t.phase());
     }
 
     @Test

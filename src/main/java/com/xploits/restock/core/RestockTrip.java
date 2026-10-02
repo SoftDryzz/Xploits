@@ -24,8 +24,11 @@ public final class RestockTrip {
     /** OPEN: the aim at the container from here — none possible, requested but not yet held, held with the ray on it. */
     public enum Aiming { NONE, WANTED, HELD }
 
-    /** The tick after a {@link ClickContainer}: whether its packet left. */
-    public enum Click { NONE, SENT, REFUSED }
+    /**
+     * The tick after a {@link ClickContainer}: whether its packet left — {@code REFUSED}, something cancelled it on its
+     * way out; {@code WITHHELD}, the adapter did not send it because the block there is no longer a container.
+     */
+    public enum Click { NONE, SENT, REFUSED, WITHHELD }
 
     /** Where to fetch {@code material} from and where to come back to; {@code stand} empty: approach first. */
     public record Plan(String material, Pos container, Optional<Pos> stand, Pos resume, boolean printerPaused) {
@@ -293,6 +296,7 @@ public final class RestockTrip {
 
     private Action waitScreen(Facts f) {
         if (phaseTicks == 1 && f.click() == Click.REFUSED) return stop(RestockReason.CONTAINER_REFUSED, f);
+        if (phaseTicks == 1 && f.click() == Click.WITHHELD) return needSource(After.UNUSABLE);
         if (f.ourScreen()) {
             enter(Phase.TAKE);
             return WAIT;

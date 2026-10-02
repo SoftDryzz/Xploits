@@ -379,9 +379,10 @@ final class TripDriver {
         BlockHitResult h = hit;
         wanted = null;
         hit = null;
-        // Ruling R27, checked again right before the packet: never a right-click on anything but a container.
+        // Ruling R27, checked again right before the packet: never a right-click on anything but a container. Nothing
+        // is sent, and the container is unusable as when the aim finds none (deferred L80), never CONTAINER_REFUSED.
         if (h == null || !containerThere()) {
-            click = RestockTrip.Click.REFUSED;
+            click = RestockTrip.Click.WITHHELD;
             return;
         }
         long before = PacketWatch.get().oursSent();
