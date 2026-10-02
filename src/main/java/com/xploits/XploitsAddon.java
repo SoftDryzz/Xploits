@@ -12,6 +12,10 @@ import com.xploits.pvp.shell.SurroundPlusPlus;
 import com.xploits.pvp.hud.AutoPvpHud;
 import com.xploits.pvp.hud.PvpStarscript;
 import com.xploits.pvp.recorder.FightRecorder;
+import com.xploits.restock.JoinWatch;
+import com.xploits.restock.Marks;
+import com.xploits.restock.PacketWatch;
+import com.xploits.restock.Restock;
 import com.xploits.stash.StashKeeper;
 import com.xploits.shared.Languages;
 import com.xploits.shared.SettingsMigration;
@@ -34,6 +38,13 @@ public class XploitsAddon extends MeteorAddon {
         LOG.info("Initializing Xploits");
         SettingsMigration.run();
         Languages.start();
+        // restock's always-on listeners (restock spec §3, §4): the packet watch must know the rotation the server holds
+        // and the input it last heard before restock is ever turned on; the join watch gives back what an interrupted
+        // session left (Baritone's values, litematica-printer's print mode) whichever module is on; the mark key works
+        // with restock off. Meteor registers the addon's lambda factory before this runs.
+        PacketWatch.start();
+        JoinWatch.start();
+        Marks.start();
         Modules.get().add(new XploitsSettings());
         Modules.get().add(new KitRequester());
         Modules.get().add(new AutoTpy());
@@ -45,6 +56,7 @@ public class XploitsAddon extends MeteorAddon {
         Modules.get().add(new FightRecorder());
         Modules.get().add(new AutoTravel());
         Modules.get().add(new NetherSweep());
+        Modules.get().add(new Restock());
         Modules.get().add(new ConsoleModule());
         Hud.get().register(AutoPvpHud.INFO);
         PvpStarscript.register();

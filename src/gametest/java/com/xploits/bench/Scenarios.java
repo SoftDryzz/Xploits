@@ -89,6 +89,7 @@ public final class Scenarios {
             new Panel(),
             new ExposureCoverProbe(),
             new BaritoneNet(),
+            new RestockNoLitematica(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),
