@@ -13,6 +13,9 @@ import java.util.Optional;
  * most and from three below to one above it, from which a face of the container that is not covered by another block
  * looks at the eye and has its hit point within reach. The nearest to the player wins; ties by y, x, z. Never the
  * container's own cell nor the one under it. The raycast at the container itself is made when the player is there.
+ * <p>
+ * The search is the same as {@code com.xploits.printer.core.StandSpot}'s (candidate box, eye height, tie-break, reach
+ * loop), kept separate while that core is frozen; a geometry fix in one must be mirrored in the other.
  */
 public final class ContainerSpot {
     /** What the adapter measures around the container. */

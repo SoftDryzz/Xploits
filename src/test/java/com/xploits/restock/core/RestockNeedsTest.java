@@ -25,24 +25,24 @@ class RestockNeedsTest {
 
     @Test
     void unknownAndAirAreNeverMaterial() {
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.UNKNOWN, null),
-            RestockNeeds.classify(Target.UNKNOWN, 0, STONE));
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.AIR_TARGET, null),
-            RestockNeeds.classify(Target.AIR, 0, STONE));
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.AIR_TARGET, null),
-            RestockNeeds.classify(Target.of(DOOR), 0, BlockFacts.AIR), "a door's upper half costs nothing");
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.UNKNOWN, null, 0),
+            RestockNeeds.classify(Target.UNKNOWN, 0, STONE, 1));
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.AIR_TARGET, null, 0),
+            RestockNeeds.classify(Target.AIR, 0, STONE, 1));
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.AIR_TARGET, null, 0),
+            RestockNeeds.classify(Target.of(DOOR), 0, BlockFacts.AIR, 0), "a door's upper half costs nothing");
     }
 
     @Test
     void theSameBlockIsPlacedWhateverItsStateAndAnythingElseIsMissing() {
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MATCHES, "minecraft:stone"),
-            RestockNeeds.classify(Target.of(STONE), 1, STONE));
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MATCHES, "minecraft:oak_stairs"),
-            RestockNeeds.classify(Target.of(STAIRS), 1, STAIRS), "facing is never compared");
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MISSING, "minecraft:stone"),
-            RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR));
-        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MISSING, "minecraft:stone"),
-            RestockNeeds.classify(Target.of(STONE), 1, DIRT), "a wrong block is not the build");
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MATCHES, "minecraft:stone", 0),
+            RestockNeeds.classify(Target.of(STONE), 1, STONE, 1));
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MATCHES, "minecraft:oak_stairs", 0),
+            RestockNeeds.classify(Target.of(STAIRS), 1, STAIRS, 1), "facing is never compared");
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MISSING, "minecraft:stone", 0),
+            RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR, 0));
+        assertEquals(new RestockNeeds.Classified(BuildIndex.Status.MISSING, "minecraft:stone", 0),
+            RestockNeeds.classify(Target.of(STONE), 1, DIRT, 1), "a wrong block is not the build");
     }
 
     @Test
@@ -60,20 +60,59 @@ class RestockNeedsTest {
     void theNeedIsTheTotalLessWhatIsPlacedAndWhatIsCarried() {
         // stone: 10 - 3 - 2 = 5; glass: 4 - 0 - 9 is negative, so not needed.
         assertEquals(Map.of("minecraft:stone", 5L), RestockNeeds.need(Map.of("minecraft:stone", 10L, "minecraft:glass", 4L),
-            Map.of("minecraft:stone", 3), Map.of("minecraft:stone", 2, "minecraft:glass", 9)));
+            Map.of("minecraft:stone", 3), Map.of(), Map.of("minecraft:stone", 2, "minecraft:glass", 9)));
     }
 
     @Test
     void theIndexCountsWhatIsPlacedAndUnknownPartsCountAsNotBuilt() {
         BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(3, 0, 0))));
-        set(index, new Pos(0, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, STONE));
-        set(index, new Pos(1, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR));
-        set(index, new Pos(2, 0, 0), RestockNeeds.classify(Target.UNKNOWN, 0, BlockFacts.AIR));
-        set(index, new Pos(3, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, DIRT));
+        set(index, new Pos(0, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, STONE, 1));
+        set(index, new Pos(1, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR, 0));
+        set(index, new Pos(2, 0, 0), RestockNeeds.classify(Target.UNKNOWN, 0, BlockFacts.AIR, 0));
+        set(index, new Pos(3, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, DIRT, 1));
         assertEquals(Map.of("minecraft:stone", 1), index.placed());
         // The whole build wants 4 stone; 1 is placed and 1 carried: 2 to fetch, the unknown one included.
         assertEquals(Map.of("minecraft:stone", 2L),
-            RestockNeeds.need(Map.of("minecraft:stone", 4L), index.placed(), Map.of("minecraft:stone", 1)));
+            RestockNeeds.need(Map.of("minecraft:stone", 4L), index.placed(), Map.of(), Map.of("minecraft:stone", 1)));
+    }
+
+    @Test
+    void aFinishedDoubleSlabOrCountedStateNeedsNothingMore() {
+        String slab = "minecraft:oak_slab";
+        String candle = "minecraft:candle";
+        BlockFacts slabFacts = new BlockFacts(slab, slab, false, false, true, false, false, false, false, false, false, false);
+        BlockFacts candleFacts = new BlockFacts(candle, candle, false, false, true, false, false, false, false, false, false, false);
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(1, 0, 0))));
+        PlacedExtra extra = new PlacedExtra();
+        Pos slabPos = new Pos(0, 0, 0);
+        Pos candlePos = new Pos(1, 0, 0);
+        RestockNeeds.Classified a = RestockNeeds.classify(Target.of(slabFacts), 2, slabFacts, 2);
+        RestockNeeds.Classified b = RestockNeeds.classify(Target.of(candleFacts), 4, candleFacts, 4);
+        set(index, slabPos, a);
+        set(index, candlePos, b);
+        extra.set(slabPos, a.material(), a.extra());
+        extra.set(candlePos, b.material(), b.extra());
+        assertEquals(Map.of(slab, 1, candle, 3), extra.byMaterial());
+        assertEquals(Map.of(), RestockNeeds.need(Map.of(slab, 2L, candle, 4L), index.placed(), extra.byMaterial(), Map.of()));
+    }
+
+    @Test
+    void aSingleSlabWhereADoubleGoesStillNeedsOne() {
+        BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
+            false, false, false, false, false);
+        RestockNeeds.Classified c = RestockNeeds.classify(Target.of(slab), 2, slab, 1);
+        assertEquals(0, c.extra());
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(0, 0, 0))));
+        set(index, new Pos(0, 0, 0), c);
+        assertEquals(Map.of("minecraft:oak_slab", 1L), RestockNeeds.need(Map.of("minecraft:oak_slab", 2L),
+            index.placed(), Map.of(), Map.of()));
+    }
+
+    @Test
+    void aSingleSlabTargetWhereTheWorldHoldsADoubleOneHasNoExtra() {
+        BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
+            false, false, false, false, false);
+        assertEquals(0, RestockNeeds.classify(Target.of(slab), 1, slab, 2).extra());
     }
 
     private static void set(BuildIndex index, Pos pos, RestockNeeds.Classified c) {

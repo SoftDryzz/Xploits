@@ -21,22 +21,27 @@ public final class RestockNeeds {
     public record Counted(String item, int perBlock, long blocks) {
     }
 
-    /** A position as restock's index holds it; {@code material} only for {@code MATCHES} and {@code MISSING}. */
-    public record Classified(BuildIndex.Status status, String material) {
+    /**
+     * A position as restock's index holds it; {@code material} only for {@code MATCHES} and {@code MISSING}.
+     * {@code extra}: items beyond one that a {@code MATCHES} position already holds (a double slab, four candles), 0 for
+     * every other status; {@link BuildIndex#placed()} counts positions, the totals count items.
+     */
+    public record Classified(BuildIndex.Status status, String material, int extra) {
     }
 
     private RestockNeeds() {
     }
 
-    public static Classified classify(Target target, int perBlock, BlockFacts world) {
+    public static Classified classify(Target target, int perBlock, BlockFacts world, int worldPerBlock) {
         return switch (target.kind()) {
-            case UNKNOWN -> new Classified(BuildIndex.Status.UNKNOWN, null);
-            case AIR -> new Classified(BuildIndex.Status.AIR_TARGET, null);
+            case UNKNOWN -> new Classified(BuildIndex.Status.UNKNOWN, null, 0);
+            case AIR -> new Classified(BuildIndex.Status.AIR_TARGET, null, 0);
             case BLOCK -> {
-                if (perBlock <= 0) yield new Classified(BuildIndex.Status.AIR_TARGET, null);
+                if (perBlock <= 0) yield new Classified(BuildIndex.Status.AIR_TARGET, null, 0);
                 String item = target.block().item();
-                yield target.block().id().equals(world.id()) ? new Classified(BuildIndex.Status.MATCHES, item)
-                    : new Classified(BuildIndex.Status.MISSING, item);
+                yield target.block().id().equals(world.id())
+                    ? new Classified(BuildIndex.Status.MATCHES, item, Math.max(0, Math.min(perBlock, worldPerBlock) - 1))
+                    : new Classified(BuildIndex.Status.MISSING, item, 0);
             }
         };
     }
@@ -50,8 +55,14 @@ public final class RestockNeeds {
         return m;
     }
 
+    /**
+     * {@code total − placed − extra − carried}: {@code placed} counts one item per matching position, {@code extra} the
+     * items beyond one those positions already hold ({@link PlacedExtra#byMaterial()}).
+     */
     public static Map<String, Long> need(Map<String, Long> totals, Map<String, Integer> placed,
-                                         Map<String, Integer> carried) {
-        return MaterialNeeds.need(totals, placed, carried, Map.of(), Map.of());
+                                         Map<String, Integer> extra, Map<String, Integer> carried) {
+        Map<String, Integer> built = new TreeMap<>(placed);
+        extra.forEach((item, n) -> built.merge(item, n, Integer::sum));
+        return MaterialNeeds.need(totals, built, carried, Map.of(), Map.of());
     }
 }
