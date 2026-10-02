@@ -51,6 +51,53 @@ public final class BorrowedShulkers {
         }
     }
 
+    /**
+     * One container visit's shulker box moves, for {@link #settle} (ruling R70): the boxes of each kind the player
+     * carried in slots 0–35 right before the visit's first box click, holding items or empty, and the carries and
+     * give-backs whose click packets left. Positions stay in memory and are never printed.
+     */
+    public static final class Visit {
+        private final Map<Kind, Integer> filledBefore = new HashMap<>();
+        private final Map<Kind, Integer> emptyBefore = new HashMap<>();
+        private final List<Borrowed> carried = new ArrayList<>();
+        private final List<Borrowed> givenBack = new ArrayList<>();
+
+        /** {@code before}: the boxes in slots 0–35 right before the visit's first box click. */
+        public Visit(List<Held> before) {
+            tally(before, filledBefore, emptyBefore);
+        }
+
+        /** A carry whose click packet left, already noted in the ledger ({@link #borrow}). */
+        public void borrowed(Borrowed b) {
+            carried.add(Objects.requireNonNull(b, "borrowed"));
+        }
+
+        /** A give-back whose click packet left, its entry already gone from the ledger ({@link #giveBack}). */
+        public void gaveBack(Borrowed b) {
+            givenBack.add(Objects.requireNonNull(b, "given back"));
+        }
+
+        /**
+         * A box this visit carried is no longer carried — the server refused its click and its correction arrived, or
+         * the player put it back: the visit carries nothing more (each further carry would only be refused too).
+         */
+        public boolean cameBack(List<Held> now) {
+            Map<Kind, Integer> filledNow = new HashMap<>();
+            tally(now, filledNow, new HashMap<>());
+            Map<Kind, Integer> noted = new HashMap<>();
+            for (Borrowed b : carried) noted.merge(b.kind(), 1, Integer::sum);
+            for (Map.Entry<Kind, Integer> e : noted.entrySet()) {
+                if (e.getValue() > arrived(e.getKey(), filledNow)) return true;
+            }
+            return false;
+        }
+
+        /** How many boxes of {@code kind} holding items came into slots 0–35 since the visit's first box click. */
+        private int arrived(Kind kind, Map<Kind, Integer> filledNow) {
+            return Math.max(0, filledNow.getOrDefault(kind, 0) - filledBefore.getOrDefault(kind, 0));
+        }
+    }
+
     private final List<Borrowed> list = new ArrayList<>();
 
     public void borrow(Borrowed b) {
@@ -67,6 +114,46 @@ public final class BorrowedShulkers {
             }
         }
         return false;
+    }
+
+    /**
+     * Ruling R70 at a container visit's close (and at a stop during one): the ledger keeps only what the server let go.
+     * Per kind, of the carries noted in the visit at most as many stay as boxes of that kind holding items came into
+     * slots 0–35 ({@code now} against the visit's start); the others are forgotten. A carry the server refused so adds
+     * nothing — the player's own box of that kind never counts as borrowed — and a box carried again after its
+     * refusal counts once. Per kind, a give-back stays done only as many times as empty boxes of that kind left the
+     * player; the others get their entries back. Boxes holding items and empty ones are counted apart, so a give-back
+     * and a carry of one kind in one visit never hide each other. Entries of one kind from one container are
+     * interchangeable.
+     */
+    public void settle(Visit v, List<Held> now) {
+        Map<Kind, Integer> filledNow = new HashMap<>();
+        Map<Kind, Integer> emptyNow = new HashMap<>();
+        tally(now, filledNow, emptyNow);
+        Map<Kind, Integer> extra = new HashMap<>();
+        for (Borrowed b : v.carried) extra.merge(b.kind(), 1, Integer::sum);
+        extra.replaceAll((kind, noted) -> noted - v.arrived(kind, filledNow));
+        for (int i = v.carried.size() - 1; i >= 0; i--) {
+            Borrowed b = v.carried.get(i);
+            if (extra.get(b.kind()) <= 0) continue;
+            if (list.remove(b)) extra.merge(b.kind(), -1, Integer::sum);
+        }
+        Map<Kind, Integer> left = new HashMap<>();
+        for (Borrowed b : v.givenBack) {
+            left.computeIfAbsent(b.kind(), kind -> Math.max(0, v.emptyBefore.getOrDefault(kind, 0)
+                - emptyNow.getOrDefault(kind, 0)));
+            int n = left.get(b.kind());
+            if (n > 0) {
+                left.put(b.kind(), n - 1);
+            } else {
+                list.add(b);
+            }
+        }
+    }
+
+    /** The boxes in {@code held} by kind, holding items or empty. */
+    private static void tally(List<Held> held, Map<Kind, Integer> filled, Map<Kind, Integer> empty) {
+        for (Held h : held) (h.empty() ? empty : filled).merge(h.kind(), 1, Integer::sum);
     }
 
     public int count() {
@@ -140,7 +227,11 @@ public final class BorrowedShulkers {
         return Optional.ofNullable(best);
     }
 
-    /** Forgets the entries of a kind the player no longer carries as many of (put away by hand, a refused carry): the newest first. */
+    /**
+     * Forgets the entries of a kind the player no longer carries as many of (a box put away by hand): the newest first.
+     * It cannot tell a borrowed box from the player's own of that kind, so a carry the server refused is settled at the
+     * visit's close instead ({@link #settle}, ruling R70).
+     */
     public void trim(Map<Kind, Integer> carried) {
         Map<Kind, Integer> entries = new HashMap<>();
         for (Borrowed b : list) entries.merge(b.kind(), 1, Integer::sum);

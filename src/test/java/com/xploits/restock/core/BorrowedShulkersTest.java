@@ -140,6 +140,142 @@ class BorrowedShulkersTest {
         assertEquals(0, ledger().carried(Map.of()));
     }
 
+    // --- ruling R70: a container visit's box moves, settled at its close ------------------------------------------
+
+    private static BorrowedShulkers.Borrowed fromA(BorrowedShulkers.Kind kind) {
+        return new BorrowedShulkers.Borrowed(kind, OVERWORLD, A);
+    }
+
+    /** A carry whose click packet left, as the session notes it: in the ledger, and in the visit. */
+    private static void carried(BorrowedShulkers l, BorrowedShulkers.Visit v, BorrowedShulkers.Kind kind) {
+        l.borrow(fromA(kind));
+        v.borrowed(fromA(kind));
+    }
+
+    /** A give-back whose click packet left, as the session notes it: its entry gone, and in the visit. */
+    private static void gaveBack(BorrowedShulkers l, BorrowedShulkers.Visit v, BorrowedShulkers.Kind kind) {
+        assertTrue(l.giveBack(OVERWORLD, A, kind));
+        v.gaveBack(fromA(kind));
+    }
+
+    @Test
+    void aRefusedCarryAddsNothing() {
+        // The server refused the click and its correction put the box back in the chest before the close.
+        BorrowedShulkers l = new BorrowedShulkers();
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of());
+        carried(l, v, PLAIN);
+        l.settle(v, List.of());
+        assertTrue(l.isEmpty());
+    }
+
+    @Test
+    void thePlayersOwnBoxOfThatKindNeverBecomesBorrowed() {
+        // The player carries an own empty plain box and a carry of a plain box is refused. Kept, the entry would make
+        // the own box look borrowed (R50's count), and it would go to the chest on the next visit or a last trip.
+        BorrowedShulkers l = new BorrowedShulkers();
+        List<BorrowedShulkers.Held> own = List.of(held(3, PLAIN, true));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(own);
+        carried(l, v, PLAIN);
+        l.settle(v, own);
+        l.trim(Map.of(PLAIN, 1));
+        assertEquals(0, l.carried(Map.of(PLAIN, 1)));
+        assertEquals(List.of(), l.toReturn(OVERWORLD, A, own, 27));
+        assertEquals(Optional.empty(), l.lastTripOrigin(OVERWORLD, new Point(0, 64, 0), own, Set.of()));
+    }
+
+    @Test
+    void anAcceptedCarryStays() {
+        BorrowedShulkers l = new BorrowedShulkers();
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of(held(3, PLAIN, true)));
+        carried(l, v, PLAIN);
+        l.settle(v, List.of(held(3, PLAIN, true), held(8, PLAIN, false)));
+        assertEquals(1, l.count());
+        assertEquals(1, l.carried(Map.of(PLAIN, 2)));
+    }
+
+    @Test
+    void aBoxClickedAgainAfterItsCorrectionCountsOnce() {
+        BorrowedShulkers l = new BorrowedShulkers();
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of());
+        carried(l, v, PLAIN);
+        carried(l, v, PLAIN);
+        l.settle(v, List.of(held(8, PLAIN, false)));
+        assertEquals(1, l.count());
+    }
+
+    @Test
+    void aRefusalNeverTakesAnEarlierBorrowWithIt() {
+        // A box borrowed on an earlier visit, carried and emptied since, and this visit's refused carry of that kind:
+        // only this visit's note goes, so the earlier box still goes back on the next visit.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(fromA(PLAIN));
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, B));
+        List<BorrowedShulkers.Held> carriedNow = List.of(held(0, PLAIN, true), held(1, PLAIN, true));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(carriedNow);
+        carried(l, v, PLAIN);
+        l.settle(v, carriedNow);
+        assertEquals(2, l.count());
+        assertEquals(List.of(new TakePlan.Slot(0, BOX, 1, 27)), l.toReturn(OVERWORLD, A, carriedNow, 27));
+        assertTrue(l.giveBack(OVERWORLD, B, PLAIN), "another container's entry of that kind is never touched");
+    }
+
+    @Test
+    void eachKindIsSettledOnItsOwn() {
+        BorrowedShulkers l = new BorrowedShulkers();
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of());
+        carried(l, v, PLAIN);
+        carried(l, v, NAMED);
+        l.settle(v, List.of(held(8, NAMED, false)));
+        assertEquals(1, l.count());
+        assertTrue(l.isBorrowed(NAMED));
+        assertFalse(l.isBorrowed(PLAIN), "the refused plain carry left nothing");
+    }
+
+    @Test
+    void aRefusedGiveBackKeepsItsEntryAndAnAcceptedOneDoesNot() {
+        // Review Minor 1: a give-back counts once its box left the player.
+        List<BorrowedShulkers.Held> before = List.of(held(0, PLAIN, true));
+        BorrowedShulkers refused = new BorrowedShulkers();
+        refused.borrow(fromA(PLAIN));
+        BorrowedShulkers.Visit r = new BorrowedShulkers.Visit(before);
+        gaveBack(refused, r, PLAIN);
+        refused.settle(r, before);
+        assertEquals(1, refused.count(), "the box is still carried: still borrowed");
+        BorrowedShulkers accepted = new BorrowedShulkers();
+        accepted.borrow(fromA(PLAIN));
+        BorrowedShulkers.Visit a = new BorrowedShulkers.Visit(before);
+        gaveBack(accepted, a, PLAIN);
+        accepted.settle(a, List.of());
+        assertTrue(accepted.isEmpty());
+    }
+
+    @Test
+    void aGiveBackAndACarryOfOneKindInOneVisitAreToldApart() {
+        // An empty borrowed box went back and a filled one of that kind came out: as many plain boxes as before, yet
+        // both happened — the borrowed box is the filled one now.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(fromA(PLAIN));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of(held(0, PLAIN, true)));
+        gaveBack(l, v, PLAIN);
+        carried(l, v, PLAIN);
+        l.settle(v, List.of(held(8, PLAIN, false)));
+        assertEquals(1, l.count());
+        assertEquals(1, l.carried(Map.of(PLAIN, 1)));
+    }
+
+    @Test
+    void aCarriedBoxThatCameBackIsSeenAsSoonAsItsAnswerArrives() {
+        // The hardening: once the server put a carried box back, the visit carries nothing more.
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of(held(3, PLAIN, true)));
+        assertFalse(v.cameBack(List.of(held(3, PLAIN, true))), "nothing carried yet");
+        v.borrowed(fromA(PLAIN));
+        assertFalse(v.cameBack(List.of(held(3, PLAIN, true), held(8, PLAIN, false))),
+            "the box shows: no answer, or the server took the click");
+        assertTrue(v.cameBack(List.of(held(3, PLAIN, true))), "its correction put it back in the chest");
+        assertTrue(v.cameBack(List.of(held(3, PLAIN, true), held(8, PLAIN, true))),
+            "an empty box is not the one carried");
+    }
+
     @Test
     void anEntryNeverPrintsItsOrigin() {
         String printed = new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, new Pos(12345, 67, -6789)).toString();

@@ -440,6 +440,76 @@ class RestockTripTest {
     }
 
     @Test
+    void theScreenStaysOpenAfterABoxClickUntilTheServerCouldAnswer() {
+        // Ruling R70: the server takes a click silently and refuses one with a correction, which the client drops once
+        // the screen is closed. After a click that moves a shulker box, nothing more happens in the screen for
+        // contentWaitTicks live ticks.
+        RestockTrip t = taking();
+        assertEquals(new RestockTrip.Take(4), t.step(f().ourScreen().seen().take(new TakePlan.Click(4, true)).build()));
+        for (int i = 1; i <= 20; i++) {
+            assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().take(new TakePlan.Click(5)).carried(64)
+                .build()), "the answer's tick " + i);
+        }
+        assertEquals(new RestockTrip.Take(5), t.step(f().ourScreen().seen().take(new TakePlan.Click(5)).carried(64)
+            .build()), "then the next click");
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64)
+            .build()), "a loose stack's click waits for nothing");
+    }
+
+    @Test
+    void aGiveBackWaitsForItsAnswerBeforeTheClose() {
+        RestockTrip t = taking();
+        assertEquals(new RestockTrip.Take(40),
+            t.step(f().ourScreen().seen().take(new TakePlan.Click(40, true)).build()));
+        for (int i = 1; i <= 20; i++) {
+            assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).build()));
+        }
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).build()));
+    }
+
+    @Test
+    void pausedTicksDoNotCountTowardsTheAnswer() {
+        RestockTrip t = taking();
+        t.step(f().ourScreen().seen().take(new TakePlan.Click(4, true)).build());
+        for (int i = 1; i <= 30; i++) {
+            assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().paused().take(new TakePlan.Done(true))
+                .carried(64).build()), "paused " + i);
+        }
+        for (int i = 1; i <= 20; i++) {
+            assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64)
+                .build()), "live " + i);
+        }
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64)
+            .build()));
+    }
+
+    @Test
+    void aLiveTickCountsTowardsTheAnswerWhetherThePlayerStandsStillOrNot() {
+        // The server answers either way; only a pause (lag, eating, another module acting) stops the count.
+        RestockTrip t = taking();
+        t.step(f().ourScreen().seen().take(new TakePlan.Click(4, true)).build());
+        for (int i = 1; i <= 20; i++) {
+            assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().moving().take(new TakePlan.Done(true))
+                .carried(64).build()), "live, not still " + i);
+        }
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64)
+            .build()));
+    }
+
+    @Test
+    void whileTheAnswerIsAwaitedAMovementKeyOrAClosedScreenStillStopsAtOnce() {
+        RestockTrip moved = taking();
+        moved.step(f().ourScreen().seen().take(new TakePlan.Click(4, true)).build());
+        moved.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64).build());
+        assertEquals(new RestockTrip.Stopped(RestockReason.PLAYER_MOVED, true),
+            moved.step(f().keys().ourScreen().seen().take(new TakePlan.Done(true)).carried(64).build()));
+        RestockTrip closed = taking();
+        closed.step(f().ourScreen().seen().take(new TakePlan.Click(4, true)).build());
+        assertEquals(new RestockTrip.Stopped(RestockReason.CONTAINER_CLOSED, false),
+            closed.step(f().take(new TakePlan.Done(true)).carried(64).build()));
+    }
+
+    @Test
     void pausedStallsNeverStopApproachOrReturn() {
         RestockTrip a = trip(false, Optional.empty());
         a.step(f().build());

@@ -108,8 +108,8 @@ class TakePlanTest {
     @Test
     void anEmptyBorrowedBoxGoesBackFirst() {
         // Owner ruling R44: the adapter lists only empty boxes of a kind borrowed from this container.
-        assertEquals(new TakePlan.Click(40), TakePlan.next(CHEST, List.of(new TakePlan.Slot(40, BOX, 1, 1)), STONE,
-            need(STONE, 10L), true));
+        assertEquals(new TakePlan.Click(40, true), TakePlan.next(CHEST, List.of(new TakePlan.Slot(40, BOX, 1, 1)),
+            STONE, need(STONE, 10L), true));
     }
 
     @Test
@@ -122,7 +122,7 @@ class TakePlanTest {
     void theBoxHoldingTheMostIsCarriedWhenNoLooseStackIs() {
         List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(3, RED_BOX, 1, 1, Map.of(STONE, 64)),
             new TakePlan.Slot(4, BOX, 1, 1, Map.of(STONE, 1728)), new TakePlan.Slot(5, DIRT, 64, 64));
-        assertEquals(new TakePlan.Click(4), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+        assertEquals(new TakePlan.Click(4, true), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
         assertEquals(new TakePlan.Done(false), TakePlan.next(chest, STONE, need(STONE, 10L)), "phase A never carries one");
     }
 
@@ -131,7 +131,8 @@ class TakePlanTest {
         // Ruling R40 inside the container: a loose stack is one click, a box is a carry and an unpack at the build.
         List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(2, STONE, 5, 64),
             new TakePlan.Slot(4, BOX, 1, 1, Map.of(STONE, 1728)));
-        assertEquals(new TakePlan.Click(2), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+        assertEquals(new TakePlan.Click(2, false), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true),
+            "a loose stack's click is no box click");
     }
 
     @Test
@@ -150,7 +151,8 @@ class TakePlanTest {
     void aBoxIsCarriedForAnotherMaterialStillNeeded() {
         List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(0, STONE, 64, 0),
             new TakePlan.Slot(4, BOX, 1, 1, Map.of(GLASS, 64)));
-        assertEquals(new TakePlan.Click(4), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L, GLASS, 5L), true));
+        assertEquals(new TakePlan.Click(4, true), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L, GLASS, 5L),
+            true));
     }
 
     @Test
@@ -200,6 +202,6 @@ class TakePlanTest {
     void twoBoxesHoldingTheSameGoToTheLowerSlot() {
         List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(7, BOX, 1, 1, Map.of(STONE, 64)),
             new TakePlan.Slot(3, RED_BOX, 1, 1, Map.of(STONE, 64)));
-        assertEquals(new TakePlan.Click(3), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+        assertEquals(new TakePlan.Click(3, true), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
     }
 }

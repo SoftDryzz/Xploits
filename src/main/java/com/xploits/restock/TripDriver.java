@@ -39,7 +39,9 @@ import java.util.Optional;
  * the server holds that exact rotation and the raycast with it still sees the container. The container screen is adopted
  * by its {@code syncId} after restock's click and is the only one clicked or closed; a container screen that answers
  * restock's click only after the trip stopped waiting for it is closed, by its own {@code syncId}, before anything else
- * ({@link LateScreen}: rulings R12, R28, deferred L79). Client thread.
+ * ({@link LateScreen}: rulings R12, R28, deferred L79). A take click that moves a shulker box goes in the session's
+ * ledger only once its packet left, and the session settles each visit's box moves as its screen closes, after the
+ * trip waited for the server's answer (ruling R70). Client thread.
  */
 final class TripDriver {
     sealed interface Result permits Running, Finished, Ended {
@@ -86,6 +88,8 @@ final class TripDriver {
     private boolean pausedLastTick;
     /** M16, inner mode: live ticks the take waited in TAKE for stillness or an empty cursor. */
     private int innerWaitTicks;
+    /** Whether a box could be carried, as the last tick in TAKE read it (ruling R54; next() uses it, Minor 7). */
+    private boolean takeCarryRoom;
     private volatile boolean actingAtRequest;
 
     TripDriver(RestockSession session, MinecraftClient mc, Mover mover, RestockTrip trip, RestockLimits limits,
@@ -339,7 +343,10 @@ final class TripDriver {
         // Ruling R54: a container trip carries a box only while one can be carried (a free hotbar slot and one more).
         // Otherwise its slots are phase A's — a block only inside boxes is not "there" — so the trip tries the next
         // source (Task B7's session) instead of stopping the session with NOTHING_FITS. The inner take never carries.
-        boolean carry = !inner && session.carryOnTrips() && ContainerScreen.carryRoom(p.getInventory()) > 0;
+        boolean carryRoom = !inner && session.carryOnTrips() && ContainerScreen.carryRoom(p.getInventory()) > 0;
+        if (trip.phase() == RestockTrip.Phase.TAKE) takeCarryRoom = carryRoom;
+        // Ruling R70: once a box this visit carried came back (the server refused its click), carry nothing more.
+        boolean carry = carryRoom && !session.carriedBoxCameBack(p);
         TakePlan.Step take = ours
             ? TakePlan.next(ContainerScreen.slots(p, inner ? 1 : session.takeReserve(), carry, session.buildItems()),
                 inner ? List.of() : session.returning(p, trip.container()), trip.material(),
@@ -447,14 +454,30 @@ final class TripDriver {
             }
             case RestockTrip.Take t -> {
                 actedThisTick = true;
-                if (!inner) session.moving(p, t.slot(), trip.container());
+                // Ruling R70: what the click moves is read before it (the client applies its own prediction at once),
+                // and goes in the ledger only once the click's packet left.
+                Optional<RestockSession.BoxMove> box = inner ? Optional.empty()
+                    : session.boxMove(p, t.slot(), trip.container());
+                long sent = PacketWatch.get().oursSent();
                 ContainerScreen.quickMove(mc, syncId, t.slot());
+                if (box.isPresent()) {
+                    if (PacketWatch.get().oursSent() != sent + 1) {
+                        // Cancelled on its way out: the client already shows the box moved, the server never saw it,
+                        // so the screen no longer shows the truth. Nothing is noted, and the trip ends saying so.
+                        mover.cancel();
+                        wanted = null;
+                        return new Ended(RestockReason.CLICK_NOT_SENT, "");
+                    }
+                    session.moved(box.get());
+                }
             }
             case RestockTrip.Close c -> {
                 actedThisTick = true;
                 if (!inner) {
                     session.saw(trip.container(), ContainerScreen.loose(p.currentScreenHandler),
                         ContainerScreen.nested(p.currentScreenHandler));
+                    // Ruling R70: the server answered every box click of this visit (the trip waited for it).
+                    session.settleVisit();
                 }
                 ContainerScreen.close(p, syncId);
                 syncId = -1;
@@ -465,7 +488,11 @@ final class TripDriver {
                 if (inner) {
                     trip.giveUp();
                 } else {
-                    Optional<Source> next = session.next(n.material(), n.failed(), n.failure(), trip.resume());
+                    // Review Minor 7: a stale container is judged on the carry room its take read; a failure before
+                    // any take reads it now.
+                    boolean carry = n.failure() == RestockTrip.Failure.UNUSABLE
+                        ? session.carryOnTrips() && ContainerScreen.carryRoom(p.getInventory()) > 0 : takeCarryRoom;
+                    Optional<Source> next = session.next(n.material(), n.failed(), n.failure(), trip.resume(), carry);
                     if (next.isPresent()) trip.retarget(next.get().container(), next.get().stand());
                     else trip.giveUp();
                 }

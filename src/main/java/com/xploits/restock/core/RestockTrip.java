@@ -14,9 +14,10 @@ import java.util.function.Supplier;
  * PAUSE_PRINTER), so a paused trip first waits {@code printerSettleTicks} for its last queued packets. Then it walks to
  * the stand spot (a stash-keeper entry is approached first and its spot chosen once arrived), looks at the container
  * and clicks it only while still, waits for its screen, takes while still (after the slots arrive, or after the content
- * wait for an empty-looking screen), closes while still, and walks back. A stale or unusable source asks the adapter
- * for the next one ({@link #retarget}, or {@link #giveUp} to go back empty-handed). The player's movement keys stop the
- * trip in any phase. A guard pause blocks every click and close and does not count towards a stall. A walk that starts
+ * wait for an empty-looking screen; after a click that moved a shulker box, it waits as long again for the server's
+ * answer, ruling R70), closes while still, and walks back. A stale or unusable source asks the adapter for the next
+ * one ({@link #retarget}, or {@link #giveUp} to go back empty-handed). The player's movement keys stop the trip in any
+ * phase. A guard pause blocks every click and close and does not count towards a stall. A walk that starts
  * where it ends arrives at once, with no goal; {@link #hurry} cuts a take short.
  */
 public final class RestockTrip {
@@ -194,6 +195,8 @@ public final class RestockTrip {
     private int clicks;
     private After after;
     private boolean hurry;
+    /** Ruling R70: live ticks still to wait in TAKE for the server's answer to a click that moved a shulker box. */
+    private int answerWait;
 
     public RestockTrip(Plan plan, RestockLimits limits) {
         this.limits = limits;
@@ -378,6 +381,14 @@ public final class RestockTrip {
 
     private Action take(Facts f) {
         if (!f.ourScreen()) return stop(RestockReason.CONTAINER_CLOSED, f);
+        // Ruling R70: the server takes a click silently and refuses one with a correction, which the client drops
+        // once the screen is closed. After a click that moved a shulker box, nothing more happens in the screen for
+        // contentWaitTicks live ticks (a pause does not count; the server answers whether the player stands still or
+        // not), so what the session settles at the close is what the server let go.
+        if (answerWait > 0) {
+            if (!f.paused()) answerWait--;
+            return WAIT;
+        }
         if (f.paused() || !f.still() || !f.cursorEmpty()) return WAIT;
         if (hurry) {
             after = After.RETURN;
@@ -388,6 +399,7 @@ public final class RestockTrip {
         TakePlan.Step s = clicks >= limits.maxTakeClicks() ? new TakePlan.NothingFits() : f.take();
         if (s instanceof TakePlan.Click c) {
             clicks++;
+            if (c.box()) answerWait = limits.contentWaitTicks();
             return new Take(c.slot());
         }
         boolean took = f.carried() > 0;

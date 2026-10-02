@@ -49,8 +49,15 @@ public final class TakePlan {
     public sealed interface Step permits Click, Done, NothingFits {
     }
 
-    /** QUICK_MOVE this slot. */
-    public record Click(int slot) implements Step {
+    /**
+     * QUICK_MOVE this slot. {@code box}: the click moves a whole shulker box — carried out, or given back — whose
+     * server answer the trip waits for before anything else happens in the screen (ruling R70).
+     */
+    public record Click(int slot, boolean box) implements Step {
+        /** A loose stack's click. */
+        public Click(int slot) {
+            this(slot, false);
+        }
     }
 
     /**
@@ -90,7 +97,7 @@ public final class TakePlan {
     public static Step next(List<Slot> all, List<Slot> returning, String material, Map<String, Long> need,
                             boolean carry) {
         for (Slot r : returning) {
-            if (r.count() > 0 && r.room() > 0) return new Click(r.slot());
+            if (r.count() > 0 && r.room() > 0) return new Click(r.slot(), true);
         }
         List<Slot> container = all.stream().filter(s -> !s.holdsItems()).toList();
         List<String> order = new ArrayList<>();
@@ -119,7 +126,7 @@ public final class TakePlan {
                     boxHeld = held;
                 }
             }
-            if (box != null) return new Click(box.slot());
+            if (box != null) return new Click(box.slot(), true);
         }
         boolean there = false;
         for (Slot s : container) {

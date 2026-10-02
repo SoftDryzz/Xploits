@@ -153,6 +153,10 @@ final class RestockSession {
     private Pos lastSeenAt;
     private Map<String, Integer> lastSeenLoose = Map.of();
     private Map<String, Integer> lastSeenNested = Map.of();
+    /** Ruling R70: the shulker box moves of the container visit under way, settled at its close. */
+    private BorrowedShulkers.Visit visit;
+    /** The trip under way passed over a container that held its material only inside boxes (ruling R54). */
+    private boolean passedOverBoxes;
     private RestockSettings settings = RestockSettings.DEFAULTS;
     private TargetSource source;
     private BuildIndex index;
@@ -352,7 +356,10 @@ final class RestockSession {
             // The unpack a trip brought a box for, the printer still off: a movement key ends it as it would the trip;
             // it starts once the player has stood ready for leaveTicks ticks (pre-flight 19-9).
             if (TripDriver.movementKeys(mc.options)) return new Stopped(RestockReason.PLAYER_MOVED, "");
-            if (ready && !paused) startPendingUnpack(s, p);
+            if (ready && !paused) {
+                Optional<Stopped> stopped = startPendingUnpack(s, p);
+                if (stopped.isPresent()) return stopped.get();
+            }
         } else if (!paused) {
             Optional<Stopped> stopped = startTripIfDue(s, p, ready);
             if (stopped.isPresent()) return stopped.get();
@@ -437,6 +444,8 @@ final class RestockSession {
                 left[0] = u.left();
             });
         }
+        // Ruling R70: a stop during a container visit settles its box moves before the borrowed boxes are counted.
+        quietly("settling the borrowed shulker boxes", this::settleVisit);
         int[] borrowedNow = new int[1];
         quietly("counting the borrowed shulker boxes", () -> borrowedNow[0] = borrowedCarried());
         boolean leftPaused = printerHeld && !PrintPause.keepMarker(why);
@@ -535,24 +544,60 @@ final class RestockSession {
         return ordered;
     }
 
+    /** A QUICK_MOVE that moves a box the ledger cares for: one borrowed from the container, or one given back to it. */
+    record BoxMove(boolean borrow, BorrowedShulkers.Borrowed entry) {
+    }
+
     /**
-     * Before a QUICK_MOVE of slot {@code slot} of restock's container screen: a box that holds items leaving the
-     * container is borrowed from it; a box going into it is given back. An empty box taken as a building block is
-     * material, not borrowed.
+     * Right before a QUICK_MOVE of slot {@code slot} of restock's container screen, with nothing sent yet: a box that
+     * holds items leaving the container would be borrowed from it, a box going into it given back; an empty box taken
+     * as a building block is material, not borrowed. The visit's first box move notes the boxes carried before it
+     * (ruling R70). Nothing goes in the ledger here: {@link #moved} notes it once the click's packet left.
      */
-    void moving(ClientPlayerEntity p, int slot, Pos container) {
+    Optional<BoxMove> boxMove(ClientPlayerEntity p, int slot, Pos container) {
         ScreenHandler h = p.currentScreenHandler;
-        if (slot < 0 || slot >= h.slots.size()) return;
+        if (slot < 0 || slot >= h.slots.size()) return Optional.empty();
         ItemStack stack = h.slots.get(slot).getStack();
-        if (!ShulkerInventory.isBox(stack)) return;
-        BorrowedShulkers.Kind kind = ShulkerInventory.kind(stack);
-        if (slot < ContainerScreen.containerSlots(h)) {
-            if (!Utils.hasItems(stack)) return;
-            borrowed.borrow(new BorrowedShulkers.Borrowed(kind, dimensionId(), container));
+        if (!ShulkerInventory.isBox(stack)) return Optional.empty();
+        boolean borrow = slot < ContainerScreen.containerSlots(h);
+        if (borrow && !Utils.hasItems(stack)) return Optional.empty();
+        if (visit == null) visit = new BorrowedShulkers.Visit(ShulkerInventory.held(p.getInventory()));
+        return Optional.of(new BoxMove(borrow,
+            new BorrowedShulkers.Borrowed(ShulkerInventory.kind(stack), dimensionId(), container)));
+    }
+
+    /**
+     * The click of {@code m} left: the borrow, or the give-back, goes in the ledger at once (the visit's own need
+     * counts the box) and in the visit, which its close settles against what the server let go (ruling R70). A
+     * container a box is borrowed from may get a last trip again.
+     */
+    void moved(BoxMove m) {
+        BorrowedShulkers.Borrowed b = m.entry();
+        if (m.borrow()) {
+            borrowed.borrow(b);
+            visit.borrowed(b);
             carriedThisTrip = true;
-        } else {
-            borrowed.giveBack(dimensionId(), container, kind);
+            lastTripTried.remove(b.origin());
+        } else if (borrowed.giveBack(b.dimension(), b.origin(), b.kind())) {
+            visit.gaveBack(b);
         }
+    }
+
+    /**
+     * Ruling R70, as restock's container screen closes, and at a stop before the borrowed boxes are counted: the
+     * ledger keeps only the carries and give-backs the server let go ({@link BorrowedShulkers#settle}).
+     */
+    void settleVisit() {
+        BorrowedShulkers.Visit v = visit;
+        visit = null;
+        ClientPlayerEntity p = mc.player;
+        if (v != null && p != null) borrowed.settle(v, ShulkerInventory.held(p.getInventory()));
+    }
+
+    /** A box this visit carried came back (its click refused): the visit carries nothing more (ruling R70). */
+    boolean carriedBoxCameBack(ClientPlayerEntity p) {
+        BorrowedShulkers.Visit v = visit;
+        return v != null && v.cameBack(ShulkerInventory.held(p.getInventory()));
     }
 
     /** The empty borrowed boxes in the player's part of restock's open screen that go back into {@code container}. */
@@ -569,18 +614,19 @@ final class RestockSession {
      * next nearest for the same material, measured from where the trip started. Ruling R54 (R60): a container restock
      * just saw holding the material only inside shulker boxes, while no box can be carried, is passed over, not marked
      * stale ({@link SourceChooser#passedOver}) — R40's nested rank skips it until a box can be carried, then chooses it
-     * again — and nothing is said for it unless no source is left. A last trip never retargets and notes nothing
-     * (pre-flight 19-14).
+     * again — and nothing is said for it unless no source is left, when the boxes are said even if another container
+     * failed after it. {@code carry}: whether a box could be carried, as the take that failed read it (a failure
+     * before any take reads it now). A last trip never retargets and notes nothing (pre-flight 19-14).
      */
-    Optional<Source> next(String material, Pos failed, RestockTrip.Failure failure, Pos resume) {
+    Optional<Source> next(String material, Pos failed, RestockTrip.Failure failure, Pos resume, boolean carry) {
         if (lastTrip) return Optional.empty();
-        ClientPlayerEntity p = mc.player;
-        boolean carry = p != null && ContainerScreen.carryRoom(p.getInventory()) > 0;
         // The trip's Close tells saw() what it saw before the STALE that follows it: the container that failed.
         boolean seen = failed.equals(lastSeenAt);
         boolean inBoxes = SourceChooser.passedOver(failure, carry, seen ? lastSeenLoose : Map.of(),
             seen ? lastSeenNested : Map.of(), material);
-        if (!inBoxes) {
+        if (inBoxes) {
+            passedOverBoxes = true;
+        } else {
             switch (failure) {
                 case STALE, FILLED_ONLY -> {
                     stale.computeIfAbsent(material, k -> new HashSet<>()).add(failed);
@@ -599,8 +645,8 @@ final class RestockSession {
             new Point(resume.x() + 0.5, resume.y(), resume.z() + 0.5), settings.maxDistance(), unusable,
             stale.getOrDefault(material, Set.of()), carry);
         if (next.isEmpty()) {
-            module.info(inBoxes ? RestockText.NOWHERE_AFTER_TRIP_BOXES : RestockText.NOWHERE_AFTER_TRIP, "material",
-                RestockMessages.itemName(material));
+            module.info(passedOverBoxes ? RestockText.NOWHERE_AFTER_TRIP_BOXES : RestockText.NOWHERE_AFTER_TRIP,
+                "material", RestockMessages.itemName(material));
         }
         return next;
     }
@@ -765,6 +811,7 @@ final class RestockSession {
         if (off == PrinterOff.FAILED) return Optional.of(new Stopped(RestockReason.LITEMATICA_PRINTER_UNREADABLE, ""));
         boolean paused = off == PrinterOff.SWITCHED;
         carriedThisTrip = false;
+        passedOverBoxes = false;
         ledgerAtTripStart = borrowed.count();
         RestockTrip core = new RestockTrip(new RestockTrip.Plan(material, chosen.container(), chosen.stand(),
             WorldRay.pos(p.getBlockPos()), paused), limits);
@@ -862,7 +909,8 @@ final class RestockSession {
     // --- unpacking a carried shulker box ---------------------------------------------------------------------------
 
     /**
-     * Owner ruling R44: a carried box is unpacked here, with no trip; the printer switched off first, and it settles.
+     * Owner ruling R44: a carried box is unpacked here — with no trip, or the one a trip brought — the printer switched
+     * off first if it prints, and then it settles.
      */
     private Optional<Stopped> startUnpackNow(UnpackChoice.Unpack u, ClientPlayerEntity p) {
         PrinterOff off = pausePrinter();
@@ -873,22 +921,21 @@ final class RestockSession {
 
     /**
      * The unpack a trip brought a box for, once the player stands ready: chosen again now (the inventory may have
-     * changed), and only for a material still out (none carried loose); else the printer goes back on. {@code false}:
-     * the trip already let the printer settle.
+     * changed), and only for a material still out (none carried loose); else the printer goes back on. It starts as a
+     * carried box's unpack does: the printer is switched off again — and settles — only if it prints again by now (the
+     * player may have switched it on while a screen kept the unpack waiting; review Minor 2).
      */
-    private void startPendingUnpack(RestockSettings s, ClientPlayerEntity p) {
+    private Optional<Stopped> startPendingUnpack(RestockSettings s, ClientPlayerEntity p) {
         String material = pendingUnpack;
         pendingUnpack = null;
         UnpackChoice.Choice c = StateFacts.carried(p.getInventory()).getOrDefault(material, 0) > 0
             ? new UnpackChoice.None(List.of())
             : UnpackChoice.choose(List.of(material), ShulkerInventory.choiceInventory(p.getInventory(), borrowed),
                 s.useCarriedShulkers(), gaveUp);
-        if (c instanceof UnpackChoice.Unpack u) {
-            startUnpack(u, p, false);
-        } else {
-            givePrinterBack();
-            if (recountPending) recount();
-        }
+        if (c instanceof UnpackChoice.Unpack u) return startUnpackNow(u, p);
+        givePrinterBack();
+        if (recountPending) recount();
+        return Optional.empty();
     }
 
     private void startUnpack(UnpackChoice.Unpack u, ClientPlayerEntity p, boolean printerJustPaused) {
