@@ -235,13 +235,14 @@ class ShulkerSpotTest {
 
     @Test
     void aFenceLikeNeighbourIsNeitherAWallNorAPassage() {
-        // Ruling R58: a partial collision shape (fence, pane, wall, door, scaffolding) can hold the drop or let it by, so refuse.
+        // Ruling R58: a partial collision shape (fence, pane, wall, door, scaffolding) can hold the drop or let it by,
+        // so the cell is refused.
         assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(new Pos(-2, 64, 0)))));
     }
 
     @Test
     void aNeighbourTheBoxCouldNotBePlacedInButADropPassesIsAPassage() {
-        // Ruling R57: a torch beside the cell, or a cell the player's body overlaps, fails `empty` yet a drop passes it.
+        // Ruling R57: a torch beside the cell, or a cell the player's body overlaps, fails `empty`; a drop passes it.
         assertEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(new Pos(-2, 64, 0)))));
         assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(new Pos(-2, 63, 0)), Set.of(), Set.of(),
             Set.of(new Pos(-2, 64, 0)))), "but it still needs its floor");
@@ -298,6 +299,61 @@ class ShulkerSpotTest {
     }
 
     @Test
+    void anIcyWallIsNeitherAWallNorAPassage() {
+        // Ruling R59: a drop that lands on the top of an icy full cube slides off its far side.
+        for (String id : new String[]{"minecraft:ice", "minecraft:packed_ice", "minecraft:blue_ice"}) {
+            assertEquals(NEXT, cellFor(wallOf(id)), id);
+        }
+        assertEquals(NEAREST, cellFor(wallOf("minecraft:stone")), "a stone wall still stops the drift");
+    }
+
+    /** A full cube at the nearest cell's west neighbour, answered as the adapter does (slipperiness 0.6 only). */
+    private static ShulkerSpot.World wallOf(String id) {
+        Pos wall = new Pos(-2, 64, 0);
+        boolean icy = id.contains("ice");
+        ShulkerSpot.World base = floor();
+        return new ShulkerSpot.World() {
+            @Override
+            public boolean empty(Pos cell) {
+                return !cell.equals(wall) && base.empty(cell);
+            }
+
+            @Override
+            public boolean dropPasses(Pos cell) {
+                return !cell.equals(wall) && base.dropPasses(cell);
+            }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return cell.equals(wall) && !icy;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return base.support(block);
+            }
+
+            @Override
+            public boolean safe(Pos block) {
+                return true;
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return base.floor(block);
+            }
+        };
+    }
+
+    @Test
+    void theBoxsOwnCellAndLidAreJudgedByEmptyNotByWhatADropPasses() {
+        // A torch (or the player's body, to the adapter's `empty`) in the cell or in its lid: the box cannot go there.
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(NEAREST))), "the cell");
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(),
+            Set.of(new Pos(-1, 65, 0)))), "the lid");
+    }
+
+    @Test
     void aNeighbourThatStopsTheDriftNeedsNoFloor() {
         // A wall at the cell's level stops the drop; what lies under it does not matter.
         assertEquals(NEAREST, cellFor(landing(Set.of(new Pos(-2, 64, 0)), Set.of(new Pos(-2, 63, 0)), Set.of())));
@@ -306,7 +362,8 @@ class ShulkerSpotTest {
     @Test
     void lavaLevelWithTheSupportOnTheShoreRefusesTheCell() {
         assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 63, 0)))), "beside the support");
-        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 63, -1)))), "diagonal to the support");
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 63, -1)))),
+            "diagonal to the support");
     }
 
     @Test
@@ -370,9 +427,10 @@ class ShulkerSpotTest {
     @Test
     void aCellNextToAHazardOrHoldingOneIsNeverUsed() {
         assertEquals(new Pos(0, 64, -1), choose(BUILD, Set.of(), 4.5,
-            floor(Set.of(), Set.of(new Pos(-2, 64, 0))), SEES_ALL).orElseThrow().cell(), "lava west of the nearest cell");
+            floor(Set.of(), Set.of(new Pos(-2, 64, 0))), SEES_ALL).orElseThrow().cell(),
+            "lava west of the nearest cell");
         assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
-            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(), 
+            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(),
             "fire in it, and in the 3x3 of its neighbours");
         assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
             floor(Set.of(), Set.of(new Pos(-1, 63, 0))), SEES_ALL).orElseThrow().cell(), "an unsafe block under it");

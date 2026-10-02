@@ -35,7 +35,8 @@ public final class ShulkerSpot {
     private static final int AROUND = 3;
     /**
      * Blocks that destroy, pull in or carry off a dropped item (ruling R51): fire, lava and a lava cauldron burn it,
-     * cactus breaks it, a hopper takes it from above, a portal or the end gateway sends it away. Fluids are checked apart.
+     * cactus breaks it, a hopper takes it from above, a portal or the end gateway sends it away. Fluids are checked
+     * apart.
      * Magma and campfires only hurt living entities and are allowed.
      */
     private static final Set<String> HAZARDS = Set.of("minecraft:fire", "minecraft:soul_fire", "minecraft:lava",
@@ -44,7 +45,7 @@ public final class ShulkerSpot {
 
     /** What the adapter measures around the player. */
     public interface World {
-        /** Air, or a block a placement replaces, with no collision and no fluid, where the box may be placed; loaded. */
+        /** Air, or a block a placement replaces, with no collision and no fluid, where the box may go; loaded. */
         boolean empty(Pos cell);
 
         /** {@link #support(BlockFacts, boolean)} of the block there; loaded. */
@@ -57,25 +58,28 @@ public final class ShulkerSpot {
         boolean safe(Pos block);
 
         /**
-         * Ruling R57: a drop drifting sideways passes through this cell: loaded, an empty collision shape and no fluid,
-         * entities ignored (air, a torch, a rail, a flower, a button, redstone dust all pass). Unlike {@link #empty} it
+         * Ruling R57: a drop drifting sideways passes through this cell. The adapter answers: loaded, {@code
+         * getCollisionShape(world, pos).isEmpty()} and {@code getFluidState().isEmpty()}, entities ignored (air,
+         * a torch, a rail, a flower, a button, redstone dust and an open fence gate all pass). Unlike {@link #empty} it
          * does not ask whether a block could be placed there, so a cell the player's body overlaps still passes.
          */
         boolean dropPasses(Pos cell);
 
         /**
-         * Rulings R51 and R58: the block there stops a drop drifting sideways: loaded and a full-cube collision shape
-         * only. A fence, pane, iron bars, wall, chain, door, fence gate or scaffolding is neither this nor
+         * Rulings R51, R58 and R59: the block there stops a drop drifting sideways. The adapter answers: loaded,
+         * {@code isFullCube(world, pos)} and {@code getBlock().getSlipperiness() == 0.6f} (a drop that lands on the top
+         * of an icy wall slides off its far side, so an icy cube is neither a wall nor a passage). A fence, pane, iron
+         * bars, wall, chain, door, a closed fence gate or scaffolding is neither this nor
          * {@link #dropPasses}, so a cell with one beside it is refused.
          */
         boolean stopsDrop(Pos cell);
 
         /**
-         * Rulings R51 and R56: the block there is a floor a drop may come to rest on and stay: loaded, a top face that is
-         * a full square ({@code isSideSolidFullSquare(UP)}: not powder snow, a slab, a layer of snow), the default
-         * slipperiness 0.6 (no ice, packed ice, frosted ice, blue ice or slime, on which a drop slides 3 or 4 blocks),
-         * not air or the void below the world, not a fluid, and {@link #safe(BlockFacts)}. The support the box is set on
-         * is asked too.
+         * Rulings R51 and R56: the block there is a floor a drop may come to rest on and stay. The adapter answers:
+         * loaded, {@code isSideSolidFullSquare(world, pos, Direction.UP)} (not powder snow, a slab, a layer of snow),
+         * {@code getBlock().getSlipperiness() == 0.6f} (a drop slides 3 to 4 blocks on ice, packed, blue or
+         * frosted ice, about 1.6 on slime), not air or the void below the world, no fluid, and
+         * {@link #safe(BlockFacts)}. The support the box is set on is asked too.
          */
         boolean floor(Pos block);
     }
@@ -109,7 +113,10 @@ public final class ShulkerSpot {
         return fullTopSquare && !block.blockEntity() && PhaseRules.support(block);
     }
 
-    /** A block a drop is safe in or next to: no fluid (water carries it off, lava burns it), no fire, no cactus. */
+    /**
+     * A block a drop is safe in or next to: no fluid (water carries it off, lava burns it), and none of fire,
+     * soul fire, cactus, lava cauldron, hopper, nether portal, end portal or end gateway ({@link #HAZARDS}).
+     */
     public static boolean safe(BlockFacts block) {
         return !block.fluid() && !HAZARDS.contains(block.id());
     }
@@ -156,10 +163,9 @@ public final class ShulkerSpot {
 
     /**
      * Ruling R51: the broken box's drop spawns within 0.25 of the cell's centre and drifts up to about 1.5 blocks.
-     * Nothing
-     * from the support's level to the lid's level, over the 3 x 3 columns around the cell, is a hazard ({@link
-     * World#safe}); and each of the 8 neighbour columns, at the cell's level, either stops the drift or lets it pass
-     * with a floor under it, so the drop never falls off an edge or into the void.
+     * Nothing from the support's level to the lid's level, over the 3 x 3 columns around the cell, is a hazard
+     * ({@link World#safe}); and each of the 8 neighbour columns, at the cell's level, either stops the drift or lets
+     * it pass with a floor under it, so the drop never falls off an edge or into the void.
      */
     private static boolean dropLandsSafely(Pos cell, World world) {
         for (int dy = -1; dy <= 1; dy++) {
