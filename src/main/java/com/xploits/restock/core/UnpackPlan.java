@@ -23,9 +23,9 @@ import java.util.Set;
  * {@code spotAttempts}); the take from it (the adapter runs a {@link RestockTrip} on it and reports); the dig on vanilla's
  * held-mining clock — the tool selected, START once the server holds it (P18), no progress in START's own tick, a swing
  * every tick, STOP when it reaches 1; a pause, a move, a screen, a changed slot or delta lets go (ABORT) and starts again
- * after the gap, every let-go counted but that of a box gone mid-dig, at most {@code digRestarts} times; the cell empty (P23); the box back in the
- * inventory, by itself or walked onto;
- * back to where it began; the slot selected then, selected again. Every wait counts only unpaused ticks and is bounded.
+ * after the gap, every let-go counted but that of a box gone mid-dig, at most {@code digRestarts} times; the cell empty
+ * (P23); the box back in the inventory, by itself or walked onto; back to where it began; the slot selected then,
+ * selected again. Every wait counts only unpaused ticks and is bounded.
  * A failure of the take that is not the player's hands or a fault still breaks and picks the box up, then stops with it.
  * Owner ruling R42: {@link #halt} stops at once with the one action allowed; {@link #drain} finishes the break and the
  * pick-up first, within {@code drainLimitTicks}. A stop carries at most one action: the ABORT of a dig under way, else the
@@ -277,7 +277,7 @@ public final class UnpackPlan {
         return plan.material();
     }
 
-    /** The cells a box was set down on (or withheld from) in this unpacking. */
+    /** The cells a box was set down on (or withheld from) in this unpacking, in the order they were tried. */
     public Set<Pos> tried() {
         return Collections.unmodifiableSet(new LinkedHashSet<>(tried));
     }
@@ -627,7 +627,8 @@ public final class UnpackPlan {
 
     private Action stop(RestockReason reason, Facts f) {
         boolean startNeverLeft = heldTicks == 0 && (f.click() == Click.REFUSED || f.click() == Click.WITHHELD);
-        Optional<DigAbort> abort = digging && !startNeverLeft ? Optional.of(new DigAbort(cell, digSide)) : Optional.empty();
+        Optional<DigAbort> abort = digging && !startNeverLeft
+            ? Optional.of(new DigAbort(cell, digSide)) : Optional.empty();
         OptionalInt select = abort.isEmpty() && f.selected() != plan.originalSlot() && !f.paused() && f.still()
             && f.screenFree() && f.slotChangeAllowed() ? OptionalInt.of(plan.originalSlot()) : OptionalInt.empty();
         digging = false;

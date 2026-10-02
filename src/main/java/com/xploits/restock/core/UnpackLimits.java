@@ -9,7 +9,8 @@ package com.xploits.restock.core;
  * @param spotAttempts       cells tried before restock gives up setting the box down
  * @param toolSettleTicks    at least this many ticks between selecting the digging tool and the dig's START
  * @param settleLimitTicks   START waits at most this long for vanilla's breaking delta to equal restock's (P18)
- * @param digRestarts        digs started again (a delta, a slot or the box changed, a box that did not go, and every let-go for a pause, a move or a screen) before a stop
+ * @param digRestarts        digs started again (a delta or a slot changed, a box that did not go, and every let-go for
+ *                           a pause, a move or a screen) before a stop
  * @param goneTimeoutTicks   from the dig's end to the cell being empty
  * @param pickUpWaitTicks    the drop is left to come to the player by itself this long before restock walks onto it
  * @param pickUpTimeoutTicks from the cell being empty to the box back in the inventory

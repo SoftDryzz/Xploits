@@ -597,7 +597,10 @@ class UnpackPlanTest {
         assertTrue(a instanceof UnpackPlan.Stopped st && st.reason() == RestockReason.UNPACK_BLOCKED, why + ": " + a);
     }
 
-    /** 100 paused-and-live pairs of the same facts, all WAIT or the given action: only live ticks count (pre-flight 18-3). */
+    /**
+     * {@code n} pairs of a paused tick and a live one with the same facts: the paused one always answers WAIT, the live
+     * one {@code expected}. Only live ticks count towards a bound (pre-flight 18-3).
+     */
     private static void liveTicks(UnpackPlan u, F f, int n, UnpackPlan.Action expected) {
         for (int i = 1; i <= n; i++) {
             f.paused = true;
@@ -679,6 +682,26 @@ class UnpackPlanTest {
     }
 
     @Test
+    void aSlotChangeNeverAllowedEndsTheDigBlocked() {
+        F f = new F();
+        UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
+        f.selected = 0;
+        f.slotOk = false;
+        liveTicks(u, f, 100, WAIT);
+        assertBlocked(u.step(f.get()), "the tool never selected");
+    }
+
+    @Test
+    void aMoveIntoTheHotbarNeverAllowedEndsBlocked() {
+        UnpackPlan u = fresh();
+        F f = new F();
+        f.hotbar = new HotbarPlan.QuickMove(20);
+        f.slotOk = false;
+        liveTicks(u, f, 100, WAIT);
+        assertBlocked(u.step(f.get()), "the one move never made");
+    }
+
+    @Test
     void pausedTicksCountNeitherWaitingForTheBoxToGoNorForItsPickUp() {
         F f = new F();
         UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
@@ -695,6 +718,14 @@ class UnpackPlanTest {
         assertEquals(stopped(RestockReason.SHULKER_NOT_PICKED_UP, OptionalInt.of(0)), v.step(g.get()));
     }
 
+    private static UnpackPlan.Stopped withAbort(RestockReason reason) {
+        return new UnpackPlan.Stopped(reason, Optional.of(new UnpackPlan.DigAbort(S1.cell(), Face.UP)),
+            OptionalInt.empty());
+    }
+
+    /** The unpack's drain limit is one tick: the step after the START that follows {@code drain} is the stop. */
+    private static final UnpackLimits DRAIN_ONE = new UnpackLimits(40, 3, 4, 40, 3, 40, 20, 100, 100, 1);
+
     @Test
     void noAbortGoesForAStartThatNeverLeft() {
         for (UnpackPlan.Click c : List.of(UnpackPlan.Click.REFUSED, UnpackPlan.Click.WITHHELD)) {
@@ -702,13 +733,46 @@ class UnpackPlanTest {
             UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
             assertEquals(new UnpackPlan.DigStart(S1.cell(), Face.UP, false), u.step(f.get()));
             f.click = c;
-            assertEquals(stopped(RestockReason.LOW_HEALTH, OptionalInt.of(0)), u.halt(f.get(), RestockReason.LOW_HEALTH), "" + c);
+            assertEquals(stopped(RestockReason.LOW_HEALTH, OptionalInt.of(0)),
+                u.halt(f.get(), RestockReason.LOW_HEALTH), "halt, " + c);
             F g = new F();
             UnpackPlan v = digging(UnpackLimits.DEFAULTS, g);
             v.step(g.get());
             g.click = c;
             g.keys = true;
-            assertEquals(stopped(RestockReason.PLAYER_MOVED, OptionalInt.of(0)), v.step(g.get()), "" + c);
+            assertEquals(stopped(RestockReason.PLAYER_MOVED, OptionalInt.of(0)), v.step(g.get()), "keys, " + c);
+            F h = new F();
+            UnpackPlan w = digging(DRAIN_ONE, h);
+            w.drain(RestockReason.CONFLICTING_MODULE);
+            assertEquals(new UnpackPlan.DigStart(S1.cell(), Face.UP, false), w.step(h.get()));
+            h.click = c;
+            assertEquals(stopped(RestockReason.CONFLICTING_MODULE, OptionalInt.of(0)), w.step(h.get()),
+                "the drain limit, " + c);
+        }
+    }
+
+    @Test
+    void theAbortGoesForAStartThatLeft() {
+        // The adapter reports SENT on the tick after a START that left (and NONE when it reports nothing): the dig is
+        // under way on the server, so a stop that tick lets go of it, and gives the slot back only on a later one.
+        for (UnpackPlan.Click c : List.of(UnpackPlan.Click.SENT, UnpackPlan.Click.NONE)) {
+            F f = new F();
+            UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
+            assertEquals(new UnpackPlan.DigStart(S1.cell(), Face.UP, false), u.step(f.get()));
+            f.click = c;
+            assertEquals(withAbort(RestockReason.LOW_HEALTH), u.halt(f.get(), RestockReason.LOW_HEALTH), "halt, " + c);
+            F g = new F();
+            UnpackPlan v = digging(UnpackLimits.DEFAULTS, g);
+            v.step(g.get());
+            g.click = c;
+            g.keys = true;
+            assertEquals(withAbort(RestockReason.PLAYER_MOVED), v.step(g.get()), "keys, " + c);
+            F h = new F();
+            UnpackPlan w = digging(DRAIN_ONE, h);
+            w.drain(RestockReason.CONFLICTING_MODULE);
+            assertEquals(new UnpackPlan.DigStart(S1.cell(), Face.UP, false), w.step(h.get()));
+            h.click = c;
+            assertEquals(withAbort(RestockReason.CONFLICTING_MODULE), w.step(h.get()), "the drain limit, " + c);
         }
     }
 
