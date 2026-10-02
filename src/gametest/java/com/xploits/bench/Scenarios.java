@@ -91,6 +91,7 @@ public final class Scenarios {
             new BaritoneNet(),
             new RestockNoLitematica(),
             new RestockTrips(),
+            new RestockExcludesTravel(),
             caStill,
             caCircler,
             CrystalAuraMeasure.meteor("ca-defender", Defender::new),

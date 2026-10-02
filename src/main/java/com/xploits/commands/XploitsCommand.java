@@ -8,6 +8,7 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
+import com.xploits.printer.core.Point;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.profile.core.ProfileText;
 import com.xploits.pvp.profile.core.PvpProfile;
@@ -16,6 +17,11 @@ import com.xploits.pvp.recorder.core.FightRecord;
 import com.xploits.pvp.recorder.core.FightStore;
 import com.xploits.pvp.recorder.core.FightSummary;
 import com.xploits.pvp.recorder.core.RecorderText;
+import com.xploits.restock.MarkStore;
+import com.xploits.restock.Restock;
+import com.xploits.restock.core.MarkBook;
+import com.xploits.restock.core.RestockMessages;
+import com.xploits.restock.core.RestockText;
 import com.xploits.shared.XploitsCommandBase;
 import com.xploits.shared.Languages;
 import com.xploits.shared.Texts;
@@ -144,6 +150,24 @@ public class XploitsCommand extends XploitsCommandBase {
                 sweep().ifPresent(this::sweepStop);
                 return SINGLE_SUCCESS;
             })));
+        builder.then(literal("restock")
+            .executes(context -> {
+                restock().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
+                return SINGLE_SUCCESS;
+            })
+            .then(literal("status").executes(context -> {
+                restock().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
+                return SINGLE_SUCCESS;
+            }))
+            .then(literal("chests")
+                .executes(context -> {
+                    restock().ifPresent(this::restockChests);
+                    return SINGLE_SUCCESS;
+                })
+                .then(literal("clear").executes(context -> {
+                    restock().ifPresent(this::restockChestsClear);
+                    return SINGLE_SUCCESS;
+                }))));
         builder.then(literal("language")
             .executes(context -> {
                 info(Languages.describe());
@@ -202,6 +226,42 @@ public class XploitsCommand extends XploitsCommandBase {
         boolean sweeping = sweep.isSweeping();
         Msg message = sweep.stop();
         reply(sweeping ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
+    }
+
+    /**
+     * {@code .xploits restock chests}: this world's marks, this dimension's nearest first, then the others — dimension and
+     * distance only, never a position (restock spec §4). Works with restock off.
+     */
+    private void restockChests(Restock module) {
+        MarkBook book = MarkStore.book();
+        if (book == null) {
+            reply(Level.WARNING, module.name, PositionedMsg.same(Msg.of(RestockText.MARKS_UNREADABLE)));
+            return;
+        }
+        String dimension = MeteorClient.mc.world == null ? "" : MeteorClient.mc.world.getRegistryKey().getValue().toString();
+        Point player = MeteorClient.mc.player == null ? new Point(0, 0, 0)
+            : new Point(MeteorClient.mc.player.getX(), MeteorClient.mc.player.getY(), MeteorClient.mc.player.getZ());
+        List<MarkBook.Listed> lines = book.listed(dimension, player);
+        if (lines.isEmpty()) {
+            reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(RestockText.CHESTS_NONE)));
+            return;
+        }
+        reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(RestockText.CHESTS_HEADER, "count", lines.size())));
+        for (MarkBook.Listed line : lines) {
+            String dim = RestockMessages.itemName(line.dimension());
+            Msg text = line.distance() < 0 ? Msg.of(RestockText.CHESTS_LINE_AWAY, "dimension", dim)
+                : Msg.of(RestockText.CHESTS_LINE, "dimension", dim, "distance", line.distance());
+            reply(Level.INFO, module.name, PositionedMsg.same(text));
+        }
+    }
+
+    /** {@code .xploits restock chests clear}: removes this world's marks; a file that cannot be read is left untouched. */
+    private void restockChestsClear(Restock module) {
+        if (MarkStore.book() == null) {
+            reply(Level.WARNING, module.name, PositionedMsg.same(Msg.of(RestockText.MARKS_UNREADABLE)));
+            return;
+        }
+        reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(RestockText.CHESTS_CLEARED, "count", MarkStore.clear())));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {
@@ -450,6 +510,16 @@ public class XploitsCommand extends XploitsCommandBase {
         NetherSweep module = Modules.get().get(NetherSweep.class);
         if (module == null) {
             warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "nether-sweep"));
+            return Optional.empty();
+        }
+        return Optional.of(module);
+    }
+
+    /** Returns the module, or warns that it is not registered and returns nothing. */
+    private Optional<Restock> restock() {
+        Restock module = Modules.get().get(Restock.class);
+        if (module == null) {
+            warning(Msg.of(CommandText.MODULE_NOT_REGISTERED, "module", "restock"));
             return Optional.empty();
         }
         return Optional.of(module);

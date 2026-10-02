@@ -3,6 +3,7 @@ package com.xploits.sweep;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.restock.Restock;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.baritone.BaritoneLink;
@@ -868,6 +869,8 @@ public class NetherSweep extends XploitsModule {
         if (sweeping) return Msg.of(SweepText.START_ALREADY_SWEEPING);
         Msg travelRunning = autoTravelRejection();
         if (travelRunning != null) return travelRunning;
+        Msg restocking = restockRejection();
+        if (restocking != null) return restocking;
         if (mc.player == null || mc.world == null) return Msg.of(SweepText.START_NO_WORLD);
         if (!mc.player.isAlive()) return Msg.of(SweepText.START_DEAD);
         if (!World.NETHER.equals(mc.world.getRegistryKey())) {
@@ -1117,6 +1120,13 @@ public class NetherSweep extends XploitsModule {
         if (travel == null || !travel.isTravelling()) return null;
 
         return Msg.of(SweepText.AUTO_TRAVEL_RUNNING);
+    }
+
+    /** restock drives the same Baritone (restock spec §3): one refusal each way, as with auto-travel. */
+    private Msg restockRejection() {
+        Restock restock = Modules.get().get(Restock.class);
+        if (restock == null || !restock.isRunning()) return null;
+        return Msg.of(SweepText.RESTOCK_RUNNING);
     }
 
     /**

@@ -79,6 +79,7 @@ public enum SweepText implements MessageKey {
     LINK_INSIDE_MARGIN,
     LINK_TOO_SHORT,
     AUTO_TRAVEL_RUNNING,
+    RESTOCK_RUNNING,
     ESTIMATE_NO_DATA,
     ESTIMATE_ENOUGH,
     ESTIMATE_SHORT,

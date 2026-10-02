@@ -3,6 +3,7 @@ package com.xploits.travel;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.restock.Restock;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.baritone.BaritoneLink;
 import com.xploits.shared.Texts;
@@ -644,6 +645,8 @@ public class AutoTravel extends XploitsModule {
         if (travelling) return PositionedMsg.same(Msg.of(TravelText.START_ALREADY_TRAVELLING));
         Msg sweepRunning = netherSweepRejection();
         if (sweepRunning != null) return PositionedMsg.same(sweepRunning);
+        Msg restocking = restockRejection();
+        if (restocking != null) return PositionedMsg.same(restocking);
         if (mc.player == null || mc.world == null) return PositionedMsg.same(Msg.of(TravelText.START_NO_WORLD));
         if (!mc.player.isAlive()) {
             // Without this, every other guard passes from the death screen: the net is armed, the ten
@@ -739,6 +742,13 @@ public class AutoTravel extends XploitsModule {
         if (sweep == null || !sweep.isSweeping()) return null;
 
         return Msg.of(TravelText.SWEEP_RUNNING);
+    }
+
+    /** restock drives the same Baritone (restock spec §3): one refusal each way, as with nether-sweep. */
+    private Msg restockRejection() {
+        Restock restock = Modules.get().get(Restock.class);
+        if (restock == null || !restock.isRunning()) return null;
+        return Msg.of(TravelText.RESTOCK_RUNNING);
     }
 
     /** Whether the chest slot holds an elytra, which is the only thing Baritone can fly with. */
