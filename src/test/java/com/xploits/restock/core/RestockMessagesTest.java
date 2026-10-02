@@ -154,8 +154,8 @@ class RestockMessagesTest {
     void everyStopSaysWhatIsLeftOfTheShulkerBoxesByDistanceOnly() {
         assertEquals(List.of(), RestockMessages.shulkersLeft(ShulkersLeft.NONE));
         assertEquals(List.of(
-            "2 shulker box(es) restock set down still stand(s) beside the build, the nearest 3 blocks from you: break it"
-                + " and pick it up by hand.",
+            "2 shulker box(es) restock set down still stand(s) beside the build, the nearest 3 blocks from you: break and"
+                + " pick up each one by hand.",
             "The shulker box restock broke lies on the ground 4 blocks from you: pick it up.",
             "You still carry 1 shulker box(es) restock took from your containers: put them back by hand."),
             RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).stream().map(EN::render).toList());

@@ -4,8 +4,10 @@ import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.PrinterLimits;
 import org.junit.jupiter.api.Test;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,6 +26,17 @@ class UnpackStopsTest {
     }
 
     @Test
+    void everyStopReasonIsOnTheSideOfTheSplitTheRulingGives() {
+        Set<RestockReason> atOnce = EnumSet.of(RestockReason.ATTACKED, RestockReason.LOW_HEALTH, RestockReason.SETBACK,
+            RestockReason.AUTO_PVP_ENGAGED, RestockReason.DIED, RestockReason.DIMENSION, RestockReason.LEFT,
+            RestockReason.NO_WORLD, RestockReason.MODULE_OFF, RestockReason.PLAYER_MOVED, RestockReason.INTERNAL);
+        for (RestockReason r : RestockReason.values()) {
+            if (r.effect() != RestockReason.Effect.STOP) continue;
+            assertEquals(!atOnce.contains(r), UnpackStops.finishesFirst(r), r.name());
+        }
+    }
+
+    @Test
     void anyOtherStopFinishesTheBreakAndThePickUpFirst() {
         for (RestockReason r : List.of(RestockReason.PLAYER_NEAR, RestockReason.CONFLICTING_MODULE,
             RestockReason.COMBAT_REPEATED, RestockReason.OTHER_ROTATION_REPEATED, RestockReason.CLICK_NOT_SENT,
@@ -31,7 +44,9 @@ class UnpackStopsTest {
             assertTrue(UnpackStops.finishesFirst(r), r.name());
         }
         for (RestockReason r : RestockReason.values()) {
-            if (r.effect() != RestockReason.Effect.STOP) assertFalse(UnpackStops.finishesFirst(r), "not a stop: " + r.name());
+            if (r.effect() != RestockReason.Effect.STOP) {
+                assertFalse(UnpackStops.finishesFirst(r), "not a stop: " + r.name());
+            }
         }
     }
 
@@ -39,12 +54,17 @@ class UnpackStopsTest {
     void whileFinishingTheUrgentOnesAreReadAgainInTheGuardsOrder() {
         // A stranger is near and a conflicting module is on in every case: neither is urgent.
         assertEquals(Optional.empty(), UnpackStops.atOnce(inputs(false, false, false, false, false, 20)));
+        assertEquals(Optional.empty(), UnpackStops.atOnce(inputs(false, false, false, false, false, 10)),
+            "health equal to the minimum is not low, as in the guards");
         assertEquals(Optional.of(RestockReason.SETBACK),
-            UnpackStops.atOnce(inputs(false, false, false, false, true, 20)), "rulings R45/R53: the server set the player back");
+            UnpackStops.atOnce(inputs(false, false, false, false, true, 20)),
+            "rulings R45/R53: the server set the player back");
         assertEquals(Optional.of(RestockReason.LOW_HEALTH),
-            UnpackStops.atOnce(inputs(false, false, false, false, true, 9.5)), "low health before a setback, as in the guards");
+            UnpackStops.atOnce(inputs(false, false, false, false, true, 9.5)),
+            "low health before a setback, as in the guards");
         assertEquals(Optional.of(RestockReason.LOW_HEALTH),
-            UnpackStops.atOnce(inputs(false, false, false, false, false, Double.NaN)), "NaN counts as low, as in the guards");
+            UnpackStops.atOnce(inputs(false, false, false, false, false, Double.NaN)),
+            "NaN counts as low, as in the guards");
         assertEquals(Optional.of(RestockReason.ATTACKED),
             UnpackStops.atOnce(inputs(false, false, false, true, false, 5)));
         assertEquals(Optional.of(RestockReason.AUTO_PVP_ENGAGED),
@@ -57,7 +77,8 @@ class UnpackStopsTest {
     @Test
     void whileFinishingLagEatingAndSomeoneElsesActionHoldEveryClick() {
         assertFalse(UnpackStops.holds(guard(0.1, false, false), PrinterLimits.DEFAULTS));
-        assertTrue(UnpackStops.holds(guard(1.5, false, false), PrinterLimits.DEFAULTS), "the guards' lag pause starts at 1.5 s");
+        assertTrue(UnpackStops.holds(guard(1.5, false, false), PrinterLimits.DEFAULTS),
+            "the guards' lag pause starts at 1.5 s");
         assertFalse(UnpackStops.holds(guard(1.49, false, false), PrinterLimits.DEFAULTS));
         assertTrue(UnpackStops.holds(guard(0.1, true, false), PrinterLimits.DEFAULTS));
         assertTrue(UnpackStops.holds(guard(0.1, false, true), PrinterLimits.DEFAULTS));

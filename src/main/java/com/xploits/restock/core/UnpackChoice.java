@@ -8,14 +8,19 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Owner ruling R44, "carried shulkers first": when a material the build needs runs out, a shulker box the player carries
- * that holds it is unpacked at the build before any container trip. With {@code use-carried-shulkers} off only the boxes
- * restock borrowed count. A box in the main inventory is unpacked only while a hotbar slot is free (owner ruling R43
- * moves it there with one click); none while the inventory has no free slot at all (the take from it would fit nothing).
- * A material whose unpack gave nothing in this session goes to the containers instead (Review Focus 3). Pure.
+ * Owner ruling R44, "carried shulkers first": when a material the build needs runs out, a shulker box the player
+ * carries that holds it is unpacked at the build before any container trip. With {@code use-carried-shulkers} off only
+ * the boxes restock borrowed count. A box in the main inventory is unpacked only while a hotbar slot is free (owner
+ * ruling R43 moves it there with one click); none while the inventory has no free slot at all (the take from it would
+ * fit nothing). A material whose unpack gave nothing in this session goes to the containers instead (Review Focus 3).
+ * Pure.
  */
 public final class UnpackChoice {
-    /** One box the player carries: its slot (0–8 the hotbar, 9–35 the main inventory), its kind, what it holds, and whether restock borrowed one of that kind. */
+    /**
+     * One box the player carries: its slot (0–8 the hotbar, 9–35 the main inventory), its kind, what it holds, and
+     * whether this very box is one restock borrowed. The flag is per box (M5): of a kind, at most as many boxes are
+     * borrowed as the ledger holds entries and as there are filled boxes; the adapter sets it, this core trusts it.
+     */
     public record Carried(int slot, BorrowedShulkers.Kind kind, Map<String, Integer> contents, boolean borrowed) {
         public Carried {
             Objects.requireNonNull(kind, "kind");
@@ -28,7 +33,10 @@ public final class UnpackChoice {
         }
     }
 
-    /** What the player carries: loose item counts (boxes count as items), the boxes that hold something, the empty slots of the 36 and of the hotbar. */
+    /**
+     * What the player carries: loose item counts (boxes count as items), the boxes that hold something, the empty
+     * slots of the 36 and of the hotbar.
+     */
     public record Inventory(Map<String, Integer> loose, List<Carried> shulkers, int emptySlots, int emptyHotbar) {
         public Inventory {
             loose = Map.copyOf(loose);
@@ -43,7 +51,10 @@ public final class UnpackChoice {
     public record Unpack(String material, int slot, BorrowedShulkers.Kind kind) implements Choice {
     }
 
-    /** Nothing to unpack; {@code noHotbarRoom}: due materials a carried box holds, but only in the main inventory with the hotbar full. */
+    /**
+     * Nothing to unpack; {@code noHotbarRoom}: due materials a carried box holds, but only in the main inventory with
+     * the hotbar full.
+     */
     public record None(List<String> noHotbarRoom) implements Choice {
         public None {
             noHotbarRoom = List.copyOf(noHotbarRoom);

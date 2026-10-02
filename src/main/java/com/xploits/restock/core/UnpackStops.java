@@ -19,10 +19,19 @@ public final class UnpackStops {
     }
 
     public static boolean finishesFirst(RestockReason r) {
+        // No default: a new reason is a compile error here until someone decides which side of the split it is on.
         return switch (r) {
             case ATTACKED, LOW_HEALTH, SETBACK, AUTO_PVP_ENGAGED, DIED, DIMENSION, LEFT, NO_WORLD, MODULE_OFF,
                  PLAYER_MOVED, INTERNAL -> false;
-            default -> r.effect() == RestockReason.Effect.STOP;
+            case CONFLICTING_MODULE, PLAYER_NEAR, CLICK_NOT_SENT, COMBAT_REPEATED, OTHER_ROTATION_REPEATED,
+                 BARITONE_NOT_LISTENING, NO_PATH, NO_PATH_BACK, CONTAINER_REFUSED, CONTAINER_CLOSED, NOTHING_FITS,
+                 NO_HOTBAR_ROOM, BREAK_SPEED_MISMATCH, SHULKER_NOT_CARRIED, SHULKER_NO_SPOT, SHULKER_NOT_PLACED,
+                 SHULKER_NOT_BROKEN, SHULKER_NOT_PICKED_UP, UNPACK_BLOCKED -> true;
+            case DEAD, CAMERA_NOT_PLAYER, RIDING, METEOR_API, NO_LITEMATICA, LITEMATICA_API, NO_PLACEMENT,
+                 PLACEMENT_DISABLED, NO_ENABLED_REGION, PLACEMENT_TOO_LARGE, PLACEMENT_OVERLAP, TRAVEL_RUNNING,
+                 SWEEP_RUNNING, NO_BARITONE, PREFIX_INVALID, BARITONE_SETTINGS_UNREADABLE,
+                 BARITONE_SETTINGS_NOT_READ, BARITONE_SAVED_UNREADABLE, BARITONE_SAVE_FAILED,
+                 LITEMATICA_PRINTER_UNREADABLE, EASY_PLACE_RESTRICTION, LAG, EATING, COMBAT, OTHER_ROTATION -> false;
         };
     }
 
