@@ -83,7 +83,8 @@ public final class RestockNeeds {
     public static long remaining(Map<String, Long> totals, Map<String, Integer> placed, Map<String, Integer> extra) {
         long remaining = 0;
         for (Map.Entry<String, Long> e : totals.entrySet()) {
-            remaining += Math.max(0, e.getValue() - placed.getOrDefault(e.getKey(), 0) - extra.getOrDefault(e.getKey(), 0));
+            remaining += Math.max(0,
+                e.getValue() - placed.getOrDefault(e.getKey(), 0) - extra.getOrDefault(e.getKey(), 0));
         }
         return remaining;
     }

@@ -324,7 +324,9 @@ final class RestockScene {
         return bench.fromClient(client -> restock.borrowedCount());
     }
 
-    /** The bench builds the whole schematic itself, on the server: the build is done (the fake printer places nothing). */
+    /**
+     * The bench builds the whole schematic itself, on the server: the build is done (the fake printer places nothing).
+     */
     void fillBuild(Bench bench) {
         bench.onServer(srv -> {
             ServerWorld w = srv.getOverworld();

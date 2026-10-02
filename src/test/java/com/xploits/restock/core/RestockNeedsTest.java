@@ -174,8 +174,8 @@ class RestockNeedsTest {
     @Test
     void theBuildIsDoneOnlyOnceEveryItemIsPlacedTheItemsBeyondOneIncluded() {
         // Pre-flight 19-11 (ruling R6): two double slabs hold four slabs in two matching positions, and the build is
-        // done. Without the items beyond one it would never be done, and no last trip would ever take a borrowed shulker
-        // box back.
+        // done. Without the items beyond one it would never be done, and no last trip would ever take a borrowed
+        // shulker box back.
         Map<String, Long> totals = Map.of("minecraft:oak_slab", 4L, "minecraft:stone", 2L);
         Map<String, Integer> placed = Map.of("minecraft:oak_slab", 2, "minecraft:stone", 2);
         assertEquals(0, RestockNeeds.remaining(totals, placed, Map.of("minecraft:oak_slab", 2)));
