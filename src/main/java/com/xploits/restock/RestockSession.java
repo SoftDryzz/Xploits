@@ -24,9 +24,14 @@ import com.xploits.restock.core.RestockSettings;
 import com.xploits.restock.core.RestockText;
 import com.xploits.restock.core.RestockTrip;
 import com.xploits.restock.core.RunOut;
+import com.xploits.restock.core.ShulkersLeft;
 import com.xploits.restock.core.Source;
 import com.xploits.restock.core.SourceChooser;
 import com.xploits.restock.core.TakePlan;
+import com.xploits.restock.core.UnpackChoice;
+import com.xploits.restock.core.UnpackLimits;
+import com.xploits.restock.core.UnpackPlan;
+import com.xploits.restock.core.UnpackStops;
 import com.xploits.shared.core.i18n.Msg;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
@@ -45,6 +50,7 @@ import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.registry.RegistryKey;
@@ -66,7 +72,8 @@ import java.util.function.Supplier;
 
 /**
  * One restock session, from enable to stop (restock spec §3): it counts the selected placement, keeps the guards, says
- * when a material is due, chooses its source and drives the trip. Positions stay in memory. Client thread only.
+ * when a material is due, unpacks a carried shulker box that holds it (owner ruling R44) or chooses its source and
+ * drives the trip. Positions stay in memory. Client thread only.
  */
 final class RestockSession {
     sealed interface Outcome permits Going, Paused, Stopped {
@@ -93,9 +100,9 @@ final class RestockSession {
     /**
      * What ending the session did, for the module to say once all of it is done (ruling R33): {@code restored}, Baritone
      * took every command that gives its values back; {@code printerLeftPaused}, restock held litematica-printer off and
-     * leaves it so.
+     * leaves it so; {@code left}, what is left out at the build and how many borrowed boxes are carried (phase B).
      */
-    record Closed(boolean restored, boolean printerLeftPaused) {
+    record Closed(boolean restored, boolean printerLeftPaused, ShulkersLeft left) {
     }
 
     private static final Going GOING = new Going();
@@ -141,6 +148,18 @@ final class RestockSession {
     private String notCountedDetail = "";
     private boolean recountPending;
     private TripDriver trip;
+    private UnpackDriver unpack;
+    /**
+     * Owner ruling R42: the guard's stop the unpack under way finishes the break and the pick-up for, and its detail.
+     */
+    private RestockReason draining;
+    private String drainDetail = "";
+    /**
+     * Materials whose unpack gave nothing this session (Review Focus 3): they go to the containers until carried again.
+     */
+    private final Set<String> gaveUp = new HashSet<>();
+    /** Materials a carried box holds only in the main inventory with the hotbar full: said once. */
+    private final Set<String> saidNoHotbarRoom = new HashSet<>();
     /**
      * Restock switched litematica-printer off and has not given it back: from the switch (before the trip is even
      * built, so a failure in between is still said and its marker deleted) to the return or the stop.
@@ -168,11 +187,30 @@ final class RestockSession {
     // --- what the module and the bench read ---------------------------------------------------------------------
 
     boolean inTrip() {
-        return trip != null;
+        return trip != null || unpack != null;
     }
 
     Optional<RestockTrip.Phase> tripPhase() {
         return trip == null ? Optional.empty() : Optional.of(trip.phase());
+    }
+
+    Optional<UnpackPlan.Phase> unpackPhase() {
+        return unpack == null ? Optional.empty() : Optional.of(unpack.phase());
+    }
+
+    boolean unpackDigging() {
+        return unpack != null && unpack.digging();
+    }
+
+    /** Borrowed boxes the player carries now: never more than the ledger names, nor than are carried. */
+    int borrowedCarried() {
+        ClientPlayerEntity p = mc.player;
+        return p == null ? 0 : borrowed.carried(ShulkerInventory.kinds(p.getInventory()));
+    }
+
+    /** No trip and no unpack: a recount may happen now. */
+    private boolean idle() {
+        return trip == null && unpack == null;
     }
 
     Optional<BuildIndex.Counts> counts() {
@@ -205,6 +243,7 @@ final class RestockSession {
 
     RestockText activity(boolean paused) {
         if (paused) return RestockText.ACTIVITY_PAUSED;
+        if (unpack != null) return RestockText.ACTIVITY_UNPACKING;
         if (trip == null) {
             return index != null && index.passes() >= 1 ? RestockText.ACTIVITY_WATCHING : RestockText.ACTIVITY_SCANNING;
         }
@@ -221,6 +260,10 @@ final class RestockSession {
         if (index == null) {
             return Msg.of(RestockText.STATUS_NO_PLACEMENT, "reason",
                 module.reasonText(notCounted == null ? RestockReason.NO_PLACEMENT : notCounted, notCountedDetail));
+        }
+        if (unpack != null) {
+            return Msg.of(RestockText.STATUS_TRIP, "activity", Msg.of(RestockText.ACTIVITY_UNPACKING),
+                "material", RestockMessages.itemName(unpack.material()));
         }
         if (trip != null) {
             return Msg.of(RestockText.STATUS_TRIP, "activity", Msg.of(activity(false)),
@@ -245,24 +288,33 @@ final class RestockSession {
         tick++;
         settings = s;
         if (trip != null) trip.newTick();
+        if (unpack != null) unpack.newTick();
         ClientPlayerEntity p = mc.player;
         if (p == null || mc.world == null) return new Stopped(RestockReason.NO_WORLD, "");
-        Guards.Verdict verdict = guards.tick(guardInputs(in, s, p));
-        if (verdict instanceof Guards.Stop stop) return new Stopped(RestockReason.of(stop.reason()), stop.detail());
-        boolean paused = verdict instanceof Guards.Pause;
-        // Deferred L55: Guards' Run.yielding — another module rotated or acted — blocks the trip's container actions as a
-        // pause does (no click, take or close; no tick counted towards a wait), so a QUICK_MOVE never shares a tick
-        // with someone else's action. It is only ever true while the trip clicks (see guardInputs' acting).
+        Guards.Inputs inputs = guardInputs(in, s, p);
+        Guards.Verdict verdict = guards.tick(inputs);
+        if (verdict instanceof Guards.Stop stop) {
+            Optional<Stopped> now = guardStop(RestockReason.of(stop.reason()), stop.detail(), inputs);
+            if (now.isPresent()) return now.get();
+        }
+        // While an unpack finishes after a guard's stop (owner ruling R42) the guards answer that stop every tick; the
+        // pause and the yield are read from their inputs instead.
+        boolean paused = verdict instanceof Guards.Pause
+            || (draining != null && UnpackStops.holds(inputs, PrinterLimits.DEFAULTS));
+        // Deferred L55: Guards' Run.yielding — another module rotated or acted — blocks every click as a pause does (no
+        // click, take, close, place, dig or slot change; no tick counted towards a wait), so restock's action never
+        // shares a tick with someone else's. It is only ever true while a trip or an unpack clicks (see guardInputs'
+        // acting).
         boolean yielding = verdict instanceof Guards.Run run && run.yielding();
         mover.tick();
         watchSources();
         if (index != null) {
             for (BlockPos b : in.changed()) classify(WorldRay.pos(b));
             if (source.changed()) {
-                if (trip == null) recount();
+                if (idle()) recount();
                 else recountPending = true;
             }
-        } else if (trip == null && tick % RETRY_TICKS == 0) {
+        } else if (idle() && tick % RETRY_TICKS == 0) {
             // A refusing source never reports a change: open it again, so counting resumes once the player fixes it.
             recount();
         }
@@ -270,7 +322,13 @@ final class RestockSession {
             for (Pos pos : index.nextToScan(PrinterLimits.DEFAULTS.scanBudget())) classify(pos);
         }
         boolean ready = leave.tick(mayLeave(p));
-        if (trip != null) {
+        if (unpack != null) {
+            UnpackDriver.Result r = unpack.tick(paused || yielding);
+            if (r instanceof UnpackDriver.Ended end) {
+                return new Stopped(end.reason(), end.reason() == draining ? drainDetail : end.detail());
+            }
+            if (r instanceof UnpackDriver.Done done) unpacked(done, p);
+        } else if (trip != null) {
             TripDriver.Result r = trip.tick(paused || yielding);
             if (r instanceof TripDriver.Ended end) return new Stopped(end.reason(), end.detail());
         } else if (!paused) {
@@ -281,32 +339,77 @@ final class RestockSession {
         return GOING;
     }
 
+    /**
+     * Owner ruling R42 for the guards' stop ({@link UnpackStops#onGuardStop}). With no unpack it stops now, as in phase
+     * A. Halt: the unpack stops now — the dig aborted, or the slot given back — and the box stays where it is, which
+     * the stop then says. Drain: the break and the pick-up finish first ({@link UnpackDriver#drain}); the guards hold
+     * their first stop, so the at-once reasons are read again every tick from their inputs; the unpack then ends with
+     * that stop, or halts for an at-once reason read meanwhile (whose stop has no detail; the drained one is said too,
+     * M7).
+     */
+    private Optional<Stopped> guardStop(RestockReason why, String detail, Guards.Inputs inputs) {
+        UnpackDriver u = unpack;
+        if (u == null) return Optional.of(new Stopped(why, detail));
+        return switch (UnpackStops.onGuardStop(why, u.outside(), draining != null, inputs)) {
+            case UnpackStops.Carry c -> Optional.empty();
+            case UnpackStops.Drain d -> {
+                draining = d.reason();
+                drainDetail = detail;
+                module.drained(d.reason(), detail);
+                u.drain(d.reason());
+                yield Optional.empty();
+            }
+            case UnpackStops.Halt h -> {
+                u.halt(h.reason(), UnpackStops.holds(inputs, PrinterLimits.DEFAULTS));
+                yield Optional.of(new Stopped(h.reason(), h.reason() == why ? detail : ""));
+            }
+        };
+    }
+
     /** From {@code SendMovementPacketsEvent.Pre} at {@code HIGH}. */
     void requestRotation() {
+        UnpackDriver u = unpack;
+        if (u != null) {
+            u.requestRotation();
+            return;
+        }
         TripDriver t = trip;
         if (t != null) t.requestRotation();
     }
 
     /**
-     * Ends the session (ruling R33): a trip under way stops walking and closes restock's container screen if it can, the
+     * Ends the session (ruling R33): a trip or an unpack under way stops walking and closes restock's container or box
+     * screen if it can (an unpack never in a tick a dig packet went out), what is left out at the build is read, the
      * printer marker goes (leaving the world keeps it for the next join) and Baritone's values go back — each step on its
-     * own, so one that fails never skips the next.
+     * own, so one that fails never skips the next. A dig's ABORT is never sent here: only the tick path sends one.
      * Nothing is said here: the module speaks once all of it is done. Never throws.
      */
     Closed close(RestockReason why) {
         TripDriver t = trip;
         trip = null;
+        UnpackDriver u = unpack;
+        unpack = null;
+        draining = null;
         if (t != null) {
             quietly("stopping the walk", t::abort);
             // Deferred L59: a stop during TAKE closes restock's screen as any close would (never while leaving).
             if (why != RestockReason.LEFT) quietly("closing restock's container", t::closeOwnScreen);
         }
+        ShulkersLeft[] left = {ShulkersLeft.NONE};
+        if (u != null) {
+            quietly("stopping the unpacking", u::abort);
+            if (why != RestockReason.LEFT) quietly("closing restock's shulker box screen", u::closeOwnScreen);
+            left[0] = ShulkersLeft.UNCHECKED;
+            quietly("looking for the shulker box", () -> left[0] = u.left());
+        }
+        int[] borrowedNow = new int[1];
+        quietly("counting the borrowed shulker boxes", () -> borrowedNow[0] = borrowedCarried());
         boolean leftPaused = printerHeld && !PrintPause.keepMarker(why);
         printerHeld = false;
         if (leftPaused) quietly("deleting the printer marker", PrinterMarker::delete);
         boolean[] restored = new boolean[1];
         quietly("giving Baritone its values back", () -> restored[0] = mover.end());
-        return new Closed(restored[0], leftPaused);
+        return new Closed(restored[0], leftPaused, left[0].withBorrowed(borrowedNow[0]));
     }
 
     /** One step of the stop: a failure is logged by its class name only (its message could carry a position). */
@@ -320,10 +423,15 @@ final class RestockSession {
 
     // --- what the trip driver calls ------------------------------------------------------------------------------
 
-    /** What the build still needs beyond what is carried: the due materials in the order they ran out, then the rest. */
+    /**
+     * What the build still needs beyond what is carried: the due materials in the order they ran out, then the rest. A
+     * container trip does not fetch what a box restock would unpack first holds (pre-flight 18-13; the take from a box
+     * set down at the build counts loose items only: {@link #innerNeed}).
+     */
     Map<String, Long> orderedNeed() {
         ClientPlayerEntity p = mc.player;
-        Map<String, Integer> carried = p == null ? Map.of() : StateFacts.carried(p.getInventory());
+        Map<String, Integer> carried = p == null ? Map.of() : UnpackChoice.available(
+            ShulkerInventory.choiceInventory(p.getInventory(), borrowed), settings.useCarriedShulkers(), gaveUp);
         Map<String, Long> need = index == null ? Map.of()
             : RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
         Map<String, Long> ordered = new LinkedHashMap<>();
@@ -439,29 +547,14 @@ final class RestockSession {
         return next;
     }
 
-    /** Back where the trip started: the printer given back if restock paused it and it is still off. */
+    /**
+     * Back where the trip started: the printer given back if restock paused it and it is still off. {@code
+     * resumePrinter}, the trip switched it off, is restock's hold ({@code printerHeld}), which decides.
+     */
     void finished(boolean resumePrinter, boolean took, String material, Map<String, Integer> before) {
         trip = null;
         module.countTrip();
-        if (resumePrinter) {
-            Boolean printing = printer.printing();
-            RestockText said = null;
-            boolean warn = false;
-            if (PrintPause.atReturn(true, printing) == PrintPause.Action.SWITCH_ON) {
-                warn = !printer.set(true);
-                said = warn ? RestockText.PRINTER_LEFT_PAUSED : RestockText.PRINTER_RESUMED;
-            } else if (Boolean.TRUE.equals(printing)) {
-                said = RestockText.PRINTER_LEFT_ON;
-            } else if (PrintPause.unknownAtReturn(true, printing)) {
-                // Deferred L60: it may still be off, and nothing else would say so.
-                said = RestockText.PRINTER_UNKNOWN_AT_RETURN;
-                warn = true;
-            }
-            PrinterMarker.delete();
-            printerHeld = false;
-            if (said != null && warn) module.warning(said);
-            else if (said != null) module.info(said);
-        }
+        givePrinterBack();
         ClientPlayerEntity p = mc.player;
         if (took && p != null) {
             // Both ends measured alike, loose plus inside the boxes carried (pre-flight 19-21).
@@ -543,15 +636,27 @@ final class RestockSession {
     private Optional<Stopped> startTripIfDue(RestockSettings s, ClientPlayerEntity p, boolean ready) {
         if (index == null) return Optional.empty();
         Map<String, Integer> carried = StateFacts.carried(p.getInventory());
+        // A material carried again (loose) may be unpacked again.
+        gaveUp.removeIf(m -> carried.getOrDefault(m, 0) > 0);
         Map<String, Long> need = RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
         // Ruling R31: only a material the index knows a missing position of is due — or a partly filled one, one slab
-        // where a double goes (deferred m1); the need (how much to take) is whole.
+        // where a double goes (deferred m1); the need (how much to take) is whole. Due on the loose items carried: a
+        // box that holds it does not stop it running out (pre-flight 18-13).
         List<String> due = runOut.due(tick, need, carried, index.passes(), RestockNeeds.knownMissing(index, partly));
         lastDue = due;
         if (due.isEmpty()) return Optional.empty();
         // Rulings R32 and m2: it waits while the player walks, sneaks or is in the air, and leaves once they have stood
         // for leaveTicks ticks in a row — not on the one tick a key was let go.
         if (!ready) return Optional.empty();
+        // Owner ruling R44: a box the player carries that holds a due material is unpacked here, before any trip.
+        UnpackChoice.Choice choice = UnpackChoice.choose(due,
+            ShulkerInventory.choiceInventory(p.getInventory(), borrowed), s.useCarriedShulkers(), gaveUp);
+        if (choice instanceof UnpackChoice.Unpack u) return startUnpackNow(u, p);
+        for (String m : ((UnpackChoice.None) choice).noHotbarRoom()) {
+            if (saidNoHotbarRoom.add(m)) {
+                module.info(RestockText.NO_HOTBAR_ROOM_HINT, "material", RestockMessages.itemName(m));
+            }
+        }
         String dim = dimensionId();
         List<Source> list = sources.list(dim, marks(), stash(s));
         Point from = new Point(p.getX(), p.getY(), p.getZ());
@@ -569,21 +674,9 @@ final class RestockSession {
     }
 
     private Optional<Stopped> startTrip(String material, Source chosen, ClientPlayerEntity p, Point from) {
-        boolean paused = false;
-        if (PrintPause.atTripStart(printer.installed(), printer.printing()) == PrintPause.Action.SWITCH_OFF) {
-            // The marker first: a crash between the two finds the printer still on, and the join leaves it so.
-            try {
-                PrinterMarker.write();
-            } catch (IOException e) {
-                module.warning(RestockText.MARKER_WRITE_FAILED);
-            }
-            if (!printer.set(false)) {
-                PrinterMarker.delete();
-                return Optional.of(new Stopped(RestockReason.LITEMATICA_PRINTER_UNREADABLE, ""));
-            }
-            printerHeld = true;
-            paused = true;
-        }
+        PrinterOff off = pausePrinter();
+        if (off == PrinterOff.FAILED) return Optional.of(new Stopped(RestockReason.LITEMATICA_PRINTER_UNREADABLE, ""));
+        boolean paused = off == PrinterOff.SWITCHED;
         carriedThisTrip = false;
         RestockTrip core = new RestockTrip(new RestockTrip.Plan(material, chosen.container(), chosen.stand(),
             WorldRay.pos(p.getBlockPos()), paused), limits);
@@ -592,6 +685,93 @@ final class RestockSession {
             "kind", Msg.of(chosen.kind() == Source.Kind.MARK ? RestockText.KIND_MARK : RestockText.KIND_STASH),
             "distance", Math.round(Math.sqrt(chosen.container().distanceSq(from))));
         return Optional.empty();
+    }
+
+    // --- the printer ---------------------------------------------------------------------------------------------
+
+    /** How switching litematica-printer off for a trip or an unpack went. */
+    private enum PrinterOff { NOT_PRINTING, SWITCHED, FAILED }
+
+    /**
+     * Switches litematica-printer off if it prints, for a trip or an unpack (pre-flight 19-10): the marker first (a
+     * crash between the two finds the printer still on, and the join leaves it so), then the switch; restock holds it
+     * from now.
+     */
+    private PrinterOff pausePrinter() {
+        if (PrintPause.atTripStart(printer.installed(), printer.printing()) != PrintPause.Action.SWITCH_OFF) {
+            return PrinterOff.NOT_PRINTING;
+        }
+        try {
+            PrinterMarker.write();
+        } catch (IOException e) {
+            module.warning(RestockText.MARKER_WRITE_FAILED);
+        }
+        if (!printer.set(false)) {
+            PrinterMarker.delete();
+            return PrinterOff.FAILED;
+        }
+        printerHeld = true;
+        return PrinterOff.SWITCHED;
+    }
+
+    /** The printer given back if restock holds it and it is still off (deferred L60 kept); the marker gone. */
+    private void givePrinterBack() {
+        if (!printerHeld) return;
+        Boolean printing = printer.printing();
+        RestockText said = null;
+        boolean warn = false;
+        if (PrintPause.atReturn(true, printing) == PrintPause.Action.SWITCH_ON) {
+            warn = !printer.set(true);
+            said = warn ? RestockText.PRINTER_LEFT_PAUSED : RestockText.PRINTER_RESUMED;
+        } else if (Boolean.TRUE.equals(printing)) {
+            said = RestockText.PRINTER_LEFT_ON;
+        } else if (PrintPause.unknownAtReturn(true, printing)) {
+            // Deferred L60: it may still be off, and nothing else would say so.
+            said = RestockText.PRINTER_UNKNOWN_AT_RETURN;
+            warn = true;
+        }
+        PrinterMarker.delete();
+        printerHeld = false;
+        if (said != null && warn) module.warning(said);
+        else if (said != null) module.info(said);
+    }
+
+    // --- unpacking a carried shulker box ---------------------------------------------------------------------------
+
+    /**
+     * Owner ruling R44: a carried box is unpacked here, with no trip; the printer switched off first, and it settles.
+     */
+    private Optional<Stopped> startUnpackNow(UnpackChoice.Unpack u, ClientPlayerEntity p) {
+        PrinterOff off = pausePrinter();
+        if (off == PrinterOff.FAILED) return Optional.of(new Stopped(RestockReason.LITEMATICA_PRINTER_UNREADABLE, ""));
+        startUnpack(u, p, off == PrinterOff.SWITCHED);
+        return Optional.empty();
+    }
+
+    private void startUnpack(UnpackChoice.Unpack u, ClientPlayerEntity p, boolean printerJustPaused) {
+        PlayerInventory inv = p.getInventory();
+        // M4: boxes of this kind (item and custom name), as UnpackDriver counts them every tick.
+        int carried = ShulkerInventory.kinds(inv).getOrDefault(u.kind(), 0);
+        UnpackPlan core = new UnpackPlan(new UnpackPlan.Plan(u.material(), u.kind().item(), carried,
+            WorldRay.pos(p.getBlockPos()), inv.getSelectedSlot(), printerJustPaused), UnpackLimits.DEFAULTS, limits);
+        unpack = new UnpackDriver(this, mc, mover, core, u.kind(), facts);
+        module.info(RestockText.UNPACK_STARTED, "material", RestockMessages.itemName(u.material()));
+    }
+
+    /**
+     * The box is back: what it gave; a box still standing (a late placement) said; a material it gave none of noted.
+     */
+    private void unpacked(UnpackDriver.Done done, ClientPlayerEntity p) {
+        String material = unpack.material();
+        unpack = null;
+        draining = null;
+        module.info(RestockText.UNPACK_DONE, "taken", RestockMessages.orNone(RestockMessages.materials(done.taken())));
+        for (Msg m : RestockMessages.shulkersLeft(done.left())) module.warning(m);
+        if (StateFacts.carried(p.getInventory()).getOrDefault(material, 0) == 0 && gaveUp.add(material)) {
+            module.info(RestockText.UNPACK_GAVE_UP, "material", RestockMessages.itemName(material));
+        }
+        givePrinterBack();
+        if (recountPending) recount();
     }
 
     // --- sources ---------------------------------------------------------------------------------------------------
@@ -656,8 +836,9 @@ final class RestockSession {
      * comes on later, the click it cancels is the trip's stop {@code CONTAINER_REFUSED}, whose text names it.
      */
     private Guards.Inputs guardInputs(Received in, RestockSettings s, ClientPlayerEntity p) {
-        boolean acting = trip != null && trip.clicking()
-            && (trip.actingAtRequest() || PacketWatch.get().foreignActionLastTick());
+        PacketWatch watch = PacketWatch.get();
+        boolean acting = (trip != null && trip.clicking() && (trip.actingAtRequest() || watch.foreignActionLastTick()))
+            || (unpack != null && unpack.clicking() && (unpack.actingAtRequest() || watch.foreignActionLastTick()));
         boolean attacked = false;
         for (EntityDamageS2CPacket d : in.damage()) {
             if (d.entityId() != p.getId() || d.sourceCauseId() < 0) continue;
@@ -666,9 +847,9 @@ final class RestockSession {
         }
         return new Guards.Inputs(TickRate.INSTANCE.getTimeSinceLastTick(), eating(p), acting, active(Guards.COMBAT_MODULES),
             autoPvpEngaged(), nonFriendWithin(mc, s.playerDistance()), s.stopNearPlayers(), attacked,
-            p.getHealth() + p.getAbsorptionAmount(), s.minHealth(), in.setback() && trip != null, null,
-            active(RestockLimits.CONFLICTING_MODULES), false, !p.isAlive(), !mc.world.getRegistryKey().equals(dimension),
-            false);
+            p.getHealth() + p.getAbsorptionAmount(), s.minHealth(), in.setback() && (trip != null || unpack != null),
+            null, active(RestockLimits.CONFLICTING_MODULES), false, !p.isAlive(),
+            !mc.world.getRegistryKey().equals(dimension), false);
     }
 
     /** The names in {@code names} whose Meteor module is on (a name Meteor does not register is skipped). */

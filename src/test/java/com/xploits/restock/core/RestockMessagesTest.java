@@ -104,14 +104,26 @@ class RestockMessagesTest {
 
     @Test
     void aRepeatedCombatStopWithoutANameSaysAnotherModuleNotACombatModuleInBrackets() {
-        assertEquals("another module kept rotating while restock opened a container: it paused three times and stops. "
-                + "Turn it on again when the fight is over.",
+        assertEquals("another module kept rotating while restock opened a container or unpacked a shulker box: "
+                + "it paused three times and stops. Turn it on again when the fight is over.",
             EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
-        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor: se pausó tres veces y se para. "
-                + "Vuelve a encenderlo cuando acabe la pelea.",
+        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor o vaciaba una caja de shulker: "
+                + "se pausó tres veces y se para. Vuelve a encenderlo cuando acabe la pelea.",
             ES.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
         assertTrue(EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "surround++", FACTS))
             .startsWith("surround++ kept rotating"));
+    }
+
+    @Test
+    void aRepeatedRotationStopSaysAnUnpackToo() {
+        // Phase B: the guards' acting is the unpack's too (its slot changes, the place and the dig aim), not only a
+        // container's open.
+        assertEquals("another module kept rotating while restock opened a container or unpacked a shulker box: "
+                + "it paused three times and stops. Turn that module off, then restock on again.",
+            EN.render(RestockMessages.reason(RestockReason.OTHER_ROTATION_REPEATED, "", FACTS)));
+        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor o vaciaba una caja de shulker: "
+                + "se pausó tres veces y se para. Apaga ese módulo y vuelve a encender restock.",
+            ES.render(RestockMessages.reason(RestockReason.OTHER_ROTATION_REPEATED, "", FACTS)));
     }
 
     @Test

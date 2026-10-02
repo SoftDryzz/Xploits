@@ -12,6 +12,8 @@ import com.xploits.restock.core.RestockSetting;
 import com.xploits.restock.core.RestockSettings;
 import com.xploits.restock.core.RestockText;
 import com.xploits.restock.core.RestockTrip;
+import com.xploits.restock.core.ShulkersLeft;
+import com.xploits.restock.core.UnpackPlan;
 import com.xploits.restock.litematica.LitematicaAccess;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
@@ -92,6 +94,13 @@ public class Restock extends XploitsModule {
         .build()
     );
 
+    private final Setting<Boolean> useCarriedShulkers = sgMaterial.add(new BoolSetting.Builder()
+        .name(RestockSetting.USE_CARRIED_SHULKERS.id())
+        .description(Texts.startupText(RestockSetting.USE_CARRIED_SHULKERS.text()))
+        .defaultValue(RestockSettings.DEFAULTS.useCarriedShulkers())
+        .build()
+    );
+
     private final Setting<BaritoneSession.Mode> baritoneSettings = sgBaritone.add(new EnumSetting.Builder<BaritoneSession.Mode>()
         .name(RestockSetting.BARITONE_SETTINGS.id())
         .description(Texts.startupText(RestockSetting.BARITONE_SETTINGS.text()))
@@ -149,6 +158,11 @@ public class Restock extends XploitsModule {
     private int trips;
     private RestockReason lastReason;
     private RestockReason pausedFor;
+    /** What the last stop left out at the build and the borrowed boxes carried then (phase B; the bench reads it). */
+    private ShulkersLeft lastLeft = ShulkersLeft.NONE;
+    /** Owner ruling R42: the guard's stop an unpack last finished its break and pick-up for, and its detail (M7). */
+    private RestockReason lastDrained;
+    private String lastDrainedDetail = "";
 
     public Restock() {
         super(XploitsAddon.CATEGORY, "restock", Texts.startupText(RestockText.MODULE_DESC));
@@ -204,6 +218,32 @@ public class Restock extends XploitsModule {
         return s == null ? 0 : s.unusableCount();
     }
 
+    public Optional<UnpackPlan.Phase> unpackPhase() {
+        RestockSession s = session;
+        return s == null ? Optional.empty() : s.unpackPhase();
+    }
+
+    public boolean unpackDigging() {
+        RestockSession s = session;
+        return s != null && s.unpackDigging();
+    }
+
+    /** What the last stop left out at the build and how many borrowed boxes were carried (the bench reads it). */
+    public ShulkersLeft lastShulkersLeft() {
+        return lastLeft;
+    }
+
+    /** The guard's stop the last unpack finished its break and pick-up for (owner ruling R42; the bench reads it). */
+    public Optional<RestockReason> lastDrained() {
+        return Optional.ofNullable(lastDrained);
+    }
+
+    /** The session lets an unpack finish for this stop (and its detail, for the reason's text). */
+    void drained(RestockReason why, String detail) {
+        lastDrained = why;
+        lastDrainedDetail = detail;
+    }
+
     public Msg status() {
         RestockSession s = session;
         return s == null ? Msg.of(RestockText.STATUS_OFF) : s.status();
@@ -228,6 +268,9 @@ public class Restock extends XploitsModule {
         pauseSaid = false;
         netCaughtWarned = false;
         trips = 0;
+        lastLeft = ShulkersLeft.NONE;
+        lastDrained = null;
+        lastDrainedDetail = "";
         clearQueues();
         // Meteor turns every module still marked active back on during a world join (also after a crash): that is not the
         // player turning restock on, and it must not start a session. Said and undone at the first tick.
@@ -316,9 +359,10 @@ public class Restock extends XploitsModule {
     }
 
     /**
-     * Ends the session, if one is open, and acts before anything is said (ruling R33): the walk, the printer marker and
-     * Baritone's values are dealt with first, each on its own ({@link RestockSession#close}); what is left to say comes
-     * back, for the caller to say afterwards.
+     * Ends the session, if one is open, and acts before anything is said (ruling R33): the walk, the unpack, the
+     * printer marker and Baritone's values are dealt with first, each on its own ({@link RestockSession#close});
+     * what is left to say comes back, for the caller to say afterwards — with every stop, and turning restock off,
+     * what is left out at the build and the borrowed boxes carried.
      */
     private List<Msg> finish(RestockReason why) {
         RestockSession s = session;
@@ -328,9 +372,11 @@ public class Restock extends XploitsModule {
         clearQueues();
         String prefix = s.prefix();
         RestockSession.Closed closed = s.close(why);
-        List<Msg> say = new ArrayList<>(2);
+        lastLeft = closed.left();
+        List<Msg> say = new ArrayList<>(6);
         if (closed.printerLeftPaused()) say.add(Msg.of(RestockText.PRINTER_LEFT_PAUSED));
         if (!closed.restored()) say.add(Msg.of(RestockText.RESTORE_NOT_DELIVERED, "prefix", prefix));
+        say.addAll(RestockMessages.shulkersLeft(closed.left()));
         return say;
     }
 
@@ -419,6 +465,12 @@ public class Restock extends XploitsModule {
         String prefix = prefixNow();
         List<Msg> after = finish(why);
         try {
+            // M7 (owner ruling R42): an unpack that ended otherwise while it finished for a guard's stop — its own
+            // failure, or an at-once stop that came meanwhile — says that stop too, so a stranger near is never hidden.
+            RestockReason drained = lastDrained;
+            if (drained != null && drained != why) {
+                warning(Msg.of(RestockText.UNPACK_DRAINED, "reason", reasonText(drained, lastDrainedDetail, prefix)));
+            }
             Msg text = Msg.of(RestockText.STOPPED, "reason", reasonText(why, detail, prefix));
             warning(text);
             toast(text);
@@ -501,7 +553,7 @@ public class Restock extends XploitsModule {
 
     private RestockSettings settingsNow() {
         return new RestockSettings(maxDistance.get(), useStashKeeper.get(), baritoneSettings.get(), baritonePrefix.get(),
-            stopNearPlayers.get(), playerDistance.get(), minHealth.get());
+            stopNearPlayers.get(), playerDistance.get(), minHealth.get(), useCarriedShulkers.get());
     }
 
     private RestockSession.Received drain() {
