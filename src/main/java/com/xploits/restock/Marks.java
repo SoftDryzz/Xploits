@@ -9,6 +9,7 @@ import com.xploits.shared.XploitsModule;
 import com.xploits.printer.core.Pos;
 import com.xploits.stash.core.ContainerKey;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.meteor.KeyEvent;
 import meteordevelopment.meteorclient.events.meteor.MouseClickEvent;
@@ -198,8 +199,27 @@ public final class Marks {
         return pos.offset(ChestBlock.getFacing(state));
     }
 
+    /** Set by a fault in the outline render; outlining stays off until the next join. */
+    private boolean renderFailed;
+
+    @EventHandler
+    private void onJoin(GameJoinedEvent event) {
+        renderFailed = false;
+    }
+
     @EventHandler
     private void onRender(Render3DEvent event) {
+        if (renderFailed) return;
+        try {
+            outline(event);
+        } catch (RuntimeException | LinkageError e) {
+            renderFailed = true;
+            XploitsAddon.LOG.error("restock: the mark outline failed ({}); outlining is off until the next join",
+                e.getClass().getName());
+        }
+    }
+
+    private void outline(Render3DEvent event) {
         MinecraftClient mc = MeteorClient.mc;
         if (mc.world == null || mc.player == null) return;
         Module module = restock();

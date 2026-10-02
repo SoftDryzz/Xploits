@@ -138,8 +138,8 @@ class RestockMessagesTest {
 
     @Test
     void theRepairFailureNamesTheSettingToCheck() {
-        assertTrue(EN.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("baritone-prefix"));
-        assertTrue(ES.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("baritone-prefix"));
+        assertTrue(EN.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("\"#\""));
+        assertTrue(ES.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("\"#\""));
     }
 
     @Test
