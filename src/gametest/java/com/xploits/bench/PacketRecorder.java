@@ -30,6 +30,8 @@ final class PacketRecorder {
     private final PaceRules rules = new PaceRules(PrinterLimits.DEFAULTS);
     private int interacts;
     private int containerActions;
+    private int clicks;
+    private int closes;
     private boolean moved;
     private int walkingClicks;
     private double lastX = Double.NaN;
@@ -69,7 +71,14 @@ final class PacketRecorder {
                     interacts++;
                     containerActions++;
                 }
-                case CLICK_SLOT, CLOSE_SCREEN -> containerActions++;
+                case CLICK_SLOT -> {
+                    clicks++;
+                    containerActions++;
+                }
+                case CLOSE_SCREEN -> {
+                    closes++;
+                    containerActions++;
+                }
                 case TICK_END -> {
                     if (moved && containerActions > 0) walkingClicks++;
                     moved = false;
@@ -85,6 +94,16 @@ final class PacketRecorder {
     /** Block interactions sent (the container clicks, and phase B's placements). */
     synchronized int interacts() {
         return interacts;
+    }
+
+    /** Slot clicks sent. */
+    synchronized int clicks() {
+        return clicks;
+    }
+
+    /** Screen closes sent. */
+    synchronized int closes() {
+        return closes;
     }
 
     /** Client ticks with a container click, close or interact while the position changed. */

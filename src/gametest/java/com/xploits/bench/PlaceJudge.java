@@ -6,9 +6,12 @@ import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
 import com.xploits.printer.core.PrinterLimits;
 import net.minecraft.block.BlockState;
+import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
+import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -43,7 +46,18 @@ public final class PlaceJudge {
         }
     }
 
+    /**
+     * One container click or close as the server received it (restock spec §3: only QUICK_MOVE, in the screen restock
+     * opened, with the cursor empty): which of the counts failed.
+     */
+    record ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull) {
+        boolean ok() {
+            return !notQuickMove && !wrongScreen && !cursorFull;
+        }
+    }
+
     private static final List<Verdict> VERDICTS = new ArrayList<>();
+    private static final List<ContainerVerdict> CONTAINER = new ArrayList<>();
     private static String judged;
 
     private PlaceJudge() {
@@ -52,6 +66,7 @@ public final class PlaceJudge {
     /** From now on, judges {@code playerName}'s packets; forgets every earlier verdict. Any thread. */
     static synchronized void start(String playerName) {
         VERDICTS.clear();
+        CONTAINER.clear();
         judged = playerName;
     }
 
@@ -61,6 +76,33 @@ public final class PlaceJudge {
 
     static synchronized List<Verdict> verdicts() {
         return List.copyOf(VERDICTS);
+    }
+
+    static synchronized List<ContainerVerdict> containerVerdicts() {
+        return List.copyOf(CONTAINER);
+    }
+
+    /** Block interactions judged (the container clicks; phase B's placements). */
+    static synchronized int places() {
+        return (int) VERDICTS.stream().filter(v -> v.kind() == Kind.PLACE).count();
+    }
+
+    /** "2 slot click(s) and 1 close(s) seen by the server: not a quick move 0, not the open screen 0, cursor not empty 0". */
+    static synchronized String containerWords() {
+        int clicks = 0;
+        int closes = 0;
+        int move = 0;
+        int screen = 0;
+        int cursor = 0;
+        for (ContainerVerdict v : CONTAINER) {
+            if (v.close()) closes++;
+            else clicks++;
+            if (v.notQuickMove()) move++;
+            if (v.wrongScreen()) screen++;
+            if (v.cursorFull()) cursor++;
+        }
+        return clicks + " slot click(s) and " + closes + " close(s) seen by the server: not a quick move " + move
+            + ", not the open screen " + screen + ", cursor not empty " + cursor;
     }
 
     /** "1 interaction(s) and 0 dig start(s) judged: airplace 0, beyond reach 0, …" (words between every count). */
@@ -111,6 +153,25 @@ public final class PlaceJudge {
         boolean tooFar = distance > PrinterLimits.DEFAULTS.maxReach();
         boolean faceAway = !Aim.facesEye(pos(packet.getPos()), face(packet.getDirection()), point(eye));
         add(new Verdict(Kind.DIG, false, tooFar, faceAway, rayMisses));
+    }
+
+    /** Server thread, from the mixin: a slot click about to be handled. */
+    public static void click(ServerPlayerEntity player, ClickSlotC2SPacket packet) {
+        if (!judging(player)) return;
+        addContainer(new ContainerVerdict(false, packet.actionType() != SlotActionType.QUICK_MOVE,
+            packet.syncId() == 0 || packet.syncId() != player.currentScreenHandler.syncId,
+            !player.currentScreenHandler.getCursorStack().isEmpty()));
+    }
+
+    /** Server thread, from the mixin: a screen close about to be handled. */
+    public static void close(ServerPlayerEntity player, CloseHandledScreenC2SPacket packet) {
+        if (!judging(player)) return;
+        addContainer(new ContainerVerdict(true, false, packet.getSyncId() != player.currentScreenHandler.syncId,
+            !player.currentScreenHandler.getCursorStack().isEmpty()));
+    }
+
+    private static synchronized void addContainer(ContainerVerdict v) {
+        CONTAINER.add(v);
     }
 
     private static synchronized boolean judging(ServerPlayerEntity player) {

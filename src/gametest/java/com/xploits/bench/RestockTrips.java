@@ -56,6 +56,7 @@ final class RestockTrips implements Scenario {
             "the player carries " + o.player().getOrDefault("minecraft:stone", 0L) + " stone, the wall needs ten");
         Bench.check(o.home(), "the player is not back where the trip started");
         Bench.check(o.interacts() == 1, "container clicks sent: " + o.interacts() + ", one expected");
+        Bench.check(o.closes() == 1, "screens closed: " + o.closes() + ", one expected");
         RestockScene.checkClean(o);
         return Metrics.none();
     }

@@ -24,6 +24,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -78,7 +79,8 @@ final class RestockScene {
     record Outcome(boolean on, Optional<RestockReason> reason, int trips, Map<String, Long> lost,
                    Map<String, Long> player, int drops, boolean home, boolean rulesClean, String rules,
                    int walkingClicks, int interacts, boolean judgeClean, String judge, SyncWatch.Result sync,
-                   List<Boolean> printer, boolean markerLeft) {
+                   List<Boolean> printer, boolean markerLeft, int judgedPlaces, int clicks, int closes,
+                   boolean containerClean, String container, boolean serverHome, boolean screenClear) {
     }
 
     private final BenchSchematic schematic;
@@ -227,11 +229,23 @@ final class RestockScene {
             new Box(origin).expand(24), e -> true).size());
         boolean home = bench.fromServer(srv -> Arena.player(srv, name).getBlockPos().equals(origin));
         boolean markerLeft = Files.exists(PrinterMarker.file());
+        boolean serverHome = bench.fromServer(srv -> {
+            ServerPlayerEntity p = Arena.player(srv, name);
+            return p.currentScreenHandler == p.playerScreenHandler;
+        });
+        boolean screenClear = bench.fromClient(client -> client.currentScreen == null);
         PlaceJudge.stop();
-        boolean judged = PlaceJudge.verdicts().stream().allMatch(PlaceJudge.Verdict::ok);
+        int judgedPlaces = PlaceJudge.places();
+        boolean judged = judgedPlaces == recorder.interacts() && PlaceJudge.verdicts().stream().allMatch(PlaceJudge.Verdict::ok);
+        List<PlaceJudge.ContainerVerdict> seen = PlaceJudge.containerVerdicts();
+        int seenClicks = (int) seen.stream().filter(v -> !v.close()).count();
+        int seenCloses = seen.size() - seenClicks;
+        boolean containerClean = seenClicks == recorder.clicks() && seenCloses == recorder.closes()
+            && seen.stream().allMatch(PlaceJudge.ContainerVerdict::ok);
         Outcome outcome = new Outcome(on, reason, trips, InventoryLedger.lost(atT0, atEnd, Map.of()), player, drops, home,
             recorder.violations().isEmpty(), recorder.violationWords(), recorder.walkingClicks(), recorder.interacts(),
-            judged, PlaceJudge.words(), sync.result(), switched, markerLeft);
+            judged, PlaceJudge.words(), sync.result(), switched, markerLeft, judgedPlaces, recorder.clicks(),
+            recorder.closes(), containerClean, PlaceJudge.containerWords(), serverHome, screenClear);
         bench.finish();
         return outcome;
     }
@@ -240,7 +254,12 @@ final class RestockScene {
     static void checkClean(Outcome o) {
         Bench.check(o.rulesClean(), "restock broke an anticheat rule: " + o.rules());
         Bench.check(o.walkingClicks() == 0, "container clicks while walking, in " + o.walkingClicks() + " tick(s)");
-        Bench.check(o.judgeClean(), "the server's re-check failed: " + o.judge());
+        Bench.check(o.judgeClean(), "the server judged " + o.judgedPlaces() + " of " + o.interacts()
+            + " interaction(s) sent, and its re-check: " + o.judge());
+        Bench.check(o.containerClean(), "the server's container check failed (the client sent " + o.clicks()
+            + " slot click(s) and " + o.closes() + " close(s)): " + o.container());
+        Bench.check(o.serverHome(), "the server still has a container screen open for the player");
+        Bench.check(o.screenClear(), "the client still shows a screen");
         Bench.check(o.lost().isEmpty(), "items lost: " + InventoryLedger.words(o.lost()));
         Bench.check(o.drops() == 0, "items on the ground: " + o.drops());
         Bench.check(o.sync().clean(), "the client and the server disagree: " + o.sync().words());
