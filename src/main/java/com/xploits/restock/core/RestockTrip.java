@@ -16,7 +16,8 @@ import java.util.function.Supplier;
  * and clicks it only while still, waits for its screen, takes while still (after the slots arrive, or after the content
  * wait for an empty-looking screen), closes while still, and walks back. A stale or unusable source asks the adapter
  * for the next one ({@link #retarget}, or {@link #giveUp} to go back empty-handed). The player's movement keys stop the
- * trip in any phase. A guard pause blocks every click and close and does not count towards a stall.
+ * trip in any phase. A guard pause blocks every click and close and does not count towards a stall. A walk that starts
+ * where it ends arrives at once, with no goal; {@link #hurry} cuts a take short.
  */
 public final class RestockTrip {
     public enum Phase { PAUSING, APPROACH, TRAVEL, OPEN, WAIT_SCREEN, TAKE, CHOOSING, STOPPING, RETURN, DONE, STOPPED }
@@ -64,7 +65,7 @@ public final class RestockTrip {
      * @param ourScreen    the container screen restock opened is the current one
      * @param contentSeen  that screen shows at least one item
      * @param take         TAKE: what {@link TakePlan#next} says now
-     * @param carried      how many of the trip's material the player carries now
+     * @param carried      how many of the trip's material the player gained since the trip started (loose, and inside the shulker boxes carried; phase A starts from none carried, so it is what it carries)
      * @param cursorEmpty  the cursor holds nothing; an item on it would be dropped by a close
      */
     public record Facts(boolean movementKeys, boolean paused, boolean still, boolean screenFree, double distance,
@@ -192,6 +193,7 @@ public final class RestockTrip {
     private int goal;
     private int clicks;
     private After after;
+    private boolean hurry;
 
     public RestockTrip(Plan plan, RestockLimits limits) {
         this.limits = limits;
@@ -286,6 +288,15 @@ public final class RestockTrip {
         enter(Phase.RETURN);
     }
 
+    /**
+     * Owner ruling R42 (phase B): a guard stop during the take from a shulker box set down at the build lets restock
+     * finish only the break and the pick-up. From now on nothing more is taken: a click not yet sent is never sent, a
+     * screen that opened (or opens) is closed as soon as any close would be, and the trip goes back. Idempotent.
+     */
+    public void hurry() {
+        hurry = true;
+    }
+
     private Phase walkPhase() {
         return stand.isPresent() ? Phase.TRAVEL : Phase.APPROACH;
     }
@@ -323,6 +334,8 @@ public final class RestockTrip {
     private Action walk(Facts f, RestockReason stalled, Supplier<Action> command, Supplier<Action> arrival) {
         if (!entered) {
             entered = true;
+            // Phase B: a walk that starts where it ends (the take from a box set down beside the player) sends no goal.
+            if (f.arrived()) return arrival.get();
             goal++;
             stall.reset();
             return command.get();
@@ -333,6 +346,10 @@ public final class RestockTrip {
     }
 
     private Action open(Facts f) {
+        if (hurry) {
+            enter(Phase.RETURN);
+            return back(f);
+        }
         if (f.paused()) return WAIT;
         if (!f.still() || !f.screenFree()) {
             return ++liveTicks > limits.openTimeoutTicks() ? needSource(After.UNUSABLE) : WAIT;
@@ -361,6 +378,11 @@ public final class RestockTrip {
     private Action take(Facts f) {
         if (!f.ourScreen()) return stop(RestockReason.CONTAINER_CLOSED, f);
         if (f.paused() || !f.still() || !f.cursorEmpty()) return WAIT;
+        if (hurry) {
+            after = After.RETURN;
+            enter(Phase.RETURN);
+            return new Close();
+        }
         if (!f.contentSeen() && ++liveTicks <= limits.contentWaitTicks()) return WAIT;
         TakePlan.Step s = clicks >= limits.maxTakeClicks() ? new TakePlan.NothingFits() : f.take();
         if (s instanceof TakePlan.Click c) {

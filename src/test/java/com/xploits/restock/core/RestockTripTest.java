@@ -364,6 +364,53 @@ class RestockTripTest {
     }
 
     @Test
+    void aWalkThatStartsWhereItEndsSendsNoCommand() {
+        // Phase B: the take from a shulker box set down beside the player stands where it opens and comes back to where it
+        // stands — no goal for Baritone, the arrival at once.
+        RestockTrip t = trip(false, Optional.of(STAND));
+        assertEquals(new RestockTrip.StopWalking(), t.step(f().arrived().build()));
+        assertEquals(RestockTrip.Phase.OPEN, t.phase());
+        assertEquals(new RestockTrip.ClickContainer(CHEST), t.step(f().aiming(HELD).build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().click(SENT).ourScreen().build()));
+        assertEquals(new RestockTrip.Close(),
+            t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64).build()));
+        assertEquals(new RestockTrip.Finish(false, true), t.step(f().arrived().carried(64).build()));
+        RestockTrip u = trip(true, Optional.of(STAND));
+        for (int i = 1; i <= 10; i++) assertEquals(new RestockTrip.Wait(), u.step(f().arrived().build()), "settle " + i);
+        assertEquals(new RestockTrip.StopWalking(), u.step(f().arrived().build()), "after the printer's settle too");
+    }
+
+    @Test
+    void aHurriedTakeClosesAtTheNextAllowedTickAndGoesBack() {
+        // Owner ruling R42: a guard stop that lets the break and the pick-up finish cuts the take short.
+        RestockTrip t = taking();
+        t.hurry();
+        assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().moving().take(new TakePlan.Click(0)).build()),
+            "the close waits for stillness like any close");
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Click(0)).build()),
+            "nothing more is taken");
+        assertEquals(new RestockTrip.GoTo(HOME), t.step(f().build()));
+    }
+
+    @Test
+    void aHurriedOpenNeverClicks() {
+        RestockTrip t = atChest();
+        t.hurry();
+        assertEquals(new RestockTrip.GoTo(HOME), t.step(f().aiming(HELD).build()));
+        assertEquals(RestockTrip.Phase.RETURN, t.phase());
+    }
+
+    @Test
+    void aScreenThatAnswersAHurriedClickIsClosedBeforeTheContentWait() {
+        RestockTrip t = atChest();
+        assertEquals(new RestockTrip.ClickContainer(CHEST), t.step(f().aiming(HELD).build()));
+        t.hurry();
+        assertEquals(new RestockTrip.Wait(), t.step(f().click(SENT).build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().build()), "into TAKE");
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().build()), "no content wait, no take");
+    }
+
+    @Test
     void ticksOfWantedAimDoNotCountTowardsTheOpenLimit() {
         // R12: the limit is for ticks that cannot click; a trip that keeps turning to the container is not stuck.
         RestockTrip t = atChest();
