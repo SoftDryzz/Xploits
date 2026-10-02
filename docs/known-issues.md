@@ -240,6 +240,52 @@ read.
 **Pending fix:** survival (webs, eating), then the offence against surrounded opponents. For the moving-in-a-hole case,
 a change in `crystal-aura++`'s safety check with its own bench.
 
+### `restock` counts every layer of the placement
+
+It counts what the whole selected placement still needs, whatever layer range Litematica shows: on a build printed
+layer by layer, it may fetch blocks for layers you have not reached yet (it fetches more, never less).
+
+### `restock` does not handle shulker boxes yet
+
+**Symptom:** `restock` says a block is missing although it is inside a shulker box.
+
+**What happens.** It takes loose items from chests, trapped chests, copper chests, barrels and placed shulker boxes. A
+shulker box inside a container, or one you carry, is not opened or counted yet.
+
+**What to do.** Put the blocks loose in a marked chest, or place the shulker box and mark it.
+
+### `restock` cannot see a player beyond the server's tracking range
+
+`stop-near-players` reads the players your client knows about, and a server sends them only within its own tracking
+range, so a `player-distance` larger than that range cannot be honoured.
+
+### `restock` does not count blocks that no item places directly
+
+Plant bodies such as kelp, cave vines, weeping vines and twisting vines, and potted plants, are not counted, so
+`restock` never fetches them.
+
+### `stash-keeper` does not index copper chests
+
+`restock` marks and opens copper chests (all eight variants), but `stash-keeper` still does not index them, so with
+`use-stash-keeper` on they are used only when you mark them.
+
+### `restock` pauses counting if Easy Place's placement restriction is switched on while it runs
+
+If it is switched on after `restock` starts, counting pauses at the next recount and says so.
+
+### `restock` may note a late container answer under the next container
+
+If a container answers late, after `restock` gave up on it and moved on, its contents may be noted under the next
+one. Only the "what it holds" hint is wrong; nothing is taken from the wrong place.
+
+### `restock`'s counting cost on a large placement is not measured
+
+The per-tick cost of counting a large placement has not been measured on a real build yet.
+
+### `restock`'s refusal of two overlapping placements is proven only by reading the code
+
+The bench has no overlap case yet.
+
 ---
 
 ## Unmeasured calibrations
@@ -319,3 +365,10 @@ Things that are implemented and reasoned through but that **nobody has seen work
   opponent that attacks back, with golden apples, but no crowd.
 - Whether `auto-pvp`'s surround request right after a hole block is broken is fast enough against instant
   mining on a real server.
+- Whether `restock` walks well with the real Baritone: the bench walks with a scripted walker. The release checklist
+  is [restock-checklist.md](restock-checklist.md).
+- Whether `restock` pauses and resumes the real `litematica-printer` in a real build: the bench uses a stand-in print
+  mode.
+- Whether `restock` behaves on a server reached through ViaFabricPlus.
+- Whether `restock`'s container clicks pass the anticheats of 6b6t and other anarchy servers. The bench checks every
+  packet against the rules Grim's published checks follow, on a vanilla server where no anticheat runs.

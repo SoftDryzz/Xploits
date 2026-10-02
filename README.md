@@ -5,11 +5,12 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Eleven modules, each switched on separately.
+other anarchy servers. Eleven modules in the latest release, each switched on separately; `restock`, the twelfth, is not released yet.
 
-> **Coming next, before 1.0.0: building.** In the next release or the ones after it, Xploits adds a printer that
-> builds the schematic you load in Litematica and, when it runs out of a block, fetches it by itself from your
-> chests and shulkers, then comes back and carries on. See [Coming soon](#coming-soon).
+> **New, experimental, not in a release yet: `restock`.** It comes in the next one. Build with Litematica and `litematica-printer` as you do today: when a block
+> the build still needs runs out, `restock` pauses the printer, walks to the nearest chest you marked (or that
+> `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. See
+> [`restock`](#restock--fetch-blocks-for-your-litematica-build).
 
 ## Why Xploits
 
@@ -76,7 +77,8 @@ it uses that instead of reimplementing it worse. The price is that you need to h
 | Mod | Required for | If missing |
 |---|---|---|
 | **Meteor Client 1.21.11** | Everything | The addon does not load |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Both **refuse to launch** and say so. The other seven modules work the same |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` (not released yet) **refuses to start**, and each says so. The other modules work the same |
+| **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, with its library **malilib** | `restock` | `restock` **refuses to start** and says so. The other modules work the same; Xploits loads without it |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
 | **`stash-finder`** (comes with Meteor) | `nether-sweep` | The sweep flies and records no containers. It warns you before take-off |
@@ -97,12 +99,15 @@ Worth knowing, because these are **your** modules that the addon turns on, turns
 | `surround++` | `burrow` | Only with its own `burrow` setting on (off by default): turns it on for one burrow, and Meteor's `burrow` turns itself off after it |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
 | `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk — as it does `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (if set) and its own censoring, which stay changed for good |
+| `restock` | Five **Baritone** settings | While it is on: `allowBreak`, `allowPlace` and `allowWaterBucketFall` off, so Baritone breaks and places nothing on the way, `censorCoordinates` and `censorRanCommands` on. When it stops, all five go back to your own values (`baritone-settings`: `MINE`, the default), or the first three to Baritone's defaults (`DEFAULTS`). ⚠️ Baritone saves them to disk; if the game closes while it is on, `restock` puts them back the next time you join a world |
+| `restock` | `litematica-printer`'s print mode | Switches it off before a trip and back on at the return, **only if it was printing and is still off** (if you turned it on or off yourself meanwhile, yours wins). If the game closes mid-trip, it is switched back on at the next world join |
+| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer` | It only **reads** them: it will not start while one is on, and stops, naming it, if you turn one on while it is on |
 
 All of this, with the detail of what persists and what can go wrong, in [Security](docs/security.md).
 
 ---
 
-## The eleven modules
+## The twelve modules
 
 ### `auto-travel` — fly somewhere without leaving an arrow pointing at your base
 
@@ -450,6 +455,44 @@ what happened.
 
 It needs Windows Terminal, which is the default console in Windows 11.
 
+### `restock` — fetch blocks for your Litematica build
+
+**Experimental.** Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
+`litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
+
+- **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped or copper chest,
+  barrel or placed shulker box and press it: "Marked (N in total)."; press again to unmark (it works even if the container
+  is gone). It works with `restock` on or off, and remembers the spot you stood on, per world.
+  `.xploits restock chests` lists them by dimension and distance, never by position. With `use-stash-keeper` on
+  (the default) it also uses the containers `stash-keeper` remembers.
+- **When it goes.** When a block the rest of the build still needs reaches 0 in your inventory, it waits two full
+  passes over the build (so the block `litematica-printer` placed a moment ago is counted), then picks the nearest
+  container that has it, in the same dimension and within `max-distance` (64). A source that is no longer a
+  container (the chest was replaced) is skipped, never clicked. It goes only for a block Litematica shows missing
+  somewhere in the build (with Litematica's rendering off, or that part of the build not loaded, it waits), and only
+  once you stand on the ground: it never leaves while you walk, sneak or jump.
+- **The trip.** It switches `litematica-printer`'s print mode off, walks there with
+  [Baritone](https://github.com/cabaletta/baritone) (Baritone breaks and places nothing on the way), stands still,
+  looks at the container and opens it, takes whole stacks of what the rest of the build needs — as much as fits,
+  never a shulker box with something in it — closes it, walks back to where you were and switches the print mode back
+  on. A container whose contents changed is noted and the next nearest is tried in the same trip. It never takes or
+  closes with an item on your mouse cursor: it waits until you put it down.
+- **Nowhere to fetch from:** it says which block and how many are missing, goes nowhere, and the printer keeps
+  printing everything else.
+- **It stops and says why** when a player who is not your Meteor friend comes within `player-distance` (48; switch
+  `stop-near-players` off to fetch with players around), a player who is not your friend attacks you, your health falls below `min-health`
+  (10), the server pulls you back, `auto-pvp` engages, you die or change dimension, **you press a movement key during a
+  trip**, Baritone finds no path, nothing fits in your inventory, you turn on a module it cannot run beside, or
+  something unexpected fails inside it (it stops with a message instead of crashing the game). After a stop during a
+  trip the printer stays off, and it says so. It **pauses** by itself, and carries on, while a combat module rotates,
+  while you eat and while the server lags.
+- **It refuses to start** if two Litematica placements overlap (the selected one and any other enabled one) or if
+  the installed Litematica has an API it does not recognise; it says so instead of guessing.
+- **It never starts by itself.** If it was on when you left, it stays off when you join again.
+
+It was tested on 1.21.11 in the bench, which has no Baritone and no `litematica-printer`; see the
+[known issues](docs/known-issues.md) for what only a real server can show.
+
 ---
 
 ## The auto-pvp HUD panel
@@ -496,6 +539,8 @@ into the active language, never a position.
 | `.xploits pvp profile reset-file` | Moves a corrupt `profiles.json` aside so saving works again |
 | `.xploits travel` · `go` · `stop` | Trip status, launch it, stop it |
 | `.xploits sweep` · `go` · `stop` | Sweep status, launch it, stop it |
+| `.xploits restock` · `status` | What `restock` is doing and what the build is short of |
+| `.xploits restock chests` · `chests clear` | Your marked containers by dimension and distance, or remove every mark of this world |
 | `.xploits language [auto\|es\|en]` | Active language, or sets it |
 | `.xploits reload` | Reloads the saved data |
 
@@ -508,6 +553,9 @@ goal: the second would take it from the first, the first would cut out after 45 
 restoration —stopping the second's flight halfway— and the second would diagnose a false stall.
 Each one checks for the other and **refuses to launch** while the other is flying. They are used in
 the same outing: you fly with `auto-travel`, stop it when you arrive, and sweep.
+
+**Nor while `restock` is on.** It drives the same Baritone: neither of the two launches while it is on, and it will
+not start while one of them flies.
 
 **Baritone's prefix cannot start with `/`.** With a slash the command goes down the server command
 path, which Baritone does not listen to, and on top of that the safety net would swallow every other
@@ -535,6 +583,7 @@ be published in the server chat**.
 <instance>/meteor-client/xploits/console/  Console history, 30 days at most
 <instance>/meteor-client/xploits/pvp/fights/  Recorded fights, 50 at most
 <instance>/meteor-client/xploits/pvp/profiles.json  Your style profiles
+<instance>/meteor-client/xploits/restock/  Marked containers per world; Baritone values and the print mode to give back
 <instance>/meteor-client/modules.nbt     Settings (written by Meteor)
 <instance>/meteor-client/friends.nbt     Friends list (written by Meteor)
 ```
@@ -566,7 +615,8 @@ up on disk. The `xploits` module's `hide-coordinates-in-log` setting masks them 
 copy (on screen you still see them): `Off`, `Baritone` (only its lines), `All` (the default) or
 `All but Baritone`. It also masks the `Saving region x,z` lines Baritone writes on its own.
 `auto-travel` and `nether-sweep` also turn on Baritone's censoring (`censorCoordinates`,
-`censorRanCommands`) before the first goal, and leave it on.
+`censorRanCommands`) before the first goal, and leave it on. `restock` turns it on while it is on and gives
+you back your own values when it stops.
 
 The console hides coordinates by default. With its `hide-coordinates` setting off it shows the same
 as the chat and saves them to disk (up to 30 days of history).
@@ -592,13 +642,8 @@ The most common:
 
 ## Coming soon
 
-- **Building, in the next release or the ones after it, before 1.0.0:** a printer that builds the schematic you
-  load in Litematica and, when it runs out of a block, goes and fetches it — from the chests you mark (look at one
-  and press a key) or the containers `stash-keeper` remembers, always the nearest, shulkers included — then comes
-  back and carries on where it left off. It places one block per tick at legitimate reach, never in the air, and
-  stops and tells you if another player comes near (a setting you can switch off). Then map art, tunnels and
-  highways, and bases. **Install Litematica to use it:** Xploits keeps working without it, but the printer builds
-  from the schematic you load there. It walks to your chests with Baritone.
+- **Building, next, before 1.0.0:** `restock` fetches shulkers too — carries one back, places it beside the build,
+  takes what it needs, breaks it and picks it up — then map art, tunnels and highways, and bases.
 - **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
   that keeps a health reserve; `surround++` — a computed defensive shell, from `auto-pvp`'s
   `shell-module`.

@@ -22,6 +22,26 @@ repositories {
         name = "meteor-maven-snapshots"
         url = uri("https://maven.meteordev.org/snapshots")
     }
+    // Litematica and malilib (printer spec §3): Modrinth's maven, only for the group it serves.
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = uri("https://api.modrinth.com/maven")
+            }
+        }
+        filter { includeGroup("maven.modrinth") }
+    }
+    // conditional-mixin: nested in Litematica and malilib; Loom strips nested jars from dev mods (bench profile only).
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "FallenBreath"
+                url = uri("https://maven.fallenbreath.me/releases")
+            }
+        }
+        filter { includeGroup("me.fallenbreath") }
+    }
 }
 
 dependencies {
@@ -32,6 +52,10 @@ dependencies {
 
     // Meteor
     modImplementation(libs.meteor.client)
+    // Litematica + malilib (printer spec §3): compile-only, never in the jar, never required at runtime. Every class
+    // that names them lives in com.xploits.printer.litematica and loads only after FabricLoader says they are there.
+    modCompileOnly("maven.modrinth:litematica:0.26.14")
+    modCompileOnly("maven.modrinth:malilib:0.27.19")
 
     // Tests (Gradle 9 exige declarar el launcher)
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
@@ -53,6 +77,19 @@ fabricApi {
 
 dependencies {
     "modGametestImplementation"("net.fabricmc.fabric-api:fabric-api:0.141.4+1.21.11")
+    // The bench's Litematica CHECK compiles against Litematica in every profile (its classes load only in the
+    // Litematica profile; spike S1), keeping the gametest's classpath independent of how Loom hands main's
+    // compile-only jars to other source sets.
+    "modGametestCompileOnly"("maven.modrinth:litematica:0.26.14")
+    "modGametestCompileOnly"("maven.modrinth:malilib:0.27.19")
+    // The Litematica profile (restock spec §6): -Pbench.litematica only. Litematica's integrated-server mixin turns
+    // vanilla's hit-vector check off, which is why it never joins the default bench.
+    if (project.hasProperty("bench.litematica")) {
+        "modGametestImplementation"("maven.modrinth:litematica:0.26.14")
+        "modGametestImplementation"("maven.modrinth:malilib:0.27.19")
+        // Nested in both jars; Loom strips nested jars from development mods (spike S1).
+        "modGametestRuntimeOnly"("me.fallenbreath:conditional-mixin-fabric:0.6.4")
+    }
 }
 
 // The addon as one mod in development runs, its classes and its resources together (fabric.classPathGroups), as in

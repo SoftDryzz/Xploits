@@ -391,6 +391,20 @@ public final class Bench {
         }
     }
 
+    /**
+     * Taps one key by its GLFW code, as a person pressing and releasing it (restock's mark key): held for one
+     * {@link #ticks tick}, then released. Fabric's test input goes through {@code Keyboard.onKey}, where Meteor posts
+     * its {@code KeyEvent}.
+     */
+    public void pressKey(int glfwKey) {
+        ctx.getInput().holdKey(glfwKey);
+        try {
+            ticks(1);
+        } finally {
+            ctx.getInput().releaseKey(glfwKey);
+        }
+    }
+
     // --- Meteor and Xploits modules --------------------------------------------------------------
 
     /** The module of that class with every setting back to its default. */

@@ -69,6 +69,7 @@ public enum TravelText implements MessageKey {
     LAUNCHED,
     LAUNCHED_NO_POSITION,
     SWEEP_RUNNING,
+    RESTOCK_RUNNING,
     CHEST_SWAP_ALWAYS,
     CHEST_SWAP_WAIT_FOR_GROUND,
     CHEST_SWAP_REJECTED,

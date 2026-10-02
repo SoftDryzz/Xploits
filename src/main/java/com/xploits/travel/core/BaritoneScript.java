@@ -145,8 +145,28 @@ public final class BaritoneScript {
         }
     }
 
-    private static String set(String prefix, String name, String value) {
+    /** {@code <prefix>set <name> <value>}: one Baritone setting. Public for the printer's session (printer spec §7). */
+    public static String set(String prefix, String name, String value) {
+        requirePrefix(prefix);
         return prefix + "set " + name + " " + value;
+    }
+
+    /** {@code <prefix>set reset <name>}: one setting back to Baritone's own default (printer spec §7, review I6). */
+    public static String reset(String prefix, String name) {
+        requirePrefix(prefix);
+        return prefix + "set reset " + name;
+    }
+
+    /** {@code <prefix>goto x y z}: Baritone's exact {@code GoalBlock}, the feet position to stand on (printer spec §5.7). */
+    public static String goToBlock(String prefix, int x, int y, int z) {
+        requirePrefix(prefix);
+        return prefix + "goto " + x + " " + y + " " + z;
+    }
+
+    /** {@code <prefix>goto x z}: towards a column, for parts of the build not loaded yet (printer spec §5.7). */
+    public static String goToColumn(String prefix, int x, int z) {
+        requirePrefix(prefix);
+        return prefix + "goto " + x + " " + z;
     }
 
     private static String bool(boolean value) {

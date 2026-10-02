@@ -4,7 +4,9 @@
   "package": "com.xploits.bench.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "SimulatedPingMixin"
+    "SimulatedPingMixin",
+    "PlaceJudgeMixin",
+    "ServerCloseMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -29,7 +29,13 @@ class BoundaryTest {
     private static final Pattern DIRECT_CHAT = Pattern.compile("ChatUtils\\.(info|warning|error)(Prefix)?\\(");
     private static final String MARKER = "// console: logged separately";
     private static final List<String> GAME_PACKAGES =
-        List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.");
+        List.of("net.minecraft.", "meteordevelopment.", "net.fabricmc.", "baritone.", "com.mojang.", "fi.dy.masa.",
+            "com.viaversion.", "me.aleksilassila.");
+    /** Litematica and malilib are optional (printer spec §3, M3; restock spec §3): only these packages may name them. */
+    private static final List<String> LITEMATICA_PACKAGES =
+        List.of("com/xploits/printer/litematica/", "com/xploits/restock/litematica/");
+    /** ViaFabricPlus and litematica-printer live in nested or foreign jars: reached by reflection only. */
+    private static final List<String> REFLECTION_ONLY = List.of("com.viaversion.", "me.aleksilassila.");
 
     private static Map<String, List<String>> sources() throws IOException {
         Map<String, List<String>> all = new TreeMap<>();
@@ -91,6 +97,24 @@ class BoundaryTest {
         assertEquals(List.of(), bad, "this cannot run outside the game");
     }
 
+    @Test
+    void optionalModsAreNamedOnlyWhereTheyAreGuarded() throws IOException {
+        List<String> bad = new ArrayList<>();
+        sources().forEach((path, lines) -> {
+            for (String l : lines) {
+                if (!l.startsWith("import ")) continue;
+                String imported = l.replace("import static ", "").replace("import ", "").trim();
+                if (imported.startsWith("fi.dy.masa.") && LITEMATICA_PACKAGES.stream().noneMatch(path::startsWith)) {
+                    bad.add(path + " imports " + imported);
+                }
+                for (String prefix : REFLECTION_ONLY) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
+                }
+            }
+        });
+        assertEquals(List.of(), bad, "an optional mod's class would load without the mod installed");
+    }
+
     /**
      * The bench's pure core is also compiled with the unit tests (build.gradle.kts), where the game is on
      * the classpath too: it may import only pure cores, never the game nor the rest of the bench.
@@ -110,6 +134,27 @@ class BoundaryTest {
             }
         });
         assertEquals(List.of(), bad, "the bench core must stay pure");
+    }
+
+    /**
+     * The bench names Litematica only in its Litematica profile's two files, and the mods Xploits reaches by reflection
+     * nowhere (restock spec §6; the printer's P13): the default bench never loads a class that names a mod it lacks.
+     */
+    @Test
+    void theBenchNamesLitematicaOnlyInItsProfile() throws IOException {
+        Set<String> profile = Set.of("com/xploits/bench/BenchLitematica.java", "com/xploits/bench/RestockLitematica.java");
+        List<String> bad = new ArrayList<>();
+        sourcesUnder(GAMETEST_SOURCES).forEach((path, text) -> {
+            for (String l : text.split("\n")) {
+                if (!l.startsWith("import ")) continue;
+                String imported = l.replace("import static ", "").replace("import ", "").replace(";", "").trim();
+                if (imported.startsWith("fi.dy.masa.") && !profile.contains(path)) bad.add(path + " imports " + imported);
+                for (String prefix : REFLECTION_ONLY) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
+                }
+            }
+        });
+        assertEquals(List.of(), bad, "a default bench run would load a class naming a mod it does not have");
     }
 
     /** Packages whose player text is fully in the catalogs (language spec §6): all of them. */

@@ -31,7 +31,10 @@ class ScenarioSelectionTest {
 
     private static final List<String> CHECKS = List.of("recorder-pop-end", "recorder-lost", "recorder-opponent",
         "autopvp-engages", "autopvp-engages-capp", "capp-budget-off-parity", "profile-defensive",
-        "autopvp-anti-resources", "panel", "exposure-cover-probe");
+        "autopvp-anti-resources", "panel", "exposure-cover-probe", "baritone-net", "restock-no-litematica", "restock-trip",
+        "restock-excludes-travel",
+        "restock-stale-chest", "restock-player-near", "restock-moved", "restock-mark-key", "restock-nowhere",
+        "restock-replaced-chest", "restock-double-chest");
     private static final List<String> FIGHTS = List.of("above", "below", "approach", "strafe");
     /** R3-14: the fight situations where OUR player moves too, after {@link #FIGHTS}. */
     private static final List<String> SELF_FIGHTS = List.of("self-circle", "self-strafe");
@@ -110,9 +113,9 @@ class ScenarioSelectionTest {
     }
 
     @Test
-    void theBenchHas81Scenarios() {
-        assertEquals(81, scenarios().size());
-        assertEquals(81, names(scenarios()).stream().distinct().count());
+    void theBenchHas92Scenarios() {
+        assertEquals(92, scenarios().size());
+        assertEquals(92, names(scenarios()).stream().distinct().count());
     }
 
     @Test
@@ -131,7 +134,7 @@ class ScenarioSelectionTest {
             "ca-city", "capp-balanced-city", "ca-near-death", "ca-near-death-totem",
             "capp-balanced-near-death", "capp-balanced-near-death-totem"));
         assertEquals(expected, names(played));
-        assertEquals(46, played.size());
+        assertEquals(57, played.size());
     }
 
     @Test
@@ -151,7 +154,7 @@ class ScenarioSelectionTest {
 
     @Test
     void theFullRunPlaysEveryScenario() {
-        assertEquals(81, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
+        assertEquals(92, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
     }
 
     @Test
@@ -169,9 +172,9 @@ class ScenarioSelectionTest {
     /**
      * SHA-256 of {@code Scenarios.java}, line endings normalized, when this mirror was last checked against the
      * real {@code Scenarios.all()} (task A3: the real fights added, last, city between the two
-     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; 0.7.2: the roof-jump pair right after cover; every earlier scenario's name, kind, level and twin unchanged).
+     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; 0.7.2: the roof-jump pair right after cover; every earlier scenario's name, kind, level and twin unchanged; printer phase 1 Task 11: the baritone-net CHECK after the exposure probe; restock Task 11: the restock-no-litematica CHECK after baritone-net; restock Task 12: restock-trip; restock Task 13: restock-excludes-travel; restock Task 14: five CHECKs; restock final fix wave: restock-replaced-chest; restock polish wave C: restock-double-chest).
      */
-    private static final String SCENARIOS_FINGERPRINT = "ef9b5cae683a13c22d22eae71dbbc9dfd88cb5fca8fadaef72eb833fe1691635";
+    private static final String SCENARIOS_FINGERPRINT = "1b60479dc7a94f313b71921b99e8e56fdc891d0150d5a36c27a93be3b9403ecc";
 
     /**
      * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},

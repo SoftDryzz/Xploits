@@ -3,8 +3,10 @@ package com.xploits.sweep;
 import com.xploits.XploitsAddon;
 import com.xploits.console.core.GameSnapshot;
 import com.xploits.elytra.ElytraReplace;
+import com.xploits.restock.Restock;
 import com.xploits.shared.Texts;
 import com.xploits.shared.XploitsModule;
+import com.xploits.shared.baritone.BaritoneLink;
 import com.xploits.shared.core.i18n.Msg;
 import com.xploits.shared.core.PositionedMsg;
 import com.xploits.sweep.core.ChunkPos;
@@ -25,9 +27,7 @@ import com.xploits.travel.core.RoutePlanner;
 import com.xploits.travel.core.SafetyNet;
 import com.xploits.travel.core.StallWatch;
 import com.xploits.travel.core.Waypoint;
-import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
-import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.ChunkDataEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -39,7 +39,6 @@ import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraFly;
-import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
@@ -50,9 +49,6 @@ import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ChatCommandSignedC2SPacket;
-import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
-import net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.World;
@@ -91,12 +87,12 @@ import java.util.OptionalDouble;
  * and an important one: it feeds {@link WidthProbe} with the chunks it receives, so that at launch
  * the lane width comes out <b>measured</b> and not made up (spec §5).
  *
- * <p><b>The safety net lives in {@link ChatNet}, subscribed to the bus on its own</b> and not as
- * part of the module. Meteor unsubscribes the module just <i>before</i> {@code onDeactivate()},
+ * <p><b>The safety net lives in {@link BaritoneLink}, shared with auto-travel and later restock, subscribed to the
+ * bus on its own</b> and not as part of the module. Meteor unsubscribes the module just <i>before</i> {@code onDeactivate()},
  * which is when the restoration sends its burst of prefixed commands: a net built on an
  * {@code @EventHandler} of the module itself would be dead right then, and the six lines would go
  * out to the public chat of an anarchy server. It is the same fix as {@code travel/AutoTravel}, and
- * the full reasoning is in its javadoc.
+ * the full reasoning is in {@link BaritoneLink}'s javadoc.
  */
 public class NetherSweep extends XploitsModule {
     /** The id Baritone registers with in the mod loader. */
@@ -425,21 +421,11 @@ public class NetherSweep extends XploitsModule {
     private boolean leavingWorld;
 
     /**
-     * The safety net's listener, <b>subscribed to the bus on its own</b> and not as part of the
-     * module, because Meteor unsubscribes the module just before {@code onDeactivate()} -which is when
-     * the restoration sends its commands-. The full reasoning, with the orbit sources checked, is in
-     * {@code travel/AutoTravel}.
+     * The safety net, shared with auto-travel and later restock: {@link BaritoneLink} keeps the listener subscribed on its
+     * own, not as part of this module, because Meteor unsubscribes a module before {@code onDeactivate()}, which is when
+     * the restoration sends its commands.
      */
-    private final ChatNet net = new ChatNet();
-
-    /** Whether the net is armed, which is the same as whether {@link #net} is subscribed to the bus. */
-    private boolean netArmed;
-
-    /** Whether the command {@link #send(String)} is sending right now is ours. */
-    private boolean emitting;
-
-    /** Whether the net killed our last command: set by the listener, read by {@link #send(String)}. */
-    private boolean sendCaught;
+    private final BaritoneLink link = new BaritoneLink(this::warnNetCaught);
 
     /** Whether the player was already warned that the net had to cancel something in this sweep (once only). */
     private boolean netCaughtWarned;
@@ -659,41 +645,6 @@ public class NetherSweep extends XploitsModule {
             new ChunkPos(chunkX, chunkZ),
             ceiling,
             odometer.lastStep());
-    }
-
-    /**
-     * The half of the safety net that needs Minecraft: getting from the outgoing packet which
-     * channel it goes through and what text it carries. Deciding whether that text is one of the
-     * Baritone commands we steer with belongs to {@link SafetyNet}, which is tested without starting
-     * the game.
-     */
-    private final class ChatNet {
-        @EventHandler
-        private void onPacketSend(PacketEvent.Send event) {
-            if (!netArmed) return;
-
-            SafetyNet.Channel channel;
-            String payload;
-            if (event.packet instanceof ChatMessageC2SPacket chat) {
-                channel = SafetyNet.Channel.CHAT;
-                payload = chat.chatMessage();
-            }
-            else if (event.packet instanceof CommandExecutionC2SPacket command) {
-                channel = SafetyNet.Channel.COMMAND;
-                payload = command.command();
-            }
-            else if (event.packet instanceof ChatCommandSignedC2SPacket command) {
-                channel = SafetyNet.Channel.COMMAND;
-                payload = command.command();
-            }
-            else return;
-
-            if (!SafetyNet.directs(activePrefix, channel, payload)) return;
-
-            event.cancel();
-            if (emitting) sendCaught = true;
-            warnNetCaught(SafetyNet.typedText(channel, payload));
-        }
     }
 
     /**
@@ -918,6 +869,8 @@ public class NetherSweep extends XploitsModule {
         if (sweeping) return Msg.of(SweepText.START_ALREADY_SWEEPING);
         Msg travelRunning = autoTravelRejection();
         if (travelRunning != null) return travelRunning;
+        Msg restocking = restockRejection();
+        if (restocking != null) return restocking;
         if (mc.player == null || mc.world == null) return Msg.of(SweepText.START_NO_WORLD);
         if (!mc.player.isAlive()) return Msg.of(SweepText.START_DEAD);
         if (!World.NETHER.equals(mc.world.getRegistryKey())) {
@@ -1167,6 +1120,13 @@ public class NetherSweep extends XploitsModule {
         if (travel == null || !travel.isTravelling()) return null;
 
         return Msg.of(SweepText.AUTO_TRAVEL_RUNNING);
+    }
+
+    /** restock drives the same Baritone (restock spec §3): one refusal each way, as with auto-travel. */
+    private Msg restockRejection() {
+        Restock restock = Modules.get().get(Restock.class);
+        if (restock == null || !restock.isRunning()) return null;
+        return Msg.of(SweepText.RESTOCK_RUNNING);
     }
 
     /**
@@ -1450,19 +1410,15 @@ public class NetherSweep extends XploitsModule {
         fireworkWatch.reset();
     }
 
-    /** Subscribes the net's listener to the bus. Idempotent: arming twice does not duplicate the subscription. */
+    /** Arms the shared net for this sweep's prefix. Idempotent: arming twice does not duplicate the subscription. */
     private void armNet() {
         netCaughtWarned = false;
-        if (netArmed) return;
-        netArmed = true;
-        MeteorClient.EVENT_BUS.subscribe(net);
+        link.arm(activePrefix);
     }
 
-    /** Unsubscribes the listener. Idempotent, which is what makes the {@code onDeactivate} call safe. */
+    /** Disarms it. Idempotent, which is what makes the {@code onDeactivate} call safe. */
     private void disarmNet() {
-        if (!netArmed) return;
-        netArmed = false;
-        MeteorClient.EVENT_BUS.unsubscribe(net);
+        link.disarm();
     }
 
     /** Records how the module is and leaves it in its flight state. */
@@ -1513,29 +1469,11 @@ public class NetherSweep extends XploitsModule {
     }
 
     /**
-     * Sends a command through the player's chat. {@code ChatUtils.sendPlayerMsg} sends the text "as
-     * if the user had typed it in the chat", which is exactly what Baritone listens to;
-     * {@code addToHistory = false} is passed so as not to leave hash-prefixed commands one Enter away
-     * from being published in the chat history.
-     *
-     * @return whether the command left the client towards Baritone. {@code false} means that the net
-     *         had to cancel it -Baritone did not intercept it, so it had no one to reach- or that
-     *         there was no player. The whole path is synchronous, so {@link #sendCaught} is already
-     *         decided when this call returns.
+     * Sends a command through the player's chat ({@link BaritoneLink#send}). {@code false}: the net had to cancel it
+     * -Baritone did not intercept it, so it had no one to reach- or there was no player.
      */
     private boolean send(String command) {
-        if (mc.player == null) return false;
-
-        boolean outer = emitting;
-        emitting = true;
-        sendCaught = false;
-        try {
-            ChatUtils.sendPlayerMsg(command, false);
-        }
-        finally {
-            emitting = outer;
-        }
-        return !sendCaught;
+        return link.send(command);
     }
 
     private BaritoneScript.FlightSettings flightSettings() {
@@ -1586,7 +1524,7 @@ public class NetherSweep extends XploitsModule {
             "total", planLanes, "width", usedWidth,
             "how", typedWidth ? SweepText.WIDTH_TYPED : SweepText.WIDTH_MEASURED,
             "coverage", coverage, "flown", Math.round(sweepBlocksFlown()), "left", left, "rate", rate,
-            "net", netArmed ? SweepText.NET_ARMED : SweepText.NET_DISARMED,
+            "net", link.armed() ? SweepText.NET_ARMED : SweepText.NET_DISARMED,
             "caught", netCaughtWarned ? SweepText.STATUS_NET_CAUGHT : SweepText.NOTHING);
     }
 
