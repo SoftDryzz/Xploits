@@ -20,6 +20,9 @@ placed and selected in Litematica; one stack of its main block carried; `mark-ke
 - [ ] Close the game mid-trip; start again and join any world: the five settings are yours again.
 - [ ] Set `baritone-settings` to `DEFAULTS`, run a trip, stop: the three behaviour settings are Baritone's defaults and
       the two censors are yours.
+- [ ] Mark a chest while standing on a slab, soul sand, a dirt path or another block lower than a full one, and run a
+      trip to it; then let a block run out while you stand on one. Baritone counts your feet one block higher on those
+      than Minecraft does: note whether it reaches the spot and comes back, or stops saying it found no path.
 
 ## 2. litematica-printer paused and resumed in a real build
 
@@ -28,6 +31,11 @@ placed and selected in Litematica; one stack of its main block carried; `mark-ke
 - [ ] Printing off when the block runs out: `restock` fetches and leaves the print mode off.
 - [ ] Close the game mid-trip; start again and join any world: the print mode is on again.
 - [ ] Press forward during a trip: `restock` stops, says the printer stays off, and it does.
+- [ ] Walk along the build, or sneak at an edge, while a block runs out: no trip starts while you move; once you stand
+      on the ground it goes after a moment, and the printer is paused only then.
+- [ ] Turn Litematica's rendering off (its hotkey) with the build half done and a finished block no longer carried:
+      no trip starts for blocks the build already holds; turn rendering back on: trips go only for blocks still
+      missing.
 
 ## 3. On the anarchy servers you play
 
@@ -50,6 +58,8 @@ On each server, 6b6t first:
 - [ ] A large placement (tens of thousands of blocks): note the frame rate while `restock` counts, with it on and off.
 - [ ] Two enabled placements that overlap: `restock` refuses to start and says why.
 - [ ] A marked chest broken and replaced by another block: the trip skips it and never clicks the new block.
+- [ ] A build with shulker boxes, and a marked chest holding a shulker box of the same colour with items in it:
+      `restock` leaves that shulker box in the chest.
 - [ ] Marking while flying is refused; unmarking a chest that has vanished works.
 
 Anything that fails stops the release: note what happened (counts and reasons only) and open an issue.

@@ -476,13 +476,16 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
 - **Cuándo va.** Cuando un bloque que el resto de la construcción aún necesita llega a 0 en tu inventario, espera
   dos pasadas completas por la construcción (para contar el bloque que `litematica-printer` acaba de poner) y elige
   el contenedor más cercano que lo tenga, en la misma dimensión y a menos de `max-distance` (64). Un origen que ya
-  no es un contenedor (cambiaron el cofre por otro bloque) se salta, nunca se pulsa.
+  no es un contenedor (cambiaron el cofre por otro bloque) se salta, nunca se pulsa. Solo va por un bloque que
+  Litematica muestra que falta en algún sitio de la construcción (con el renderizado de Litematica apagado, o esa parte
+  de la construcción sin cargar, espera), y solo cuando estás en el suelo: nunca sale mientras andas, vas agachado o
+  saltas.
 - **El viaje.** Apaga el modo de impresión de `litematica-printer`, va andando con
   [Baritone](https://github.com/cabaletta/baritone) (Baritone no rompe ni pone nada por el camino), se queda quieto,
   mira el contenedor y lo abre, coge stacks enteros de lo que necesita el resto de la construcción —tanto como
-  quepa—, lo cierra, vuelve a donde estabas y vuelve a encender el modo de impresión. Un contenedor cuyo contenido ha
-  cambiado se anota y se prueba el siguiente más cercano en el mismo viaje. Nunca coge ni cierra con un objeto en el
-  cursor: espera a que lo sueltes.
+  quepa, nunca una caja de shulker con algo dentro—, lo cierra, vuelve a donde estabas y vuelve a encender el modo de
+  impresión. Un contenedor cuyo contenido ha cambiado se anota y se prueba el siguiente más cercano en el mismo viaje.
+  Nunca coge ni cierra con un objeto en el cursor: espera a que lo sueltes.
 - **Sin sitio de donde sacarlo:** dice qué bloque y cuántos faltan, no va a ningún sitio, y el printer sigue
   imprimiendo todo lo demás.
 - **Se para y dice por qué** cuando un jugador que no es amigo tuyo en Meteor se acerca a menos de `player-distance`

@@ -468,13 +468,15 @@ It needs Windows Terminal, which is the default console in Windows 11.
 - **When it goes.** When a block the rest of the build still needs reaches 0 in your inventory, it waits two full
   passes over the build (so the block `litematica-printer` placed a moment ago is counted), then picks the nearest
   container that has it, in the same dimension and within `max-distance` (64). A source that is no longer a
-  container (the chest was replaced) is skipped, never clicked.
+  container (the chest was replaced) is skipped, never clicked. It goes only for a block Litematica shows missing
+  somewhere in the build (with Litematica's rendering off, or that part of the build not loaded, it waits), and only
+  once you stand on the ground: it never leaves while you walk, sneak or jump.
 - **The trip.** It switches `litematica-printer`'s print mode off, walks there with
   [Baritone](https://github.com/cabaletta/baritone) (Baritone breaks and places nothing on the way), stands still,
-  looks at the container and opens it, takes whole stacks of what the rest of the build needs — as much as fits —
-  closes it, walks back to where you were and switches the print mode back on. A container whose contents changed is
-  noted and the next nearest is tried in the same trip. It never takes or closes with an item on your mouse cursor:
-  it waits until you put it down.
+  looks at the container and opens it, takes whole stacks of what the rest of the build needs — as much as fits,
+  never a shulker box with something in it — closes it, walks back to where you were and switches the print mode back
+  on. A container whose contents changed is noted and the next nearest is tried in the same trip. It never takes or
+  closes with an item on your mouse cursor: it waits until you put it down.
 - **Nowhere to fetch from:** it says which block and how many are missing, goes nowhere, and the printer keeps
   printing everything else.
 - **It stops and says why** when a player who is not your Meteor friend comes within `player-distance` (48; switch
