@@ -198,6 +198,12 @@ public class Restock extends XploitsModule {
         return s == null ? Set.of() : s.nowhere();
     }
 
+    /** How many containers this session found unusable: not reached, not opened, or no longer a container. */
+    public int unusable() {
+        RestockSession s = session;
+        return s == null ? 0 : s.unusableCount();
+    }
+
     public Msg status() {
         RestockSession s = session;
         return s == null ? Msg.of(RestockText.STATUS_OFF) : s.status();

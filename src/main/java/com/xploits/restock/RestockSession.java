@@ -172,6 +172,11 @@ final class RestockSession {
         return Set.copyOf(saidNowhere);
     }
 
+    /** How many containers were found unusable in this session (the bench reads it; never which ones). */
+    int unusableCount() {
+        return unusable.size();
+    }
+
     int stashCount(RestockSettings s) {
         StashIndex st = stash(s);
         if (st == null) return 0;
