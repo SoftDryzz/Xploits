@@ -2,6 +2,7 @@ package com.xploits.bench.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,7 +49,11 @@ class InventoryLedgerTest {
 
     @Test
     void theWordsNameEachItemBeforeItsCount() {
+        // A LinkedHashMap with stone first: the words sort by name whatever order the map iterates in.
+        Map<String, Long> stoneFirst = new LinkedHashMap<>();
+        stoneFirst.put(STONE, 3L);
+        stoneFirst.put(DIRT, 1L);
         assertEquals("nothing", InventoryLedger.words(Map.of()));
-        assertEquals("minecraft:dirt 1, minecraft:stone 3", InventoryLedger.words(Map.of(STONE, 3L, DIRT, 1L)));
+        assertEquals("minecraft:dirt 1, minecraft:stone 3", InventoryLedger.words(stoneFirst));
     }
 }

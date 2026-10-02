@@ -216,13 +216,13 @@ final class RestockScene {
 
     // --- the end --------------------------------------------------------------------------------------------------
 
-    /** The last sync comparison, every count, then the bench's close. */
+    /** The last sync comparison first, so every reading below describes the same end state, then the bench's close. */
     Outcome finish(Bench bench) {
+        sync.finalCheck();
         boolean on = on(bench);
         Optional<RestockReason> reason = bench.fromClient(client -> restock.lastReason());
         int trips = trips(bench);
         List<Boolean> switched = bench.fromClient(client -> printer.history());
-        sync.finalCheck();
         Map<String, Long> atEnd = bench.fromServer(srv -> everything(srv));
         Map<String, Long> player = bench.fromServer(srv -> carried(Arena.player(srv, name)));
         int drops = bench.fromServer(srv -> srv.getOverworld().getEntitiesByType(EntityType.ITEM,

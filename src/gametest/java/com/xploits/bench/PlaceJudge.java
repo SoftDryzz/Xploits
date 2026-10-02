@@ -48,9 +48,17 @@ public final class PlaceJudge {
 
     /**
      * One container click or close as the server received it (restock spec §3: only QUICK_MOVE, in the screen restock
-     * opened, with the cursor empty): which of the counts failed.
+     * opened, with the cursor empty): which of the counts failed. {@code closedByServer}: a close for a screen the server
+     * had already closed (it moved the player back to their own screen, as when the chest went out of range or was
+     * broken, and the client's close crossed it): neither a wrong screen nor a failure, since a client cannot hold a
+     * container screen the server never opened.
      */
-    record ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull) {
+    record ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull,
+                            boolean closedByServer) {
+        ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull) {
+            this(close, notQuickMove, wrongScreen, cursorFull, false);
+        }
+
         boolean ok() {
             return !notQuickMove && !wrongScreen && !cursorFull;
         }
@@ -87,22 +95,25 @@ public final class PlaceJudge {
         return (int) VERDICTS.stream().filter(v -> v.kind() == Kind.PLACE).count();
     }
 
-    /** "2 slot click(s) and 1 close(s) seen by the server: not a quick move 0, not the open screen 0, cursor not empty 0". */
+    /** "2 slot click(s) and 1 close(s) seen by the server: not a quick move 0, not the open screen 0, cursor not empty 0, already closed by the server 0". */
     static synchronized String containerWords() {
         int clicks = 0;
         int closes = 0;
         int move = 0;
         int screen = 0;
         int cursor = 0;
+        int already = 0;
         for (ContainerVerdict v : CONTAINER) {
             if (v.close()) closes++;
             else clicks++;
             if (v.notQuickMove()) move++;
             if (v.wrongScreen()) screen++;
             if (v.cursorFull()) cursor++;
+            if (v.closedByServer()) already++;
         }
         return clicks + " slot click(s) and " + closes + " close(s) seen by the server: not a quick move " + move
-            + ", not the open screen " + screen + ", cursor not empty " + cursor;
+            + ", not the open screen " + screen + ", cursor not empty " + cursor
+            + ", already closed by the server " + already;
     }
 
     /** "1 interaction(s) and 0 dig start(s) judged: airplace 0, beyond reach 0, …" (words between every count). */
@@ -166,8 +177,11 @@ public final class PlaceJudge {
     /** Server thread, from the mixin: a screen close about to be handled. */
     public static void close(ServerPlayerEntity player, CloseHandledScreenC2SPacket packet) {
         if (!judging(player)) return;
-        addContainer(new ContainerVerdict(true, false, packet.getSyncId() != player.currentScreenHandler.syncId,
-            !player.currentScreenHandler.getCursorStack().isEmpty()));
+        boolean serverHome = player.currentScreenHandler == player.playerScreenHandler;
+        boolean closedByServer = serverHome && packet.getSyncId() != 0;
+        addContainer(new ContainerVerdict(true, false,
+            !closedByServer && packet.getSyncId() != player.currentScreenHandler.syncId,
+            !player.currentScreenHandler.getCursorStack().isEmpty(), closedByServer));
     }
 
     private static synchronized void addContainer(ContainerVerdict v) {

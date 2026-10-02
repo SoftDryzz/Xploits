@@ -18,7 +18,8 @@ final class RestockStaleChest implements Scenario {
     /** Centre distance from F about 5.7. */
     static final Vec3i FULL = new Vec3i(4, 0, 4);
     static final Vec3i FULL_STAND = new Vec3i(4, 0, 3);
-    private static final int RUN_TICKS = 640;
+    /** 25 s at 20 tps, inside the 35 s budget with the arrangement and the final check: a failure ends in its message, not a timeout. */
+    private static final int RUN_TICKS = 500;
 
     private RestockScene scene;
 
