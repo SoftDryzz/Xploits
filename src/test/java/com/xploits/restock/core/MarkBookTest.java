@@ -63,4 +63,16 @@ class MarkBookTest {
         assertEquals(1, book.clear());
         assertEquals(0, book.size());
     }
+
+    @Test
+    void aFileHoldingOneContainerTwiceIsRejected() {
+        assertTrue(MarkBook.fromLines(List.of("xploits-restock-marks 1", OVERWORLD + " 1 2 3 1 2 4",
+            OVERWORLD + " 1 2 3 5 5 5")).isEmpty());
+    }
+
+    @Test
+    void theSameContainerInTwoDimensionsIsNotADuplicate() {
+        assertEquals(2, MarkBook.fromLines(List.of("xploits-restock-marks 1", OVERWORLD + " 1 2 3 1 2 4",
+            NETHER + " 1 2 3 1 2 4")).orElseThrow().size());
+    }
 }

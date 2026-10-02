@@ -99,7 +99,7 @@ public final class MarkBook {
         return lines;
     }
 
-    /** The book a file holds; empty when the file is not one this class wrote. */
+    /** The book a file holds; empty when the file is not one this class wrote (a container marked twice included). */
     public static Optional<MarkBook> fromLines(List<String> lines) {
         if (lines.isEmpty() || !lines.get(0).equals(HEADER)) return Optional.empty();
         List<Mark> marks = new ArrayList<>();
@@ -107,8 +107,16 @@ public final class MarkBook {
             String[] p = line.split(" ");
             if (p.length != 7 || p[0].isBlank()) return Optional.empty();
             try {
-                marks.add(new Mark(p[0], new Pos(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3])),
-                    new Pos(Integer.parseInt(p[4]), Integer.parseInt(p[5]), Integer.parseInt(p[6]))));
+                Mark mark = new Mark(p[0], new Pos(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3])),
+                    new Pos(Integer.parseInt(p[4]), Integer.parseInt(p[5]), Integer.parseInt(p[6])));
+                // One mark per container and dimension: a file with two is not one this class wrote, and toggling would
+                // unmark only the first while the container stayed marked.
+                for (Mark old : marks) {
+                    if (old.dimension().equals(mark.dimension()) && old.container().equals(mark.container())) {
+                        return Optional.empty();
+                    }
+                }
+                marks.add(mark);
             } catch (NumberFormatException e) {
                 return Optional.empty();
             }
