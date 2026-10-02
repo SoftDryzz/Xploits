@@ -1,9 +1,14 @@
 package com.xploits.restock;
 
 import com.xploits.printer.core.PaceRules;
+import io.netty.buffer.Unpooled;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.BundleItemSelectedC2SPacket;
 import net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket;
+import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.ClientTickEndC2SPacket;
 import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
 import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket;
@@ -13,16 +18,22 @@ import net.minecraft.network.packet.c2s.play.PickItemFromBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PickItemFromEntityC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket;
 import net.minecraft.network.packet.c2s.play.SlotChangedStateC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.recipe.NetworkRecipeId;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.screen.sync.ItemStackHash;
 import net.minecraft.util.Hand;
 import net.minecraft.util.PlayerInput;
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Vec3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -115,6 +126,57 @@ class PacketWatchTest {
         assertEquals(PaceRules.Packet.of(PaceRules.Kind.SWING, false),
             PacketWatch.classify(new HandSwingC2SPacket(Hand.MAIN_HAND), false));
         assertEquals(PaceRules.Packet.slot(4, false), PacketWatch.classify(new UpdateSelectedSlotC2SPacket(4), false));
+    }
+
+    @Test
+    void sprintingStartsAndStopsWithTheClientCommand() {
+        // A1 review m2: the command packet is built only from an Entity, so it is decoded as the server reads it.
+        ClientCommandC2SPacket start = command(ClientCommandC2SPacket.Mode.START_SPRINTING);
+        assertEquals(ClientCommandC2SPacket.Mode.START_SPRINTING, start.getMode());
+        assertEquals(PaceRules.Packet.sprint(true), PacketWatch.classify(start, false));
+        assertEquals(PaceRules.Packet.sprint(true), PacketWatch.classify(start, true));
+        ClientCommandC2SPacket stop = command(ClientCommandC2SPacket.Mode.STOP_SPRINTING);
+        assertEquals(ClientCommandC2SPacket.Mode.STOP_SPRINTING, stop.getMode());
+        assertEquals(PaceRules.Packet.sprint(false), PacketWatch.classify(stop, false));
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.OTHER, false),
+            PacketWatch.classify(command(ClientCommandC2SPacket.Mode.OPEN_INVENTORY), false), "not a sprint");
+    }
+
+    @Test
+    void aBlockInteractionIsAPlaceAndKeepsRestocksMark() {
+        PlayerInteractBlockC2SPacket click = new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND,
+            new BlockHitResult(new Vec3d(1.5, 2.5, 3.5), Direction.UP, AT, false), 1);
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.PLACE, true), PacketWatch.classify(click, true));
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.PLACE, false), PacketWatch.classify(click, false));
+    }
+
+    @Test
+    void anEntityInteractionIsInteractEntity() {
+        // Built only from an Entity too: decoded (entity id, ATTACK = ordinal 1, not sneaking).
+        PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());
+        buf.writeVarInt(7);
+        buf.writeVarInt(1);
+        buf.writeBoolean(false);
+        PlayerInteractEntityC2SPacket hit = PlayerInteractEntityC2SPacket.CODEC.decode(buf);
+        assertEquals(0, buf.readableBytes(), "the whole packet was read");
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.INTERACT_ENTITY, false), PacketWatch.classify(hit, false));
+    }
+
+    @Test
+    void aSlotClickIsAClickSlotAndKeepsRestocksMark() {
+        ClickSlotC2SPacket take = new ClickSlotC2SPacket(3, 0, (short) 0, (byte) 0, SlotActionType.QUICK_MOVE,
+            Int2ObjectMaps.emptyMap(), ItemStackHash.EMPTY);
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.CLICK_SLOT, true), PacketWatch.classify(take, true));
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.CLICK_SLOT, false), PacketWatch.classify(take, false));
+    }
+
+    /** A client command as the server decodes it: entity id, mode, mount jump. */
+    private static ClientCommandC2SPacket command(ClientCommandC2SPacket.Mode mode) {
+        PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());
+        buf.writeVarInt(7);
+        buf.writeEnumConstant(mode);
+        buf.writeVarInt(0);
+        return ClientCommandC2SPacket.CODEC.decode(buf);
     }
 
     private static PaceRules.Kind action(PlayerActionC2SPacket.Action a) {
