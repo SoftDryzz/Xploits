@@ -1,5 +1,6 @@
 package com.xploits.restock;
 
+import com.xploits.restock.core.BorrowedMarks;
 import com.xploits.restock.core.BorrowedShulkers;
 import com.xploits.restock.core.UnpackChoice;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -48,19 +50,13 @@ final class ShulkerInventory {
     }
 
     /**
-     * The player's 36 slots for {@link UnpackChoice}: loose items, the boxes that hold something, the empty slots. Of
-     * a kind's filled boxes at most min(ledger entries, filled boxes) are marked borrowed, the lower slots first (M5,
-     * R50's count: the player's own boxes of a kind are presumed the empty ones first, as in the give-back) — so with
-     * {@code use-carried-shulkers} off, a box of a borrowed kind beyond what was borrowed is never unpacked.
+     * The player's 36 slots for {@link UnpackChoice}: loose items, the boxes that hold something, the empty slots.
+     * Which filled boxes count as borrowed is {@link BorrowedMarks}' decision (M5, ruling R64: per kind at most
+     * min(ledger entries, filled boxes), the lower slots first, the player's own presumed the empty ones first) — so
+     * with {@code use-carried-shulkers} off, a box of a borrowed kind beyond what was borrowed is never unpacked.
      */
     static UnpackChoice.Inventory choiceInventory(PlayerInventory inv, BorrowedShulkers ledger) {
-        Map<BorrowedShulkers.Kind, Integer> filled = new HashMap<>();
-        for (int i = 0; i < PlayerInventory.MAIN_SIZE; i++) {
-            ItemStack stack = inv.getStack(i);
-            if (isBox(stack) && Utils.hasItems(stack)) filled.merge(kind(stack), 1, Integer::sum);
-        }
-        Map<BorrowedShulkers.Kind, Integer> borrowedLeft = new HashMap<>();
-        filled.forEach((k, n) -> borrowedLeft.put(k, ledger.carried(Map.of(k, n))));
+        Set<Integer> borrowed = BorrowedMarks.of(held(inv), ledger);
         List<UnpackChoice.Carried> boxes = new ArrayList<>();
         int empty = 0;
         int emptyHotbar = 0;
@@ -72,10 +68,7 @@ final class ShulkerInventory {
                 continue;
             }
             if (!isBox(stack) || !Utils.hasItems(stack)) continue;
-            BorrowedShulkers.Kind kind = kind(stack);
-            int left = borrowedLeft.getOrDefault(kind, 0);
-            if (left > 0) borrowedLeft.put(kind, left - 1);
-            boxes.add(new UnpackChoice.Carried(i, kind, contents(stack), left > 0));
+            boxes.add(new UnpackChoice.Carried(i, kind(stack), contents(stack), borrowed.contains(i)));
         }
         return new UnpackChoice.Inventory(StateFacts.carried(inv), boxes, empty, emptyHotbar);
     }

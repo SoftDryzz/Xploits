@@ -44,14 +44,18 @@ final class DigFacts {
             (float) p.getAttributeInstance(EntityAttributes.SUBMERGED_MINING_SPEED).getValue(), p.isOnGround());
     }
 
-    /** One hotbar slot as a tool for {@code state}; Efficiency read from the stack, as if it were held. */
+    /**
+     * One hotbar slot as a tool for {@code state}; Efficiency read from the stack, as if it were held. Level 0 when the
+     * server's data packs hold no Efficiency (Minor 4, ruling R64): no stack can carry it then, so vanilla's delta has
+     * none either — never a throw in the middle of an unpack.
+     */
     static BreakPlan.Tool tool(PlayerEntity p, int slot, BlockState state) {
         ItemStack stack = p.getInventory().getStack(slot);
-        RegistryEntry<Enchantment> efficiency = p.getEntityWorld().getRegistryManager()
-            .getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.EFFICIENCY);
+        Optional<RegistryEntry.Reference<Enchantment>> efficiency = p.getEntityWorld().getRegistryManager()
+            .getOptional(RegistryKeys.ENCHANTMENT).flatMap(r -> r.getOptional(Enchantments.EFFICIENCY));
+        int level = efficiency.map(e -> EnchantmentHelper.getLevel(e, stack)).orElse(0);
         int left = stack.isDamageable() ? stack.getMaxDamage() - stack.getDamage() : -1;
-        return new BreakPlan.Tool(slot, stack.getMiningSpeedMultiplier(state), stack.isSuitableFor(state),
-            EnchantmentHelper.getLevel(efficiency, stack), left);
+        return new BreakPlan.Tool(slot, stack.getMiningSpeedMultiplier(state), stack.isSuitableFor(state), level, left);
     }
 
     /** {@link Weapons#of} for this stack: its item id and the ids of its item tags. */

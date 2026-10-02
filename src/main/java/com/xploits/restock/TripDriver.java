@@ -144,13 +144,22 @@ final class TripDriver {
     }
 
     /**
+     * This session tick's guard pause or yield, for the guards of a close at a stop (Minor 2, ruling R64): the unpack
+     * notes it every tick, a dig under way included — when {@link #lateTick} does not run — and at its halt, so a stop
+     * never closes this trip's screen in a lag pause or a rotation yield.
+     */
+    void notePaused(boolean paused) {
+        pausedLastTick = paused;
+    }
+
+    /**
      * After this trip ended (the take from a box at the build), until the unpack ends: its own screen, if its take was
      * cut short with the screen open (M16), else a container screen that answers its click late (ruling R12,
      * {@link LateScreen}), is closed as soon as a close may go. True when one was closed now. The unpack driver never
      * calls it while a dig is under way (M2).
      */
     boolean lateTick(boolean paused) {
-        pausedLastTick = paused;
+        notePaused(paused);
         ClientPlayerEntity p = mc.player;
         if (p == null) return false;
         if (ours(p)) {

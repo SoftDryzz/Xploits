@@ -46,11 +46,13 @@ import java.util.TreeMap;
  * once a tick and executes the core's action. The take from the box set down is an inner {@link TripDriver} (it keeps a
  * slot free, takes against the loose need, never carries); once it ends, its own screen left open by a take cut short,
  * or a screen that answers its click late, is still closed until the unpack ends — never in a tick a dig under way
- * swings, stops or aborts in (M2). Aims as the trip does — requested from {@code SendMovementPacketsEvent.Pre} only
- * while Meteor's rotation queue is empty, the click the next tick only if the server holds that exact rotation and the
- * ray still sees the face; the dig's rotation stays requested from START to STOP. Right before each packet what must
- * hold is checked again, and nothing is sent when it does not (ruling R27; R43 for the one inventory click). A tick in
- * which a container action went out reads as "screen not free" for the core, so no second action shares it. The box,
+ * swings, stops or aborts in (M2), and at a stop never in a tick any dig packet went out (Minor 1, ruling R64). Aims as
+ * the trip does — requested from {@code SendMovementPacketsEvent.Pre} only while Meteor's rotation queue is empty, the
+ * click the next tick only if the server holds that exact rotation and the ray still sees the face; the dig's rotation
+ * stays requested from START to STOP. The place, the dig's START and the one inventory click are checked again in their
+ * own tick, right before the packet, and are not sent when what must hold no longer does (ruling R27; R43); a slot
+ * change, a swing, the STOP and the ABORT go out on the facts the core read in that same tick. A tick in which a
+ * container action went out reads as "screen not free" for the core, so no second action shares it. The box,
  * its drop and the boxes carried are matched by kind (item and custom name, M4). Nothing is sent from {@link #abort}
  * (pre-flight 19-19). Positions stay in memory. Client thread.
  */
@@ -97,6 +99,11 @@ final class UnpackDriver {
     private boolean placeUnseen;
     /** M17: the dig's STOP, or an instant START, went out; the plan still waits in DUG for the cell to empty. */
     private boolean stopSent;
+    /**
+     * Minor 1 (ruling R64): a dig packet — its START, a swing of a dig under way, its STOP or its ABORT — went out in
+     * this session tick, so no close of restock's box screen may follow in it (Global Constraints).
+     */
+    private boolean digSentThisTick;
 
     UnpackDriver(RestockSession session, MinecraftClient mc, Mover mover, UnpackPlan plan, BorrowedShulkers.Kind kind,
                  StateFacts facts) {
@@ -138,6 +145,7 @@ final class UnpackDriver {
 
     /** At the start of every session tick (pre-flight 19-4). */
     void newTick() {
+        digSentThisTick = false;
         if (inner != null) inner.newTick();
         if (innerDone != null) innerDone.newTick();
     }
@@ -150,6 +158,10 @@ final class UnpackDriver {
         ClientPlayerEntity p = mc.player;
         boolean acted = false;
         TripDriver t = inner;
+        TripDriver done = innerDone;
+        // Minor 2 (ruling R64): the finished take's pause follows every tick, a dig under way included (no lateTick
+        // then), so a stop mid-dig judges its close on this tick's pause or yield, never on the one before the dig.
+        if (done != null) done.notePaused(paused);
         if (t != null) {
             if (plan.draining().isPresent()) t.hurry();
             TripDriver.Result r = t.tick(paused);
@@ -164,10 +176,10 @@ final class UnpackDriver {
                 inner = null;
                 innerDone = t;
             }
-        } else if (innerDone != null && !plan.digging()) {
+        } else if (done != null && !plan.digging()) {
             // M2: no close in a tick a dig under way swings, stops or aborts in; a screen that opens mid-dig makes the
             // core let go (screenFree false), and the close follows once the dig is let go.
-            acted = innerDone.lateTick(paused);
+            acted = done.lateTick(paused);
         }
         UnpackPlan.Facts f = facts(p, paused, acted);
         click = UnpackPlan.Click.NONE;
@@ -180,6 +192,9 @@ final class UnpackDriver {
         if (p == null || mc.world == null || plan.over()) return new Ended(reason, "");
         TripDriver t = inner;
         TripDriver done = innerDone;
+        // Minor 2: the close the session's stop makes next, in this same tick, judges this tick's pause or yield.
+        if (t != null) t.notePaused(paused);
+        if (done != null) done.notePaused(paused);
         boolean acted = (t != null && t.actedThisTick()) || (done != null && done.actedThisTick());
         Result r = execute(plan.halt(facts(p, paused, acted), reason), p);
         return r instanceof Ended e ? e : new Ended(reason, "");
@@ -211,9 +226,12 @@ final class UnpackDriver {
     /**
      * Deferred L59 for the take: restock's own box screen closed as any close would be (never while leaving: the
      * caller's rule). Once the inner take has ended, its own screen if a take cut short left it open, else the late
-     * answer to its click (M3), under the same guards.
+     * answer to its click (M3), under the same guards. Minor 1 (ruling R64): never in a tick a dig packet went out —
+     * then nothing is closed at all, not later either (the session calls this once, as it ends): the screen stays open
+     * for the player, as with any close the guards withhold.
      */
     void closeOwnScreen() {
+        if (digSentThisTick) return;
         TripDriver t = inner;
         if (t != null) {
             t.closeOwnScreen();
@@ -462,13 +480,23 @@ final class UnpackDriver {
             case UnpackPlan.Place pl -> place(pl, p);
             case UnpackPlan.OpenContents o -> open(o, p);
             case UnpackPlan.DigStart d -> digStart(d);
-            case UnpackPlan.Swing s -> sender.swing();
+            case UnpackPlan.Swing s -> {
+                digSentThisTick = true;
+                sender.swing();
+            }
             case UnpackPlan.DigStop d -> {
+                digSentThisTick = true;
+                long sent = PacketWatch.get().oursSent();
                 sender.digStop(WorldRay.block(d.cell()), WorldRay.direction(d.side()));
-                stopSent = true;
+                // M17: "or was just broken" only for a STOP that really left (a cancelled one never reached the
+                // server).
+                if (PacketWatch.get().oursSent() == sent + 1) stopSent = true;
                 wanted = null;
             }
-            case UnpackPlan.DigAbort d -> sender.digAbort(WorldRay.block(d.cell()), WorldRay.direction(d.side()));
+            case UnpackPlan.DigAbort d -> {
+                digSentThisTick = true;
+                sender.digAbort(WorldRay.block(d.cell()), WorldRay.direction(d.side()));
+            }
             case UnpackPlan.GoTo g -> {
                 if (!mover.goTo(WorldRay.block(g.feet()))) return new Ended(RestockReason.BARITONE_NOT_LISTENING, "");
             }
@@ -481,7 +509,10 @@ final class UnpackDriver {
             case UnpackPlan.Stopped st -> {
                 mover.cancel();
                 wanted = null;
-                st.abort().ifPresent(a -> sender.digAbort(WorldRay.block(a.cell()), WorldRay.direction(a.side())));
+                st.abort().ifPresent(a -> {
+                    digSentThisTick = true;
+                    sender.digAbort(WorldRay.block(a.cell()), WorldRay.direction(a.side()));
+                });
                 st.select().ifPresent(sender::select);
                 return new Ended(st.reason(),
                     st.reason() == RestockReason.NOTHING_FITS ? RestockMessages.itemName(plan.material()) : "");
@@ -522,6 +553,7 @@ final class UnpackDriver {
             return;
         }
         long sent = PacketWatch.get().oursSent();
+        digSentThisTick = true;
         sender.digStart(WorldRay.block(d.cell()), WorldRay.direction(d.side()), d.instant());
         click = PacketWatch.get().oursSent() == sent + 1 ? UnpackPlan.Click.SENT : UnpackPlan.Click.REFUSED;
         // An instant START breaks the box at once (M17: the plan then waits in DUG as after a STOP).
