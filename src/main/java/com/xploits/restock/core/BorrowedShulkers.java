@@ -87,12 +87,27 @@ public final class BorrowedShulkers {
 
     /**
      * The carried boxes that go back into {@code origin}: empty ones of a kind borrowed from it, at most as many of each
-     * kind as were, in {@code held}'s order, each with the container's free slots as its room.
+     * kind as were, in {@code held}'s order, each with the container's free slots as its room. Two boxes of one kind
+     * cannot be told apart, so the player's own are presumed empty first (owner ruling R44: they stay with the player):
+     * per kind at most {@code emptyK - ownK} go back, where {@code ownK} is the boxes carried less the entries of that kind.
      */
     public List<TakePlan.Slot> toReturn(String dimension, Pos origin, List<Held> held, int freeSlots) {
+        Map<Kind, Integer> entries = new HashMap<>();
         Map<Kind, Integer> left = new HashMap<>();
         for (Borrowed b : list) {
+            entries.merge(b.kind(), 1, Integer::sum);
             if (b.dimension().equals(dimension) && b.origin().equals(origin)) left.merge(b.kind(), 1, Integer::sum);
+        }
+        Map<Kind, Integer> carried = new HashMap<>();
+        Map<Kind, Integer> empty = new HashMap<>();
+        for (Held h : held) {
+            carried.merge(h.kind(), 1, Integer::sum);
+            if (h.empty()) empty.merge(h.kind(), 1, Integer::sum);
+        }
+        for (Map.Entry<Kind, Integer> e : left.entrySet()) {
+            int own = Math.max(0, carried.getOrDefault(e.getKey(), 0) - entries.getOrDefault(e.getKey(), 0));
+            int budget = Math.max(0, empty.getOrDefault(e.getKey(), 0) - own);
+            e.setValue(Math.min(e.getValue(), budget));
         }
         List<TakePlan.Slot> out = new ArrayList<>();
         for (Held h : held) {

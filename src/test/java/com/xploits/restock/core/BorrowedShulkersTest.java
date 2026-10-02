@@ -53,9 +53,42 @@ class BorrowedShulkersTest {
     void neverMoreThanWereBorrowedNorOneThatStillHoldsItems() {
         BorrowedShulkers l = new BorrowedShulkers();
         l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, A));
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, B));
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, new Pos(3, 64, 3)));
+        // Three borrowed, three carried (no own box): A lent one, so one goes back, and never the one still holding items.
         assertEquals(List.of(new TakePlan.Slot(61, BOX, 1, 3)), l.toReturn(OVERWORLD, A,
             List.of(held(60, PLAIN, false), held(61, PLAIN, true), held(62, PLAIN, true)), 3),
             "owner ruling R44: only an empty one, and one per entry");
+    }
+
+    @Test
+    void thePlayersOwnEmptyBoxIsNeverHandedBackInPlaceOfABorrowedOneStillFilled() {
+        // Owner ruling R50 (R44): two boxes of one kind are interchangeable, so the player's own count first.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, A));
+        assertEquals(List.of(), l.toReturn(OVERWORLD, A, List.of(held(60, PLAIN, false), held(61, PLAIN, true)), 3),
+            "one own empty box and the borrowed one still holds items");
+        assertEquals(List.of(), l.toReturn(OVERWORLD, A, List.of(held(60, PLAIN, true), held(61, PLAIN, false)), 3));
+    }
+
+    @Test
+    void twoBorrowedEmptyBoxesGoBackBesideAnOwnEmptyOne() {
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, A));
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, A));
+        assertEquals(2, l.toReturn(OVERWORLD, A,
+            List.of(held(60, PLAIN, true), held(61, PLAIN, true), held(62, PLAIN, true)), 3).size());
+    }
+
+    @Test
+    void aTieOfDistanceGoesToTheLowerX() {
+        BorrowedShulkers l = new BorrowedShulkers();
+        Pos east = new Pos(3, 64, 0);
+        Pos west = new Pos(-3, 64, 0);
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, east));
+        l.borrow(new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, west));
+        assertEquals(Optional.of(west), l.lastTripOrigin(OVERWORLD, new Point(0.5, 64.5, 0.5),
+            List.of(held(1, PLAIN, true)), Set.of()));
     }
 
     @Test

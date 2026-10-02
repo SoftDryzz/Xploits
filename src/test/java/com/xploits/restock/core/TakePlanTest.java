@@ -184,4 +184,22 @@ class TakePlanTest {
         assertThrows(IllegalArgumentException.class, () -> new TakePlan.Slot(0, BOX, 1, 1, false, Map.of(STONE, 1)));
         assertTrue(new TakePlan.Slot(0, BOX, 1, 1, Map.of(STONE, 1)).holdsItems());
     }
+
+    @Test
+    void aGiveBackOfNothingIsNotClicked() {
+        assertEquals(new TakePlan.Click(1), TakePlan.next(CHEST, List.of(new TakePlan.Slot(40, BOX, 0, 5)), STONE,
+            need(STONE, 10L), true));
+    }
+
+    @Test
+    void aReserveStillUsesThePartialStacks() {
+        assertEquals(10, TakePlan.room(10, 0, 64, 10, 1), "no empty slot, one kept: the partial stacks take 10");
+    }
+
+    @Test
+    void twoBoxesHoldingTheSameGoToTheLowerSlot() {
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(7, BOX, 1, 1, Map.of(STONE, 64)),
+            new TakePlan.Slot(3, RED_BOX, 1, 1, Map.of(STONE, 64)));
+        assertEquals(new TakePlan.Click(3), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+    }
 }
