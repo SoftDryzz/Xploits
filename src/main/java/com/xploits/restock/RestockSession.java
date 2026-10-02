@@ -1,5 +1,6 @@
 package com.xploits.restock;
 
+import com.xploits.XploitsAddon;
 import com.xploits.printer.core.BuildIndex;
 import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.Point;
@@ -77,6 +78,14 @@ final class RestockSession {
     record Received(List<BlockPos> changed, List<EntityDamageS2CPacket> damage, boolean setback) {
     }
 
+    /**
+     * What ending the session did, for the module to say once all of it is done (ruling R33): {@code restored}, Baritone
+     * took every command that gives its values back; {@code printerLeftPaused}, restock held litematica-printer off and
+     * leaves it so.
+     */
+    record Closed(boolean restored, boolean printerLeftPaused) {
+    }
+
     private static final Going GOING = new Going();
     /** A placement that cannot be counted is tried again this often. */
     private static final int RETRY_TICKS = 20;
@@ -112,6 +121,11 @@ final class RestockSession {
     private String notCountedDetail = "";
     private boolean recountPending;
     private TripDriver trip;
+    /**
+     * Restock switched litematica-printer off and has not given it back: from the switch (before the trip is even
+     * built, so a failure in between is still said and its marker deleted) to the return or the stop.
+     */
+    private boolean printerHeld;
     private StashIndex savedStash;
     private List<String> lastDue = List.of();
     private int lastMarks;
@@ -242,18 +256,30 @@ final class RestockSession {
         if (t != null) t.requestRotation();
     }
 
-    /** Ends the session: a trip under way stops walking; Baritone's values go back. False when they did not arrive. */
-    boolean close(RestockReason why) {
+    /**
+     * Ends the session (ruling R33): a trip under way stops walking, the printer marker goes (leaving the world keeps it
+     * for the next join) and Baritone's values go back — each step on its own, so one that fails never skips the next.
+     * Nothing is said here: the module speaks once all of it is done. Never throws.
+     */
+    Closed close(RestockReason why) {
         TripDriver t = trip;
         trip = null;
-        if (t != null) {
-            t.abort();
-            if (t.printerPaused() && !PrintPause.keepMarker(why)) {
-                PrinterMarker.delete();
-                module.warning(RestockText.PRINTER_LEFT_PAUSED);
-            }
+        if (t != null) quietly("stopping the walk", t::abort);
+        boolean leftPaused = printerHeld && !PrintPause.keepMarker(why);
+        printerHeld = false;
+        if (leftPaused) quietly("deleting the printer marker", PrinterMarker::delete);
+        boolean[] restored = new boolean[1];
+        quietly("giving Baritone its values back", () -> restored[0] = mover.end());
+        return new Closed(restored[0], leftPaused);
+    }
+
+    /** One step of the stop: a failure is logged by its class name only (its message could carry a position). */
+    private static void quietly(String step, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError e) {
+            XploitsAddon.LOG.error("restock: {} failed at the stop ({})", step, e.getClass().getName());
         }
-        return mover.end();
     }
 
     // --- what the trip driver calls ------------------------------------------------------------------------------
@@ -305,6 +331,7 @@ final class RestockSession {
                 module.info(RestockText.PRINTER_LEFT_ON);
             }
             PrinterMarker.delete();
+            printerHeld = false;
         }
         ClientPlayerEntity p = mc.player;
         if (took && p != null) {
@@ -411,6 +438,7 @@ final class RestockSession {
                 PrinterMarker.delete();
                 return Optional.of(new Stopped(RestockReason.LITEMATICA_PRINTER_UNREADABLE, ""));
             }
+            printerHeld = true;
             paused = true;
         }
         RestockTrip core = new RestockTrip(new RestockTrip.Plan(material, chosen.container(), chosen.stand(),

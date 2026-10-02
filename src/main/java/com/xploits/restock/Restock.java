@@ -230,17 +230,15 @@ public class Restock extends XploitsModule {
             return;
         }
         resumedByJoin = false;
-        Optional<RestockReason.Refusal> refusal;
         try {
-            refusal = start();
-        } catch (RuntimeException e) {
+            Optional<RestockReason.Refusal> refusal = start();
+            if (refusal.isPresent()) {
+                lastReason = refusal.get().reason();
+                error(Msg.of(RestockText.REFUSED, "reason", reasonText(refusal.get().reason(), refusal.get().detail())));
+                if (isActive()) toggle();
+            }
+        } catch (RuntimeException | LinkageError e) {
             failed(e);
-            return;
-        }
-        if (refusal.isPresent()) {
-            lastReason = refusal.get().reason();
-            error(Msg.of(RestockText.REFUSED, "reason", reasonText(refusal.get().reason(), refusal.get().detail())));
-            toggle();
         }
     }
 
@@ -266,7 +264,7 @@ public class Restock extends XploitsModule {
         RestockSession s;
         try {
             s = new RestockSession(this, mc, this::openSource, source, mover, printer);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
             // No session holds Baritone's values yet, so no session's close can give them back: given back here.
             String prefix = mover.prefix();
             if (!mover.end()) warning(RestockText.RESTORE_NOT_DELIVERED, "prefix", prefix);
@@ -304,17 +302,34 @@ public class Restock extends XploitsModule {
     @Override
     public void onDeactivate() {
         resumedByJoin = false;
-        finish(RestockReason.MODULE_OFF);
+        try {
+            say(finish(RestockReason.MODULE_OFF));
+        } catch (RuntimeException | LinkageError e) {
+            logFault(e);
+        }
     }
 
-    private void finish(RestockReason why) {
+    /**
+     * Ends the session, if one is open, and acts before anything is said (ruling R33): the walk, the printer marker and
+     * Baritone's values are dealt with first, each on its own ({@link RestockSession#close}); what is left to say comes
+     * back, for the caller to say afterwards.
+     */
+    private List<Msg> finish(RestockReason why) {
         RestockSession s = session;
-        if (s == null) return;
+        if (s == null) return List.of();
         session = null;
-        String prefix = s.prefix();
-        if (!s.close(why)) warning(RestockText.RESTORE_NOT_DELIVERED, "prefix", prefix);
-        clearQueues();
         pausedFor = null;
+        clearQueues();
+        String prefix = s.prefix();
+        RestockSession.Closed closed = s.close(why);
+        List<Msg> say = new ArrayList<>(2);
+        if (closed.printerLeftPaused()) say.add(Msg.of(RestockText.PRINTER_LEFT_PAUSED));
+        if (!closed.restored()) say.add(Msg.of(RestockText.RESTORE_NOT_DELIVERED, "prefix", prefix));
+        return say;
+    }
+
+    private void say(List<Msg> warnings) {
+        for (Msg m : warnings) warning(m);
     }
 
     /** Before Meteor's own teardown (HIGHEST): the session ends with the world and its player still there (auto-travel's idiom). */
@@ -322,7 +337,11 @@ public class Restock extends XploitsModule {
     private void onGameLeft(GameLeftEvent event) {
         if (session == null) return;
         lastReason = RestockReason.LEFT;
-        finish(RestockReason.LEFT);
+        try {
+            say(finish(RestockReason.LEFT));
+        } catch (RuntimeException | LinkageError e) {
+            logFault(e);
+        }
     }
 
     // --- events ------------------------------------------------------------------------------------------------
@@ -341,7 +360,7 @@ public class Restock extends XploitsModule {
     private void onTick(TickEvent.Pre event) {
         try {
             tickSession();
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
             failed(e);
         }
     }
@@ -350,7 +369,7 @@ public class Restock extends XploitsModule {
         if (resumedByJoin) {
             resumedByJoin = false;
             info(RestockText.NOT_RESUMED);
-            toggle();
+            if (isActive()) toggle();
             return;
         }
         RestockSession s = session;
@@ -378,43 +397,86 @@ public class Restock extends XploitsModule {
         if (s == null) return;
         try {
             s.requestRotation();
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
             failed(e);
         }
     }
 
     // --- helpers -----------------------------------------------------------------------------------------------
 
+    /**
+     * Ruling R33: it acts before it speaks. The session ends first (the walk cancelled, the marker, Baritone's values,
+     * each on its own), then the stop is said, then the module turns off, even if saying it failed.
+     */
     private void stop(RestockReason why, String detail) {
         lastReason = why;
-        Msg text = Msg.of(RestockText.STOPPED, "reason", reasonText(why, detail));
-        warning(text);
-        toast(text);
-        finish(why);
-        toggle();
-    }
-
-    /**
-     * Ruling R29: a fault in restock never reaches the game, whose crash report would list every loaded player's name and
-     * position. The session ends through the normal stop path with {@code INTERNAL} (Baritone given back, the marker
-     * deleted, the printer said to stay paused), naming only the exception's class: its message could carry a position.
-     */
-    private void failed(RuntimeException e) {
+        String prefix = prefixNow();
+        List<Msg> after = finish(why);
         try {
-            stop(RestockReason.INTERNAL, e.getClass().getName());
-        } catch (RuntimeException again) {
-            // The stop itself failed: this session never runs again, and the module is left off.
-            session = null;
-            lastReason = RestockReason.INTERNAL;
+            Msg text = Msg.of(RestockText.STOPPED, "reason", reasonText(why, detail, prefix));
+            warning(text);
+            toast(text);
+            say(after);
+        } finally {
             if (isActive()) toggle();
         }
     }
 
+    /**
+     * Rulings R29 and R33: a fault in restock (an exception, or a {@code LinkageError} from a Meteor or Litematica build
+     * that changed under it) stops it with a message instead of reaching the game, whose crash report would list every
+     * loaded player's name and position. The session ends through the normal stop path with {@code INTERNAL} (Baritone
+     * given back, the marker deleted, the printer said to stay paused). Only the class is logged and named: an
+     * exception's message could carry a position. If that stop fails too, what it may have left undone is done here,
+     * each step on its own, and nothing more is said.
+     */
+    private void failed(Throwable e) {
+        logFault(e);
+        try {
+            stop(RestockReason.INTERNAL, e.getClass().getName());
+        } catch (RuntimeException | LinkageError again) {
+            logFault(again);
+            lastReason = RestockReason.INTERNAL;
+            pausedFor = null;
+            RestockSession s = session;
+            session = null;
+            if (s != null) quietly(() -> s.close(RestockReason.INTERNAL));
+            Mover m = benchMover != null ? benchMover : baritoneMover;
+            if (m != null) {
+                quietly(m::cancel);
+                quietly(m::end);
+            }
+            quietly(() -> {
+                if (isActive()) toggle();
+            });
+        }
+    }
+
+    private static void quietly(Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError e) {
+            logFault(e);
+        }
+    }
+
+    private static void logFault(Throwable e) {
+        XploitsAddon.LOG.error("restock: an unexpected {} stopped it", e.getClass().getName());
+    }
+
     Msg reasonText(RestockReason why, String detail) {
-        RestockSession s = session;
+        return reasonText(why, detail, prefixNow());
+    }
+
+    private Msg reasonText(RestockReason why, String detail, String prefix) {
         return RestockMessages.reason(why, detail, new RestockMessages.Facts(playerDistance.get(), minHealth.get(),
-            s == null || s.prefix().isEmpty() ? baritonePrefix.get() : s.prefix(), PrinterLimits.DEFAULTS.maxVolume(),
-            LitematicaAccess.BUILT_AGAINST, LIMITS.walkStallTicks() / 20));
+            prefix, PrinterLimits.DEFAULTS.maxVolume(), LitematicaAccess.BUILT_AGAINST, LIMITS.walkStallTicks() / 20));
+    }
+
+    /** The prefix the session speaks with, or the setting's when there is none. */
+    private String prefixNow() {
+        RestockSession s = session;
+        return s == null || s.prefix().isEmpty() ? baritonePrefix.get() : s.prefix();
     }
 
     private void warnNetCaught(String text) {

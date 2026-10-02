@@ -489,8 +489,8 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
   (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador que no es amigo tuyo, tu vida baja de `min-health`
   (10), el servidor te hace retroceder, `auto-pvp` entra en combate, mueres o cambias de dimensión, **pulsas una tecla
   de movimiento durante un viaje**, Baritone no encuentra camino, no cabe nada en tu inventario, enciendes un módulo
-  junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un mensaje; nunca cierra el
-  juego). Tras pararse durante un viaje el printer se queda apagado, y lo dice. Se **pausa** solo, y sigue, mientras
+  junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un mensaje en vez de cerrar
+  el juego). Tras pararse durante un viaje el printer se queda apagado, y lo dice. Se **pausa** solo, y sigue, mientras
   un módulo de combate gira, mientras comes y mientras el servidor va con lag.
 - **Se niega a arrancar** si dos colocaciones de Litematica se solapan (la seleccionada y cualquier otra activada) o
   si la Litematica instalada tiene una API que no reconoce; lo dice en vez de adivinar.

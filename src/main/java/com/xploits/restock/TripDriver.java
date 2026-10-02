@@ -100,10 +100,6 @@ final class TripDriver {
         return trip.clicking();
     }
 
-    boolean printerPaused() {
-        return trip.printerPaused();
-    }
-
     /** Meteor's rotation queue held someone else's request when restock wanted to aim (the combat yield's "acting"). */
     boolean actingAtRequest() {
         return actingAtRequest;

@@ -481,7 +481,7 @@ It needs Windows Terminal, which is the default console in Windows 11.
   `stop-near-players` off to fetch with players around), a player who is not your friend attacks you, your health falls below `min-health`
   (10), the server pulls you back, `auto-pvp` engages, you die or change dimension, **you press a movement key during a
   trip**, Baritone finds no path, nothing fits in your inventory, you turn on a module it cannot run beside, or
-  something unexpected fails inside it (it stops with a message; it never crashes the game). After a stop during a
+  something unexpected fails inside it (it stops with a message instead of crashing the game). After a stop during a
   trip the printer stays off, and it says so. It **pauses** by itself, and carries on, while a combat module rotates,
   while you eat and while the server lags.
 - **It refuses to start** if two Litematica placements overlap (the selected one and any other enabled one) or if
