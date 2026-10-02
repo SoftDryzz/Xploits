@@ -818,6 +818,7 @@ restock.unmarked=Unmarked ({count} in total).
 restock.not-a-container=mark-key marks a chest, trapped chest, barrel or shulker box: look at one and press it again.
 restock.marks-unreadable=The marks of this world could not be read and were left untouched: no mark was changed. Move marks.txt out of meteor-client/xploits/restock to start over.
 restock.mark-save-failed=The mark could not be saved under meteor-client/xploits/restock: check that folder can be written.
+restock.mark-not-on-ground=Stand on the ground to mark a container: restock walks to where you stand.
 restock.chests-header=Marked containers in this world ({count}):
 restock.chests-line=- {dimension}, {distance} blocks away
 restock.chests-line-away=- {dimension}

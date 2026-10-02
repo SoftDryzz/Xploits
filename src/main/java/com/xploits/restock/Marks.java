@@ -7,6 +7,7 @@ import com.xploits.shared.XploitsModule;
 import com.xploits.printer.core.Pos;
 import com.xploits.stash.core.ContainerKey;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.meteor.KeyEvent;
 import meteordevelopment.meteorclient.events.meteor.MouseClickEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
@@ -58,6 +59,12 @@ public final class Marks {
         MeteorClient.EVENT_BUS.subscribe(INSTANCE);
     }
 
+    /** Every join reads the marks file again. */
+    @EventHandler
+    private void onGameLeft(GameLeftEvent event) {
+        MarkStore.forget();
+    }
+
     @EventHandler
     private void onKey(KeyEvent event) {
         if (event.action == KeyAction.Press && pressed(k -> k.matches(event.input))) mark();
@@ -90,14 +97,28 @@ public final class Marks {
         }
         BlockPos pos = hit.getBlockPos();
         BlockState state = mc.world.getBlockState(pos);
-        if (!container(state.getBlock())) {
-            if (say != null) say.warning(RestockText.NOT_A_CONTAINER);
-            return;
-        }
         String dimension = mc.world.getRegistryKey().getValue().toString();
-        Pos key = key(dimension, pos, state);
         BlockPos feet = mc.player.getBlockPos();
-        MarkStore.Result r = MarkStore.toggle(new MarkBook.Mark(dimension, key, new Pos(feet.getX(), feet.getY(), feet.getZ())));
+        Pos stand = new Pos(feet.getX(), feet.getY(), feet.getZ());
+        Pos own = new Pos(pos.getX(), pos.getY(), pos.getZ());
+        Pos key = container(state.getBlock()) ? key(dimension, pos, state) : own;
+        MarkStore.Result r;
+        MarkBook marked = MarkStore.book();
+        Pos already = marked == null ? null : markedAmong(marked.in(dimension), own, key);
+        if (already != null) {
+            // Unmarking needs no container (it may be gone) and no ground.
+            r = MarkStore.toggle(new MarkBook.Mark(dimension, already, stand));
+        } else {
+            if (!container(state.getBlock())) {
+                if (say != null) say.warning(RestockText.NOT_A_CONTAINER);
+                return;
+            }
+            if (!mc.player.isOnGround()) {
+                if (say != null) say.warning(RestockText.MARK_NOT_ON_GROUND);
+                return;
+            }
+            r = MarkStore.toggle(new MarkBook.Mark(dimension, key, stand));
+        }
         flashUntil = System.currentTimeMillis() + FLASH_MS;
         if (say == null) return;
         MarkBook book = MarkStore.book();
@@ -108,6 +129,14 @@ public final class Marks {
             case UNREADABLE -> say.warning(RestockText.MARKS_UNREADABLE);
             case SAVE_FAILED -> say.warning(RestockText.MARK_SAVE_FAILED);
         }
+    }
+
+    /** The first of {@code candidates} that one of {@code marks} is on, or null. */
+    static Pos markedAmong(java.util.List<MarkBook.Mark> marks, Pos... candidates) {
+        for (Pos c : candidates) {
+            for (MarkBook.Mark m : marks) if (m.container().equals(c)) return c;
+        }
+        return null;
     }
 
     /** Chest, trapped chest, barrel or shulker box (stash-keeper's list without the ender chest, which has no position). */

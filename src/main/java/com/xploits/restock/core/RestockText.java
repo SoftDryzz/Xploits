@@ -53,6 +53,7 @@ public enum RestockText implements MessageKey {
     NOT_A_CONTAINER,
     MARKS_UNREADABLE,
     MARK_SAVE_FAILED,
+    MARK_NOT_ON_GROUND,
     CHESTS_HEADER,
     CHESTS_LINE,
     CHESTS_LINE_AWAY,

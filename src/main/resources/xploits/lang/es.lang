@@ -818,6 +818,7 @@ restock.unmarked=Desmarcado ({count} en total).
 restock.not-a-container=mark-key marca un cofre, cofre trampa, barril o caja de shulker: mira a uno y vuelve a pulsarla.
 restock.marks-unreadable=No se pudieron leer las marcas de este mundo y se dejaron como estaban: no se cambió ninguna. Saca marks.txt de meteor-client/xploits/restock para empezar de cero.
 restock.mark-save-failed=No se pudo guardar la marca en meteor-client/xploits/restock: comprueba que se puede escribir en esa carpeta.
+restock.mark-not-on-ground=Ponte en el suelo para marcar un contenedor: restock camina hasta donde estás.
 restock.chests-header=Contenedores marcados en este mundo ({count}):
 restock.chests-line=- {dimension}, a {distance} bloques
 restock.chests-line-away=- {dimension}

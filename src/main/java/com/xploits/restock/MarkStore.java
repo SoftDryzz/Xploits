@@ -17,7 +17,8 @@ import java.util.Optional;
  * The marks of the world the player is in (restock spec §4), loaded on first use per world from
  * {@code meteor-client/xploits/restock/<world>/marks.txt} (the world name sanitized by Meteor, as stash-keeper's folder)
  * and written after every change, atomically. A file that cannot be read is never overwritten: marking refuses until the
- * player moves it away, as the message says. Client thread.
+ * player moves it away, as the message says; each marking or clearing attempt reads it again, and so does every join.
+ * Client thread.
  */
 public final class MarkStore {
     public enum Result { MARKED, UNMARKED, UNREADABLE, SAVE_FAILED }
@@ -48,6 +49,7 @@ public final class MarkStore {
     }
 
     public static synchronized Result toggle(MarkBook.Mark mark) {
+        if (unreadable) world = null; // a write attempt reads the file again: the player may have moved it away
         MarkBook b = book();
         if (b == null) return Result.UNREADABLE;
         boolean marked = b.toggle(mark);
@@ -63,6 +65,7 @@ public final class MarkStore {
 
     /** Removes every mark of this world; how many there were (0 when the file cannot be read). */
     public static synchronized int clear() {
+        if (unreadable) world = null;
         MarkBook b = book();
         if (b == null || b.size() == 0) return 0;
         List<MarkBook.Mark> before = b.all();
@@ -75,6 +78,11 @@ public final class MarkStore {
         }
         version++;
         return n;
+    }
+
+    /** Forgets the loaded world, so the next use reads its file again (every join does). */
+    static synchronized void forget() {
+        world = null;
     }
 
     /** Grows on every change, so a session can tell its sources changed. */
