@@ -25,6 +25,7 @@ public enum RestockText implements MessageKey {
     ENABLED_PLAYERS_OFF,
     REFUSED,
     STOPPED,
+    STOPPED_ALSO,
     PAUSED,
     RESUMED,
     NOT_RESUMED,

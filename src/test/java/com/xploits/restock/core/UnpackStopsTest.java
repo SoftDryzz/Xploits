@@ -102,11 +102,26 @@ class UnpackStopsTest {
     }
 
     @Test
-    void anAtOnceReasonInTheTickAStrangerCameNearHaltsTheUnpack() {
+    void anAtOnceReasonInTheTickAStrangerCameNearHaltsTheUnpackAndIsItsName() {
         // The guards name only their first stop: a stranger near comes before a setback, and the setback is a one-tick
-        // pulse the next tick no longer shows (rulings R45/R53). The stop keeps the guards' own name.
-        assertEquals(new UnpackStops.Halt(RestockReason.PLAYER_NEAR), UnpackStops.onGuardStop(RestockReason.PLAYER_NEAR,
-            true, false, inputs(false, false, false, false, true, 20)));
+        // pulse the next tick no longer shows (rulings R45/R53). Ruling R65: the setback halted it, so the stop is
+        // named after it; the guards' own stop is said too.
+        Guards.Inputs setback = inputs(false, false, false, false, true, 20);
+        assertEquals(new UnpackStops.Halt(RestockReason.SETBACK, Optional.of(RestockReason.PLAYER_NEAR)),
+            UnpackStops.onGuardStop(RestockReason.PLAYER_NEAR, true, false, setback));
+        assertEquals(new UnpackStops.Halt(RestockReason.SETBACK, Optional.of(RestockReason.PLAYER_NEAR)),
+            UnpackStops.onGuardStop(RestockReason.PLAYER_NEAR, false, false, setback), "no box out: the same names");
+    }
+
+    @Test
+    void aHaltNamedAfterTheGuardsOwnStopSaysNothingMore() {
+        assertEquals(Optional.empty(), halt(UnpackStops.onGuardStop(RestockReason.ATTACKED, true, false,
+            inputs(false, false, false, true, false, 20))).also());
+        assertEquals(Optional.empty(), halt(UnpackStops.onGuardStop(RestockReason.PLAYER_NEAR, false, false,
+            inputs(false, false, false, false, false, 20))).also(), "no box out, nothing urgent");
+        // While finishing, the stop it finishes for is said by its own line (M7), never as this one.
+        assertEquals(Optional.empty(), halt(UnpackStops.onGuardStop(RestockReason.PLAYER_NEAR, true, true,
+            inputs(false, false, false, false, true, 20))).also());
     }
 
     @Test
@@ -134,6 +149,11 @@ class UnpackStopsTest {
         assertFalse(UnpackStops.holds(guard(1.49, false, false), PrinterLimits.DEFAULTS));
         assertTrue(UnpackStops.holds(guard(0.1, true, false), PrinterLimits.DEFAULTS));
         assertTrue(UnpackStops.holds(guard(0.1, false, true), PrinterLimits.DEFAULTS));
+    }
+
+    private static UnpackStops.Halt halt(UnpackStops.Answer a) {
+        assertTrue(a instanceof UnpackStops.Halt, a.toString());
+        return (UnpackStops.Halt) a;
     }
 
     private static Guards.Inputs inputs(boolean died, boolean dimension, boolean autoPvp, boolean attacked,

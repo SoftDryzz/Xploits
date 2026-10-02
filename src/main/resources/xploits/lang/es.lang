@@ -792,6 +792,7 @@ restock.enabled-players=Se para si un jugador que no es amigo tuyo en Meteor se 
 restock.enabled-players-off=stop-near-players está apagado: sigue yendo a por bloques con otros jugadores cerca.
 restock.refused=restock no arrancó: {reason}
 restock.stopped=restock parado: {reason}
+restock.stopped-also=restock también se estaba parando porque {reason}
 restock.paused=restock en pausa: {reason}
 restock.resumed=restock sigue.
 restock.not-resumed=restock estaba encendido al salir; nunca arranca solo al entrar. Enciéndelo otra vez para seguir.

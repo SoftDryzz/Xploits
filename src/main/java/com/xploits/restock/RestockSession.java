@@ -202,6 +202,11 @@ final class RestockSession {
         return unpack != null && unpack.digging();
     }
 
+    /** An unpack finishes its break and pick-up toward a guard's stop (owner ruling R42): restock does not carry on. */
+    boolean draining() {
+        return draining != null;
+    }
+
     /** Borrowed boxes the player carries now: never more than the ledger names, nor than are carried. */
     int borrowedCarried() {
         ClientPlayerEntity p = mc.player;
@@ -342,10 +347,11 @@ final class RestockSession {
     /**
      * Owner ruling R42 for the guards' stop ({@link UnpackStops#onGuardStop}). With no unpack it stops now, as in phase
      * A. Halt: the unpack stops now — the dig aborted, or the slot given back — and the box stays where it is, which
-     * the stop then says. Drain: the break and the pick-up finish first ({@link UnpackDriver#drain}); the guards hold
-     * their first stop, so the at-once reasons are read again every tick from their inputs; the unpack then ends with
-     * that stop, or halts for an at-once reason read meanwhile (whose stop has no detail; the drained one is said too,
-     * M7).
+     * the stop then says; an at-once reason read in the same tick names the stop (with no detail) and the guards' own
+     * stop is said too, after acting (ruling R65). Drain: the break and the pick-up finish first
+     * ({@link UnpackDriver#drain}); the guards hold their first stop, so the at-once reasons are read again every tick
+     * from their inputs; the unpack then ends with that stop, or halts for an at-once reason read meanwhile (whose stop
+     * has no detail; the drained one is said too, M7).
      */
     private Optional<Stopped> guardStop(RestockReason why, String detail, Guards.Inputs inputs) {
         UnpackDriver u = unpack;
@@ -361,6 +367,7 @@ final class RestockSession {
             }
             case UnpackStops.Halt h -> {
                 u.halt(h.reason(), UnpackStops.holds(inputs, PrinterLimits.DEFAULTS));
+                h.also().ifPresent(also -> module.alsoStopping(also, detail));
                 yield Optional.of(new Stopped(h.reason(), h.reason() == why ? detail : ""));
             }
         };
@@ -399,8 +406,12 @@ final class RestockSession {
         if (u != null) {
             quietly("stopping the unpacking", u::abort);
             if (why != RestockReason.LEFT) quietly("closing restock's shulker box screen", u::closeOwnScreen);
+            // What cannot be looked for is "could not check" once a box went out, and nothing before (ruling R66).
             left[0] = ShulkersLeft.UNCHECKED;
-            quietly("looking for the shulker box", () -> left[0] = u.left());
+            quietly("looking for the shulker box", () -> {
+                left[0] = u.unread();
+                left[0] = u.left();
+            });
         }
         int[] borrowedNow = new int[1];
         quietly("counting the borrowed shulker boxes", () -> borrowedNow[0] = borrowedCarried());
@@ -759,18 +770,19 @@ final class RestockSession {
     }
 
     /**
-     * The box is back: what it gave; a box still standing (a late placement) said; a material it gave none of noted.
+     * The box is back: the printer given back first (it acts, then speaks, as phase A's {@link #finished}), then what
+     * the box gave; a box still standing (a late placement) said; a material it gave none of noted.
      */
     private void unpacked(UnpackDriver.Done done, ClientPlayerEntity p) {
         String material = unpack.material();
         unpack = null;
         draining = null;
+        givePrinterBack();
         module.info(RestockText.UNPACK_DONE, "taken", RestockMessages.orNone(RestockMessages.materials(done.taken())));
         for (Msg m : RestockMessages.shulkersLeft(done.left())) module.warning(m);
         if (StateFacts.carried(p.getInventory()).getOrDefault(material, 0) == 0 && gaveUp.add(material)) {
             module.info(RestockText.UNPACK_GAVE_UP, "material", RestockMessages.itemName(material));
         }
-        givePrinterBack();
         if (recountPending) recount();
     }
 

@@ -163,6 +163,12 @@ public class Restock extends XploitsModule {
     /** Owner ruling R42: the guard's stop an unpack last finished its break and pick-up for, and its detail (M7). */
     private RestockReason lastDrained;
     private String lastDrainedDetail = "";
+    /**
+     * Ruling R65: the guards' own stop when an at-once reason in the same tick halted the unpack and named the stop
+     * instead, and its detail; said as one more line after acting.
+     */
+    private RestockReason alsoStopping;
+    private String alsoStoppingDetail = "";
 
     public Restock() {
         super(XploitsAddon.CATEGORY, "restock", Texts.startupText(RestockText.MODULE_DESC));
@@ -244,6 +250,15 @@ public class Restock extends XploitsModule {
         lastDrainedDetail = detail;
     }
 
+    /**
+     * The session halted an unpack for an at-once reason that came in the same tick as this stop of the guards (ruling
+     * R65): the stop is named after the at-once reason, and this one is said too, after acting.
+     */
+    void alsoStopping(RestockReason why, String detail) {
+        alsoStopping = why;
+        alsoStoppingDetail = detail;
+    }
+
     public Msg status() {
         RestockSession s = session;
         return s == null ? Msg.of(RestockText.STATUS_OFF) : s.status();
@@ -271,6 +286,8 @@ public class Restock extends XploitsModule {
         lastLeft = ShulkersLeft.NONE;
         lastDrained = null;
         lastDrainedDetail = "";
+        alsoStopping = null;
+        alsoStoppingDetail = "";
         clearQueues();
         // Meteor turns every module still marked active back on during a world join (also after a crash): that is not the
         // player turning restock on, and it must not start a session. Said and undone at the first tick.
@@ -436,7 +453,9 @@ public class Restock extends XploitsModule {
                 if (pauseSaid) warning(Msg.of(RestockText.PAUSED, "reason", reasonText(pause.reason(), pause.detail())));
             }
         } else if (pausedFor != null) {
-            if (pauseSaid) info(RestockText.RESUMED);
+            // Owner ruling R42: an unpack finishing its break and pick-up toward a guard's stop is not restock carrying
+            // on — the stop follows — so nothing is said then.
+            if (pauseSaid && !s.draining()) info(RestockText.RESUMED);
             pausedFor = null;
             pauseSaid = false;
         }
@@ -474,6 +493,12 @@ public class Restock extends XploitsModule {
             Msg text = Msg.of(RestockText.STOPPED, "reason", reasonText(why, detail, prefix));
             warning(text);
             toast(text);
+            // Ruling R65: an at-once reason that came in the tick of a stop that finishes first halted the unpack and
+            // names the stop; the guards' own stop (a stranger near) is said too, so neither is hidden.
+            RestockReason also = alsoStopping;
+            if (also != null) {
+                warning(Msg.of(RestockText.STOPPED_ALSO, "reason", reasonText(also, alsoStoppingDetail, prefix)));
+            }
             say(after);
         } finally {
             if (isActive()) toggle();

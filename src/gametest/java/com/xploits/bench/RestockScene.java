@@ -275,6 +275,34 @@ final class RestockScene {
         });
     }
 
+    /**
+     * Server thread read: what the player carries loose — every slot and the cursor, a shulker box counted as one item
+     * and never what it holds. The deep count ({@link #carried}) stays the nothing-lost check; this one tells a take
+     * out of a box from a box that came back as it went.
+     */
+    Map<String, Long> loose(Bench bench) {
+        return bench.fromServer(srv -> {
+            ServerPlayerEntity player = Arena.player(srv, name);
+            Map<String, Long> counts = new TreeMap<>();
+            PlayerInventory inventory = player.getInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) addLoose(counts, inventory.getStack(slot));
+            addLoose(counts, player.currentScreenHandler.getCursorStack());
+            return counts;
+        });
+    }
+
+    /** Server thread read: what the shulker boxes the player carries hold, by id; empty when every box is empty. */
+    Map<String, Long> inBoxes(Bench bench) {
+        return bench.fromServer(srv -> {
+            ServerPlayerEntity player = Arena.player(srv, name);
+            Map<String, Long> counts = new TreeMap<>();
+            PlayerInventory inventory = player.getInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) addInside(counts, inventory.getStack(slot));
+            addInside(counts, player.currentScreenHandler.getCursorStack());
+            return counts;
+        });
+    }
+
     Optional<UnpackPlan.Phase> unpackPhase(Bench bench) {
         return bench.fromClient(client -> restock.unpackPhase());
     }
@@ -407,6 +435,17 @@ final class RestockScene {
     private static void add(Map<String, Long> counts, ItemStack stack) {
         if (stack.isEmpty()) return;
         counts.merge(Registries.ITEM.getId(stack.getItem()).toString(), (long) stack.getCount(), Long::sum);
+        addInside(counts, stack);
+    }
+
+    /** The stack itself only, never what it holds. */
+    private static void addLoose(Map<String, Long> counts, ItemStack stack) {
+        if (stack.isEmpty()) return;
+        counts.merge(Registries.ITEM.getId(stack.getItem()).toString(), (long) stack.getCount(), Long::sum);
+    }
+
+    /** What the stack holds ({@code DataComponentTypes.CONTAINER}), recursively, never the stack itself. */
+    private static void addInside(Map<String, Long> counts, ItemStack stack) {
         ContainerComponent contents = stack.get(DataComponentTypes.CONTAINER);
         if (contents != null) for (ItemStack inner : contents.iterateNonEmpty()) add(counts, inner);
     }

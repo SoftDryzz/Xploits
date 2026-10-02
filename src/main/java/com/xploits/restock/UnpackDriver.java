@@ -28,11 +28,13 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -87,6 +89,8 @@ final class UnpackDriver {
     private final RestockLimits limits = RestockLimits.DEFAULTS;
     private final Sender sender;
     private final Map<String, Integer> before;
+    /** The dimension the unpack began in: a box set down there cannot be looked for from another (ruling R66). */
+    private final RegistryKey<World> dimension;
     private Aim.Rotation wanted;
     private BlockHitResult hit;
     private UnpackPlan.Click click = UnpackPlan.Click.NONE;
@@ -97,6 +101,8 @@ final class UnpackDriver {
     private volatile boolean actingAtRequest;
     /** I1: a place went out and no box has been seen standing since (the server has not answered yet). */
     private boolean placeUnseen;
+    /** A place went out at some point of this unpack: a box may be out (ruling R66). */
+    private boolean placeSent;
     /** M17: the dig's STOP, or an instant START, went out; the plan still waits in DUG for the cell to empty. */
     private boolean stopSent;
     /**
@@ -115,6 +121,7 @@ final class UnpackDriver {
         this.facts = facts;
         this.sender = new Sender(mc);
         this.before = StateFacts.carried(mc.player.getInventory());
+        this.dimension = mc.world.getRegistryKey();
     }
 
     UnpackPlan.Phase phase() {
@@ -242,16 +249,13 @@ final class UnpackDriver {
     }
 
     /**
-     * What is left out at the build, from the world: the boxes standing on any cell tried — "or just broken" while the
-     * dig's STOP waits for the server (M17) —, the broken one on the ground or gone, and "could not check" (I1) when a
-     * place went out and no box has been seen since (with no client prediction neither the block nor the inventory
-     * changes before the server answers), or when no box stands, none was broken and fewer boxes of this kind are
-     * carried than when the unpack began. A broken box that is neither seen on the ground nor missing from the count
-     * came back in the very tick of the stop, before the core saw it: it is not said to be gone.
+     * What is left out at the build, from the world ({@link #said}). With no world, or the world of another dimension
+     * than the one the unpack began in (a stop for a dimension change), nothing can be looked for ({@link #unread}).
      */
     ShulkersLeft left() {
         ClientPlayerEntity p = mc.player;
-        if (p == null || mc.world == null) return ShulkersLeft.UNCHECKED;
+        ClientWorld w = mc.world;
+        if (p == null || w == null || !w.getRegistryKey().equals(dimension)) return unread();
         Point at = feet(p);
         int standing = 0;
         long nearest = -1;
@@ -261,16 +265,41 @@ final class UnpackDriver {
             long d = Math.round(Math.sqrt(t.distanceSq(at)));
             nearest = nearest < 0 ? d : Math.min(nearest, d);
         }
-        int carriedNow = ShulkerInventory.kinds(p.getInventory()).getOrDefault(kind, 0);
-        boolean fewer = carriedNow < plan.plan().carried();
+        boolean fewer = ShulkerInventory.kinds(p.getInventory()).getOrDefault(kind, 0) < plan.plan().carried();
         long onGround = -1;
-        boolean lost = false;
         if (plan.dropped()) {
             Optional<ItemEntity> e = dropEntity();
             if (e.isPresent()) onGround = Math.round(e.get().getEntityPos().distanceTo(p.getEntityPos()));
-            else lost = fewer;
         }
-        boolean unchecked = placeUnseen || (standing == 0 && !plan.dropped() && fewer);
+        return said(standing, nearest, plan.dropped(), onGround, fewer, placeUnseen, stopSent);
+    }
+
+    /** What a stop says when the world the box went out in cannot be read ({@link #unread(boolean, boolean)}). */
+    ShulkersLeft unread() {
+        return unread(placeSent, plan.dropped());
+    }
+
+    /**
+     * When the world cannot be read: "could not check" once a box went out — a place left, or one was broken —, and
+     * nothing at all before (no box was ever out). Pure.
+     */
+    static ShulkersLeft unread(boolean placeSent, boolean dropped) {
+        return placeSent || dropped ? ShulkersLeft.UNCHECKED : ShulkersLeft.NONE;
+    }
+
+    /**
+     * What a stop says from what the world shows: the boxes standing on any cell tried ({@code standing}, the nearest
+     * {@code nearest} blocks away) — "or just broken" while the dig's STOP waits for the server ({@code stopSent},
+     * M17) —, the broken one on the ground ({@code onGround} blocks away, −1 when not seen) or gone (not seen and fewer
+     * boxes of the kind carried than at the start), and, only when nothing stands, "could not check" (I1): a place the
+     * server has not answered yet ({@code placeUnseen}: no client prediction, so neither the block nor the inventory
+     * changes before it answers), or fewer boxes carried with none broken. A broken box neither on the ground nor
+     * missing from the count came back in the very tick of the stop: nothing is said of it. Pure.
+     */
+    static ShulkersLeft said(int standing, long nearest, boolean dropped, long onGround, boolean fewer,
+                             boolean placeUnseen, boolean stopSent) {
+        boolean lost = dropped && onGround < 0 && fewer;
+        boolean unchecked = standing == 0 && (placeUnseen || (!dropped && fewer));
         return new ShulkersLeft(standing, nearest, onGround, lost, unchecked, 0, standing > 0 && stopSent);
     }
 
@@ -543,7 +572,10 @@ final class UnpackDriver {
         long sent = PacketWatch.get().oursSent();
         sender.place(h);
         click = PacketWatch.get().oursSent() == sent + 1 ? UnpackPlan.Click.SENT : UnpackPlan.Click.REFUSED;
-        if (click == UnpackPlan.Click.SENT) placeUnseen = true;
+        if (click == UnpackPlan.Click.SENT) {
+            placeUnseen = true;
+            placeSent = true;
+        }
     }
 
     /** Only the cell restock set its box on, while a box stands there, right before START. */

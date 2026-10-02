@@ -115,6 +115,22 @@ class RestockMessagesTest {
     }
 
     @Test
+    void aStopThatCameWithAnotherSaysItAsOneMoreLine() {
+        // Ruling R65: a setback in the tick a stranger came near halts an unpack and names the stop; the stranger is
+        // said after it, with this neutral line.
+        assertEquals("restock was also stopping because a player who is not your Meteor friend came within 48 blocks. "
+                + "Turn restock on again when it is safe, or switch stop-near-players off (or lower player-distance) "
+                + "to keep fetching with players around.",
+            EN.render(Msg.of(RestockText.STOPPED_ALSO, "reason",
+                RestockMessages.reason(RestockReason.PLAYER_NEAR, "", FACTS))));
+        assertEquals("restock también se estaba parando porque un jugador que no es amigo tuyo en Meteor se acercó a "
+                + "menos de 48 bloques. Vuelve a encender restock cuando sea seguro, o apaga stop-near-players (o baja "
+                + "player-distance) para seguir con jugadores cerca.",
+            ES.render(Msg.of(RestockText.STOPPED_ALSO, "reason",
+                RestockMessages.reason(RestockReason.PLAYER_NEAR, "", FACTS))));
+    }
+
+    @Test
     void aRepeatedRotationStopSaysAnUnpackToo() {
         // Phase B: the guards' acting is the unpack's too (its slot changes, the place and the dig aim), not only a
         // container's open.

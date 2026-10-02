@@ -792,6 +792,7 @@ restock.enabled-players=It stops if a player who is not your Meteor friend comes
 restock.enabled-players-off=stop-near-players is off: it keeps fetching with other players around.
 restock.refused=restock did not start: {reason}
 restock.stopped=restock stopped: {reason}
+restock.stopped-also=restock was also stopping because {reason}
 restock.paused=restock paused: {reason}
 restock.resumed=restock carries on.
 restock.not-resumed=restock was on when you left; it never starts by itself on joining. Turn it on again to carry on.
