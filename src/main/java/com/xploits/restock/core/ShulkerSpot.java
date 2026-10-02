@@ -15,16 +15,17 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Where to set a shulker box down at the build (restock spec §3 "Shulkers at the build"): a cell outside every box of the
- * selected placement, empty — air, or a block a placement replaces (P20) — with the cell above it empty and outside the
- * build too, so its lid opens ({@code ShulkerBoxBlock.canOpen}); on a block a click places against and never uses
- * ({@link #support}, ruling R27); where the drop, which drifts up to about 1.5 blocks, cannot burn, be pulled in or carry off or fall
- * (ruling R51: {@link #safe} over the 3 x 3 columns around the cell, support's level to the lid's; every neighbour column
- * stops the drift or has a floor); never where the player's collision box would overlap the box or its lid (P16: the box, not the
- * feet block); never a cell tried already in this unpacking (P19). The click goes on the support's top face — the box
- * then faces up — at the point of that face nearest the eye, kept {@code margin} from its edges, within {@code reach},
- * the face turned to the eye and the vanilla ray with exactly that rotation returning it. The nearest click wins; ties
- * by x, then y, then z.
+ * Where to set a shulker box down at the build (restock spec §3 "Shulkers at the build"): a cell outside every box of
+ * the selected placement, empty (air, or a block a placement replaces: P20), with the cell above it empty and outside
+ * the build too, so its lid opens ({@code ShulkerBoxBlock.canOpen}); on a block a click places against and never uses
+ * ({@link #support}, ruling R27) that is also a {@link World#floor}; where the drop, which drifts up to about 1.5
+ * blocks (and slides further on ice), cannot burn, be pulled in or carried off, or fall (ruling R51: {@link #safe}
+ * over the 3 x 3 columns around the cell, support's level to the lid's; every neighbour column at the cell's level is
+ * a full block that stops the drift, or lets the drop pass with a floor under it; rulings R56 to R58); never where the
+ * player's collision box would overlap the box or its lid (P16: the box, not the feet block); never a cell tried
+ * already in this unpacking (P19). The click goes on the support's top face (the box then faces up) at the point of
+ * that face nearest the eye, kept {@code margin} from its edges, within {@code reach}, the face turned to the eye and
+ * the vanilla ray with exactly that rotation returning it. The nearest click wins; ties by x, then y, then z.
  */
 public final class ShulkerSpot {
     /** The player's collision box: 0.6 wide, 1.8 tall. */
@@ -49,19 +50,32 @@ public final class ShulkerSpot {
         /** {@link #support(BlockFacts, boolean)} of the block there; loaded. */
         boolean support(Pos block);
 
-        /** {@link #safe(BlockFacts)} of the block there; false when not loaded. */
+        /**
+         * {@link #safe(BlockFacts)} of the block there: no fluid (waterlogged included), fire, soul fire, lava, cactus,
+         * lava cauldron, hopper, nether portal, end portal or end gateway; false when not loaded.
+         */
         boolean safe(Pos block);
 
         /**
-         * The block there stops a drop drifting sideways through its cell (ruling R51): its collision fills the cell's
-         * whole height (a full block, a wall or fence, a closed door...), so the drop cannot enter that column at the
-         * cell's level. False when not loaded.
+         * Ruling R57: a drop drifting sideways passes through this cell: loaded, an empty collision shape and no fluid,
+         * entities ignored (air, a torch, a rail, a flower, a button, redstone dust all pass). Unlike {@link #empty} it
+         * does not ask whether a block could be placed there, so a cell the player's body overlaps still passes.
+         */
+        boolean dropPasses(Pos cell);
+
+        /**
+         * Rulings R51 and R58: the block there stops a drop drifting sideways: loaded and a full-cube collision shape
+         * only. A fence, pane, iron bars, wall, chain, door, fence gate or scaffolding is neither this nor
+         * {@link #dropPasses}, so a cell with one beside it is refused.
          */
         boolean stopsDrop(Pos cell);
 
         /**
-         * The block there is a floor a drop may come to rest on (ruling R51): loaded, a full top square, not air or the
-         * void below the world, not a fluid, and {@link #safe(BlockFacts)}.
+         * Rulings R51 and R56: the block there is a floor a drop may come to rest on and stay: loaded, a top face that is
+         * a full square ({@code isSideSolidFullSquare(UP)}: not powder snow, a slab, a layer of snow), the default
+         * slipperiness 0.6 (no ice, packed ice, frosted ice, blue ice or slime, on which a drop slides 3 or 4 blocks),
+         * not air or the void below the world, not a fluid, and {@link #safe(BlockFacts)}. The support the box is set on
+         * is asked too.
          */
         boolean floor(Pos block);
     }
@@ -115,7 +129,8 @@ public final class ShulkerSpot {
                     Pos support = cell.offset(Face.DOWN);
                     if (tried.contains(cell) || inside(boxes, cell) || inside(boxes, lid)) continue;
                     if (overlapsBody(cell, feet)) continue;
-                    if (!world.empty(cell) || !world.empty(lid) || !world.support(support)) continue;
+                    if (!world.empty(cell) || !world.empty(lid)) continue;
+                    if (!world.support(support) || !world.floor(support)) continue;
                     if (!Aim.facesEye(support, Face.UP, eye)) continue;
                     Point hit = Aim.hitPoint(support, Face.UP, eye, margin);
                     double d = eye.distance(hit);
@@ -140,10 +155,11 @@ public final class ShulkerSpot {
     }
 
     /**
-     * Ruling R51: the broken box's drop spawns within 0.25 of the cell's centre and drifts up to about 1.5 blocks. Nothing
+     * Ruling R51: the broken box's drop spawns within 0.25 of the cell's centre and drifts up to about 1.5 blocks.
+     * Nothing
      * from the support's level to the lid's level, over the 3 x 3 columns around the cell, is a hazard ({@link
-     * World#safe}); and each of the 8 neighbour columns, at the cell's level, either stops the drift or is empty with a
-     * floor under it, so the drop never falls off an edge or into the void.
+     * World#safe}); and each of the 8 neighbour columns, at the cell's level, either stops the drift or lets it pass
+     * with a floor under it, so the drop never falls off an edge or into the void.
      */
     private static boolean dropLandsSafely(Pos cell, World world) {
         for (int dy = -1; dy <= 1; dy++) {
@@ -158,7 +174,7 @@ public final class ShulkerSpot {
                 if (dx == 0 && dz == 0) continue;
                 Pos column = new Pos(cell.x() + dx, cell.y(), cell.z() + dz);
                 if (world.stopsDrop(column)) continue;
-                if (!world.empty(column) || !world.floor(column.offset(Face.DOWN))) return false;
+                if (!world.dropPasses(column) || !world.floor(column.offset(Face.DOWN))) return false;
             }
         }
         return true;

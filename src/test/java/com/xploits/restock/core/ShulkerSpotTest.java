@@ -51,6 +51,11 @@ class ShulkerSpotTest {
             }
 
             @Override
+            public boolean dropPasses(Pos cell) {
+                return cell.y() >= 64 && !blocked.contains(cell);
+            }
+
+            @Override
             public boolean stopsDrop(Pos cell) {
                 return blocked.contains(cell);
             }
@@ -147,6 +152,11 @@ class ShulkerSpotTest {
             }
 
             @Override
+            public boolean dropPasses(Pos cell) {
+                return true;
+            }
+
+            @Override
             public boolean stopsDrop(Pos cell) {
                 return false;
             }
@@ -162,15 +172,24 @@ class ShulkerSpotTest {
 
     /** The world of {@link #floor}, with the ground and the walls changed for one test of the landing rules. */
     private static ShulkerSpot.World landing(Set<Pos> walls, Set<Pos> noFloor, Set<Pos> hazards) {
-        return landing(walls, noFloor, hazards, Set.of());
+        return landing(walls, noFloor, hazards, Set.of(), Set.of());
     }
 
-    /** {@code partial}: a block in the way (not empty) that does not fill the cell's height, such as a slab. */
     private static ShulkerSpot.World landing(Set<Pos> walls, Set<Pos> noFloor, Set<Pos> hazards, Set<Pos> partial) {
+        return landing(walls, noFloor, hazards, partial, Set.of());
+    }
+
+    /**
+     * {@code partial}: a block with a collision shape that does not fill the cell, such as a fence: neither empty nor a
+     * wall. {@code small}: a block with no collision that the box could not be placed in (a torch, or any cell the
+     * player's body overlaps): not {@code empty}, yet a drop passes through it.
+     */
+    private static ShulkerSpot.World landing(Set<Pos> walls, Set<Pos> noFloor, Set<Pos> hazards, Set<Pos> partial,
+                                             Set<Pos> small) {
         return new ShulkerSpot.World() {
             @Override
             public boolean empty(Pos cell) {
-                return cell.y() >= 64 && !walls.contains(cell) && !partial.contains(cell);
+                return cell.y() >= 64 && !walls.contains(cell) && !partial.contains(cell) && !small.contains(cell);
             }
 
             @Override
@@ -181,6 +200,11 @@ class ShulkerSpotTest {
             @Override
             public boolean safe(Pos block) {
                 return !hazards.contains(block);
+            }
+
+            @Override
+            public boolean dropPasses(Pos cell) {
+                return cell.y() >= 64 && !walls.contains(cell) && !partial.contains(cell);
             }
 
             @Override
@@ -210,9 +234,67 @@ class ShulkerSpotTest {
     }
 
     @Test
-    void aNeighbourWithABlockThatDoesNotFillTheCellIsNotFreeAirEither() {
-        // Neither a wall nor empty (a slab, a layer of snow): the drop could land on or in it, so the cell is refused.
+    void aFenceLikeNeighbourIsNeitherAWallNorAPassage() {
+        // Ruling R58: a partial collision shape (fence, pane, wall, door, scaffolding) can hold the drop or let it by, so refuse.
         assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(new Pos(-2, 64, 0)))));
+    }
+
+    @Test
+    void aNeighbourTheBoxCouldNotBePlacedInButADropPassesIsAPassage() {
+        // Ruling R57: a torch beside the cell, or a cell the player's body overlaps, fails `empty` yet a drop passes it.
+        assertEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(new Pos(-2, 64, 0)))));
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(new Pos(-2, 63, 0)), Set.of(), Set.of(),
+            Set.of(new Pos(-2, 64, 0)))), "but it still needs its floor");
+    }
+
+    /** What the adapter's floor answers: {@code ids} names the block at each position; the default is stone. */
+    private static ShulkerSpot.World iceWorld(java.util.Map<Pos, String> ids) {
+        Set<String> slippery = Set.of("minecraft:ice", "minecraft:packed_ice", "minecraft:frosted_ice",
+            "minecraft:blue_ice", "minecraft:slime_block");
+        return new ShulkerSpot.World() {
+            @Override
+            public boolean empty(Pos cell) {
+                return cell.y() >= 64;
+            }
+
+            @Override
+            public boolean dropPasses(Pos cell) {
+                return cell.y() >= 64;
+            }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return false;
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return block.y() == 63;
+            }
+
+            @Override
+            public boolean safe(Pos block) {
+                return true;
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return block.y() == 63 && !slippery.contains(ids.getOrDefault(block, "minecraft:stone"));
+            }
+        };
+    }
+
+    @Test
+    void aSlipperyFloorUnderANeighbourOrTheSupportRefusesTheCell() {
+        // Ruling R56: a drop slides 3 to 4 blocks on ice, packed ice, blue ice or slime; the support is the floor too.
+        for (String id : new String[]{"minecraft:ice", "minecraft:packed_ice", "minecraft:blue_ice",
+            "minecraft:slime_block", "minecraft:frosted_ice"}) {
+            assertEquals(NEXT, cellFor(iceWorld(java.util.Map.of(new Pos(-2, 63, 0), id))), "neighbour on " + id);
+            // The ice is also the floor of the neighbours it is under, so the next cell is the one east.
+            assertEquals(new Pos(1, 64, 0), cellFor(iceWorld(java.util.Map.of(new Pos(-1, 63, 0), id))),
+                "support on " + id);
+        }
+        assertEquals(NEAREST, cellFor(iceWorld(java.util.Map.of())), "the same world on stone");
     }
 
     @Test
@@ -238,7 +320,9 @@ class ShulkerSpotTest {
     void aHazardInTheLidCellOrOnAnySideRefusesTheCell() {
         for (Pos hazard : new Pos[]{new Pos(-1, 65, 0), new Pos(-1, 63, 0), new Pos(-2, 64, 0), new Pos(0, 64, 0),
             new Pos(-1, 64, 1), new Pos(-1, 64, -1)}) {
-            assertNotEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(hazard))), "hazard in " + hazard.y());
+            assertNotEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(hazard))),
+                "hazard at offset " + (hazard.x() - NEAREST.x()) + ", " + (hazard.y() - NEAREST.y()) + ", "
+                    + (hazard.z() - NEAREST.z()) + " from the cell");
         }
     }
 
@@ -266,6 +350,11 @@ class ShulkerSpotTest {
             }
 
             @Override
+            public boolean dropPasses(Pos cell) {
+                return true;
+            }
+
+            @Override
             public boolean stopsDrop(Pos cell) {
                 return false;
             }
@@ -283,7 +372,8 @@ class ShulkerSpotTest {
         assertEquals(new Pos(0, 64, -1), choose(BUILD, Set.of(), 4.5,
             floor(Set.of(), Set.of(new Pos(-2, 64, 0))), SEES_ALL).orElseThrow().cell(), "lava west of the nearest cell");
         assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
-            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(), "fire in it, which is in the 3x3 of the cells next to it too");
+            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(), 
+            "fire in it, and in the 3x3 of its neighbours");
         assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
             floor(Set.of(), Set.of(new Pos(-1, 63, 0))), SEES_ALL).orElseThrow().cell(), "an unsafe block under it");
     }
@@ -304,7 +394,7 @@ class ShulkerSpotTest {
     }
 
     @Test
-    void aDropIsSafeOnlyAwayFromFluidFireAndCactus() {
+    void aDropIsSafeOnlyAwayFromFluidFireCactusAndWhatPullsItIn() {
         assertTrue(ShulkerSpot.safe(block("minecraft:stone", false, false, false)));
         assertFalse(ShulkerSpot.safe(block("minecraft:water", false, true, true)));
         assertFalse(ShulkerSpot.safe(block("minecraft:oak_stairs", false, false, true)), "waterlogged");
