@@ -48,10 +48,11 @@ public final class PlaceJudge {
 
     /**
      * One container click or close as the server received it (restock spec §3: only QUICK_MOVE, in the screen restock
-     * opened, with the cursor empty): which of the counts failed. {@code closedByServer}: a close for a screen the server
-     * had already closed (it moved the player back to their own screen, as when the chest went out of range or was
-     * broken, and the client's close crossed it): neither a wrong screen nor a failure, since a client cannot hold a
-     * container screen the server never opened.
+     * opened, with the cursor empty): which of the counts failed. {@code closedByServer}: the first close after the server
+     * dropped a container screen on its own (it moved the player back to their own screen, as when the chest went out of
+     * range or was broken), carrying exactly that screen's syncId: the client's close crossed the server's, which is
+     * neither a wrong screen nor a failure. Any other close while the server is on the player's own screen (another
+     * syncId, the same one a second time, or one the server never dropped) is a wrong screen.
      */
     record ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull,
                             boolean closedByServer) {
@@ -67,6 +68,8 @@ public final class PlaceJudge {
     private static final List<Verdict> VERDICTS = new ArrayList<>();
     private static final List<ContainerVerdict> CONTAINER = new ArrayList<>();
     private static String judged;
+    /** The syncId of the container screen the server last dropped on its own, until the next close comes; 0: none. */
+    private static int dropped;
 
     private PlaceJudge() {
     }
@@ -75,6 +78,7 @@ public final class PlaceJudge {
     static synchronized void start(String playerName) {
         VERDICTS.clear();
         CONTAINER.clear();
+        dropped = 0;
         judged = playerName;
     }
 
@@ -174,14 +178,38 @@ public final class PlaceJudge {
             !player.currentScreenHandler.getCursorStack().isEmpty()));
     }
 
-    /** Server thread, from the mixin: a screen close about to be handled. */
+    /**
+     * Server thread, from the mixin: a screen close about to be handled. The screen the server dropped is forgotten at
+     * every close the client sends: only the first one after the drop can be the one that crossed it, since the client
+     * sends no close for a screen the server closed and cannot open another one in between.
+     */
     public static void close(ServerPlayerEntity player, CloseHandledScreenC2SPacket packet) {
         if (!judging(player)) return;
+        int droppedByServer = forgetDropped();
         boolean serverHome = player.currentScreenHandler == player.playerScreenHandler;
-        boolean closedByServer = serverHome && packet.getSyncId() != 0;
+        boolean closedByServer = serverHome && droppedByServer != 0 && packet.getSyncId() == droppedByServer;
         addContainer(new ContainerVerdict(true, false,
             !closedByServer && packet.getSyncId() != player.currentScreenHandler.syncId,
             !player.currentScreenHandler.getCursorStack().isEmpty(), closedByServer));
+    }
+
+    /**
+     * Server thread, from the mixin: the server is about to drop the player's screen on its own (out of range, the
+     * container broken, another screen opened), with no close from the client. Remembers a container screen's syncId.
+     */
+    public static void serverClosed(ServerPlayerEntity player) {
+        if (!judging(player) || player.currentScreenHandler == player.playerScreenHandler) return;
+        remember(player.currentScreenHandler.syncId);
+    }
+
+    private static synchronized void remember(int syncId) {
+        dropped = syncId;
+    }
+
+    private static synchronized int forgetDropped() {
+        int was = dropped;
+        dropped = 0;
+        return was;
     }
 
     private static synchronized void addContainer(ContainerVerdict v) {
