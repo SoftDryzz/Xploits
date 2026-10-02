@@ -27,7 +27,12 @@ public interface TargetSource {
     /** The target state at {@code pos} (air included); null when unknown — unknown is never air. */
     BlockState target(BlockPos pos);
 
-    /** Every block state of the enabled sub-regions with its count. */
+    /**
+     * What the whole selected placement holds, whatever layer range Litematica shows: every block state, air included, of
+     * the placement's enabled sub-regions with its count in the schematic's own palette, so as saved (the placement's
+     * rotation and mirror are not applied to the states). Counted once, when the source is opened, and not again until the
+     * placement changes and the session opens a new source; empty when the placement is refused or no count is known.
+     */
     Map<BlockState, Long> wholeBuild();
 
     /** A source that only refuses: no Litematica, or one whose API differs from the one built against. */

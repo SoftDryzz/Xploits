@@ -460,8 +460,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
 **Experimental.** Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
 `litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
 
-- **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped chest, barrel
-  or placed shulker box and press it: "Marked (N in total)."; press again to unmark (it works even if the container
+- **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped or copper chest,
+  barrel or placed shulker box and press it: "Marked (N in total)."; press again to unmark (it works even if the container
   is gone). It works with `restock` on or off, and remembers the spot you stood on, per world.
   `.xploits restock chests` lists them by dimension and distance, never by position. With `use-stash-keeper` on
   (the default) it also uses the containers `stash-keeper` remembers.

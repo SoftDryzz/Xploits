@@ -264,14 +264,10 @@ range, so a `player-distance` larger than that range cannot be honoured.
 Plant bodies such as kelp, cave vines, weeping vines and twisting vines, and potted plants, are not counted, so
 `restock` never fetches them.
 
-### `restock` and a double chest marked from its far half
+### `stash-keeper` does not index copper chests
 
-The near half may be out of reach from the spot you stood on, and the trip then skips that chest. Mark a double
-chest standing next to it.
-
-### `restock` cannot mark copper chests yet
-
-The same limit as `stash-keeper`.
+`restock` marks and opens copper chests (all eight variants), but `stash-keeper` still does not index them, so with
+`use-stash-keeper` on they are used only when you mark them.
 
 ### `restock` pauses counting if Easy Place's placement restriction is switched on while it runs
 
