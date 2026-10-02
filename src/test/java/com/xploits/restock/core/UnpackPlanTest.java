@@ -593,6 +593,145 @@ class UnpackPlanTest {
         assertEquals(new UnpackPlan.Select(0), u.step(f.get()));
     }
 
+    private static void assertBlocked(UnpackPlan.Action a, String why) {
+        assertTrue(a instanceof UnpackPlan.Stopped st && st.reason() == RestockReason.UNPACK_BLOCKED, why + ": " + a);
+    }
+
+    /** 100 paused-and-live pairs of the same facts, all WAIT or the given action: only live ticks count (pre-flight 18-3). */
+    private static void liveTicks(UnpackPlan u, F f, int n, UnpackPlan.Action expected) {
+        for (int i = 1; i <= n; i++) {
+            f.paused = true;
+            assertEquals(WAIT, u.step(f.get()), "paused: never counts");
+            f.paused = false;
+            assertEquals(expected, u.step(f.get()), "live tick " + i);
+        }
+    }
+
+    /** From a broken, gone box to RESTORE with nothing carried back yet taken a step: RETURN already at the goal. */
+    private static UnpackPlan restoring(F f) {
+        UnpackPlan u = pickingUp(f);
+        f.carried = 1;
+        u.step(f.get());
+        f.arrived = true;
+        u.step(f.get());
+        assertEquals(UnpackPlan.Phase.RESTORE, u.phase());
+        return u;
+    }
+
+    @Test
+    void aWalkBackThatNeverArrivesStops() {
+        F f = new F();
+        UnpackPlan u = pickingUp(f);
+        f.carried = 1;
+        u.step(f.get());
+        f.distance = 5;
+        assertEquals(new UnpackPlan.GoTo(HOME), u.step(f.get()));
+        UnpackPlan.Action last = WAIT;
+        for (int i = 1; i <= 1000 && WAIT.equals(last); i++) {
+            f.paused = true;
+            assertEquals(WAIT, u.step(f.get()));
+            f.paused = false;
+            last = u.step(f.get());
+        }
+        assertEquals(stopped(RestockReason.NO_PATH_BACK, OptionalInt.of(0)), last);
+    }
+
+    @Test
+    void theSlotRestoreGivesUpOnLiveTickOneHundredAndOne() {
+        F f = new F();
+        UnpackPlan u = restoring(f);
+        f.selected = 3;
+        f.screenFree = false;
+        liveTicks(u, f, 100, WAIT);
+        assertEquals(new UnpackPlan.Finish(), u.step(f.get()), "not worth a stop: the unpack ends");
+    }
+
+    @Test
+    void anAimThatIsNeverHeldEndsPlaceAndDigBlocked() {
+        UnpackPlan u = fresh();
+        F f = new F();
+        u.step(f.get());
+        f.spot = Optional.of(S1);
+        liveTicks(u, f, 100, new UnpackPlan.AimAt(S1.rotation()));
+        assertBlocked(u.step(f.get()), "place");
+        F g = new F();
+        UnpackPlan v = digging(UnpackLimits.DEFAULTS, g);
+        g.aimHeld = false;
+        liveTicks(v, g, 100, new UnpackPlan.AimAt(TOP.rotation()));
+        assertBlocked(v.step(g.get()), "dig");
+    }
+
+    @Test
+    void aScreenThatStaysOpenAfterALetGoAndASlotChangeNeverAllowedEndBlocked() {
+        F f = new F();
+        UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
+        u.step(f.get());
+        f.screenFree = false;
+        assertEquals(new UnpackPlan.DigAbort(S1.cell(), Face.UP), u.step(f.get()));
+        liveTicks(u, f, 100, WAIT);
+        assertBlocked(u.step(f.get()), "dig");
+        UnpackPlan v = fresh();
+        F g = new F();
+        g.hotbar = new HotbarPlan.Select(4);
+        g.slotOk = false;
+        liveTicks(v, g, 100, WAIT);
+        assertBlocked(v.step(g.get()), "select");
+    }
+
+    @Test
+    void pausedTicksCountNeitherWaitingForTheBoxToGoNorForItsPickUp() {
+        F f = new F();
+        UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
+        u.step(f.get());
+        for (int i = 0; i < 3; i++) u.step(f.get());
+        assertEquals(new UnpackPlan.DigStop(S1.cell(), Face.UP), u.step(f.get()));
+        liveTicks(u, f, 40, WAIT);
+        assertEquals(UnpackPlan.Phase.DUG, u.phase(), "40 live ticks, 40 paused: still waiting");
+        assertEquals(WAIT, u.step(f.get()));
+        assertEquals(UnpackPlan.Phase.DIG, u.phase(), "the 41st live tick");
+        F g = new F();
+        UnpackPlan v = pickingUp(g);
+        liveTicks(v, g, 100, WAIT);
+        assertEquals(stopped(RestockReason.SHULKER_NOT_PICKED_UP, OptionalInt.of(0)), v.step(g.get()));
+    }
+
+    @Test
+    void noAbortGoesForAStartThatNeverLeft() {
+        for (UnpackPlan.Click c : List.of(UnpackPlan.Click.REFUSED, UnpackPlan.Click.WITHHELD)) {
+            F f = new F();
+            UnpackPlan u = digging(UnpackLimits.DEFAULTS, f);
+            assertEquals(new UnpackPlan.DigStart(S1.cell(), Face.UP, false), u.step(f.get()));
+            f.click = c;
+            assertEquals(stopped(RestockReason.LOW_HEALTH, OptionalInt.of(0)), u.halt(f.get(), RestockReason.LOW_HEALTH), "" + c);
+            F g = new F();
+            UnpackPlan v = digging(UnpackLimits.DEFAULTS, g);
+            v.step(g.get());
+            g.click = c;
+            g.keys = true;
+            assertEquals(stopped(RestockReason.PLAYER_MOVED, OptionalInt.of(0)), v.step(g.get()), "" + c);
+        }
+    }
+
+    @Test
+    void triedKeepsTheOrderTheCellsWereTried() {
+        UnpackPlan u = fresh();
+        F f = new F();
+        for (ShulkerSpot.Choice s : List.of(S3, S1, S2)) {
+            f.spot = Optional.empty();
+            f.aimHeld = false;
+            f.click = UnpackPlan.Click.NONE;
+            u.step(f.get());
+            f.spot = Optional.of(s);
+            f.aimHeld = true;
+            u.step(f.get());
+            f.spot = Optional.empty();
+            f.aimHeld = false;
+            f.click = UnpackPlan.Click.WITHHELD;
+            u.step(f.get());
+        }
+        assertEquals(List.of(S3.cell(), S1.cell(), S2.cell()), List.copyOf(u.tried()));
+    }
+
     @Test
     void aBoxNeverPickedUpStops() {
         F f = new F();

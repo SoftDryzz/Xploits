@@ -8,6 +8,7 @@ import com.xploits.printer.core.Pos;
 import com.xploits.printer.core.PrinterLimits;
 import com.xploits.travel.core.StallWatch;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,7 +23,7 @@ import java.util.Set;
  * {@code spotAttempts}); the take from it (the adapter runs a {@link RestockTrip} on it and reports); the dig on vanilla's
  * held-mining clock — the tool selected, START once the server holds it (P18), no progress in START's own tick, a swing
  * every tick, STOP when it reaches 1; a pause, a move, a screen, a changed slot or delta lets go (ABORT) and starts again
- * after the gap, every let-go counted, at most {@code digRestarts} times; the cell empty (P23); the box back in the
+ * after the gap, every let-go counted but that of a box gone mid-dig, at most {@code digRestarts} times; the cell empty (P23); the box back in the
  * inventory, by itself or walked onto;
  * back to where it began; the slot selected then, selected again. Every wait counts only unpaused ticks and is bounded.
  * A failure of the take that is not the player's hands or a fault still breaks and picks the box up, then stops with it.
@@ -278,7 +279,7 @@ public final class UnpackPlan {
 
     /** The cells a box was set down on (or withheld from) in this unpacking. */
     public Set<Pos> tried() {
-        return Set.copyOf(tried);
+        return Collections.unmodifiableSet(new LinkedHashSet<>(tried));
     }
 
     /** The cell the box was last set down on, or adopted. */
@@ -625,7 +626,8 @@ public final class UnpackPlan {
     }
 
     private Action stop(RestockReason reason, Facts f) {
-        Optional<DigAbort> abort = digging ? Optional.of(new DigAbort(cell, digSide)) : Optional.empty();
+        boolean startNeverLeft = heldTicks == 0 && (f.click() == Click.REFUSED || f.click() == Click.WITHHELD);
+        Optional<DigAbort> abort = digging && !startNeverLeft ? Optional.of(new DigAbort(cell, digSide)) : Optional.empty();
         OptionalInt select = abort.isEmpty() && f.selected() != plan.originalSlot() && !f.paused() && f.still()
             && f.screenFree() && f.slotChangeAllowed() ? OptionalInt.of(plan.originalSlot()) : OptionalInt.empty();
         digging = false;
