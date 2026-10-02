@@ -78,4 +78,12 @@ class ContainerAimTest {
         PlacePlanner.RayOracle onlyWest = (block, side, rotation) -> side == Face.WEST;
         assertEquals(Optional.empty(), ContainerAim.choose(CHEST, EYE, 0f, 6.0, 0.1, onlyWest));
     }
+
+    @Test
+    void reachIsInclusive() {
+        // The east face's hit point (1, 64.5, 0.5) is exactly 3.5 from this eye; no other face looks at an eye this low.
+        Point low = new Point(4.5, 64.5, 0.5);
+        assertEquals(Face.EAST, ContainerAim.choose(CHEST, low, 0f, 3.5, 0.1, ALL).orElseThrow().side());
+        assertEquals(Optional.empty(), ContainerAim.choose(CHEST, low, 0f, 3.49, 0.1, ALL));
+    }
 }

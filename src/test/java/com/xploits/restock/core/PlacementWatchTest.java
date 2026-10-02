@@ -5,12 +5,14 @@ import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.Pos;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Restock spec §3: only the selected placement is counted; any change of it is counted again (no stop). */
@@ -59,6 +61,24 @@ class PlacementWatchTest {
             List.of())), "a sub-region enabled");
         assertTrue(watch.changed(new PlacementWatch.View(8L, true, new Pos(0, 0, 0), "NONE", "NONE", Map.of("main", MAIN),
             List.of())), "another placement selected");
+    }
+
+    @Test
+    void aMirroredPlacementIsCountedAgain() {
+        PlacementWatch watch = new PlacementWatch(plain(List.of()));
+        assertTrue(watch.changed(new PlacementWatch.View(7L, true, new Pos(0, 0, 0), "NONE", "LEFT_RIGHT",
+            Map.of("main", MAIN), List.of())), "mirrored");
+    }
+
+    @Test
+    void theRegionsAreKeptInTheirNameOrder() {
+        // Deferred L20: Map.copyOf made the order differ from one JVM run to the next; the names are listed sorted.
+        Map<String, GridBox> given = new LinkedHashMap<>();
+        for (String name : List.of("f", "e", "d", "c", "b", "a")) given.put(name, MAIN);
+        PlacementWatch.View v = view(true, new Pos(0, 0, 0), "NONE", given, List.of());
+        assertEquals(List.of("a", "b", "c", "d", "e", "f"), List.copyOf(v.regions().keySet()));
+        assertThrows(UnsupportedOperationException.class, () -> v.regions().put("g", MAIN));
+        assertTrue(v.toString().contains("regions=[a, b, c, d, e, f]"), v.toString());
     }
 
     @Test

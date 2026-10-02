@@ -332,6 +332,54 @@ class RestockTripTest {
     }
 
     @Test
+    void aSourceWithoutAStandSpotIsApproachedAfterARetarget() {
+        RestockTrip t = taking();
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(false)).build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, STALE), t.step(f().build()));
+        t.retarget(OTHER, Optional.empty());
+        assertEquals(RestockTrip.Phase.APPROACH, t.phase());
+        assertEquals(new RestockTrip.GoToward(5, 6), t.step(f().build()));
+        assertEquals(new RestockTrip.StopWalking(), t.step(f().arrived().spot(OTHER_STAND).build()));
+        assertEquals(Optional.of(OTHER_STAND), t.stand());
+        assertEquals(new RestockTrip.GoTo(OTHER_STAND), t.step(f().build()));
+    }
+
+    @Test
+    void aRetargetStartsTheTakeClicksAgain() {
+        // 63 clicks that took nothing, then the screen is stale; at the next source the whole cap of 64 is there again.
+        RestockTrip t = taking();
+        for (int i = 1; i <= 63; i++) t.step(f().ourScreen().seen().take(new TakePlan.Click(0)).build());
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(false)).build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, STALE), t.step(f().build()));
+        t.retarget(OTHER, Optional.of(OTHER_STAND));
+        assertEquals(new RestockTrip.GoTo(OTHER_STAND), t.step(f().build()));
+        assertEquals(new RestockTrip.StopWalking(), t.step(f().arrived().build()));
+        assertEquals(new RestockTrip.ClickContainer(OTHER), t.step(f().aiming(HELD).build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().click(SENT).ourScreen().build()));
+        for (int i = 1; i <= 64; i++) {
+            assertEquals(new RestockTrip.Take(0), t.step(f().ourScreen().seen().take(new TakePlan.Click(0)).build()), "click " + i);
+        }
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Click(0)).build()));
+        assertEquals(new RestockTrip.Stopped(RestockReason.NOTHING_FITS, false), t.step(f().build()));
+    }
+
+    @Test
+    void ticksOfWantedAimDoNotCountTowardsTheOpenLimit() {
+        // R12: the limit is for ticks that cannot click; a trip that keeps turning to the container is not stuck.
+        RestockTrip t = atChest();
+        for (int i = 1; i <= 150; i++) assertEquals(new RestockTrip.Aim(CHEST), t.step(f().aiming(WANTED).build()), "tick " + i);
+        for (int i = 1; i <= 100; i++) assertEquals(new RestockTrip.Wait(), t.step(f().aiming(HELD).screenOpen().build()), "tick " + i);
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().aiming(HELD).screenOpen().build()));
+    }
+
+    @Test
+    void ticksNotStillCountTowardsTheOpenLimit() {
+        RestockTrip t = atChest();
+        for (int i = 1; i <= 100; i++) assertEquals(new RestockTrip.Wait(), t.step(f().aiming(HELD).moving().build()), "tick " + i);
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().aiming(HELD).moving().build()));
+    }
+
+    @Test
     void pausedStallsNeverStopApproachOrReturn() {
         RestockTrip a = trip(false, Optional.empty());
         a.step(f().build());

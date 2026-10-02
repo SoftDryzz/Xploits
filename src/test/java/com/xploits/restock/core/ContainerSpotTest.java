@@ -76,7 +76,8 @@ class ContainerSpotTest {
                 return true;
             }
         };
-        // From on top of the chest the nearest candidates are four blocks away by one; y, then x, then z: (-1, 64, 0).
+        // From on top of the chest the nearest candidates are the five blocks one away (the four sides and the block above
+        // the chest, which loses on y); then x, then z: (-1, 64, 0).
         assertEquals(Optional.of(new Pos(-1, 64, 0)),
             ContainerSpot.choose(CHEST, new Point(0.5, 64, 0.5), 4.5, 0.1, anything));
     }
@@ -87,5 +88,15 @@ class ContainerSpotTest {
         Flat flat = new Flat(Set.of(CHEST));
         assertEquals(true, ContainerSpot.reachable(CHEST, eye, 3.58, 0.1, flat));
         assertEquals(false, ContainerSpot.reachable(CHEST, eye, 3.57, 0.1, flat));
+    }
+
+    @Test
+    void reachIsInclusive() {
+        // The east face's hit point (1, 64.5, 0.5) is exactly 3.5 from this eye (3.5² = 12.25, exact in binary); no other
+        // face looks at an eye this low and this far east.
+        Point eye = new Point(4.5, 64.5, 0.5);
+        Flat flat = new Flat(Set.of(CHEST));
+        assertEquals(true, ContainerSpot.reachable(CHEST, eye, 3.5, 0.1, flat));
+        assertEquals(false, ContainerSpot.reachable(CHEST, eye, 3.49, 0.1, flat));
     }
 }

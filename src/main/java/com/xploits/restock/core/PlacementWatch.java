@@ -5,9 +5,11 @@ import com.xploits.printer.core.GridBox;
 import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.Pos;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -35,7 +37,7 @@ public final class PlacementWatch {
     public record View(long identity, boolean enabled, Pos origin, String rotation, String mirror,
                        Map<String, GridBox> regions, List<Other> others) {
         public View {
-            regions = Map.copyOf(regions);
+            regions = Collections.unmodifiableMap(new TreeMap<>(regions));
             others = List.copyOf(others);
         }
 

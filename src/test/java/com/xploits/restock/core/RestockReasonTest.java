@@ -3,6 +3,7 @@ package com.xploits.restock.core;
 import com.xploits.printer.core.Guards;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,6 +24,27 @@ class RestockReasonTest {
             if (PRINTER_ONLY.contains(r)) assertEquals(RestockReason.INTERNAL, mapped, r.name());
             else if (r == Guards.Reason.PLACEMENT_NOT_SENT) assertEquals(RestockReason.CLICK_NOT_SENT, mapped);
             else assertEquals(r.name(), mapped.name());
+        }
+    }
+
+    @Test
+    void everySharedReasonKeepsTheEffectTheGuardsGaveIt() {
+        // Restock acts on the printer's reasons as the printer does, except the one it deliberately softens.
+        for (Guards.Reason r : Guards.Reason.values()) {
+            if (PRINTER_ONLY.contains(r) || r == Guards.Reason.EASY_PLACE_RESTRICTION) continue;
+            assertEquals(r.effect().name(), RestockReason.of(r).effect().name(), r.name());
+        }
+    }
+
+    @Test
+    void theReasonsOnlyRestockSaysAreWhatTheySpecSays() {
+        // Not in the printer's guards: pinned one by one (spec §3 "Guards" and "The trip").
+        for (RestockReason r : List.of(RestockReason.NO_BARITONE, RestockReason.BARITONE_SAVED_UNREADABLE)) {
+            assertEquals(RestockReason.Effect.REFUSE, r.effect(), r.name());
+        }
+        for (RestockReason r : List.of(RestockReason.NO_PATH, RestockReason.NO_PATH_BACK, RestockReason.CONTAINER_REFUSED,
+            RestockReason.CONTAINER_CLOSED, RestockReason.NOTHING_FITS, RestockReason.PLAYER_MOVED)) {
+            assertEquals(RestockReason.Effect.STOP, r.effect(), r.name());
         }
     }
 
