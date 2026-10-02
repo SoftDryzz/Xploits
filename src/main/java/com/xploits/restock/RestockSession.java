@@ -13,6 +13,7 @@ import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.PartlyPlaced;
 import com.xploits.restock.core.PlacedExtra;
 import com.xploits.restock.core.PrintPause;
+import com.xploits.restock.core.ReadyToLeave;
 import com.xploits.restock.core.RestockLimits;
 import com.xploits.restock.core.RestockMessages;
 import com.xploits.restock.core.RestockNeeds;
@@ -112,6 +113,8 @@ final class RestockSession {
     private final PlacedExtra extra = new PlacedExtra();
     /** Positions holding fewer items than the build wants there (deferred m1): kept beside {@link #index}, cleared with it. */
     private final PartlyPlaced partly = new PartlyPlaced();
+    /** Deferred m2: the player has stood ready to leave for {@code leaveTicks} ticks in a row; fed every session tick. */
+    private final ReadyToLeave leave = new ReadyToLeave(limits.leaveTicks());
     private final RegistryKey<World> dimension;
     private final Map<String, Set<Pos>> stale = new HashMap<>();
     private final Set<Pos> unusable = new HashSet<>();
@@ -248,11 +251,12 @@ final class RestockSession {
         if (index != null) {
             for (Pos pos : index.nextToScan(PrinterLimits.DEFAULTS.scanBudget())) classify(pos);
         }
+        boolean ready = leave.tick(mayLeave(p));
         if (trip != null) {
             TripDriver.Result r = trip.tick(paused);
             if (r instanceof TripDriver.Ended end) return new Stopped(end.reason(), end.detail());
         } else if (!paused) {
-            Optional<Stopped> stopped = startTripIfDue(s, p);
+            Optional<Stopped> stopped = startTripIfDue(s, p, ready);
             if (stopped.isPresent()) return stopped.get();
         }
         if (verdict instanceof Guards.Pause pause) return new Paused(RestockReason.of(pause.reason()), pause.detail());
@@ -423,7 +427,16 @@ final class RestockSession {
 
     // --- choosing and starting a trip -----------------------------------------------------------------------------
 
-    private Optional<Stopped> startTripIfDue(RestockSettings s, ClientPlayerEntity p) {
+    /**
+     * Rulings R32 and m2: a due trip waits (no stop) until the player has stood for {@code leaveTicks} ticks in a row with
+     * no screen open, nothing on the cursor, no movement key held, not sneaking and on the ground.
+     */
+    private boolean mayLeave(ClientPlayerEntity p) {
+        boolean screenFree = mc.currentScreen == null && p.currentScreenHandler.getCursorStack().isEmpty();
+        return RestockTrip.mayLeave(screenFree, TripDriver.movementKeys(mc.options), p.isSneaking(), p.isOnGround());
+    }
+
+    private Optional<Stopped> startTripIfDue(RestockSettings s, ClientPlayerEntity p, boolean ready) {
         if (index == null) return Optional.empty();
         Map<String, Integer> carried = StateFacts.carried(p.getInventory());
         Map<String, Long> need = RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
@@ -432,11 +445,9 @@ final class RestockSession {
         List<String> due = runOut.due(tick, need, carried, index.passes(), RestockNeeds.knownMissing(index, partly));
         lastDue = due;
         if (due.isEmpty()) return Optional.empty();
-        boolean screenFree = mc.currentScreen == null && p.currentScreenHandler.getCursorStack().isEmpty();
-        // Ruling R32: it waits while the player walks, sneaks or is in the air, and leaves once they stand.
-        if (!RestockTrip.mayLeave(screenFree, TripDriver.movementKeys(mc.options), p.isSneaking(), p.isOnGround())) {
-            return Optional.empty();
-        }
+        // Rulings R32 and m2: it waits while the player walks, sneaks or is in the air, and leaves once they have stood
+        // for leaveTicks ticks in a row — not on the one tick a key was let go.
+        if (!ready) return Optional.empty();
         String dim = dimensionId();
         List<Source> list = sources.list(dim, marks(), stash(s));
         Point from = new Point(p.getX(), p.getY(), p.getZ());

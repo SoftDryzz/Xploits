@@ -14,16 +14,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RestockLimitsTest {
     @Test
     void theDefaults() {
-        assertEquals(new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2), RestockLimits.DEFAULTS);
+        assertEquals(new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2, 10), RestockLimits.DEFAULTS);
     }
 
     @Test
     void impossibleValuesAreRefused() {
-        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(-1, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2));
-        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 0, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2));
-        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.6, 0.1, 2));
-        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.5, 2));
-        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 0));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(-1, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2, 10));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 0, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2, 10));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.6, 0.1, 2, 10));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.5, 2, 10));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 0, 10));
+        assertThrows(IllegalArgumentException.class, () -> new RestockLimits(10, 100, 20, 64, 6.0, 200, 0.5, 4.5, 0.1, 2, 0));
     }
 
     @Test

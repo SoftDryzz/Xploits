@@ -19,13 +19,14 @@ import java.util.List;
  * @param reach              eye to hit point, at most
  * @param hitMargin          the hit point stays this far from every edge of the clicked face
  * @param duePasses          full scan passes since a material ran out before it is due
+ * @param leaveTicks         ticks in a row the player must stand ready to leave before a due trip starts
  */
 public record RestockLimits(int printerSettleTicks, int openTimeoutTicks, int contentWaitTicks, int maxTakeClicks,
                             double approachRadius, int walkStallTicks, double walkProgress, double reach,
-                            double hitMargin, int duePasses) {
+                            double hitMargin, int duePasses, int leaveTicks) {
     public static final RestockLimits DEFAULTS = new RestockLimits(10, 100, 20, 64, 6.0,
         PrinterLimits.DEFAULTS.walkStallTicks(), PrinterLimits.DEFAULTS.walkProgress(), PrinterLimits.DEFAULTS.maxReach(),
-        PrinterLimits.DEFAULTS.hitMargin(), 2);
+        PrinterLimits.DEFAULTS.hitMargin(), 2, 10);
 
     /**
      * Modules restock will not start beside, and stops for when one is turned on while it runs (spec §3 "Guards"): they
@@ -43,6 +44,7 @@ public record RestockLimits(int printerSettleTicks, int openTimeoutTicks, int co
         positive(maxTakeClicks, "maxTakeClicks");
         positive(walkStallTicks, "walkStallTicks");
         positive(duePasses, "duePasses");
+        positive(leaveTicks, "leaveTicks");
         if (!(approachRadius > 0)) throw new IllegalArgumentException("approachRadius " + approachRadius);
         if (!(walkProgress >= 0)) throw new IllegalArgumentException("walkProgress " + walkProgress);
         if (!(reach > 0 && reach <= 4.5)) throw new IllegalArgumentException("reach " + reach);
