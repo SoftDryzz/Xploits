@@ -6,6 +6,7 @@ import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.Pos;
 import com.xploits.restock.TargetSource;
 import com.xploits.restock.core.PlacementWatch;
+import com.xploits.restock.core.RestockMessages;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
@@ -71,7 +72,8 @@ final class LitematicaSource implements TargetSource {
         try {
             return call.get();
         } catch (LinkageError | RuntimeException e) {
-            broken = new Guards.Refusal(Guards.Reason.LITEMATICA_API, "Litematica call failed: " + e.getClass().getSimpleName());
+            broken = new Guards.Refusal(Guards.Reason.LITEMATICA_API,
+                RestockMessages.litematicaCallFailed(e.getClass().getSimpleName()));
             return fallback;
         }
     }
@@ -148,7 +150,10 @@ final class LitematicaSource implements TargetSource {
         return null;
     }
 
-    /** Every block state of the enabled sub-regions with its count, from the regions' own block counts. */
+    /**
+     * Every block state (air included) of the enabled sub-regions with its count, from the regions' own block counts:
+     * the schematic's states as saved, a region the schematic does not hold skipped, a palette entry with no count left out.
+     */
     private static Map<BlockState, Long> count(SchematicPlacement placement, Set<String> regions) {
         Map<BlockState, Long> m = new HashMap<>();
         LitematicaSchematic schematic = placement.getSchematic();

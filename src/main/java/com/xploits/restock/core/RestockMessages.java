@@ -19,10 +19,21 @@ public final class RestockMessages {
                         int stallSeconds) {
     }
 
+    /** Marks the detail of a {@code LITEMATICA_API} refusal as "a call failed" (the class follows), not "members missing". */
+    private static final String CALL_FAILED = "call failed: ";
+
+    /** The detail of a {@code LITEMATICA_API} refusal for a Litematica call that threw {@code errorClass}. */
+    public static String litematicaCallFailed(String errorClass) {
+        return CALL_FAILED + errorClass;
+    }
+
     public static Msg reason(RestockReason r, String detail, Facts f) {
         RestockText key = RestockText.valueOf("REASON_" + r.name());
         return switch (r) {
-            case LITEMATICA_API -> Msg.of(key, "version", f.builtAgainst(), "detail", detail);
+            case LITEMATICA_API -> detail.startsWith(CALL_FAILED)
+                ? Msg.of(RestockText.LITEMATICA_CALL_FAILED, "version", f.builtAgainst(), "detail",
+                    detail.substring(CALL_FAILED.length()))
+                : Msg.of(key, "version", f.builtAgainst(), "detail", detail);
             case PLACEMENT_TOO_LARGE -> Msg.of(key, "size", detail, "limit", f.maxVolume());
             case PREFIX_INVALID, BARITONE_NOT_LISTENING -> Msg.of(key, "prefix", f.prefix());
             case CONFLICTING_MODULE, INTERNAL -> Msg.of(key, "detail", detail);

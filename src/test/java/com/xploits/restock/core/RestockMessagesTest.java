@@ -88,4 +88,52 @@ class RestockMessagesTest {
             assertTrue(EN.render(Msg.of(t)).length() <= 30, t.name());
         }
     }
+
+    @Test
+    void aRepeatedCombatStopWithoutANameSaysAnotherModuleNotACombatModuleInBrackets() {
+        assertEquals("another module kept rotating while restock opened a container: it paused three times and stops. "
+                + "Turn it on again when the fight is over.",
+            EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
+        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor: se pausó tres veces y se para. "
+                + "Vuelve a encenderlo cuando acabe la pelea.",
+            ES.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
+        assertTrue(EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "surround++", FACTS))
+            .startsWith("surround++ kept rotating"));
+    }
+
+    @Test
+    void anInternalStopReadsAsAnErrorNotAsAGuard() {
+        assertEquals("restock hit an unexpected error (IllegalStateException) and stopped: turn it on again, and report it "
+                + "if it happens again.",
+            EN.render(RestockMessages.reason(RestockReason.INTERNAL, "IllegalStateException", FACTS)));
+        assertEquals("restock ha tenido un error inesperado (IllegalStateException) y se ha parado: vuelve a encenderlo, "
+                + "y avísalo si se repite.",
+            ES.render(RestockMessages.reason(RestockReason.INTERNAL, "IllegalStateException", FACTS)));
+    }
+
+    @Test
+    void aFailedLitematicaCallIsSaidInTheLanguageOfThePlayer() {
+        String detail = RestockMessages.litematicaCallFailed("NoSuchMethodError");
+        assertEquals("a call to Litematica failed (NoSuchMethodError): this Litematica is probably not the 0.26.14 "
+                + "restock was built against. Install Litematica 0.26.14.",
+            EN.render(RestockMessages.reason(RestockReason.LITEMATICA_API, detail, FACTS)));
+        assertEquals("ha fallado una llamada a Litematica (NoSuchMethodError): lo más probable es que este Litematica no "
+                + "sea el 0.26.14 con el que se compiló restock. Instala Litematica 0.26.14.",
+            ES.render(RestockMessages.reason(RestockReason.LITEMATICA_API, detail, FACTS)));
+        assertTrue(EN.render(RestockMessages.reason(RestockReason.LITEMATICA_API, "Placement.getBox", FACTS))
+            .contains("(missing: Placement.getBox)"));
+    }
+
+    @Test
+    void theRepairFailureNamesTheSettingToCheck() {
+        assertTrue(EN.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("baritone-prefix"));
+        assertTrue(ES.render(Msg.of(RestockText.REPAIR_FAILED, "prefix", "#")).contains("baritone-prefix"));
+    }
+
+    @Test
+    void theFilledOnlyTextSaysWhy() {
+        assertEquals("Every shulker_box in that container has items stored inside it, and restock never takes such a stack "
+                + "as a building block: trying the next container.",
+            EN.render(Msg.of(RestockText.TRIP_FILLED_ONLY, "material", "shulker_box")));
+    }
 }

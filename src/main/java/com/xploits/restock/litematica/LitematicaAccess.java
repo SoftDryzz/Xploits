@@ -2,6 +2,7 @@ package com.xploits.restock.litematica;
 
 import com.xploits.printer.core.Guards;
 import com.xploits.restock.TargetSource;
+import com.xploits.restock.core.RestockMessages;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.ArrayList;
@@ -75,7 +76,7 @@ public final class LitematicaAccess {
             return new LitematicaSource(maxVolume);
         } catch (LinkageError | RuntimeException e) {
             return TargetSource.refusing(new Guards.Refusal(Guards.Reason.LITEMATICA_API,
-                "Litematica call failed: " + e.getClass().getSimpleName()));
+                RestockMessages.litematicaCallFailed(e.getClass().getSimpleName())));
         }
     }
 
