@@ -14,6 +14,7 @@ import net.minecraft.screen.slot.SlotActionType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -42,33 +43,81 @@ final class ContainerScreen {
         return false;
     }
 
-    /**
-     * The container's non-empty slots, each with the room the player's 36 slots have for exactly that stack, and whether
-     * it holds items of its own (Meteor's {@code Utils.hasItems}: a shulker box, or any block item, with contents), which
-     * {@link TakePlan} never takes (ruling R34).
-     */
+    /** Phase A's slots: no reserve, nothing carried. */
     static List<TakePlan.Slot> slots(ClientPlayerEntity p) {
+        return slots(p, 0, false, Set.of());
+    }
+
+    /**
+     * The container's non-empty slots for {@link TakePlan}: each with the room the player's 36 slots have for exactly
+     * that stack keeping {@code reserve} empty slots free ({@link TakePlan#room}), whether it holds items of its own
+     * (Meteor's {@code Utils.hasItems}: a shulker box, or any block item, with contents — ruling R34), and — with
+     * {@code carry} — what a filled shulker box holds, with its carry room ({@link TakePlan#carryRoom}). Never contents
+     * for a box whose own item is in {@code neverCarry} (the build places that box: carried, the printer could place it
+     * with its contents, pre-flight 17-3).
+     */
+    static List<TakePlan.Slot> slots(ClientPlayerEntity p, int reserve, boolean carry, Set<String> neverCarry) {
         ScreenHandler h = p.currentScreenHandler;
+        PlayerInventory inv = p.getInventory();
         int n = containerSlots(h);
+        int carryRoom = carryRoom(inv);
         List<TakePlan.Slot> out = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             ItemStack stack = h.slots.get(i).getStack();
             if (stack.isEmpty()) continue;
-            out.add(new TakePlan.Slot(i, StateFacts.itemId(stack), stack.getCount(), room(p.getInventory(), stack),
-                Utils.hasItems(stack)));
+            String item = StateFacts.itemId(stack);
+            boolean holds = Utils.hasItems(stack);
+            Map<String, Integer> inside = carry && holds && !neverCarry.contains(item)
+                ? ShulkerInventory.contents(stack) : Map.of();
+            if (!inside.isEmpty()) out.add(new TakePlan.Slot(i, item, stack.getCount(), carryRoom, inside));
+            else out.add(new TakePlan.Slot(i, item, stack.getCount(), room(inv, stack, reserve), holds));
         }
         return out;
     }
 
     /** What a QUICK_MOVE of {@code stack} can put into the player's 36 slots: same stacks topped up, empty slots filled. */
     static int room(PlayerInventory inventory, ItemStack stack) {
-        int room = 0;
+        return room(inventory, stack, 0);
+    }
+
+    /** As {@link #room(PlayerInventory, ItemStack)}, {@code reserve} empty slots kept free ({@link TakePlan#room}). */
+    static int room(PlayerInventory inventory, ItemStack stack, int reserve) {
+        int same = 0;
+        int empty = 0;
         for (int i = 0; i < PlayerInventory.MAIN_SIZE; i++) {
             ItemStack s = inventory.getStack(i);
-            if (s.isEmpty()) room += stack.getMaxCount();
-            else if (ItemStack.areItemsAndComponentsEqual(s, stack)) room += Math.max(0, s.getMaxCount() - s.getCount());
+            if (s.isEmpty()) empty++;
+            else if (ItemStack.areItemsAndComponentsEqual(s, stack)) {
+                same += Math.max(0, s.getMaxCount() - s.getCount());
+            }
         }
-        return room;
+        return TakePlan.room(same, empty, stack.getMaxCount(), stack.getCount(), reserve);
+    }
+
+    /** The empty container slots of this screen. */
+    static int freeSlots(ScreenHandler h) {
+        int n = containerSlots(h);
+        int free = 0;
+        for (int i = 0; i < n; i++) {
+            if (h.slots.get(i).getStack().isEmpty()) free++;
+        }
+        return free;
+    }
+
+    /**
+     * {@link TakePlan#carryRoom} over the player's 36 slots: 1 while a hotbar slot and one more slot are empty. The
+     * trip carries a box only then (ruling R54), and the session chooses a source with the block only inside boxes only
+     * then (R40, Task B7).
+     */
+    static int carryRoom(PlayerInventory inv) {
+        int empty = 0;
+        int emptyHotbar = 0;
+        for (int i = 0; i < PlayerInventory.MAIN_SIZE; i++) {
+            if (!inv.getStack(i).isEmpty()) continue;
+            empty++;
+            if (i < PlayerInventory.HOTBAR_SIZE) emptyHotbar++;
+        }
+        return TakePlan.carryRoom(emptyHotbar, empty);
     }
 
     /** The loose stacks restock could take, by item id: an empty shulker box is one, a filled one is not (ruling R34). */

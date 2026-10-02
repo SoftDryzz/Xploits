@@ -170,6 +170,17 @@ class PacketWatchTest {
         assertEquals(PaceRules.Packet.of(PaceRules.Kind.CLICK_SLOT, false), PacketWatch.classify(take, false));
     }
 
+    @Test
+    void aStartThatBreaksAtOnceIsMarkedInstant() {
+        PlayerActionC2SPacket start = new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK,
+            BlockPos.ORIGIN, Direction.UP, 1);
+        assertEquals(PaceRules.Packet.digStart(true, true), PacketWatch.classify(start, true, true));
+        assertEquals(PaceRules.Packet.digStart(false, false), PacketWatch.classify(start, false));
+        assertEquals(PaceRules.Packet.of(PaceRules.Kind.DIG_STOP, true), PacketWatch.classify(new PlayerActionC2SPacket(
+            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, BlockPos.ORIGIN, Direction.UP, 2), true, true),
+            "only a START is ever instant");
+    }
+
     /** A client command as the server decodes it: entity id, mode, mount jump. */
     private static ClientCommandC2SPacket command(ClientCommandC2SPacket.Mode mode) {
         PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());

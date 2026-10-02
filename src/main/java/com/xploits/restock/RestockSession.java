@@ -2,6 +2,7 @@ package com.xploits.restock;
 
 import com.xploits.XploitsAddon;
 import com.xploits.printer.core.BuildIndex;
+import com.xploits.printer.core.GridBox;
 import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
@@ -9,6 +10,7 @@ import com.xploits.printer.core.PrinterLimits;
 import com.xploits.printer.core.Target;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.core.CombatState;
+import com.xploits.restock.core.BorrowedShulkers;
 import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.PartlyPlaced;
 import com.xploits.restock.core.PlacedExtra;
@@ -24,6 +26,7 @@ import com.xploits.restock.core.RestockTrip;
 import com.xploits.restock.core.RunOut;
 import com.xploits.restock.core.Source;
 import com.xploits.restock.core.SourceChooser;
+import com.xploits.restock.core.TakePlan;
 import com.xploits.shared.core.i18n.Msg;
 import com.xploits.stash.StashKeeper;
 import com.xploits.stash.core.StashIndex;
@@ -42,8 +45,10 @@ import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.screen.ScreenHandler;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
@@ -124,6 +129,10 @@ final class RestockSession {
     private final Map<String, Set<Pos>> stale = new HashMap<>();
     private final Set<Pos> unusable = new HashSet<>();
     private final Set<String> saidNowhere = new HashSet<>();
+    /** The boxes restock carried away from a container this session (owner ruling R44). */
+    private final BorrowedShulkers borrowed = new BorrowedShulkers();
+    /** The trip under way carried a box: its later takes keep a slot free for the unpack (pre-flight 19-6). */
+    private boolean carriedThisTrip;
     private RestockSettings settings = RestockSettings.DEFAULTS;
     private TargetSource source;
     private BuildIndex index;
@@ -329,6 +338,82 @@ final class RestockSession {
         sources.saw(container, loose, nested);
     }
 
+    /** Whether a container trip carries whole shulker boxes; on from Task B7. */
+    boolean carryOnTrips() {
+        return false;
+    }
+
+    /** Empty slots a container trip's loose takes keep free: one once it carried a box. */
+    int takeReserve() {
+        return carriedThisTrip ? 1 : 0;
+    }
+
+    /** The items the build places: a filled box of one of these is never carried (pre-flight 17-3). */
+    Set<String> buildItems() {
+        return Set.copyOf(totals.keySet());
+    }
+
+    /**
+     * The enabled sub-region boxes of the placement counted now: where a shulker box is never set down. Empty while
+     * nothing is counted (M6: it fails closed — with no build known there is no spot at all, never "anywhere").
+     */
+    Optional<List<GridBox>> boxes() {
+        return source == null || index == null ? Optional.empty() : Optional.of(source.boxes());
+    }
+
+    /** The cache of block-state facts (the unpack's support and safety checks read it). */
+    StateFacts stateFacts() {
+        return facts;
+    }
+
+    /**
+     * For the take from a box set down at the build: what the build needs beyond the loose items only (pre-flight
+     * 18-13: another carried box must not make it take nothing), the unpack's material first, then the order things
+     * ran out.
+     */
+    Map<String, Long> innerNeed(String material) {
+        ClientPlayerEntity p = mc.player;
+        Map<String, Integer> loose = p == null ? Map.of() : StateFacts.carried(p.getInventory());
+        Map<String, Long> need = index == null ? Map.of()
+            : RestockNeeds.need(totals, index.placed(), extra.byMaterial(), loose);
+        Map<String, Long> ordered = new LinkedHashMap<>();
+        if (need.containsKey(material)) ordered.put(material, need.get(material));
+        for (String m : lastDue) {
+            if (need.containsKey(m)) ordered.putIfAbsent(m, need.get(m));
+        }
+        need.forEach(ordered::putIfAbsent);
+        return ordered;
+    }
+
+    /**
+     * Before a QUICK_MOVE of slot {@code slot} of restock's container screen: a box that holds items leaving the
+     * container is borrowed from it; a box going into it is given back. An empty box taken as a building block is
+     * material, not borrowed.
+     */
+    void moving(ClientPlayerEntity p, int slot, Pos container) {
+        ScreenHandler h = p.currentScreenHandler;
+        if (slot < 0 || slot >= h.slots.size()) return;
+        ItemStack stack = h.slots.get(slot).getStack();
+        if (!ShulkerInventory.isBox(stack)) return;
+        BorrowedShulkers.Kind kind = ShulkerInventory.kind(stack);
+        if (slot < ContainerScreen.containerSlots(h)) {
+            if (!Utils.hasItems(stack)) return;
+            borrowed.borrow(new BorrowedShulkers.Borrowed(kind, dimensionId(), container));
+            carriedThisTrip = true;
+        } else {
+            borrowed.giveBack(dimensionId(), container, kind);
+        }
+    }
+
+    /** The empty borrowed boxes in the player's part of restock's open screen that go back into {@code container}. */
+    List<TakePlan.Slot> returning(ClientPlayerEntity p, Pos container) {
+        ScreenHandler h = p.currentScreenHandler;
+        int n = ContainerScreen.containerSlots(h);
+        if (n <= 0 || borrowed.isEmpty()) return List.of();
+        return borrowed.toReturn(dimensionId(), container, ShulkerInventory.heldInScreen(h, n),
+            ContainerScreen.freeSlots(h));
+    }
+
     /**
      * A source failed: noted (stale or only filled: for that material; unusable: for the session) and said, then the
      * next nearest for the same material, measured from where the trip started.
@@ -379,8 +464,10 @@ final class RestockSession {
         }
         ClientPlayerEntity p = mc.player;
         if (took && p != null) {
+            // Both ends measured alike, loose plus inside the boxes carried (pre-flight 19-21).
+            Map<String, Integer> now = StateFacts.withShulkers(p.getInventory());
             module.info(RestockText.TRIP_DONE, "taken",
-                RestockMessages.orNone(RestockMessages.materials(gained(before, StateFacts.carried(p.getInventory())))));
+                RestockMessages.orNone(RestockMessages.materials(gained(before, now))));
         } else {
             runOut.nowhere(material);
         }
@@ -497,9 +584,10 @@ final class RestockSession {
             printerHeld = true;
             paused = true;
         }
+        carriedThisTrip = false;
         RestockTrip core = new RestockTrip(new RestockTrip.Plan(material, chosen.container(), chosen.stand(),
             WorldRay.pos(p.getBlockPos()), paused), limits);
-        trip = new TripDriver(this, mc, mover, core, limits, StateFacts.carried(p.getInventory()));
+        trip = new TripDriver(this, mc, mover, core, limits, StateFacts.withShulkers(p.getInventory()));
         module.info(RestockText.TRIP_STARTED, "material", RestockMessages.itemName(material),
             "kind", Msg.of(chosen.kind() == Source.Kind.MARK ? RestockText.KIND_MARK : RestockText.KIND_STASH),
             "distance", Math.round(Math.sqrt(chosen.container().distanceSq(from))));

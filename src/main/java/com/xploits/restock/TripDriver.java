@@ -13,6 +13,7 @@ import com.xploits.restock.core.RestockReason;
 import com.xploits.restock.core.RestockTrip;
 import com.xploits.restock.core.Source;
 import com.xploits.restock.core.TakePlan;
+import com.xploits.restock.core.UnpackLimits;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
@@ -61,6 +62,8 @@ final class TripDriver {
     private final RestockTrip trip;
     private final RestockLimits limits;
     private final Map<String, Integer> carriedAtStart;
+    /** The take from a shulker box set down at the build (phase B). */
+    private final boolean inner;
     private Aim.Rotation wanted;
     private BlockHitResult hit;
     private RestockTrip.Click click = RestockTrip.Click.NONE;
@@ -81,16 +84,30 @@ final class TripDriver {
     private boolean actedThisTick;
     /** The last tick the trip ran was a guard pause, which blocks every click and close. */
     private boolean pausedLastTick;
+    /** M16, inner mode: live ticks the take waited in TAKE for stillness or an empty cursor. */
+    private int innerWaitTicks;
     private volatile boolean actingAtRequest;
 
     TripDriver(RestockSession session, MinecraftClient mc, Mover mover, RestockTrip trip, RestockLimits limits,
                Map<String, Integer> carriedAtStart) {
+        this(session, mc, mover, trip, limits, carriedAtStart, false);
+    }
+
+    /**
+     * {@code inner}: the take from a shulker box set down at the build (phase B) — it never carries a box or gives one
+     * back, keeps one slot free for the box, takes against the loose need only, a failed source goes straight back, and
+     * its end is only reported (nothing borrowed, nothing noted as a source, no trip counted). {@code carriedAtStart}:
+     * {@link StateFacts#withShulkers} at the start; the trip's {@code carried} is what was gained since.
+     */
+    TripDriver(RestockSession session, MinecraftClient mc, Mover mover, RestockTrip trip, RestockLimits limits,
+               Map<String, Integer> carriedAtStart, boolean inner) {
         this.session = session;
         this.mc = mc;
         this.mover = mover;
         this.trip = trip;
         this.limits = limits;
         this.carriedAtStart = Map.copyOf(carriedAtStart);
+        this.inner = inner;
         this.late = new LateScreen(limits.openTimeoutTicks());
     }
 
@@ -116,12 +133,64 @@ final class TripDriver {
         actedThisTick = false;
     }
 
+    /** A container click, take or close went out in this session tick. */
+    boolean actedThisTick() {
+        return actedThisTick;
+    }
+
+    /** Owner ruling R42: no more is taken; the screen closes as soon as a close may go, and the trip goes back. */
+    void hurry() {
+        trip.hurry();
+    }
+
+    /**
+     * After this trip ended (the take from a box at the build), until the unpack ends: its own screen, if its take was
+     * cut short with the screen open (M16), else a container screen that answers its click late (ruling R12,
+     * {@link LateScreen}), is closed as soon as a close may go. True when one was closed now. The unpack driver never
+     * calls it while a dig is under way (M2).
+     */
+    boolean lateTick(boolean paused) {
+        pausedLastTick = paused;
+        ClientPlayerEntity p = mc.player;
+        if (p == null) return false;
+        if (ours(p)) {
+            closeOwnScreen();
+            return actedThisTick;
+        }
+        return closeLateScreen(p, paused);
+    }
+
+    /**
+     * M3, at a stop once this trip has ended (the take from a box at the build): its own screen if it is still open,
+     * else the late answer to its click if that is the screen shown — under {@link #closeOwnScreen}'s guards (standing
+     * still, an empty cursor, no pause last tick, no container action yet this tick). Never while leaving (the caller's
+     * rule).
+     */
+    void closeOwnOrLateScreen() {
+        ClientPlayerEntity p = mc.player;
+        if (p == null || actedThisTick || pausedLastTick) return;
+        if (ours(p)) {
+            closeOwnScreen();
+            return;
+        }
+        if (!(mc.currentScreen instanceof HandledScreen<?> shown)) return;
+        if (shown.getScreenHandler() != p.currentScreenHandler) return;
+        closeLateScreen(p, false);
+    }
+
     Result tick(boolean paused) {
         pausedLastTick = paused;
         ClientPlayerEntity p = mc.player;
         // At most one container action a tick: closing a late answer is this tick's action.
         if (closeLateScreen(p, paused)) return RUNNING;
         RestockTrip.Facts f = facts(p, paused);
+        // M16: the take from a box set down at the build waits in TAKE for stillness (and an empty cursor) at most
+        // stillWaitTicks live ticks, like every wait of an unpack; then it ends softly with UNPACK_BLOCKED: the box is
+        // still broken and picked up, and its screen, still adopted, is closed by lateTick once a close may go.
+        if (inner && trip.phase() == RestockTrip.Phase.TAKE && !paused && (!f.still() || !f.cursorEmpty())
+            && ++innerWaitTicks > UnpackLimits.DEFAULTS.stillWaitTicks()) {
+            return new Ended(RestockReason.UNPACK_BLOCKED, "");
+        }
         click = RestockTrip.Click.NONE;
         return execute(trip.step(f), p);
     }
@@ -182,14 +251,25 @@ final class TripDriver {
     }
 
     /**
-     * Standing still as every container click and close needs it (Global Constraints, spike S5): the last input the server
-     * got had no movement, jump or sneak and sprint is off, no one else's action in the last tick or the open Grim tick, on
-     * ground, not sprinting, sneaking or using an item, and no walking goal.
+     * Standing still as every click, close, place, dig START and slot change needs it (Global Constraints, spike S5):
+     * the last input the server got had no movement, jump or sneak and sprint is off, no one else's action in the last
+     * tick or the open Grim tick, on ground, not sprinting, sneaking or using an item, and no walking goal.
      */
-    private boolean still(ClientPlayerEntity p) {
+    static boolean still(ClientPlayerEntity p, Mover mover) {
         PacketWatch watch = PacketWatch.get();
         return watch.stillAsServerKnows() && !watch.foreignActionLastTick() && !watch.foreignActionThisGrimTick()
             && p.isOnGround() && !p.isSprinting() && !p.isSneaking() && !p.isUsingItem() && mover.idle();
+    }
+
+    private boolean still(ClientPlayerEntity p) {
+        return still(p, mover);
+    }
+
+    /** No screen open and nothing on the cursor. */
+    static boolean screenFree(MinecraftClient mc) {
+        ClientPlayerEntity p = mc.player;
+        return mc.currentScreen == null && p.currentScreenHandler == p.playerScreenHandler
+            && p.currentScreenHandler.getCursorStack().isEmpty();
     }
 
     /**
@@ -247,10 +327,18 @@ final class TripDriver {
         }
         boolean ours = ours(p);
         boolean seen = ours && ContainerScreen.contentSeen(p.currentScreenHandler);
+        // Ruling R54: a container trip carries a box only while one can be carried (a free hotbar slot and one more).
+        // Otherwise its slots are phase A's — a block only inside boxes is not "there" — so the trip tries the next
+        // source (Task B7's session) instead of stopping the session with NOTHING_FITS. The inner take never carries.
+        boolean carry = !inner && session.carryOnTrips() && ContainerScreen.carryRoom(p.getInventory()) > 0;
         TakePlan.Step take = ours
-            ? TakePlan.next(ContainerScreen.slots(p), trip.material(), session.orderedNeed())
+            ? TakePlan.next(ContainerScreen.slots(p, inner ? 1 : session.takeReserve(), carry, session.buildItems()),
+                inner ? List.of() : session.returning(p, trip.container()), trip.material(),
+                inner ? session.innerNeed(trip.material()) : session.orderedNeed(), carry)
             : new TakePlan.Done(false);
-        int carried = StateFacts.carried(p.getInventory()).getOrDefault(trip.material(), 0);
+        String m = trip.material();
+        int carried = Math.max(0, StateFacts.withShulkers(p.getInventory()).getOrDefault(m, 0)
+            - carriedAtStart.getOrDefault(m, 0));
         return new RestockTrip.Facts(movementKeys(mc.options), paused, still, screenFree, distance, arrived, spot, aiming,
             click, ours, seen, take, carried, cursorEmpty);
     }
@@ -350,25 +438,32 @@ final class TripDriver {
             }
             case RestockTrip.Take t -> {
                 actedThisTick = true;
+                if (!inner) session.moving(p, t.slot(), trip.container());
                 ContainerScreen.quickMove(mc, syncId, t.slot());
             }
             case RestockTrip.Close c -> {
                 actedThisTick = true;
-                session.saw(trip.container(), ContainerScreen.loose(p.currentScreenHandler),
-                    ContainerScreen.nested(p.currentScreenHandler));
+                if (!inner) {
+                    session.saw(trip.container(), ContainerScreen.loose(p.currentScreenHandler),
+                        ContainerScreen.nested(p.currentScreenHandler));
+                }
                 ContainerScreen.close(p, syncId);
                 syncId = -1;
             }
             case RestockTrip.NeedSource n -> {
                 mover.cancel();
                 syncId = -1;
-                Optional<Source> next = session.next(n.material(), n.failed(), n.failure(), trip.resume());
-                if (next.isPresent()) trip.retarget(next.get().container(), next.get().stand());
-                else trip.giveUp();
+                if (inner) {
+                    trip.giveUp();
+                } else {
+                    Optional<Source> next = session.next(n.material(), n.failed(), n.failure(), trip.resume());
+                    if (next.isPresent()) trip.retarget(next.get().container(), next.get().stand());
+                    else trip.giveUp();
+                }
             }
             case RestockTrip.Finish f -> {
                 mover.cancel();
-                session.finished(f.resumePrinter(), f.took(), trip.material(), carriedAtStart);
+                if (!inner) session.finished(f.resumePrinter(), f.took(), trip.material(), carriedAtStart);
                 return new Finished();
             }
             case RestockTrip.Stopped st -> {

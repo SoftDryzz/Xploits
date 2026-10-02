@@ -52,7 +52,7 @@ final class PacketRecorder {
     @EventHandler(priority = EventPriority.LOWEST)
     private void onSend(PacketEvent.Send event) {
         if (event.isCancelled()) return;
-        PaceRules.Packet p = PacketWatch.classify(event.packet, false);
+        PaceRules.Packet p = PacketWatch.classify(event.packet, false, PacketWatch.get().sendingInstantDig());
         synchronized (this) {
             if (event.packet instanceof PlayerMoveC2SPacket move && move.changesPosition()) {
                 double x = move.getX(0);

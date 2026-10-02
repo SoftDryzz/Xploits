@@ -59,6 +59,8 @@ public final class PacketWatch {
     private final PaceRules rules = new PaceRules(PrinterLimits.DEFAULTS, false);
     /** How many of restock's own sends are in progress (client thread). */
     private int ours;
+    /** Restock is sending a dig START that breaks its block at once: no STOP follows (the rules' instant flag). */
+    private boolean instantDig;
 
     private PacketWatch() {
     }
@@ -85,6 +87,25 @@ public final class PacketWatch {
                 ours--;
             }
         }
+    }
+
+    /** As {@link #asOurs}, for a dig START that breaks the block at once (pre-flight 19-18). */
+    void asOursInstantDig(Runnable send) {
+        synchronized (this) {
+            instantDig = true;
+        }
+        try {
+            asOurs(send);
+        } finally {
+            synchronized (this) {
+                instantDig = false;
+            }
+        }
+    }
+
+    /** True while restock sends an instant dig START; the bench's recorder reads it within the same send. */
+    public synchronized boolean sendingInstantDig() {
+        return instantDig;
     }
 
     synchronized boolean aimHeld(Aim.Rotation wanted) {
@@ -115,7 +136,7 @@ public final class PacketWatch {
     private void onSend(PacketEvent.Send event) {
         Packet<?> packet = event.packet;
         synchronized (this) {
-            rules.accept(classify(packet, ours > 0));
+            rules.accept(classify(packet, ours > 0, instantDig));
         }
     }
 
@@ -133,8 +154,17 @@ public final class PacketWatch {
         }
     }
 
-    /** One outgoing packet as {@link PaceRules} reads it. */
+    /** One outgoing packet as {@link PaceRules} reads it (a START is never instant here). */
     public static PaceRules.Packet classify(Packet<?> packet, boolean ours) {
+        return classify(packet, ours, false);
+    }
+
+    /** One outgoing packet as {@link PaceRules} reads it; {@code instantDig}: a START breaks its block at once. */
+    public static PaceRules.Packet classify(Packet<?> packet, boolean ours, boolean instantDig) {
+        if (packet instanceof PlayerActionC2SPacket a
+            && a.getAction() == PlayerActionC2SPacket.Action.START_DESTROY_BLOCK) {
+            return PaceRules.Packet.digStart(ours, instantDig);
+        }
         if (packet instanceof PlayerMoveC2SPacket move) {
             return PaceRules.Packet.move(move.changesLook(), move.getYaw(0f), move.getPitch(0f));
         }
