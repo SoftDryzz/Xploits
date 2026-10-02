@@ -47,14 +47,25 @@ public final class PrinterMarker {
         }
     }
 
-    /** At the first tick after a world join. Client thread. {@code say} may be null. */
+    /**
+     * At the first tick after a world join. Client thread. {@code say} may be null. A print mode that cannot be read, a
+     * switch-on that fails, or a marker that cannot be read while printing is off is said (deferred L37): the printer
+     * may still be off because of restock, and the marker is gone after this.
+     */
     static void repairAtJoin(XploitsModule say, PrintSwitch printer) {
         List<String> lines = read();
         if (lines.isEmpty()) return;
-        if (PrintPause.atJoin(lines, printer.installed(), printer.printing()) == PrintPause.Action.SWITCH_ON
-            && printer.set(true) && say != null) {
-            say.info(RestockText.PRINTER_REPAIRED);
+        boolean installed = printer.installed();
+        Boolean printing = printer.printing();
+        RestockText told = null;
+        if (PrintPause.atJoin(lines, installed, printing) == PrintPause.Action.SWITCH_ON) {
+            told = printer.set(true) ? RestockText.PRINTER_REPAIRED : RestockText.PRINTER_NOT_REPAIRED;
+        } else if (PrintPause.leftOffAtJoin(lines, installed, printing)) {
+            told = RestockText.PRINTER_NOT_REPAIRED;
         }
         delete();
+        if (say == null || told == null) return;
+        if (told == RestockText.PRINTER_REPAIRED) say.info(told);
+        else say.warning(told);
     }
 }

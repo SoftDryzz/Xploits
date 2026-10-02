@@ -219,6 +219,7 @@ final class RestockSession {
     Outcome tick(Received in, RestockSettings s) {
         tick++;
         settings = s;
+        if (trip != null) trip.newTick();
         ClientPlayerEntity p = mc.player;
         if (p == null || mc.world == null) return new Stopped(RestockReason.NO_WORLD, "");
         Guards.Verdict verdict = guards.tick(guardInputs(in, s, p));
@@ -257,14 +258,19 @@ final class RestockSession {
     }
 
     /**
-     * Ends the session (ruling R33): a trip under way stops walking, the printer marker goes (leaving the world keeps it
-     * for the next join) and Baritone's values go back — each step on its own, so one that fails never skips the next.
+     * Ends the session (ruling R33): a trip under way stops walking and closes restock's container screen if it can, the
+     * printer marker goes (leaving the world keeps it for the next join) and Baritone's values go back — each step on its
+     * own, so one that fails never skips the next.
      * Nothing is said here: the module speaks once all of it is done. Never throws.
      */
     Closed close(RestockReason why) {
         TripDriver t = trip;
         trip = null;
-        if (t != null) quietly("stopping the walk", t::abort);
+        if (t != null) {
+            quietly("stopping the walk", t::abort);
+            // Deferred L59: a stop during TAKE closes restock's screen as any close would (never while leaving).
+            if (why != RestockReason.LEFT) quietly("closing restock's container", t::closeOwnScreen);
+        }
         boolean leftPaused = printerHeld && !PrintPause.keepMarker(why);
         printerHeld = false;
         if (leftPaused) quietly("deleting the printer marker", PrinterMarker::delete);
@@ -324,14 +330,23 @@ final class RestockSession {
         trip = null;
         module.countTrip();
         if (resumePrinter) {
-            if (PrintPause.atReturn(true, printer.printing()) == PrintPause.Action.SWITCH_ON) {
-                if (printer.set(true)) module.info(RestockText.PRINTER_RESUMED);
-                else module.warning(RestockText.PRINTER_LEFT_PAUSED);
-            } else if (Boolean.TRUE.equals(printer.printing())) {
-                module.info(RestockText.PRINTER_LEFT_ON);
+            Boolean printing = printer.printing();
+            RestockText said = null;
+            boolean warn = false;
+            if (PrintPause.atReturn(true, printing) == PrintPause.Action.SWITCH_ON) {
+                warn = !printer.set(true);
+                said = warn ? RestockText.PRINTER_LEFT_PAUSED : RestockText.PRINTER_RESUMED;
+            } else if (Boolean.TRUE.equals(printing)) {
+                said = RestockText.PRINTER_LEFT_ON;
+            } else if (PrintPause.unknownAtReturn(true, printing)) {
+                // Deferred L60: it may still be off, and nothing else would say so.
+                said = RestockText.PRINTER_UNKNOWN_AT_RETURN;
+                warn = true;
             }
             PrinterMarker.delete();
             printerHeld = false;
+            if (said != null && warn) module.warning(said);
+            else if (said != null) module.info(said);
         }
         ClientPlayerEntity p = mc.player;
         if (took && p != null) {

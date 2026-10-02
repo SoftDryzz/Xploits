@@ -255,13 +255,19 @@ public class XploitsCommand extends XploitsCommandBase {
         }
     }
 
-    /** {@code .xploits restock chests clear}: removes this world's marks; a file that cannot be read is left untouched. */
+    /**
+     * {@code .xploits restock chests clear}: removes this world's marks; a file that cannot be read is left untouched, and
+     * a save that fails says so instead of "removed (0)".
+     */
     private void restockChestsClear(Restock module) {
-        if (MarkStore.book() == null) {
-            reply(Level.WARNING, module.name, PositionedMsg.same(Msg.of(RestockText.MARKS_UNREADABLE)));
-            return;
+        MarkStore.Cleared cleared = MarkStore.clear();
+        switch (cleared.result()) {
+            case UNREADABLE -> reply(Level.WARNING, module.name, PositionedMsg.same(Msg.of(RestockText.MARKS_UNREADABLE)));
+            case SAVE_FAILED -> reply(Level.WARNING, module.name,
+                PositionedMsg.same(Msg.of(RestockText.CHESTS_CLEAR_FAILED)));
+            default -> reply(Level.INFO, module.name,
+                PositionedMsg.same(Msg.of(RestockText.CHESTS_CLEARED, "count", cleared.count())));
         }
-        reply(Level.INFO, module.name, PositionedMsg.same(Msg.of(RestockText.CHESTS_CLEARED, "count", MarkStore.clear())));
     }
 
     private void stashStatus(StashKeeper stashKeeper) {

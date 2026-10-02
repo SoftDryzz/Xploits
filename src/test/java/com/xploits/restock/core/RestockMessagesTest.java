@@ -54,6 +54,16 @@ class RestockMessagesTest {
     }
 
     @Test
+    void theUnreadableBaritoneValueNamesThePrefixBaritoneListensTo() {
+        // Deferred L11: baritone-prefix is a setting; the fix the text suggests must use it, not a hard-coded "#".
+        RestockMessages.Facts dollar = new RestockMessages.Facts(48, 10, "$", 4_194_304L, "0.26.14", 10);
+        assertTrue(EN.render(RestockMessages.reason(RestockReason.BARITONE_SETTINGS_UNREADABLE, "allowBreak", dollar))
+            .endsWith("fix that line, or set it again with $set."));
+        assertTrue(ES.render(RestockMessages.reason(RestockReason.BARITONE_SETTINGS_UNREADABLE, "allowBreak", dollar))
+            .endsWith("vuelve a poner el ajuste con $set."));
+    }
+
+    @Test
     void theStallAndTheFullInventoryNameTheirFacts() {
         assertTrue(EN.render(RestockMessages.reason(RestockReason.NO_PATH, "", FACTS)).contains("(10 s without getting closer)"));
         assertEquals("your inventory has no room for stone: free some slots and turn restock on again.",

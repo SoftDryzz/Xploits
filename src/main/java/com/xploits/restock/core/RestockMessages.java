@@ -31,7 +31,7 @@ public final class RestockMessages {
             case PLAYER_NEAR -> Msg.of(key, "distance", f.playerDistance());
             case LOW_HEALTH -> Msg.of(key, "minHealth", f.minHealth());
             case BARITONE_SETTINGS_UNREADABLE -> Msg.of(key, "setting",
-                detail.isEmpty() ? Msg.of(RestockText.A_SETTING) : detail);
+                detail.isEmpty() ? Msg.of(RestockText.A_SETTING) : detail, "prefix", f.prefix());
             case NO_PATH, NO_PATH_BACK -> Msg.of(key, "seconds", f.stallSeconds());
             case NOTHING_FITS -> Msg.of(key, "material", detail);
             default -> Msg.of(key);

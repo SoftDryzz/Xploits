@@ -14,6 +14,7 @@ import com.xploits.restock.core.Source;
 import com.xploits.restock.core.TakePlan;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.GameOptions;
 import net.minecraft.client.world.ClientWorld;
@@ -76,6 +77,10 @@ final class TripDriver {
     private int lateTicks;
     /** OPEN: live ticks the aim was only wanted, never held (bounded in {@link #aim}). */
     private int wantedTicks;
+    /** A container click, take or close went out in this session tick: its one container action is spent. */
+    private boolean actedThisTick;
+    /** The last tick the trip ran was a guard pause, which blocks every click and close. */
+    private boolean pausedLastTick;
     private volatile boolean actingAtRequest;
 
     TripDriver(RestockSession session, MinecraftClient mc, Mover mover, RestockTrip trip, RestockLimits limits,
@@ -105,7 +110,13 @@ final class TripDriver {
         return actingAtRequest;
     }
 
+    /** At the start of every session tick, before the guards: no container action yet in this one. */
+    void newTick() {
+        actedThisTick = false;
+    }
+
     Result tick(boolean paused) {
+        pausedLastTick = paused;
         ClientPlayerEntity p = mc.player;
         // At most one container action a tick: closing a late answer is this tick's action.
         if (closeLateScreen(p, paused)) return RUNNING;
@@ -130,6 +141,23 @@ final class TripDriver {
     }
 
     /**
+     * Deferred L59: the session ends from outside the trip (a guard's stop, the module turned off, a fault) while restock's
+     * own container screen is open and shown. It is closed only as any close would be: the player stands still
+     * ({@link #still}), the cursor is empty, the last tick was no guard pause, and no container action went out in this
+     * tick. Otherwise it stays open for the player, as before.
+     */
+    void closeOwnScreen() {
+        ClientPlayerEntity p = mc.player;
+        if (p == null || actedThisTick || pausedLastTick || !ours(p)) return;
+        if (!(mc.currentScreen instanceof HandledScreen<?> shown)) return;
+        if (shown.getScreenHandler() != p.currentScreenHandler) return;
+        if (!p.currentScreenHandler.getCursorStack().isEmpty() || !still(p)) return;
+        ContainerScreen.close(p, syncId);
+        syncId = -1;
+        actedThisTick = true;
+    }
+
+    /**
      * Ruling R12: once restock's click is sent, a container screen that opens after the trip stopped waiting for it (its
      * open timed out and the trip moved on) is the late answer to that click. It is adopted and closed as soon as the
      * player stands still ({@link #still}), the cursor is empty and no guard pauses; nothing else happens in that tick.
@@ -151,6 +179,7 @@ final class TripDriver {
         if (paused || !still(p) || !h.getCursorStack().isEmpty()) return false;
         ContainerScreen.close(p, h.syncId);
         clickUnanswered = false;
+        actedThisTick = true;
         return true;
     }
 
@@ -304,9 +333,16 @@ final class TripDriver {
             case RestockTrip.Aim a -> {
                 // `wanted` holds the rotation; requestRotation() asks Meteor for it before the movement packet.
             }
-            case RestockTrip.ClickContainer c -> clickContainer(p);
-            case RestockTrip.Take t -> ContainerScreen.quickMove(mc, syncId, t.slot());
+            case RestockTrip.ClickContainer c -> {
+                actedThisTick = true;
+                clickContainer(p);
+            }
+            case RestockTrip.Take t -> {
+                actedThisTick = true;
+                ContainerScreen.quickMove(mc, syncId, t.slot());
+            }
             case RestockTrip.Close c -> {
+                actedThisTick = true;
                 session.saw(trip.container(), ContainerScreen.loose(p.currentScreenHandler),
                     ContainerScreen.nested(p.currentScreenHandler));
                 ContainerScreen.close(p, syncId);
@@ -326,7 +362,10 @@ final class TripDriver {
             }
             case RestockTrip.Stopped st -> {
                 mover.cancel();
-                if (st.closeScreen()) ContainerScreen.close(p, syncId);
+                if (st.closeScreen()) {
+                    actedThisTick = true;
+                    ContainerScreen.close(p, syncId);
+                }
                 syncId = -1;
                 wanted = null;
                 return new Ended(st.reason(),

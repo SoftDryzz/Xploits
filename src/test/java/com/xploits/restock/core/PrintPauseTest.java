@@ -44,6 +44,28 @@ class PrintPauseTest {
     }
 
     @Test
+    void aPrintModeThatCannotBeReadAtTheReturnIsSaid() {
+        // Deferred L60: restock switched it off, and at the return it cannot tell whether it is still off.
+        assertTrue(PrintPause.unknownAtReturn(true, null));
+        assertFalse(PrintPause.unknownAtReturn(true, false), "switched back on");
+        assertFalse(PrintPause.unknownAtReturn(true, true), "switched on by the player: said as such");
+        assertFalse(PrintPause.unknownAtReturn(false, null), "restock did not switch it off");
+    }
+
+    @Test
+    void aJoinThatCannotGiveItBackSaysSo() {
+        // Deferred L37: the marker is on disk, litematica-printer is installed and not known to print.
+        List<String> marker = PrintPause.markerLines();
+        assertTrue(PrintPause.leftOffAtJoin(marker, true, null), "its print mode cannot be read");
+        assertTrue(PrintPause.leftOffAtJoin(List.of("unreadable"), true, false), "the marker cannot be read, and it is off");
+        assertFalse(PrintPause.leftOffAtJoin(marker, true, false), "the join switches it on (a switch that fails is said too)");
+        assertFalse(PrintPause.leftOffAtJoin(marker, true, true), "it prints");
+        assertFalse(PrintPause.leftOffAtJoin(List.of("unreadable"), true, true), "it prints");
+        assertFalse(PrintPause.leftOffAtJoin(marker, false, null), "uninstalled since");
+        assertFalse(PrintPause.leftOffAtJoin(List.of(), true, null), "no marker");
+    }
+
+    @Test
     void onlyLeavingTheWorldKeepsTheMarker() {
         assertTrue(PrintPause.keepMarker(RestockReason.LEFT));
         for (RestockReason r : List.of(RestockReason.PLAYER_NEAR, RestockReason.MODULE_OFF, RestockReason.PLAYER_MOVED,

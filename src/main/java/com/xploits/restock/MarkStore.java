@@ -23,6 +23,10 @@ import java.util.Optional;
 public final class MarkStore {
     public enum Result { MARKED, UNMARKED, UNREADABLE, SAVE_FAILED }
 
+    /** What {@link #clear} did: {@code UNMARKED} with how many marks it removed, or why it removed none. */
+    public record Cleared(Result result, int count) {
+    }
+
     private static String world;
     private static MarkBook book;
     private static boolean unreadable;
@@ -63,21 +67,25 @@ public final class MarkStore {
         return marked ? Result.MARKED : Result.UNMARKED;
     }
 
-    /** Removes every mark of this world; how many there were (0 when the file cannot be read). */
-    public static synchronized int clear() {
+    /**
+     * Removes every mark of this world: {@code UNMARKED} with how many there were; {@code UNREADABLE} when the file cannot
+     * be read; {@code SAVE_FAILED} when the emptied file could not be written, every mark kept (deferred L49).
+     */
+    public static synchronized Cleared clear() {
         if (unreadable) world = null;
         MarkBook b = book();
-        if (b == null || b.size() == 0) return 0;
+        if (b == null) return new Cleared(Result.UNREADABLE, 0);
+        if (b.size() == 0) return new Cleared(Result.UNMARKED, 0);
         List<MarkBook.Mark> before = b.all();
         int n = b.clear();
         try {
             save(b);
         } catch (IOException e) {
             for (MarkBook.Mark m : before) b.toggle(m);
-            return 0;
+            return new Cleared(Result.SAVE_FAILED, 0);
         }
         version++;
-        return n;
+        return new Cleared(Result.UNMARKED, n);
     }
 
     /** Forgets the loaded world, so the next use reads its file again (every join does). */

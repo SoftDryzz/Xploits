@@ -1,6 +1,7 @@
 package com.xploits.restock;
 
 import com.xploits.XploitsAddon;
+import com.xploits.restock.core.RestockText;
 import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
@@ -50,15 +51,26 @@ public final class JoinWatch {
             repairDue = false;
             XploitsModule say = Modules.get().get("restock") instanceof XploitsModule m ? m : null;
             // Each repair on its own: an exception must not reach the game tick nor skip the other repair.
+            repair("Baritone", () -> BaritoneRepair.run(say), say, RestockText.REPAIR_ERROR);
+            repair("printer", () -> PrinterMarker.repairAtJoin(say, LitematicaPrinterSwitch.find()), say,
+                RestockText.PRINTER_NOT_REPAIRED);
+        }
+    }
+
+    /**
+     * One repair. A failure (an exception, or a {@code LinkageError} from a mod that changed) is logged by its class only,
+     * as its message could carry a position, and the player is told in a fixed text what to check (deferred L44).
+     */
+    private static void repair(String what, Runnable repair, XploitsModule say, RestockText told) {
+        try {
+            repair.run();
+        } catch (RuntimeException | LinkageError e) {
+            XploitsAddon.LOG.error("restock: the {} repair at join failed ({})", what, e.getClass().getName());
+            if (say == null) return;
             try {
-                BaritoneRepair.run(say);
-            } catch (RuntimeException e) {
-                XploitsAddon.LOG.error("restock: the Baritone repair at join failed");
-            }
-            try {
-                PrinterMarker.repairAtJoin(say, LitematicaPrinterSwitch.find());
-            } catch (RuntimeException e) {
-                XploitsAddon.LOG.error("restock: the printer repair at join failed");
+                say.warning(told);
+            } catch (RuntimeException | LinkageError again) {
+                XploitsAddon.LOG.error("restock: the {} repair's warning failed ({})", what, again.getClass().getName());
             }
         }
     }

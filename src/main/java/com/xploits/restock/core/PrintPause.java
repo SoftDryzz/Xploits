@@ -31,6 +31,17 @@ public final class PrintPause {
         return isMarker(marker) && installed && Boolean.FALSE.equals(printing) ? Action.SWITCH_ON : Action.NONE;
     }
 
+    /** At the return: restock switched it off and cannot read whether it still is, so it may stay off unsaid. */
+    public static boolean unknownAtReturn(boolean pausedByUs, Boolean printing) {
+        return pausedByUs && printing == null;
+    }
+
+    /** At the join, with a marker on disk: it is installed and not known to print, and the join will not switch it on. */
+    public static boolean leftOffAtJoin(List<String> marker, boolean installed, Boolean printing) {
+        return !marker.isEmpty() && installed && !Boolean.TRUE.equals(printing)
+            && atJoin(marker, installed, printing) != Action.SWITCH_ON;
+    }
+
     /** At a stop while restock holds the printer off: only leaving the world keeps the marker for the join. */
     public static boolean keepMarker(RestockReason reason) {
         return reason == RestockReason.LEFT;
