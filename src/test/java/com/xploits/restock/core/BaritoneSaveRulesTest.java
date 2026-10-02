@@ -111,10 +111,16 @@ class BaritoneSaveRulesTest {
         assertFalse(BaritoneSaveRules.deleteAfterFailedBegin(3, false));
     }
 
+    // The adapters send #cancel first and then the five restorations: sent = 6, delivered counts each that left.
     @Test
-    void theEndAndTheJoinRepairDeleteOnlyAfterFullDelivery() {
-        assertTrue(BaritoneSaveRules.deleteAfterRestoration(true));
-        assertFalse(BaritoneSaveRules.deleteAfterRestoration(false));
+    void theEndAndTheJoinRepairDeleteOnlyWhenEveryCommandWasDelivered() {
+        assertTrue(BaritoneSaveRules.deleteAfterRestoration(6, 6));
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(5, 6), "one restoration was lost");
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(5, 6), "only the #cancel was lost: the same count, kept");
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(1, 6), "only the last one arrived");
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(0, 6));
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(7, 6), "more delivered than sent is a miscount: kept");
+        assertFalse(BaritoneSaveRules.deleteAfterRestoration(0, 0), "nothing was sent: nothing proves the values are back");
     }
 
     @Test

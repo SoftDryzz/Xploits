@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -120,16 +121,21 @@ final class BaritoneMover implements Mover {
             link.disarm();
             return true;
         }
-        boolean delivered;
+        List<String> commands = new ArrayList<>();
+        commands.add(BaritoneScript.cancel(saved.prefix()));
+        commands.addAll(BaritoneSession.restoration(saved));
+        int delivered = 0;
         try {
-            delivered = link.send(BaritoneScript.cancel(saved.prefix()));
-            for (String command : BaritoneSession.restoration(saved)) delivered = link.send(command) && delivered;
+            for (String command : commands) {
+                if (link.send(command)) delivered++;
+            }
         } finally {
             link.disarm();
         }
-        if (BaritoneSaveRules.deleteAfterRestoration(delivered)) BaritoneRepair.delete();
+        boolean all = BaritoneSaveRules.deleteAfterRestoration(delivered, commands.size());
+        if (all) BaritoneRepair.delete();
         saved = null;
-        return delivered;
+        return all;
     }
 
     @Override

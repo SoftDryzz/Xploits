@@ -59,9 +59,13 @@ public final class BaritoneSaveRules {
         return delivered == 0 && savedByThisBegin;
     }
 
-    /** At a session's end and at the join repair: only a restoration that fully arrived pays the debt. */
-    public static boolean deleteAfterRestoration(boolean allDelivered) {
-        return allDelivered;
+    /**
+     * At a session's end and at the join repair: only a restoration whose every command (the {@code #cancel} included)
+     * was delivered pays the debt. Counts, not a running boolean, so one lost command can never be forgotten; and
+     * nothing sent proves nothing.
+     */
+    public static boolean deleteAfterRestoration(int delivered, int sent) {
+        return sent > 0 && delivered == sent;
     }
 
     /** A saved session the repair may act on: readable and with a prefix the net accepts; else kept and warned. */

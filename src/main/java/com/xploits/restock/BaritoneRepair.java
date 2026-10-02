@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,15 +63,19 @@ final class BaritoneRepair {
         }
         BaritoneLink link = new BaritoneLink(text -> {
         });
-        boolean delivered;
+        List<String> commands = new ArrayList<>();
+        commands.add(BaritoneScript.cancel(saved.get().prefix()));
+        commands.addAll(BaritoneSession.restoration(saved.get()));
+        int delivered = 0;
         try {
             link.arm(saved.get().prefix());
-            delivered = link.send(BaritoneScript.cancel(saved.get().prefix()));
-            for (String command : BaritoneSession.restoration(saved.get())) delivered = link.send(command) && delivered;
+            for (String command : commands) {
+                if (link.send(command)) delivered++;
+            }
         } finally {
             link.disarm();
         }
-        if (BaritoneSaveRules.deleteAfterRestoration(delivered)) {
+        if (BaritoneSaveRules.deleteAfterRestoration(delivered, commands.size())) {
             delete();
             if (say != null) say.info(RestockText.REPAIRED);
         } else if (say != null) {
