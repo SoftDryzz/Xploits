@@ -39,6 +39,14 @@ public final class RestockTrip {
             Objects.requireNonNull(resume, "resume");
             if (material.isBlank()) throw new IllegalArgumentException("a trip fetches a material");
         }
+
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "Plan[material=" + material + ", container=" + HiddenPositions.HIDDEN + ", stand="
+                + HiddenPositions.of(stand) + ", resume=" + HiddenPositions.HIDDEN + ", printerPaused=" + printerPaused
+                + "]";
+        }
     }
 
     /**
@@ -68,6 +76,15 @@ public final class RestockTrip {
             Objects.requireNonNull(click, "click");
             Objects.requireNonNull(take, "take");
         }
+
+        /** Never a position ({@link HiddenPositions}): the stand spot is one. */
+        @Override
+        public String toString() {
+            return "Facts[movementKeys=" + movementKeys + ", paused=" + paused + ", still=" + still + ", screenFree="
+                + screenFree + ", distance=" + distance + ", arrived=" + arrived + ", spot=" + HiddenPositions.of(spot)
+                + ", aiming=" + aiming + ", click=" + click + ", ourScreen=" + ourScreen + ", contentSeen=" + contentSeen
+                + ", take=" + take + ", carried=" + carried + ", cursorEmpty=" + cursorEmpty + "]";
+        }
     }
 
     public sealed interface Action permits Wait, GoTo, GoToward, StopWalking, Aim, ClickContainer, Take, Close,
@@ -80,10 +97,20 @@ public final class RestockTrip {
 
     /** Walk to stand exactly on {@code feet}. */
     public record GoTo(Pos feet) implements Action {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "GoTo[feet=" + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /** Walk towards a column, for a container not loaded yet. */
     public record GoToward(int x, int z) implements Action {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "GoToward[column=" + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /** Cancel the walking goal. */
@@ -92,10 +119,20 @@ public final class RestockTrip {
 
     /** Keep requesting the aim at the container (the adapter computed it into the facts). */
     public record Aim(Pos container) implements Action {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "Aim[container=" + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /** Click the container with the held aim. */
     public record ClickContainer(Pos container) implements Action {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "ClickContainer[container=" + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /** One QUICK_MOVE of this container slot. */
@@ -120,6 +157,12 @@ public final class RestockTrip {
     public record NeedSource(String material, Pos failed, Failure failure) implements Action {
         public NeedSource {
             Objects.requireNonNull(failure, "failure");
+        }
+
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "NeedSource[material=" + material + ", failed=" + HiddenPositions.HIDDEN + ", failure=" + failure + "]";
         }
     }
 

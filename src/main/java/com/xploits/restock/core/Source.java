@@ -35,6 +35,13 @@ public record Source(Kind kind, String dimension, Pos container, Optional<Pos> s
         if (kind == Kind.MARK && stand.isEmpty()) throw new IllegalArgumentException("a mark has its stand spot");
     }
 
+    /** Never a position ({@link HiddenPositions}). */
+    @Override
+    public String toString() {
+        return "Source[kind=" + kind + ", dimension=" + dimension + ", container=" + HiddenPositions.HIDDEN + ", stand="
+            + HiddenPositions.of(stand) + ", known=" + known + ", loose=" + loose + ", nested=" + nested + "]";
+    }
+
     public static Source mark(String dimension, Pos container, Pos stand, Map<String, Integer> loose,
                               Map<String, Integer> nested) {
         return new Source(Kind.MARK, dimension, container, Optional.of(stand), true, loose, nested);

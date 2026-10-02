@@ -18,10 +18,20 @@ import java.util.Optional;
 public final class ContainerAim {
     /** The face to click, the hit point and the rotation that looks at it. */
     public record Aiming(Face side, Point hit, Aim.Rotation rotation) {
+        /** Never a position ({@link HiddenPositions}): the hit point is one. */
+        @Override
+        public String toString() {
+            return "Aiming[side=" + side + ", hit=" + HiddenPositions.HIDDEN + ", rotation=" + rotation + "]";
+        }
     }
 
     /** The block of the container to click — one half of a double chest — and the aim at it. */
     public record Pick(Pos block, Aiming aiming) {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "Pick[block=" + HiddenPositions.HIDDEN + ", aiming=" + aiming + "]";
+        }
     }
 
     private ContainerAim() {

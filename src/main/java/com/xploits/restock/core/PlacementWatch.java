@@ -8,6 +8,7 @@ import com.xploits.printer.core.Pos;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeSet;
 
 /**
  * The selected placement's fingerprint (restock spec §3, from the printer's C3/N-M3): what makes restock refuse to start,
@@ -18,6 +19,11 @@ import java.util.Optional;
 public final class PlacementWatch {
     /** Another placement: whether it is enabled and its enclosing box. */
     public record Other(long identity, boolean enabled, GridBox enclosing) {
+        /** Never a position ({@link HiddenPositions}): the box is one. */
+        @Override
+        public String toString() {
+            return "Other[identity=" + identity + ", enabled=" + enabled + ", enclosing=" + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /**
@@ -31,6 +37,14 @@ public final class PlacementWatch {
         public View {
             regions = Map.copyOf(regions);
             others = List.copyOf(others);
+        }
+
+        /** Never a position ({@link HiddenPositions}): the origin and the boxes are; the regions show by name. */
+        @Override
+        public String toString() {
+            return "View[identity=" + identity + ", enabled=" + enabled + ", origin=" + HiddenPositions.HIDDEN
+                + ", rotation=" + rotation + ", mirror=" + mirror + ", regions=" + new TreeSet<>(regions.keySet())
+                + ", others=" + others + "]";
         }
     }
 

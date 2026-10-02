@@ -78,6 +78,11 @@ final class RestockSession {
 
     /** What arrived on the Netty thread since the last tick. */
     record Received(List<BlockPos> changed, List<EntityDamageS2CPacket> damage, boolean setback) {
+        /** Counts only (deferred L6): the changed blocks are positions, and a damage packet may carry its source's. */
+        @Override
+        public String toString() {
+            return "Received[changed=" + changed.size() + ", damage=" + damage.size() + ", setback=" + setback + "]";
+        }
     }
 
     /**

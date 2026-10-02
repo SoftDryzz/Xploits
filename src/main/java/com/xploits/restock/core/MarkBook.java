@@ -17,6 +17,12 @@ import java.util.Optional;
  */
 public final class MarkBook {
     public record Mark(String dimension, Pos container, Pos stand) {
+        /** Never a position ({@link HiddenPositions}). */
+        @Override
+        public String toString() {
+            return "Mark[dimension=" + dimension + ", container=" + HiddenPositions.HIDDEN + ", stand="
+                + HiddenPositions.HIDDEN + "]";
+        }
     }
 
     /** One line of a list: the dimension and the distance in whole blocks; −1 in another dimension. */
