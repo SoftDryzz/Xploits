@@ -6,6 +6,22 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`restock`** (experimental): when a block your Litematica build still needs runs out, it pauses
+  `litematica-printer`, walks with Baritone to the nearest container that has it — a chest you marked with
+  `mark-key` or one `stash-keeper` remembers, in the same dimension and within `max-distance` — takes whole stacks of
+  what the rest of the build needs, walks back and resumes the printer only if it is still off. Nothing is dropped,
+  no coordinate reaches the server, chat or logs, and a stop always says why: a stranger near, an attack, low health,
+  a setback, `auto-pvp` engaging, death, a dimension change, your own movement keys during a trip, no path, nothing
+  fitting. Baritone breaks and places nothing on its trips, and your Baritone settings and the print mode come back
+  after a crash at the next world join. `.xploits restock` says what it is doing; `.xploits restock chests` lists the
+  marks by dimension and distance.
+
+### Changed
+
+- `auto-travel` and `nether-sweep` refuse to launch while `restock` is on: the three drive the same Baritone.
+
 ## [0.8.0] — 2026-10-01
 
 ### Added

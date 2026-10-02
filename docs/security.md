@@ -82,6 +82,20 @@ seemed reasonable to us. Two of the ones used at first were wrong (`elytraConser
 by default, not `true`; `elytraFireworkSpeed` is `1.2`, not `1`) and would have left every manual flight
 of the player slower forever, with no way to trace it back to the addon.
 
+`restock` writes five while it is on: `allowBreak`, `allowPlace` and `allowWaterBucketFall` off, so Baritone never
+breaks or places a block on a trip, and `censorCoordinates` and `censorRanCommands` on. Before its first `#set` it
+reads your own values from Baritone's `settings.txt` — exactly as Baritone reads that file — and keeps them in
+`meteor-client/xploits/restock/baritone-session.txt`; when it stops it puts all five back (`baritone-settings`:
+`MINE`), or the first three to Baritone's factory defaults and the censors to yours (`DEFAULTS`). If the game closes
+before it could, that file is how the next world join puts them back, whichever module is on, and a session that was
+never given back is never overwritten by a new one. A value it cannot read in your `settings.txt` makes it refuse to
+start; it never guesses what to give back.
+
+`restock` also switches `litematica-printer`'s print mode off for a trip. Before switching it, it writes
+`meteor-client/xploits/restock/printer-paused.txt`; at the return it switches it back on only if it is still off, and
+deletes the file. If the game closes mid-trip, the next world join finds the file and switches the print mode back on
+— `litematica-printer` saves its own config, so without this it would stay off.
+
 **Known limit:** if you disconnect with the player already null, the restore commands are not sent and
 those settings keep their flight values.
 

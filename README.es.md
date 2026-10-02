@@ -5,11 +5,12 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Once módulos que se encienden por separado.
+otros servidores anarchy. Doce módulos que se encienden por separado.
 
-> **Lo próximo, antes de la 1.0.0: construcción.** En la siguiente versión o en las siguientes, Xploits añade un
-> printer que construye el esquema que cargues en Litematica y, cuando se queda sin un bloque, va solo a buscarlo a
-> tus cofres y shulkers, vuelve y sigue. Mira [Próximamente](#próximamente).
+> **Nuevo, experimental: `restock`.** Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
+> bloque que la construcción aún necesita, `restock` pausa el printer, va al cofre más cercano que marcaste (o que
+> recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. Mira
+> [`restock`](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica).
 
 ## Por qué Xploits
 
@@ -79,7 +80,8 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | Mod | Obligatorio para | Si falta |
 |---|---|---|
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep` | Los dos **se niegan a lanzar** y lo dicen. Los otros siete módulos funcionan igual |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` **se niega a arrancar**, y cada uno lo dice. Los otros nueve módulos funcionan igual |
+| **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, con su librería **malilib** | `restock` | `restock` **se niega a arrancar** y lo dice. Los demás módulos funcionan igual; Xploits carga sin ella |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
 | **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |
@@ -100,12 +102,15 @@ Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga
 | `surround++` | `burrow` | Solo con su ajuste `burrow` encendido (apagado de fábrica): lo enciende para un solo burrow, y el `burrow` de Meteor se apaga solo después |
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
 | `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco — igual que `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (si se puso) y su propia censura, que quedan cambiados para siempre |
+| `restock` | Cinco ajustes de **Baritone** | Mientras está encendido: `allowBreak`, `allowPlace` y `allowWaterBucketFall` apagados, para que Baritone no rompa ni ponga nada por el camino, `censorCoordinates` y `censorRanCommands` encendidos. Al pararse vuelven los cinco a tus propios valores (`baritone-settings`: `MINE`, de fábrica), o los tres primeros a los de fábrica de Baritone (`DEFAULTS`). ⚠️ Baritone los guarda en disco; si el juego se cierra con él encendido, `restock` los devuelve la próxima vez que entras en un mundo |
+| `restock` | El modo de impresión de `litematica-printer` | Lo apaga antes de un viaje y lo vuelve a encender al volver, **solo si estaba imprimiendo y sigue apagado** (si lo encendiste o apagaste tú entretanto, manda lo tuyo). Si el juego se cierra a mitad de viaje, se vuelve a encender al entrar de nuevo en un mundo |
+| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer` | Solo los **lee**: no arranca mientras uno esté encendido, y se para, nombrándolo, si enciendes uno con él encendido |
 
 Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/security.md).
 
 ---
 
-## Los once módulos
+## Los doce módulos
 
 ### `auto-travel` — volar a algún sitio sin dejar una flecha hacia tu base
 
@@ -458,6 +463,42 @@ leer después qué pasó.
 
 Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 
+### `restock` — ir a buscar bloques para tu construcción de Litematica
+
+**Experimental.** Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y `litematica-printer`, o
+a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
+
+- **Marca los contenedores que puede usar.** Asigna `mark-key`, ponte de pie en el suelo, mira un cofre, cofre
+  trampa, barril o caja de shulker colocada y púlsala: «marcado (N en total)»; púlsala otra vez para desmarcarlo
+  (funciona aunque el contenedor ya no esté). Funciona con `restock` encendido o apagado, y recuerda el sitio donde
+  estabas, por mundo. `.xploits restock chests` los lista por dimensión y distancia, nunca por posición. Con
+  `use-stash-keeper` encendido (de fábrica) usa también los contenedores que recuerda `stash-keeper`.
+- **Cuándo va.** Cuando un bloque que el resto de la construcción aún necesita llega a 0 en tu inventario, espera
+  dos pasadas completas por la construcción (para contar el bloque que `litematica-printer` acaba de poner) y elige
+  el contenedor más cercano que lo tenga, en la misma dimensión y a menos de `max-distance` (64). Un origen que ya
+  no es un contenedor (cambiaron el cofre por otro bloque) se salta, nunca se pulsa.
+- **El viaje.** Apaga el modo de impresión de `litematica-printer`, va andando con
+  [Baritone](https://github.com/cabaletta/baritone) (Baritone no rompe ni pone nada por el camino), se queda quieto,
+  mira el contenedor y lo abre, coge stacks enteros de lo que necesita el resto de la construcción —tanto como
+  quepa—, lo cierra, vuelve a donde estabas y vuelve a encender el modo de impresión. Un contenedor cuyo contenido ha
+  cambiado se anota y se prueba el siguiente más cercano en el mismo viaje. Nunca coge ni cierra con un objeto en el
+  cursor: espera a que lo sueltes.
+- **Sin sitio de donde sacarlo:** dice qué bloque y cuántos faltan, no va a ningún sitio, y el printer sigue
+  imprimiendo todo lo demás.
+- **Se para y dice por qué** cuando un jugador que no es amigo tuyo en Meteor se acerca a menos de `player-distance`
+  (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador, tu vida baja de `min-health`
+  (10), el servidor te hace retroceder, `auto-pvp` entra en combate, mueres o cambias de dimensión, **pulsas una tecla
+  de movimiento durante un viaje**, Baritone no encuentra camino, no cabe nada en tu inventario, enciendes un módulo
+  junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un mensaje; nunca cierra el
+  juego). Tras pararse durante un viaje el printer se queda apagado, y lo dice. Se **pausa** solo, y sigue, mientras
+  un módulo de combate gira, mientras comes y mientras el servidor va con lag.
+- **Se niega a arrancar** si dos colocaciones de Litematica se solapan (la seleccionada y cualquier otra activada) o
+  si la Litematica instalada tiene una API que no reconoce; lo dice en vez de adivinar.
+- **Nunca arranca solo.** Si estaba encendido al salir, sigue apagado al volver a entrar.
+
+Se ha probado en 1.21.11 en el banco, que no tiene Baritone ni `litematica-printer`; mira los
+[problemas conocidos](docs/known-issues.md) para lo que solo un servidor real puede enseñar.
+
 ---
 
 ## El panel HUD de auto-pvp
@@ -508,6 +549,8 @@ idioma activo, nunca una posición.
 | `.xploits pvp profile reset-file` | Aparta un `profiles.json` corrupto para poder volver a guardar |
 | `.xploits travel` · `go` · `stop` | Estado del viaje, lanzarlo, cortarlo |
 | `.xploits sweep` · `go` · `stop` | Estado del barrido, lanzarlo, cortarlo |
+| `.xploits restock` · `status` | Qué está haciendo `restock` y qué le falta a la construcción |
+| `.xploits restock chests` · `chests clear` | Tus contenedores marcados por dimensión y distancia, o quitar todas las marcas de este mundo |
 | `.xploits language [auto\|es\|en]` | Idioma activo, o lo cambia |
 | `.xploits reload` | Recarga los datos guardados |
 
@@ -520,6 +563,9 @@ objetivo: el segundo se lo quitaría al primero, el primero cortaría a los 45 s
 restauración —parando el vuelo del segundo a mitad— y el segundo diagnosticaría un atasco falso.
 Cada uno comprueba al otro y **se niega a lanzar** mientras el otro vuele. Se usan en el mismo
 viaje: vuelas con `auto-travel`, lo paras al llegar, y barres.
+
+**Tampoco con `restock` encendido.** Dirige el mismo Baritone: ninguno de los dos lanza mientras está encendido, y él
+no arranca mientras uno de ellos vuele.
 
 **El prefijo de Baritone no puede empezar por `/`.** Con barra el comando va por el camino de
 comando del servidor, que Baritone no escucha, y de paso la red de seguridad se comería todos los
@@ -547,6 +593,7 @@ escribieras a mano se publicarían en el chat del servidor**.
 <instancia>/meteor-client/xploits/console/  Historial de la consola, 30 días como mucho
 <instancia>/meteor-client/xploits/pvp/fights/  Peleas grabadas, 50 como mucho
 <instancia>/meteor-client/xploits/pvp/profiles.json  Tus perfiles de estilo
+<instancia>/meteor-client/xploits/restock/  Contenedores marcados por mundo; valores de Baritone y modo de impresión por devolver
 <instancia>/meteor-client/modules.nbt     Ajustes (los escribe Meteor)
 <instancia>/meteor-client/friends.nbt     Lista de amigos (la escribe Meteor)
 ```
@@ -578,7 +625,7 @@ chat acaba en disco. El ajuste `hide-coordinates-in-log` del módulo `xploits` l
 esa copia (en pantalla se siguen viendo): `Off`, `Baritone` (solo sus líneas), `All` (por defecto) o
 `All but Baritone`. También tapa los `Saving region x,z` que Baritone escribe por su cuenta.
 `auto-travel` y `nether-sweep` además activan la censura de Baritone (`censorCoordinates`,
-`censorRanCommands`) antes del primer objetivo, y la dejan puesta.
+`censorRanCommands`) antes del primer objetivo, y la dejan puesta. `restock` la activa mientras está encendido y te devuelve tus propios valores al pararse.
 
 La consola oculta las coordenadas por defecto. Con su ajuste `hide-coordinates` apagado muestra lo
 mismo que el chat y las guarda en disco (hasta 30 días de historial).
@@ -603,13 +650,9 @@ Lo más habitual:
 
 ## Próximamente
 
-- **Construcción, en la siguiente versión o en las siguientes, antes de la 1.0.0:** un printer que construye el
-  esquema que cargues en Litematica y, cuando se queda sin un bloque, va a buscarlo —a los cofres que marques
-  (miras uno y pulsas una tecla) o a los contenedores que recuerda `stash-keeper`, siempre el más cercano, shulkers
-  incluidos—, vuelve y sigue donde lo dejó. Coloca un bloque por tick, a alcance legítimo y nunca en el aire, y se
-  para y te avisa si se acerca otro jugador (un ajuste que puedes apagar). Después, map art, túneles y autopistas, y
-  bases. **Instala Litematica para usarlo:** Xploits funciona sin ella, pero el printer construye a partir del
-  esquema que cargas ahí. Va hasta tus cofres con Baritone.
+- **Construcción, lo siguiente, antes de la 1.0.0:** que `restock` vaya a buscar también shulkers —trae uno, lo
+  coloca junto a la construcción, coge lo que necesita, lo rompe y lo recoge—; después, map art, túneles y autopistas,
+  y bases.
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
   daño propio que guarda una reserva de vida; `surround++` — un escudo defensivo calculado, desde el
   ajuste `shell-module` de `auto-pvp`.
