@@ -62,8 +62,18 @@ final class TripDriver {
     private BlockHitResult hit;
     private RestockTrip.Click click = RestockTrip.Click.NONE;
     private int syncId = -1;
-    /** Restock's click on a container left and no screen has answered it yet (ruling R12). */
+    /**
+     * The extra distance, beyond the player's block interaction range, up to which the server keeps a container's screen
+     * open ({@code Inventory.canPlayerUse}: {@code canInteractWithBlockAt(pos, 4.0)}, VERIFIED with javap).
+     */
+    private static final double SCREEN_KEPT_RANGE = 4.0;
+
+    /** Restock's click on a container left and no screen has answered it yet (ruling R12; expires, ruling R28). */
     private boolean clickUnanswered;
+    /** The container that unanswered click went to. */
+    private Pos clicked;
+    /** Live ticks since the open stopped waiting for that answer (ruling R28). */
+    private int lateTicks;
     /** OPEN: live ticks the aim was only wanted, never held (bounded in {@link #aim}). */
     private int wantedTicks;
     private volatile boolean actingAtRequest;
@@ -126,23 +136,51 @@ final class TripDriver {
     /**
      * Ruling R12: once restock's click is sent, a container screen that opens after the trip stopped waiting for it (its
      * open timed out and the trip moved on) is the late answer to that click. It is adopted and closed as soon as the
-     * player is still as the server knows, the cursor is empty and no guard pauses; nothing else happens in that tick. A
-     * screen with no click of restock's pending is never closed. True when it was closed now.
+     * player stands still ({@link #still}), the cursor is empty and no guard pauses; nothing else happens in that tick.
+     * Ruling R28: the wait for that answer expires after {@code openTimeoutTicks} live ticks since the open gave up, or as
+     * soon as the player is out of the range at which the server keeps that container's screen open (the server closes
+     * such a screen itself) — so a screen the player opens later is never taken for it. A screen with no click of
+     * restock's pending is never closed. True when it was closed now.
      */
     private boolean closeLateScreen(ClientPlayerEntity p, boolean paused) {
         if (!clickUnanswered || trip.phase() == RestockTrip.Phase.WAIT_SCREEN) return false;
+        if (!paused) lateTicks++;
+        boolean screenGone = !p.canInteractWithBlockAt(WorldRay.block(clicked), SCREEN_KEPT_RANGE);
+        if (lateTicks > limits.openTimeoutTicks() || screenGone) {
+            clickUnanswered = false;
+            return false;
+        }
         ScreenHandler h = p.currentScreenHandler;
         if (h == p.playerScreenHandler || ContainerScreen.containerSlots(h) <= 0) return false;
-        if (paused || !PacketWatch.get().stillAsServerKnows() || !h.getCursorStack().isEmpty()) return false;
+        if (paused || !still(p) || !h.getCursorStack().isEmpty()) return false;
         ContainerScreen.close(p, h.syncId);
         clickUnanswered = false;
         return true;
     }
 
-    private RestockTrip.Facts facts(ClientPlayerEntity p, boolean paused) {
+    /**
+     * Standing still as every container click and close needs it (Global Constraints, spike S5): the last input the server
+     * got had no movement, jump or sneak and sprint is off, no one else's action in the last tick or the open Grim tick, on
+     * ground, not sprinting, sneaking or using an item, and no walking goal.
+     */
+    private boolean still(ClientPlayerEntity p) {
         PacketWatch watch = PacketWatch.get();
-        boolean still = watch.stillAsServerKnows() && !watch.foreignActionLastTick() && !watch.foreignActionThisGrimTick()
+        return watch.stillAsServerKnows() && !watch.foreignActionLastTick() && !watch.foreignActionThisGrimTick()
             && p.isOnGround() && !p.isSprinting() && !p.isSneaking() && !p.isUsingItem() && mover.idle();
+    }
+
+    /**
+     * Ruling R27: the block at the trip's container is still one restock marks ({@link Marks#container}: chest, trapped
+     * chest, barrel, shulker box). A mark or a stash-keeper entry can outlive its container, and a right-click on whatever
+     * replaced it would use the held item (place a block, flip a lever) or set off a bed or a respawn anchor.
+     */
+    private boolean containerThere() {
+        ClientWorld w = mc.world;
+        return w != null && Marks.container(w.getBlockState(WorldRay.block(trip.container())).getBlock());
+    }
+
+    private RestockTrip.Facts facts(ClientPlayerEntity p, boolean paused) {
+        boolean still = still(p);
         boolean cursorEmpty = p.currentScreenHandler.getCursorStack().isEmpty();
         boolean screenFree = mc.currentScreen == null && p.currentScreenHandler == p.playerScreenHandler && cursorEmpty;
         double distance = Double.NaN;
@@ -184,13 +222,16 @@ final class TripDriver {
      * The aim at the container from here. {@code live}: a tick on which the core reads the aim (unpaused, still, screen
      * free). The core waits on WANTED without a limit, so a rotation that is never held (Meteor's queue always busy, a
      * request that never goes out, a server that never echoes it) would hold the trip, the printer paused, for ever: after
-     * {@code openTimeoutTicks} live ticks it is NONE, and the core makes the container unusable and tries the next.
+     * {@code openTimeoutTicks} live ticks it is NONE, and the core makes the container unusable and tries the next. A
+     * block that is no longer a container restock marks is NONE at once (ruling R27).
      */
     private RestockTrip.Aiming aim(ClientPlayerEntity p, boolean live) {
         Vec3d e = p.getEyePos();
         Point eye = new Point(e.x, e.y, e.z);
-        Optional<ContainerAim.Aiming> a = ContainerAim.choose(trip.container(), eye, p.getYaw(), limits.reach(),
-            limits.hitMargin(), (block, side, r) -> WorldRay.ray(mc, block, side, r, limits.reach()) != null);
+        Optional<ContainerAim.Aiming> a = containerThere()
+            ? ContainerAim.choose(trip.container(), eye, p.getYaw(), limits.reach(), limits.hitMargin(),
+                (block, side, r) -> WorldRay.ray(mc, block, side, r, limits.reach()) != null)
+            : Optional.empty();
         if (a.isEmpty()) {
             wanted = null;
             hit = null;
@@ -301,7 +342,8 @@ final class TripDriver {
         BlockHitResult h = hit;
         wanted = null;
         hit = null;
-        if (h == null) {
+        // Ruling R27, checked again right before the packet: never a right-click on anything but a container.
+        if (h == null || !containerThere()) {
             click = RestockTrip.Click.REFUSED;
             return;
         }
@@ -311,7 +353,11 @@ final class TripDriver {
         PacketWatch.get().asOurs(() -> result[0] = mc.interactionManager.interactBlock(p, Hand.MAIN_HAND, h));
         click = PacketWatch.get().oursSent() == before + 1 ? RestockTrip.Click.SENT : RestockTrip.Click.REFUSED;
         // Only a click that left can be answered with a screen (ruling R12).
-        if (click == RestockTrip.Click.SENT) clickUnanswered = true;
+        if (click == RestockTrip.Click.SENT) {
+            clickUnanswered = true;
+            clicked = trip.container();
+            lateTicks = 0;
+        }
         // As vanilla's right click (MinecraftClient.doItemUse): a success the client swings for swings the hand, in the
         // same tick as the click — a click without its swing is what PaceRules' NO_SWING rule (and an anticheat) flags.
         if (click == RestockTrip.Click.SENT && result[0] instanceof ActionResult.Success success

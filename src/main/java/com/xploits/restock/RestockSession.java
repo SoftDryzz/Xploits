@@ -93,7 +93,11 @@ final class RestockSession {
     private final Guards guards = new Guards(PrinterLimits.DEFAULTS);
     private final StateFacts facts = new StateFacts();
     private final Sources sources = new Sources();
-    private final RunOut runOut = new RunOut(limits.duePasses());
+    /**
+     * Remembers the index's pass count when each material ran out, so it lives exactly as long as {@link #index}: made
+     * again whenever the index is rebuilt or dropped (ruling R26) — a new index counts its passes from 0 again.
+     */
+    private RunOut runOut = new RunOut(limits.duePasses());
     /** Items beyond one that matching positions already hold (ruling R6): kept beside {@link #index}, cleared with it. */
     private final PlacedExtra extra = new PlacedExtra();
     private final RegistryKey<World> dimension;
@@ -332,6 +336,7 @@ final class RestockSession {
             }
             index = null;
             extra.clear();
+            runOut = new RunOut(limits.duePasses());
             totals = Map.of();
             notCounted = why;
             notCountedDetail = refusal.get().detail();
@@ -339,6 +344,7 @@ final class RestockSession {
         }
         index = new BuildIndex(s.boxes());
         extra.clear();
+        runOut = new RunOut(limits.duePasses());
         totals = RestockNeeds.totals(facts.counted(s.wholeBuild()));
         notCounted = null;
         notCountedDetail = "";

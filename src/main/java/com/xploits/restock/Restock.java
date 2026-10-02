@@ -230,7 +230,13 @@ public class Restock extends XploitsModule {
             return;
         }
         resumedByJoin = false;
-        Optional<RestockReason.Refusal> refusal = start();
+        Optional<RestockReason.Refusal> refusal;
+        try {
+            refusal = start();
+        } catch (RuntimeException e) {
+            failed(e);
+            return;
+        }
         if (refusal.isPresent()) {
             lastReason = refusal.get().reason();
             error(Msg.of(RestockText.REFUSED, "reason", reasonText(refusal.get().reason(), refusal.get().detail())));
@@ -257,7 +263,15 @@ public class Restock extends XploitsModule {
         Mover mover = bench ? benchMover : baritoneMover;
         Optional<RestockReason.Refusal> moverRefusal = mover.begin(baritonePrefix.get(), baritoneSettings.get());
         if (moverRefusal.isPresent()) return moverRefusal;
-        RestockSession s = new RestockSession(this, mc, this::openSource, source, mover, printer);
+        RestockSession s;
+        try {
+            s = new RestockSession(this, mc, this::openSource, source, mover, printer);
+        } catch (RuntimeException e) {
+            // No session holds Baritone's values yet, so no session's close can give them back: given back here.
+            String prefix = mover.prefix();
+            if (!mover.end()) warning(RestockText.RESTORE_NOT_DELIVERED, "prefix", prefix);
+            throw e;
+        }
         session = s;
         announce(s, baritone, printer);
         return Optional.empty();
@@ -325,6 +339,14 @@ public class Restock extends XploitsModule {
 
     @EventHandler(priority = EventPriority.HIGH)
     private void onTick(TickEvent.Pre event) {
+        try {
+            tickSession();
+        } catch (RuntimeException e) {
+            failed(e);
+        }
+    }
+
+    private void tickSession() {
         if (resumedByJoin) {
             resumedByJoin = false;
             info(RestockText.NOT_RESUMED);
@@ -353,7 +375,12 @@ public class Restock extends XploitsModule {
     @EventHandler(priority = EventPriority.HIGH)
     private void onSendMovement(SendMovementPacketsEvent.Pre event) {
         RestockSession s = session;
-        if (s != null) s.requestRotation();
+        if (s == null) return;
+        try {
+            s.requestRotation();
+        } catch (RuntimeException e) {
+            failed(e);
+        }
     }
 
     // --- helpers -----------------------------------------------------------------------------------------------
@@ -365,6 +392,22 @@ public class Restock extends XploitsModule {
         toast(text);
         finish(why);
         toggle();
+    }
+
+    /**
+     * Ruling R29: a fault in restock never reaches the game, whose crash report would list every loaded player's name and
+     * position. The session ends through the normal stop path with {@code INTERNAL} (Baritone given back, the marker
+     * deleted, the printer said to stay paused), naming only the exception's class: its message could carry a position.
+     */
+    private void failed(RuntimeException e) {
+        try {
+            stop(RestockReason.INTERNAL, e.getClass().getName());
+        } catch (RuntimeException again) {
+            // The stop itself failed: this session never runs again, and the module is left off.
+            session = null;
+            lastReason = RestockReason.INTERNAL;
+            if (isActive()) toggle();
+        }
     }
 
     Msg reasonText(RestockReason why, String detail) {
