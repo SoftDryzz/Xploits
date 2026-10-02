@@ -469,7 +469,7 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
 
 - **Marca los contenedores que puede usar.** Asigna `mark-key`, ponte de pie en el suelo, mira un cofre, cofre
-  trampa, barril o caja de shulker colocada y púlsala: «Marcado (N en total).»; púlsala otra vez para desmarcarlo
+  trampa o de cobre, barril o caja de shulker colocada y púlsala: «Marcado (N en total).»; púlsala otra vez para desmarcarlo
   (funciona aunque el contenedor ya no esté). Funciona con `restock` encendido o apagado, y recuerda el sitio donde
   estabas, por mundo. `.xploits restock chests` los lista por dimensión y distancia, nunca por posición. Con
   `use-stash-keeper` encendido (de fábrica) usa también los contenedores que recuerda `stash-keeper`.

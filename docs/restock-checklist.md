@@ -61,5 +61,6 @@ On each server, 6b6t first:
 - [ ] A build with shulker boxes, and a marked chest holding a shulker box of the same colour with items in it:
       `restock` leaves that shulker box in the chest.
 - [ ] Marking while flying is refused; unmarking a chest that has vanished works.
+- [ ] Mark a copper chest (single and double): `restock` opens it and takes.
 
 Anything that fails stops the release: note what happened (counts and reasons only) and open an issue.
