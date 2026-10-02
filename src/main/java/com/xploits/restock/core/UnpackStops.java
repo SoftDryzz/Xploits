@@ -3,6 +3,7 @@ package com.xploits.restock.core;
 import com.xploits.printer.core.Guards;
 import com.xploits.printer.core.PrinterLimits;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -15,7 +16,47 @@ import java.util.Optional;
  * stop, so while it finishes the at-once reasons are read here from the guards' own inputs, in the guards' order.
  */
 public final class UnpackStops {
+    /** What the session does with the guards' stop while an unpack runs ({@link #onGuardStop}). */
+    public sealed interface Answer permits Halt, Drain, Carry {
+    }
+
+    /** The unpack stops now with the one action its stop allows; the session stops with {@code reason}. */
+    public record Halt(RestockReason reason) implements Answer {
+        public Halt {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    /** The unpack finishes the break and the pick-up first, then the session stops with {@code reason}. */
+    public record Drain(RestockReason reason) implements Answer {
+        public Drain {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    /** The unpack goes on finishing for the stop it already drains for. */
+    public record Carry() implements Answer {
+    }
+
+    private static final Carry CARRY = new Carry();
+
     private UnpackStops() {
+    }
+
+    /**
+     * Owner ruling R42 for the guards' stop {@code stop} while an unpack runs. {@code outside}: a box is out
+     * ({@link UnpackPlan#outside}); {@code draining}: the unpack already finishes for an earlier stop, which the guards
+     * hold and give again every tick. Not finishing yet: a stop that finishes first, with a box out, finishes first —
+     * unless an at-once reason holds in the same inputs (the guards name only their first stop of a tick, and a
+     * setback after a stranger near is a one-tick pulse the next tick no longer shows; rulings R45/R53); anything else
+     * halts now, with the guards' own reason. Finishing: the at-once reasons are read again from the inputs, in the
+     * guards' order; the first halts now, with its own name; none carries on.
+     */
+    public static Answer onGuardStop(RestockReason stop, boolean outside, boolean draining, Guards.Inputs in) {
+        Objects.requireNonNull(stop, "stop");
+        Optional<RestockReason> urgent = atOnce(in);
+        if (draining) return urgent.<Answer>map(Halt::new).orElse(CARRY);
+        return finishesFirst(stop) && outside && urgent.isEmpty() ? new Drain(stop) : new Halt(stop);
     }
 
     public static boolean finishesFirst(RestockReason r) {
