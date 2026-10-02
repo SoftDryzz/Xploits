@@ -1,5 +1,6 @@
 package com.xploits.restock;
 
+import com.xploits.XploitsAddon;
 import com.xploits.shared.XploitsModule;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
@@ -48,8 +49,17 @@ public final class JoinWatch {
         if (repairDue && MeteorClient.mc.player != null) {
             repairDue = false;
             XploitsModule say = Modules.get().get("restock") instanceof XploitsModule m ? m : null;
-            BaritoneRepair.run(say);
-            PrinterMarker.repairAtJoin(say, LitematicaPrinterSwitch.find());
+            // Each repair on its own: an exception must not reach the game tick nor skip the other repair.
+            try {
+                BaritoneRepair.run(say);
+            } catch (RuntimeException e) {
+                XploitsAddon.LOG.error("restock: the Baritone repair at join failed");
+            }
+            try {
+                PrinterMarker.repairAtJoin(say, LitematicaPrinterSwitch.find());
+            } catch (RuntimeException e) {
+                XploitsAddon.LOG.error("restock: the printer repair at join failed");
+            }
         }
     }
 }

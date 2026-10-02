@@ -1,6 +1,7 @@
 package com.xploits.restock;
 
 import com.xploits.printer.core.BaritoneSession;
+import com.xploits.restock.core.BaritoneSaveRules;
 import com.xploits.restock.core.RestockText;
 import com.xploits.shared.XploitsModule;
 import com.xploits.shared.baritone.BaritoneLink;
@@ -54,7 +55,7 @@ final class BaritoneRepair {
     /** At the first tick after a world join, with a player. Client thread. {@code say} may be null. */
     static void run(XploitsModule say) {
         if (!Files.isRegularFile(file()) || !FabricLoader.getInstance().isModLoaded("baritone")) return;
-        Optional<BaritoneSession.Saved> saved = read();
+        Optional<BaritoneSession.Saved> saved = BaritoneSaveRules.repairable(read());
         if (saved.isEmpty()) {
             if (say != null) say.warning(RestockText.SAVED_UNREADABLE);
             return;
@@ -69,7 +70,7 @@ final class BaritoneRepair {
         } finally {
             link.disarm();
         }
-        if (delivered) {
+        if (BaritoneSaveRules.deleteAfterRestoration(delivered)) {
             delete();
             if (say != null) say.info(RestockText.REPAIRED);
         } else if (say != null) {

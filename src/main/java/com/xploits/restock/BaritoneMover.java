@@ -1,7 +1,7 @@
 package com.xploits.restock;
 
 import com.xploits.printer.core.BaritoneSession;
-import com.xploits.restock.core.BaritoneValues;
+import com.xploits.restock.core.BaritoneSaveRules;
 import com.xploits.restock.core.RestockReason;
 import com.xploits.shared.baritone.BaritoneLink;
 import com.xploits.travel.core.BaritoneScript;
@@ -13,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -41,30 +40,27 @@ final class BaritoneMover implements Mover {
 
     @Override
     public Optional<RestockReason.Refusal> begin(String prefix, BaritoneSession.Mode mode) {
+        saved = null;
+        goal = false;
+        Optional<RestockReason.Refusal> badPrefix = BaritoneSaveRules.prefixRefusal(prefix);
+        if (badPrefix.isPresent()) return badPrefix;
         boolean pending = Files.isRegularFile(BaritoneRepair.file());
-        Map<String, Boolean> player;
-        if (pending) {
-            Optional<BaritoneSession.Saved> unrestored = BaritoneRepair.read();
-            if (unrestored.isEmpty()) return refusal(RestockReason.BARITONE_SAVED_UNREADABLE, "");
-            player = unrestored.get().player();
-        } else {
-            Path settings = FabricLoader.getInstance().getGameDir().resolve("baritone").resolve("settings.txt");
-            Map<String, String> file;
-            try {
-                List<String> lines = Files.isRegularFile(settings)
-                    ? Files.readAllLines(settings, StandardCharsets.UTF_8) : List.of();
-                file = BaritoneSession.parse(lines);
-            } catch (IOException e) {
-                return refusal(RestockReason.BARITONE_SETTINGS_UNREADABLE, "");
-            }
-            Optional<String> bad = BaritoneValues.unreadable(file);
-            if (bad.isPresent()) return refusal(RestockReason.BARITONE_SETTINGS_UNREADABLE, bad.get());
-            Optional<Map<String, Boolean>> values = BaritoneSession.playerValues(file);
-            if (values.isEmpty()) return refusal(RestockReason.BARITONE_SETTINGS_UNREADABLE, "");
-            player = values.get();
-        }
-        BaritoneSession.Saved session = new BaritoneSession.Saved(prefix, mode, player);
+        Optional<BaritoneSession.Saved> unrestored = pending ? BaritoneRepair.read() : Optional.empty();
+        Optional<List<String>> settingsLines = Optional.empty();
         if (!pending) {
+            Path settings = FabricLoader.getInstance().getGameDir().resolve("baritone").resolve("settings.txt");
+            try {
+                settingsLines = Optional.of(Files.isRegularFile(settings)
+                    ? Files.readAllLines(settings, StandardCharsets.UTF_8) : List.of());
+            } catch (IOException e) {
+                settingsLines = Optional.empty();
+            }
+        }
+        BaritoneSaveRules.Values values = BaritoneSaveRules.playerValues(pending, unrestored, settingsLines);
+        if (values.refusal().isPresent()) return values.refusal();
+        BaritoneSession.Saved session = new BaritoneSession.Saved(prefix, mode, values.player());
+        boolean ours = BaritoneSaveRules.saveBeforeFirstSet(pending);
+        if (ours) {
             try {
                 BaritoneRepair.save(session);
             } catch (IOException e) {
@@ -80,7 +76,7 @@ final class BaritoneMover implements Mover {
         if (delivered < preparation.size()) {
             link.disarm();
             // Nothing reached Baritone: the player's settings are untouched, so the file we just wrote is not a debt.
-            if (delivered == 0 && !pending) BaritoneRepair.delete();
+            if (BaritoneSaveRules.deleteAfterFailedBegin(delivered, ours)) BaritoneRepair.delete();
             return refusal(RestockReason.BARITONE_NOT_LISTENING, "");
         }
         saved = session;
@@ -89,19 +85,21 @@ final class BaritoneMover implements Mover {
 
     @Override
     public boolean goTo(BlockPos feet) {
+        if (!ready()) return false;
         goal = true;
         return link.send(BaritoneScript.goToBlock(saved.prefix(), feet.getX(), feet.getY(), feet.getZ()));
     }
 
     @Override
     public boolean goToward(int x, int z) {
+        if (!ready()) return false;
         goal = true;
         return link.send(BaritoneScript.goToColumn(saved.prefix(), x, z));
     }
 
     @Override
     public void cancel() {
-        if (!goal || saved == null) return;
+        if (!goal || !ready()) return;
         goal = false;
         link.send(BaritoneScript.cancel(saved.prefix()));
     }
@@ -129,7 +127,7 @@ final class BaritoneMover implements Mover {
         } finally {
             link.disarm();
         }
-        if (delivered) BaritoneRepair.delete();
+        if (BaritoneSaveRules.deleteAfterRestoration(delivered)) BaritoneRepair.delete();
         saved = null;
         return delivered;
     }
@@ -137,6 +135,11 @@ final class BaritoneMover implements Mover {
     @Override
     public String prefix() {
         return saved == null ? "" : saved.prefix();
+    }
+
+    /** A session exists and the net is armed: without either, a command would reach the server as plain chat. */
+    private boolean ready() {
+        return saved != null && link.armed();
     }
 
     private static Optional<RestockReason.Refusal> refusal(RestockReason reason, String detail) {
