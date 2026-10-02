@@ -63,7 +63,8 @@ final class BaritoneRepair {
 
     /** At the first tick after a world join, with a player. Client thread. {@code say} may be null. */
     static void run(XploitsModule say) {
-        if (!Files.isRegularFile(file()) || !FabricLoader.getInstance().isModLoaded("baritone")) return;
+        // Deferred L44: a file whose existence cannot be told is read, and so warned about as unreadable, not skipped.
+        if (Files.notExists(file()) || !FabricLoader.getInstance().isModLoaded("baritone")) return;
         Optional<BaritoneSession.Saved> saved = BaritoneSaveRules.repairable(read());
         if (saved.isEmpty()) {
             if (say != null) say.warning(RestockText.SAVED_UNREADABLE);

@@ -45,14 +45,17 @@ final class BaritoneMover implements Mover {
         goal = false;
         Optional<RestockReason.Refusal> badPrefix = BaritoneSaveRules.prefixRefusal(prefix);
         if (badPrefix.isPresent()) return badPrefix;
-        boolean pending = Files.isRegularFile(BaritoneRepair.file());
+        // Deferred L44: only a file known not to be there is "none". One whose existence cannot be told is pending and
+        // unreadable — kept, refused, never saved over — and a settings.txt that cannot be told is unreadable, never
+        // Baritone's defaults taken for the player's values.
+        boolean pending = !Files.notExists(BaritoneRepair.file());
         Optional<BaritoneSession.Saved> unrestored = pending ? BaritoneRepair.read() : Optional.empty();
         Optional<List<String>> settingsLines = Optional.empty();
         if (!pending) {
             Path settings = FabricLoader.getInstance().getGameDir().resolve("baritone").resolve("settings.txt");
             try {
-                settingsLines = Optional.of(Files.isRegularFile(settings)
-                    ? Files.readAllLines(settings, StandardCharsets.UTF_8) : List.of());
+                settingsLines = Optional.of(Files.notExists(settings)
+                    ? List.of() : Files.readAllLines(settings, StandardCharsets.UTF_8));
             } catch (IOException e) {
                 settingsLines = Optional.empty();
             }
@@ -114,6 +117,12 @@ final class BaritoneMover implements Mover {
     public void tick() {
     }
 
+    /**
+     * Gives the player's values back: {@code #cancel}, then the restoration. Deferred L45: only through an armed net —
+     * without it a {@code #} command would reach the server as plain chat — so an unarmed one sends nothing and keeps the
+     * saved file for the next join's repair; the list is built inside the {@code try}, so whatever fails, the net is
+     * disarmed. True when every command reached Baritone (the file is then deleted).
+     */
     @Override
     public boolean end() {
         goal = false;
@@ -121,11 +130,16 @@ final class BaritoneMover implements Mover {
             link.disarm();
             return true;
         }
-        List<String> commands = new ArrayList<>();
-        commands.add(BaritoneScript.cancel(saved.prefix()));
-        commands.addAll(BaritoneSession.restoration(saved));
+        if (!link.armed()) {
+            saved = null;
+            return false;
+        }
+        List<String> commands = List.of();
         int delivered = 0;
         try {
+            commands = new ArrayList<>();
+            commands.add(BaritoneScript.cancel(saved.prefix()));
+            commands.addAll(BaritoneSession.restoration(saved));
             for (String command : commands) {
                 if (link.send(command)) delivered++;
             }
