@@ -8,12 +8,14 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Restock spec §5: the settings, kebab-case, each with its description, with the spec's defaults. */
 class RestockSettingTest {
     @Test
     void theIdsAreTheSpecsOwn() {
-        assertEquals(List.of("mark-key", "max-distance", "use-stash-keeper", "baritone-settings", "baritone-prefix",
+        assertEquals(List.of("mark-key", "max-distance", "use-stash-keeper", "use-carried-shulkers",
+            "baritone-settings", "baritone-prefix",
             "stop-near-players", "player-distance", "min-health"),
             Arrays.stream(RestockSetting.values()).map(RestockSetting::id).toList());
         for (RestockSetting s : RestockSetting.values()) assertEquals("SETTING_" + s.name(), s.text().name());
@@ -69,5 +71,14 @@ class RestockSettingTest {
             () -> new RestockSettings(64, true, null, "#", true, 48, 10));
         assertThrows(IllegalArgumentException.class,
             () -> new RestockSettings(64, true, BaritoneSession.Mode.MINE, null, true, 48, 10));
+    }
+
+    @Test
+    void theCarriedShulkersAreUsedByDefault() {
+        // Owner ruling R44: on by default; the settings read before it existed keep it on.
+        assertTrue(RestockSettings.DEFAULTS.useCarriedShulkers());
+        assertTrue(new RestockSettings(64, true, BaritoneSession.Mode.MINE, "#", true, 48, 10).useCarriedShulkers());
+        assertEquals(false,
+            new RestockSettings(64, true, BaritoneSession.Mode.MINE, "#", true, 48, 10, false).useCarriedShulkers());
     }
 }

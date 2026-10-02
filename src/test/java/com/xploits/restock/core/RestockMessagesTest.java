@@ -95,7 +95,8 @@ class RestockMessagesTest {
     void everyActivityFitsTheConsoleHeader() {
         for (RestockText t : List.of(RestockText.ACTIVITY_SCANNING, RestockText.ACTIVITY_WATCHING,
             RestockText.ACTIVITY_PAUSING, RestockText.ACTIVITY_WALKING, RestockText.ACTIVITY_OPENING,
-            RestockText.ACTIVITY_TAKING, RestockText.ACTIVITY_RETURNING, RestockText.ACTIVITY_PAUSED)) {
+            RestockText.ACTIVITY_TAKING, RestockText.ACTIVITY_RETURNING, RestockText.ACTIVITY_PAUSED,
+            RestockText.ACTIVITY_UNPACKING)) {
             assertTrue(ES.render(Msg.of(t)).length() <= 30, t.name());
             assertTrue(EN.render(Msg.of(t)).length() <= 30, t.name());
         }
@@ -147,5 +148,31 @@ class RestockMessagesTest {
         assertEquals("Every shulker_box in that container has items stored inside it, and restock never takes such a stack "
                 + "as a building block: trying the next container.",
             EN.render(Msg.of(RestockText.TRIP_FILLED_ONLY, "material", "shulker_box")));
+    }
+
+    @Test
+    void everyStopSaysWhatIsLeftOfTheShulkerBoxesByDistanceOnly() {
+        assertEquals(List.of(), RestockMessages.shulkersLeft(ShulkersLeft.NONE));
+        assertEquals(List.of(
+            "2 shulker box(es) restock set down still stand(s) beside the build, the nearest 3 blocks from you: break it"
+                + " and pick it up by hand.",
+            "The shulker box restock broke lies on the ground 4 blocks from you: pick it up.",
+            "You still carry 1 shulker box(es) restock took from your containers: put them back by hand."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).stream().map(EN::render).toList());
+        assertEquals(List.of(
+            "The shulker box restock broke did not come back to your inventory and is no longer on the ground near you:"
+                + " something or someone took it.",
+            "restock could not check whether a shulker box it set down is still standing or on the ground: look around"
+                + " the build."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).stream().map(EN::render).toList());
+        assertEquals(List.of(
+            "1 shulker box(es) restock set down still stand(s) beside the build, the nearest 2 blocks from you,"
+                + " unless it broke just now as restock's dig ended: then it lies on the ground near there. Break it,"
+                + " or pick it up, by hand."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).stream().map(EN::render)
+                .toList(), "M17: right after the dig's STOP");
+        RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).forEach(ES::render);
+        RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).forEach(ES::render);
+        RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).forEach(ES::render);
     }
 }

@@ -2,6 +2,8 @@ package com.xploits.restock.core;
 
 import com.xploits.shared.core.i18n.Msg;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.TreeMap;
@@ -47,6 +49,23 @@ public final class RestockMessages {
             case NOTHING_FITS -> Msg.of(key, "material", detail);
             default -> Msg.of(key);
         };
+    }
+
+    /**
+     * What a stop says about the shulker boxes, in this order: standing (or just broken, M17), on the ground, gone, not
+     * checked, borrowed.
+     */
+    public static List<Msg> shulkersLeft(ShulkersLeft s) {
+        List<Msg> out = new ArrayList<>(5);
+        if (s.standing() > 0) {
+            out.add(Msg.of(s.breaking() ? RestockText.SHULKER_STANDING_BREAKING : RestockText.SHULKER_STANDING,
+                "count", s.standing(), "distance", s.nearestStanding()));
+        }
+        if (s.onGround() >= 0) out.add(Msg.of(RestockText.SHULKER_ON_GROUND, "distance", s.onGround()));
+        if (s.lost()) out.add(Msg.of(RestockText.SHULKER_LOST));
+        if (s.unchecked()) out.add(Msg.of(RestockText.SHULKER_UNCHECKED));
+        if (s.borrowed() > 0) out.add(Msg.of(RestockText.BORROWED_LEFT, "count", s.borrowed()));
+        return out;
     }
 
     /** "glass ×4, stone ×12": sorted by item, the {@code minecraft:} namespace dropped; empty for none. */
