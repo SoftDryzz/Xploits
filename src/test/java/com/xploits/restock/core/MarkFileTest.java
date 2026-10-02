@@ -1,8 +1,10 @@
 package com.xploits.restock.core;
 
 import com.xploits.printer.core.Pos;
+import com.xploits.testing.TempFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,8 +23,17 @@ class MarkFileTest {
     private static final MarkBook.Mark A = new MarkBook.Mark(DIM, new Pos(1, 2, 3), new Pos(1, 2, 4));
     private static final MarkBook.Mark B = new MarkBook.Mark(DIM, new Pos(5, 6, 7), new Pos(5, 6, 8));
 
-    @TempDir
     Path dir;
+
+    @BeforeEach
+    void createTempFolder() throws IOException {
+        dir = TempFolder.create();
+    }
+
+    @AfterEach
+    void deleteTempFolder() {
+        TempFolder.delete(dir);
+    }
 
     private Path marks() {
         return dir.resolve("world").resolve("marks.txt");
