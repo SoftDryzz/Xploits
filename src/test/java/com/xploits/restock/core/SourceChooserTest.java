@@ -85,6 +85,21 @@ class SourceChooserTest {
     }
 
     @Test
+    void looseStacksComeBeforeShulkerContentsEvenFarther() {
+        // Ruling R40: a loose stack is one QUICK_MOVE; a shulker box is a carry and an unpack at the build.
+        Source boxes = Source.stash(OVERWORLD, new Pos(1, 64, 0), Map.of(), Map.of(STONE, 1728));
+        assertEquals(Optional.of(STASH_STONE), SourceChooser.nearest(List.of(boxes, STASH_STONE), STONE, OVERWORLD, FROM,
+            64, Set.of(), Set.of(), true));
+    }
+
+    @Test
+    void shulkerContentsComeBeforeAMarkNobodyLookedInto() {
+        Source boxes = Source.stash(OVERWORLD, new Pos(5, 64, 0), Map.of(), Map.of(STONE, 27));
+        assertEquals(Optional.of(boxes), SourceChooser.nearest(List.of(UNKNOWN, boxes), STONE, OVERWORLD, FROM, 64,
+            Set.of(), Set.of(), true));
+    }
+
+    @Test
     void aTieGoesToTheLowerX() {
         Source east = Source.stash(OVERWORLD, new Pos(3, 64, 0), Map.of(STONE, 1), Map.of());
         Source west = Source.stash(OVERWORLD, new Pos(-3, 64, 0), Map.of(STONE, 1), Map.of());

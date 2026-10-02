@@ -84,15 +84,17 @@ class RestockLimitsTest {
 
     @Test
     void theConflictingModulesAreVerifiedNamesThatActByThemselves() {
-        // Exactly the printer's verified list without the six that only dig: a name dropped (or added) is a decision.
+        // The printer's verified list without the five that only dig; speed-mine is in (ruling R39): its Haste mode fakes
+        // Haste on the client, so restock's own dig of a shulker box would stop early, and its grim bypass sends an ABORT
+        // after every STOP. A name dropped (or added) is a decision.
         Set<String> expected = new HashSet<>(Guards.CONFLICTING_MODULES);
-        List<String> digOnly = List.of("instant-rebreak", "speed-mine", "packet-mine", "auto-tool", "vein-miner",
-            "no-ghost-blocks");
+        List<String> digOnly = List.of("instant-rebreak", "packet-mine", "auto-tool", "vein-miner", "no-ghost-blocks");
         assertTrue(expected.containsAll(digOnly));
         expected.removeAll(digOnly);
-        assertEquals(14, expected.size());
+        assertEquals(15, expected.size());
         assertEquals(expected, new HashSet<>(RestockLimits.CONFLICTING_MODULES));
         assertEquals(expected.size(), RestockLimits.CONFLICTING_MODULES.size(), "no name twice");
+        assertTrue(RestockLimits.CONFLICTING_MODULES.contains("speed-mine"), "ruling R39");
         assertTrue(RestockLimits.CONFLICTING_MODULES.containsAll(List.of("scaffold", "air-place", "auto-walk",
             "anti-afk", "inventory-tweaks", "auto-replenish", "nuker")), "the seven the spec names");
     }

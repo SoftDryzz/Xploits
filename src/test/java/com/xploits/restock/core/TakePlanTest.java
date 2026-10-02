@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Restock spec §3 "Take": one QUICK_MOVE a tick; the material that ran out first, then every other still needed, as
@@ -97,5 +99,89 @@ class TakePlanTest {
     void aTieGoesToTheLowerSlot() {
         assertEquals(new TakePlan.Click(2), TakePlan.next(List.of(new TakePlan.Slot(5, STONE, 64, 128),
             new TakePlan.Slot(2, STONE, 64, 128)), STONE, need(STONE, 10L)));
+    }
+
+    private static final String BOX = "minecraft:shulker_box";
+    private static final String RED_BOX = "minecraft:red_shulker_box";
+    private static final String GLASS = "minecraft:glass";
+
+    @Test
+    void anEmptyBorrowedBoxGoesBackFirst() {
+        // Owner ruling R44: the adapter lists only empty boxes of a kind borrowed from this container.
+        assertEquals(new TakePlan.Click(40), TakePlan.next(CHEST, List.of(new TakePlan.Slot(40, BOX, 1, 1)), STONE,
+            need(STONE, 10L), true));
+    }
+
+    @Test
+    void aFullContainerKeepsTheBorrowedBox() {
+        assertEquals(new TakePlan.Click(1), TakePlan.next(CHEST, List.of(new TakePlan.Slot(40, BOX, 1, 0)), STONE,
+            need(STONE, 10L), true));
+    }
+
+    @Test
+    void theBoxHoldingTheMostIsCarriedWhenNoLooseStackIs() {
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(3, RED_BOX, 1, 1, Map.of(STONE, 64)),
+            new TakePlan.Slot(4, BOX, 1, 1, Map.of(STONE, 1728)), new TakePlan.Slot(5, DIRT, 64, 64));
+        assertEquals(new TakePlan.Click(4), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+        assertEquals(new TakePlan.Done(false), TakePlan.next(chest, STONE, need(STONE, 10L)), "phase A never carries one");
+    }
+
+    @Test
+    void aLooseStackComesBeforeABox() {
+        // Ruling R40 inside the container: a loose stack is one click, a box is a carry and an unpack at the build.
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(2, STONE, 5, 64),
+            new TakePlan.Slot(4, BOX, 1, 1, Map.of(STONE, 1728)));
+        assertEquals(new TakePlan.Click(2), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+    }
+
+    @Test
+    void aBoxWithNoRoomToCarryItIsNothingFits() {
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(4, BOX, 1, 0, Map.of(STONE, 1728)));
+        assertEquals(new TakePlan.NothingFits(), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+    }
+
+    @Test
+    void aBoxOfOtherBlocksDoesNotHoldTheMaterial() {
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(4, BOX, 1, 1, Map.of(DIRT, 1728)));
+        assertEquals(new TakePlan.Done(false), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L), true));
+    }
+
+    @Test
+    void aBoxIsCarriedForAnotherMaterialStillNeeded() {
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(0, STONE, 64, 0),
+            new TakePlan.Slot(4, BOX, 1, 1, Map.of(GLASS, 64)));
+        assertEquals(new TakePlan.Click(4), TakePlan.next(chest, List.of(), STONE, need(STONE, 10L, GLASS, 5L), true));
+    }
+
+    @Test
+    void aFilledBoxRestockMayNotCarryStaysFilledOnly() {
+        // Pre-flight 17-3: a filled box whose own item the build places comes with no contents from the adapter —
+        // carried, the printer could place it, contents and all. It stays "filled only", as in phase A (ruling R34).
+        List<TakePlan.Slot> chest = List.of(new TakePlan.Slot(0, RED_BOX, 1, 1, true));
+        assertEquals(new TakePlan.Done(false, true), TakePlan.next(chest, List.of(), RED_BOX,
+            need(RED_BOX, 2L, STONE, 10L), true));
+    }
+
+    @Test
+    void theRoomKeepsTheSlotTheBoxComesBackTo() {
+        assertEquals(64, TakePlan.room(0, 2, 64, 64, 1), "two empty slots, one kept: a whole stack fits");
+        assertEquals(0, TakePlan.room(0, 1, 64, 64, 1), "the only empty slot is kept");
+        assertEquals(0, TakePlan.room(10, 1, 64, 20, 1), "20 do not fit in 10 without the kept slot: vanilla would use it");
+        assertEquals(10, TakePlan.room(10, 1, 64, 10, 1), "10 fit in the partial stacks");
+        assertEquals(10, TakePlan.room(10, 0, 64, 20, 0), "no reserve: phase A tops up what fits");
+        assertEquals(138, TakePlan.room(10, 2, 64, 64, 0));
+    }
+
+    @Test
+    void aBoxIsCarriedOnlyWithAFreeHotbarSlotAndOneMore() {
+        assertEquals(1, TakePlan.carryRoom(1, 2));
+        assertEquals(0, TakePlan.carryRoom(0, 5), "vanilla would put it in the main inventory");
+        assertEquals(0, TakePlan.carryRoom(1, 1), "nothing left for the take at the build");
+    }
+
+    @Test
+    void aSlotWithContentsHoldsItems() {
+        assertThrows(IllegalArgumentException.class, () -> new TakePlan.Slot(0, BOX, 1, 1, false, Map.of(STONE, 1)));
+        assertTrue(new TakePlan.Slot(0, BOX, 1, 1, Map.of(STONE, 1)).holdsItems());
     }
 }

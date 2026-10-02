@@ -10,8 +10,7 @@ import java.util.Set;
 /**
  * The source of one material (restock spec §3 "Sources and choice"): same dimension, within {@code maxDistance} of
  * {@code from} (a straight line to the container's centre, the limit included), neither unusable this session nor
- * stale for this material. A source known to hold it (loose; inside its shulkers too when {@code nested}) comes before
- * a marked container whose contents nobody has seen; then the nearest; ties by x, then y, then z.
+ * stale for this material. A source known to hold it loose comes first, then one known to hold it only inside its shulker boxes when {@code nested} (ruling R40: a loose stack is one click, a box is a carry and an unpack at the build), then a marked container whose contents nobody has seen; then the nearest; ties by x, then y, then z.
  */
 public final class SourceChooser {
     private SourceChooser() {
@@ -28,9 +27,11 @@ public final class SourceChooser {
             if (unusable.contains(s.container()) || stale.contains(s.container())) continue;
             int rank;
             if (!s.known()) {
-                rank = 1;
-            } else if (s.loose().getOrDefault(material, 0) > 0 || (nested && s.nested().getOrDefault(material, 0) > 0)) {
+                rank = 2;
+            } else if (s.loose().getOrDefault(material, 0) > 0) {
                 rank = 0;
+            } else if (nested && s.nested().getOrDefault(material, 0) > 0) {
+                rank = 1;
             } else {
                 continue;
             }
