@@ -9,7 +9,8 @@ otros servidores anarchy. Once módulos en la última versión, que se encienden
 
 > **Nuevo, experimental, aún no está en ninguna versión publicada: `restock`.** Llega en la siguiente. Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
 > bloque que la construcción aún necesita, `restock` pausa el printer, va al cofre más cercano que marcaste (o que
-> recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. Mira
+> recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. También funciona con
+> cajas de shulker: las que llevas encima y las que hay en tus contenedores. Mira
 > [`restock`](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica).
 
 ## Por qué Xploits
@@ -103,8 +104,8 @@ Esto conviene saberlo porque son módulos **tuyos** que el addon enciende, apaga
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Los toman prestados durante el vuelo y los devuelven **al estado que tenían** |
 | `auto-travel`, `nether-sweep` | Cinco ajustes de **Baritone** | Los cambia al despegar y los devuelve al aterrizar. ⚠️ Baritone los guarda en disco — igual que `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (si se puso) y su propia censura, que quedan cambiados para siempre |
 | `restock` | Cinco ajustes de **Baritone** | Mientras está encendido: `allowBreak`, `allowPlace` y `allowWaterBucketFall` apagados, para que Baritone no rompa ni ponga nada por el camino, `censorCoordinates` y `censorRanCommands` encendidos. Al pararse vuelven los cinco a tus propios valores (`baritone-settings`: `MINE`, de fábrica), o los tres primeros a los de fábrica de Baritone (`DEFAULTS`). ⚠️ Baritone los guarda en disco; si el juego se cierra con él encendido, `restock` los devuelve la próxima vez que entras en un mundo |
-| `restock` | El modo de impresión de `litematica-printer` | Lo apaga antes de un viaje y lo vuelve a encender al volver, **solo si estaba imprimiendo y sigue apagado** (si lo encendiste o apagaste tú entretanto, manda lo tuyo). Si el juego se cierra a mitad de viaje, se vuelve a encender al entrar de nuevo en un mundo |
-| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer` | Solo los **lee**: no arranca mientras uno esté encendido, y se para, nombrándolo, si enciendes uno con él encendido |
+| `restock` | El modo de impresión de `litematica-printer` | Lo apaga antes de un viaje o de vaciar una caja y lo vuelve a encender después, **solo si estaba imprimiendo y sigue apagado** (si lo encendiste o apagaste tú entretanto, manda lo tuyo). Si el juego se cierra a mitad de viaje o de vaciar una caja, se vuelve a encender al entrar de nuevo en un mundo |
+| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer`, `speed-mine` | Solo los **lee**: no arranca mientras uno esté encendido, y se para, nombrándolo, si enciendes uno con él encendido |
 
 Todo esto, con el detalle de qué persiste y qué puede salir mal, en [Seguridad](docs/security.md).
 
@@ -474,27 +475,65 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
   estabas, por mundo. `.xploits restock chests` los lista por dimensión y distancia, nunca por posición. Con
   `use-stash-keeper` encendido (de fábrica) usa también los contenedores que recuerda `stash-keeper`.
 - **Cuándo va.** Cuando un bloque que el resto de la construcción aún necesita llega a 0 en tu inventario, espera
-  dos pasadas completas por la construcción (para contar el bloque que `litematica-printer` acaba de poner) y elige
-  el contenedor más cercano que lo tenga, en la misma dimensión y a menos de `max-distance` (64). Un origen que ya
-  no es un contenedor (cambiaron el cofre por otro bloque) se salta, nunca se pulsa. Solo va por un bloque que
-  Litematica muestra que falta en algún sitio de la construcción (con el renderizado de Litematica apagado, o esa parte
-  de la construcción sin cargar, espera), y solo cuando estás en el suelo: nunca sale mientras andas, vas agachado o
-  saltas.
+  dos pasadas completas por la construcción (para contar el bloque que `litematica-printer` acaba de poner) y vacía
+  una caja de shulker que lleves encima con ese bloque (abajo) o elige el contenedor más cercano que lo tenga, en la
+  misma dimensión y a menos de `max-distance` (64). Un origen que ya no es un contenedor (cambiaron el cofre por otro
+  bloque) se salta, nunca se pulsa. Solo va por un bloque que Litematica muestra que falta en algún sitio de la
+  construcción (con el renderizado de Litematica apagado, o esa parte de la construcción sin cargar, espera), y solo
+  cuando estás en el suelo: nunca sale mientras andas, vas agachado o saltas.
 - **El viaje.** Apaga el modo de impresión de `litematica-printer`, va andando con
   [Baritone](https://github.com/cabaletta/baritone) (Baritone no rompe ni pone nada por el camino), se queda quieto,
   mira el contenedor y lo abre, coge stacks enteros de lo que necesita el resto de la construcción —tanto como
-  quepa, nunca una caja de shulker con algo dentro—, lo cierra, vuelve a donde estabas y vuelve a encender el modo de
-  impresión. Un contenedor cuyo contenido ha cambiado se anota y se prueba el siguiente más cercano en el mismo viaje.
-  Nunca coge ni cierra con un objeto en el cursor: espera a que lo sueltes.
+  quepa, nunca una caja de shulker con algo dentro como bloque de construcción (una que tiene un bloque que la
+  construcción necesita se trae entera y se vacía, abajo)—, lo cierra, vuelve a donde estabas y vuelve a encender el
+  modo de impresión. Un contenedor cuyo contenido ha cambiado se anota y se prueba el siguiente más cercano en el mismo
+  viaje. Nunca coge ni cierra con un objeto en el cursor: espera a que lo sueltes.
 - **Sin sitio de donde sacarlo:** dice qué bloque y cuántos faltan, no va a ningún sitio, y el printer sigue
   imprimiendo todo lo demás.
+- **Cajas de shulker que llevas encima** (`use-carried-shulkers`, encendido). Cuando el bloque que se acabó está
+  dentro de una caja que llevas, `restock` la vacía en la construcción antes de ir a ningún contenedor, en cuanto
+  estás en el suelo, como en un viaje: apaga el printer, coloca la caja a tu lado, la abre, coge lo que necesita la
+  construcción dejando un hueco libre para la caja, la rompe a velocidad normal con tu mejor herramienta de la barra
+  rápida (nunca una espada, hacha, lanza, maza o tridente, ni una herramienta a la que le queden menos de 10 usos), la
+  recoge, vuelve a seleccionar tu hueco de la barra y vuelve a encender el printer. Una caja de la barra rápida va
+  primero. Una de tu inventario principal solo se usa mientras haya un hueco libre en la barra, y `restock` la mueve
+  allí con un clic con Mayús: el único clic que `restock` hace en tu propio inventario. Sin hueco libre en la barra lo
+  dice una vez y busca en los contenedores. Tus propias cajas se recogen siempre y se quedan contigo; con
+  `use-carried-shulkers` apagado, solo se vacían las cajas que `restock` cogió de tus contenedores. La caja es el único
+  bloque que `restock` coloca o rompe.
+- **Cajas de shulker en tus contenedores.** También vale un contenedor que solo tiene el bloque dentro de cajas de
+  shulker: el viaje se trae la caja entera, la que más lleve, y `restock` la vacía como arriba, con el printer todavía
+  apagado. Un contenedor que tiene el bloque suelto se elige antes, aunque esté más lejos. Solo se trae una caja con un
+  hueco libre en la barra rápida y otro hueco libre más; con menos sitio pasa de largo ese contenedor, lo prueba de
+  nuevo cuando lo haya y solo lo dice si ningún otro contenedor tiene el bloque. Una caja que cogió de un contenedor
+  vuelve a él cuando está vacía, en el siguiente viaje a ese contenedor o en un último viaje cuando la construcción
+  está terminada, y nunca más cajas de las que cogió de él. Hasta entonces la caja se queda contigo, y cada parada
+  dice cuántas llevas.
+- **Dónde coloca una caja.** A tu alcance y fuera de la construcción: sobre un bloque sólido que no hace nada al
+  pulsarlo (no un cofre, horno, mesa de trabajo, puerta, palanca, cama…), en un hueco vacío con sitio encima para la
+  tapa, nunca donde estás tú. También mira dónde caerá la caja rota: como objeto suelto puede desplazarse un bloque o
+  más. Rechaza un sitio con agua, lava, fuego, un cactus, una tolva o un portal al lado, sobre hielo o slime (la caja
+  rota resbalaría), con un borde o un agujero al lado, o con un bloque al lado que ni es un bloque entero ni espacio
+  libre (una losa, unas escaleras, una valla, un muro, un panel, una puerta, andamios…). Si ningún sitio vale, se para
+  y lo dice. Si el servidor no acepta la caja (protección del spawn, un plugin de claims) prueba otros dos sitios y se
+  para, con la caja todavía en tu inventario.
+- **Si algo lo para con una caja fuera**, `restock` primero termina de romper la caja y recogerla (hasta 10 s) y luego
+  se para: un desconocido que se acerca, un módulo junto al que no puede funcionar, otro módulo que sigue girándote la
+  cabeza. Algunas paradas no pueden esperar y son inmediatas: te atacan, tu vida baja de `min-health`, el servidor te
+  hace retroceder, `auto-pvp` entra en combate, pulsas una tecla de movimiento, mueres, cambias de dimensión, sales del
+  servidor o apagas `restock`. Si una de ellas llega mientras termina, se para enseguida y dice las dos. Toda parada
+  dice cuántas cajas de las que colocó siguen en pie y a cuántos bloques está la más cercana, a cuántos bloques está la
+  caja rota que quedó en el suelo (o que ya no está), cuándo no pudo comprobarlo y cuántas cajas que cogió de tus
+  contenedores aún llevas: solo distancias, nunca una posición.
 - **Se para y dice por qué** cuando un jugador que no es amigo tuyo en Meteor se acerca a menos de `player-distance`
-  (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador que no es amigo tuyo, tu vida baja de `min-health`
-  (10), el servidor te hace retroceder, `auto-pvp` entra en combate, mueres o cambias de dimensión, **pulsas una tecla
-  de movimiento durante un viaje**, Baritone no encuentra camino, no cabe nada en tu inventario, enciendes un módulo
-  junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un mensaje en vez de cerrar
-  el juego). Tras pararse durante un viaje el printer se queda apagado, y lo dice. Se **pausa** solo, y sigue, mientras
-  un módulo de combate gira, mientras comes y mientras el servidor va con lag.
+  (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador que no es amigo tuyo, tu vida
+  baja de `min-health` (10), el servidor te hace retroceder, `auto-pvp` entra en combate, mueres o cambias de
+  dimensión, **pulsas una tecla de movimiento durante un viaje o mientras vacía una caja**, Baritone no encuentra
+  camino, no cabe nada en tu inventario, no se puede mover a la barra rápida, colocar, romper o recoger una caja de
+  shulker, enciendes un módulo junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un
+  mensaje en vez de cerrar el juego). Tras pararse durante un viaje o mientras vacía una caja el printer se queda
+  apagado, y lo dice. Se **pausa** solo, y sigue, mientras un módulo de combate gira, mientras comes y mientras el
+  servidor va con lag.
 - **Se niega a arrancar** si dos colocaciones de Litematica se solapan (la seleccionada y cualquier otra activada) o
   si la Litematica instalada tiene una API que no reconoce; lo dice en vez de adivinar.
 - **Nunca arranca solo.** Si estaba encendido al salir, sigue apagado al volver a entrar.
@@ -654,9 +693,7 @@ Lo más habitual:
 
 ## Próximamente
 
-- **Construcción, lo siguiente, antes de la 1.0.0:** que `restock` vaya a buscar también shulkers —trae uno, lo
-  coloca junto a la construcción, coge lo que necesita, lo rompe y lo recoge—; después, map art, túneles y autopistas,
-  y bases.
+- **Construcción, lo siguiente, antes de la 1.0.0:** map art, túneles y autopistas, y bases.
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
   daño propio que guarda una reserva de vida; `surround++` — un escudo defensivo calculado, desde el
   ajuste `shell-module` de `auto-pvp`.

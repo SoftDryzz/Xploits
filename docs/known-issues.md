@@ -245,14 +245,103 @@ a change in `crystal-aura++`'s safety check with its own bench.
 It counts what the whole selected placement still needs, whatever layer range Litematica shows: on a build printed
 layer by layer, it may fetch blocks for layers you have not reached yet (it fetches more, never less).
 
-### `restock` does not handle shulker boxes yet
+### A shulker box `restock` borrowed stays with you until it is empty
 
-**Symptom:** `restock` says a block is missing although it is inside a shulker box.
+**Symptom:** after a build you still carry a shulker box that came from one of your containers.
 
-**What happens.** It takes loose items from chests, trapped chests, copper chests, barrels and placed shulker boxes. A
-shulker box inside a container, or one you carry, is not opened or counted yet.
+**What happens.** `restock` gives a box back to the container it came from only once the box is empty: on the next
+trip to that container, or on one last trip when the build is done. A box that still holds blocks the build did not
+need stays with you, and every stop says how many you carry. It never gives a container more boxes than it took from
+it.
 
-**What to do.** Put the blocks loose in a marked chest, or place the shulker box and mark it.
+**What to do.** Put it back by hand.
+
+### `restock` cannot tell two shulker boxes of one colour and name apart
+
+**Symptom:** you carry a box of your own with the same colour and name as one `restock` borrowed, and after the build
+the borrowed one is still with you; or, with `use-carried-shulkers` off, `restock` unpacks your own full box.
+
+**What happens.** It tells boxes apart only by colour and name, and keeps a count, not a memory of each box. Of two
+unnamed boxes of one colour it counts the empty ones as yours first, so it never hands a container an empty box of
+yours in place of a borrowed one that still holds blocks, and never more boxes than it took. The price is that a
+borrowed empty box can stay with you. With `use-carried-shulkers` off, a full box of yours can be taken for the one it
+borrowed and unpacked.
+
+**What to do.** Name the boxes you keep for yourself (rename them in an anvil): a named box is a different kind from an
+unnamed one of the same colour.
+
+### A stop while `restock` unpacks can leave the shulker box beside the build
+
+**Symptom:** `restock` stops and says a shulker box it set down still stands beside the build, or lies on the ground.
+
+**What happens.** If you are attacked, your health falls below `min-health`, the server sets you back, `auto-pvp`
+engages, you press a movement key, you die, change dimension or leave the server, you turn `restock` off, or
+something unexpected fails inside it while a box is out, it stops at once: the box may stay standing beside the build,
+or lie on the ground if it was already broken. The stop says how many boxes stand and how far away the nearest is, or
+how far away the dropped one lies, never where. Right after the dig it may say the box stands although it is just
+breaking; if the server has not yet answered the box being set down, or it cannot tell whether a box is still there, it
+says it could not check. Other stops (a stranger near, a conflicting module, another module that keeps turning your
+head) first finish the break and the pick-up, for up to 10 seconds. If the game crashes or you leave the server while a
+box stands, nothing remembers it at the next join.
+
+**What to do.** Look around the build for what the stop reported, then break the box and pick it up by hand. The
+printer stays off after such a stop: switch it on again when you are done.
+
+### `restock` needs free slots for shulker boxes
+
+**Symptom:** `restock` says a block is only inside shulker boxes and asks you to free a hotbar slot and one more, or
+says it moves a box you carry into the hotbar only into a free slot.
+
+**What happens.** It carries a box from a container only while a hotbar slot and one more slot are free. With less room
+a container whose block is only inside boxes is passed over (not forgotten: it is tried again once they are free), and
+`restock` says so when no other container has the block. It moves a box from your main inventory into the hotbar
+only into a free hotbar slot. While it takes from a box it keeps one slot free for the box to come back to, and with
+no empty slot at all it unpacks nothing.
+
+**What to do.** Keep a hotbar slot and one more free while you build with shulker boxes.
+
+### `restock` can find no spot to set a shulker box down
+
+**Symptom:** `restock` stops saying there is no free spot next to you, outside the build, to set the box down.
+
+**What happens.** It sets a box down only within reach, outside the enabled parts of the selected placement, on an empty
+spot with room above it for the lid, where the broken box's drop is safe (see the next entry). Standing inside a large
+build, in a tunnel or on a narrow or icy bridge, every spot near you can be refused. The box stays in your inventory
+and the printer stays off.
+
+**What to do.** Step to the edge of the build, or onto open ground with a flat floor that is not ice, and turn
+`restock` on again.
+
+### A broken shulker box can roll away, be taken or be refused
+
+**Symptom:** a stop says the shulker box `restock` broke lies a few blocks away, or is no longer on the ground near you,
+or that the box could not be set down.
+
+**What happens.** A broken box drops as an item and can drift a block or so; on ice or slime it would slide much
+farther, so `restock` sets a box down only where every block around it stops the drop or catches it on a floor that is
+not slippery, away from fire, lava, water, cacti, hoppers and portals. It does not look for entities: a hopper
+minecart, or a mob that picks items up, near the spot can take the drop. After the box breaks it waits a second for
+the drop to come to you, then walks onto it, and stops if the box is not back after 5 seconds. Another player or a
+clear-lag plugin can take it first; the stop then says it is gone. Spawn protection or a claim plugin that refuses the
+box makes `restock` try three spots and stop, with the box still in your inventory.
+
+**What to do.** Pick up what the stop reports by hand, and keep hopper minecarts and item-collecting mobs away from
+where you build.
+
+### A server that answers late can leave a box in your inventory that is not there
+
+**Symptom:** after `restock` took a shulker box from a container, it stops saying a box could not be set down, that it
+could not check, and that you still carry a borrowed box, although you never got that box.
+
+**What happens.** When a click moves a box out of a container, your game shows the box in your inventory at once, and
+the server answers only if it refuses the click (an anticheat or a plugin can). `restock` keeps the container open for
+about a second for that answer: if the box comes back, it is not counted as borrowed. If the server answers later,
+your game has already closed the container and ignores the answer: it keeps showing a box the server never gave you
+until the next screen you open updates your inventory. `restock` then tries three times to set down a box you do not
+have, and stops. Nothing is lost: the box is still in the container.
+
+**What to do.** Open a container to update your inventory, check the box is still in the container it came from, and
+turn `restock` on again.
 
 ### `restock` cannot see a player beyond the server's tracking range
 
@@ -359,8 +448,8 @@ Things that are implemented and reasoned through but that **nobody has seen work
 - Whether the elytra swap kicks in properly while gliding fast.
 - Whether `auto-web` buries itself when placing cobweb under the enemy.
 - Whether the server sends chunks at the rate the lane planning assumes.
-- Whether 6b6t sends the contents of shulkers inside chests (it decides half of the design of
-  `stash-keeper`).
+- Whether 6b6t sends the contents of shulkers inside chests: it decides half of the design of `stash-keeper`, and
+  whether `restock` can see blocks inside shulker boxes there at all (without them it fetches loose blocks only).
 - How `crystal-aura++` does against several enemies at once, or on a real server: the bench plays one
   opponent that attacks back, with golden apples, but no crowd.
 - Whether `auto-pvp`'s surround request right after a hole block is broken is fast enough against instant
@@ -372,3 +461,8 @@ Things that are implemented and reasoned through but that **nobody has seen work
 - Whether `restock` behaves on a server reached through ViaFabricPlus.
 - Whether `restock`'s container clicks pass the anticheats of 6b6t and other anarchy servers. The bench checks every
   packet against the rules Grim's published checks follow, on a vanilla server where no anticheat runs.
+- Whether setting a shulker box down beside the build, digging it and picking it up, and the one shift-click that
+  moves a box into your hotbar, pass the anticheats of 6b6t and other anarchy servers. The bench checks these packets
+  the same way, on a vanilla server where no anticheat runs.
+- Whether a broken shulker box's drop stays where `restock`'s spot rules expect on real terrain: they follow vanilla's
+  item physics as read in the game's code, and nobody has watched it on a real server.

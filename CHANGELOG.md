@@ -9,15 +9,21 @@ All notable changes to Xploits. The format is based on
 ### Added
 
 - **`restock`** (experimental): when a block your Litematica build still needs runs out, it pauses
-  `litematica-printer`, walks with Baritone to the nearest container that has it — a chest you marked with
-  `mark-key` or one `stash-keeper` remembers, in the same dimension and within `max-distance` — takes whole stacks of
-  what the rest of the build needs, walks back and resumes the printer only if it is still off. Nothing is dropped,
-  no coordinate is typed into the chat or written to the logs (a container click carries its block position to the
-  server, like any click), and a stop always says why: a stranger near, an attack, low health,
-  a setback, `auto-pvp` engaging, death, a dimension change, your own movement keys during a trip, no path, nothing
-  fitting. Baritone breaks and places nothing on its trips, and your Baritone settings and the print mode come back
-  after a crash at the next world join. `.xploits restock` says what it is doing; `.xploits restock chests` lists the
-  marks by dimension and distance.
+  `litematica-printer` and unpacks a shulker box you carry that holds the block (`use-carried-shulkers`), or walks
+  with Baritone to the nearest container that has it — a chest you marked with `mark-key` or one `stash-keeper`
+  remembers, in the same dimension and within `max-distance`, the block loose or inside shulker boxes — takes whole
+  stacks of what the rest of the build needs, walks back and resumes the printer only if it is still off. To unpack a
+  box it sets it down beside the build, on a spot where its drop cannot burn, fall off an edge or slide away, opens
+  it, takes what the build needs, breaks it at normal speed and picks it up again. That box is the only block it
+  places or breaks and the only item it drops, on purpose; its one click in your own inventory is a Shift-click that
+  moves the box into a free hotbar slot. A box it took from a container goes back there once it is empty. Nothing else
+  is dropped, no coordinate is typed into the chat or written to the logs (a container click carries its block
+  position to the server, like any click), and a stop always says why — and, with a box out, how far away it is: a
+  stranger near, an attack, low health, a setback, `auto-pvp` engaging, death, a dimension change, your own movement
+  keys during a trip or an unpack, no path, nothing fitting, a box that cannot be set down, broken or picked up.
+  Baritone breaks and places nothing on its trips, and your Baritone settings and the print mode come back after a
+  crash at the next world join. `.xploits restock` says what it is doing; `.xploits restock chests` lists the marks by
+  dimension and distance.
 
 ### Changed
 
