@@ -62,8 +62,6 @@ final class TripDriver {
     private final RestockLimits limits;
     private final Map<String, Integer> carriedAtStart;
     private Aim.Rotation wanted;
-    /** The block that rotation looks at: the container, or the other half of a double chest (deferred L25). */
-    private Pos aimed;
     private BlockHitResult hit;
     private RestockTrip.Click click = RestockTrip.Click.NONE;
     private int syncId = -1;
@@ -270,15 +268,14 @@ final class TripDriver {
             limits.hitMargin(), (block, side, r) -> WorldRay.ray(mc, block, side, r, limits.reach()) != null);
         if (a.isEmpty()) {
             wanted = null;
-            aimed = null;
             hit = null;
             return RestockTrip.Aiming.NONE;
         }
         Aim.Rotation r = a.get().aiming().rotation();
         boolean held = r.equals(wanted) && PacketWatch.get().aimHeld(r);
         wanted = r;
-        aimed = a.get().block();
-        hit = held ? WorldRay.ray(mc, aimed, a.get().aiming().side(), r, limits.reach()) : null;
+        // The block the rotation looks at: the container, or the other half of a double chest (deferred L25).
+        hit = held ? WorldRay.ray(mc, a.get().block(), a.get().aiming().side(), r, limits.reach()) : null;
         if (hit != null) return RestockTrip.Aiming.HELD;
         if (live && ++wantedTicks > limits.openTimeoutTicks()) {
             wanted = null;
