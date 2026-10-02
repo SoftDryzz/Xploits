@@ -799,6 +799,7 @@ restock.kind-mark=marked container
 restock.kind-stash=container stash-keeper remembers
 restock.trip-done=Back with {taken}.
 restock.trip-stale=That container does not have {material} any more: trying the next one.
+restock.trip-filled-only=That container has {material} only with items stored inside it, and restock never takes such a stack as a block: trying the next one.
 restock.trip-unusable=That container could not be reached or opened: trying the next one.
 restock.nowhere={material}: {count} still needed, and no container within {distance} blocks has it (max-distance). The printer carries on with the rest.
 restock.nowhere-after-trip=No other container has {material}: back to the build without it.

@@ -32,6 +32,7 @@ public enum RestockText implements MessageKey {
     KIND_STASH,
     TRIP_DONE,
     TRIP_STALE,
+    TRIP_FILLED_ONLY,
     TRIP_UNUSABLE,
     NOWHERE,
     NOWHERE_AFTER_TRIP,

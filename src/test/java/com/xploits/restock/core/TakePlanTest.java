@@ -71,12 +71,26 @@ class TakePlanTest {
         // Ruling R34: the build places red shulker boxes, and a marked chest keeps a stash in a red shulker box. Taken,
         // the printer would place it, contents and all, into a public build. It is not there for the trip at all.
         String box = "minecraft:red_shulker_box";
-        assertEquals(new TakePlan.Done(false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)), box,
+        assertEquals(new TakePlan.Done(false, true), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)), box,
             need(box, 2L)), "not taken, and not 'nothing fits' either: for the trip the container does not have it");
         assertEquals(new TakePlan.Click(4), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true),
             new TakePlan.Slot(4, box, 1, 64, false)), box, need(box, 2L)), "an empty one is a block like any other");
         assertEquals(new TakePlan.Done(false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)), STONE,
             need(STONE, 10L, box, 2L)), "nor as another material the build still needs");
+    }
+
+    @Test
+    void theMaterialThereOnlyWithItemsInsideIsSaidApartFromAStaleContainer() {
+        // Deferred L86: the trip tells the player why it moves on — the container has the material, but only filled.
+        String box = "minecraft:red_shulker_box";
+        assertEquals(new TakePlan.Done(false, true), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true),
+            new TakePlan.Slot(1, DIRT, 64, 64)), box, need(box, 2L)));
+        assertEquals(new TakePlan.Done(false, false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)),
+            STONE, need(STONE, 10L)), "a filled box of another material leaves the trip's one simply missing");
+        assertEquals(new TakePlan.Done(false, false), TakePlan.next(List.of(new TakePlan.Slot(0, DIRT, 64, 64)), box,
+            need(box, 2L)), "no box at all: stale");
+        assertEquals(new TakePlan.Done(true, false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true),
+            new TakePlan.Slot(4, box, 1, 64, false)), box, need()), "an empty one there: the material is there");
     }
 
     @Test

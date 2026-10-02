@@ -107,10 +107,20 @@ public final class RestockTrip {
     }
 
     /**
-     * The source failed — {@code stale}: it does not hold the material; otherwise it could not be reached or opened. The
-     * adapter stops walking, notes it, and answers with {@link #retarget} or {@link #giveUp} before the next step.
+     * Why a source failed: {@code STALE}, it does not hold the material; {@code FILLED_ONLY}, it holds it only in stacks
+     * with items of their own, which restock never takes (ruling R34) — both for that material only; {@code UNUSABLE},
+     * it could not be reached or opened, for the whole session.
      */
-    public record NeedSource(String material, Pos failed, boolean stale) implements Action {
+    public enum Failure { STALE, FILLED_ONLY, UNUSABLE }
+
+    /**
+     * The source failed, and why. The adapter stops walking, notes it, and answers with {@link #retarget} or
+     * {@link #giveUp} before the next step.
+     */
+    public record NeedSource(String material, Pos failed, Failure failure) implements Action {
+        public NeedSource {
+            Objects.requireNonNull(failure, "failure");
+        }
     }
 
     /** Back where the trip started: stop walking; give the printer back if it was paused; {@code took}: any carried. */
@@ -121,7 +131,7 @@ public final class RestockTrip {
     public record Stopped(RestockReason reason, boolean closeScreen) implements Action {
     }
 
-    private enum After { RETURN, STALE, UNUSABLE, NOTHING_FITS }
+    private enum After { RETURN, STALE, FILLED_ONLY, UNUSABLE, NOTHING_FITS }
 
     private static final Wait WAIT = new Wait();
 
@@ -211,7 +221,7 @@ public final class RestockTrip {
             case OPEN -> open(f);
             case WAIT_SCREEN -> waitScreen(f);
             case TAKE -> take(f);
-            case CHOOSING -> new NeedSource(material, container, after == After.STALE);
+            case CHOOSING -> new NeedSource(material, container, failure());
             case STOPPING -> stop(RestockReason.NOTHING_FITS, f);
             case RETURN -> back(f);
             case DONE, STOPPED -> throw new IllegalStateException("the trip is over");
@@ -316,10 +326,11 @@ public final class RestockTrip {
         }
         boolean took = f.carried() > 0;
         if (s instanceof TakePlan.NothingFits) after = took ? After.RETURN : After.NOTHING_FITS;
-        else after = took || ((TakePlan.Done) s).materialThere() ? After.RETURN : After.STALE;
+        else if (took || ((TakePlan.Done) s).materialThere()) after = After.RETURN;
+        else after = ((TakePlan.Done) s).onlyFilled() ? After.FILLED_ONLY : After.STALE;
         enter(switch (after) {
             case RETURN -> Phase.RETURN;
-            case STALE, UNUSABLE -> Phase.CHOOSING;
+            case STALE, FILLED_ONLY, UNUSABLE -> Phase.CHOOSING;
             case NOTHING_FITS -> Phase.STOPPING;
         });
         return new Close();
@@ -328,7 +339,15 @@ public final class RestockTrip {
     private Action needSource(After a) {
         after = a;
         enter(Phase.CHOOSING);
-        return new NeedSource(material, container, a == After.STALE);
+        return new NeedSource(material, container, failure());
+    }
+
+    private Failure failure() {
+        return switch (after) {
+            case STALE -> Failure.STALE;
+            case FILLED_ONLY -> Failure.FILLED_ONLY;
+            default -> Failure.UNUSABLE;
+        };
     }
 
     private Action stop(RestockReason reason, Facts f) {

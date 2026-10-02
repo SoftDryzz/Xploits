@@ -31,8 +31,20 @@ public final class TakePlan {
     public record Click(int slot) implements Step {
     }
 
-    /** Nothing more to take; {@code materialThere}: the trip's material is in the container (false: it was stale). */
-    public record Done(boolean materialThere) implements Step {
+    /**
+     * Nothing more to take; {@code materialThere}: the trip's material is in the container (false: it was stale);
+     * {@code onlyFilled}: it is not, except in stacks that hold items of their own, which are never taken (the player is
+     * told that, not that the container lost it).
+     */
+    public record Done(boolean materialThere, boolean onlyFilled) implements Step {
+        public Done {
+            if (materialThere && onlyFilled) throw new IllegalArgumentException("a material there is not only filled");
+        }
+
+        /** Nothing filled in the way. */
+        public Done(boolean materialThere) {
+            this(materialThere, false);
+        }
     }
 
     /** The trip's material is there and still needed, and none of it fits. */
@@ -65,6 +77,10 @@ public final class TakePlan {
             if (s.item().equals(material) && s.count() > 0) there = true;
         }
         if (there && need.getOrDefault(material, 0L) > 0) return new NothingFits();
-        return new Done(there);
+        boolean filled = false;
+        for (Slot s : all) {
+            if (s.holdsItems() && s.item().equals(material) && s.count() > 0) filled = true;
+        }
+        return new Done(there, !there && filled);
     }
 }

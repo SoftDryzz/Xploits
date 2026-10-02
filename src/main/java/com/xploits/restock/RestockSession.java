@@ -324,14 +324,22 @@ final class RestockSession {
         sources.saw(container, loose, nested);
     }
 
-    /** A source failed: noted, then the next nearest for the same material, measured from where the trip started. */
-    Optional<Source> next(String material, Pos failed, boolean wasStale, Pos resume) {
-        if (wasStale) {
-            stale.computeIfAbsent(material, k -> new HashSet<>()).add(failed);
-            module.info(RestockText.TRIP_STALE, "material", RestockMessages.itemName(material));
-        } else {
-            unusable.add(failed);
-            module.info(RestockText.TRIP_UNUSABLE);
+    /**
+     * A source failed: noted (stale or only filled: for that material; unusable: for the session) and said, then the
+     * next nearest for the same material, measured from where the trip started.
+     */
+    Optional<Source> next(String material, Pos failed, RestockTrip.Failure failure, Pos resume) {
+        switch (failure) {
+            case STALE, FILLED_ONLY -> {
+                stale.computeIfAbsent(material, k -> new HashSet<>()).add(failed);
+                // Deferred L86: a container whose only stacks of it hold items is said as such, not as stale.
+                module.info(failure == RestockTrip.Failure.STALE ? RestockText.TRIP_STALE : RestockText.TRIP_FILLED_ONLY,
+                    "material", RestockMessages.itemName(material));
+            }
+            case UNUSABLE -> {
+                unusable.add(failed);
+                module.info(RestockText.TRIP_UNUSABLE);
+            }
         }
         String dim = dimensionId();
         Optional<Source> next = SourceChooser.nearest(sources.list(dim, marks(), stash(settings)), material, dim,

@@ -10,6 +10,9 @@ import static com.xploits.restock.core.RestockTrip.Aiming.WANTED;
 import static com.xploits.restock.core.RestockTrip.Click.REFUSED;
 import static com.xploits.restock.core.RestockTrip.Click.SENT;
 import static com.xploits.restock.core.RestockTrip.Click.WITHHELD;
+import static com.xploits.restock.core.RestockTrip.Failure.FILLED_ONLY;
+import static com.xploits.restock.core.RestockTrip.Failure.STALE;
+import static com.xploits.restock.core.RestockTrip.Failure.UNUSABLE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -92,7 +95,7 @@ class RestockTripTest {
     void noSpotNearAStashSourceAsksForAnother() {
         RestockTrip t = trip(false, Optional.empty());
         t.step(f().build());
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().arrived().build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().arrived().build()));
         assertEquals(RestockTrip.Phase.CHOOSING, t.phase());
         t.retarget(OTHER, Optional.of(OTHER_STAND));
         assertEquals(new RestockTrip.GoTo(OTHER_STAND), t.step(f().build()));
@@ -103,10 +106,21 @@ class RestockTripTest {
     void aStaleChestIsClosedThenAnotherAskedFor() {
         RestockTrip t = taking();
         assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(false)).build()));
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, true), t.step(f().build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, STALE), t.step(f().build()));
         t.giveUp();
         assertEquals(new RestockTrip.GoTo(HOME), t.step(f().build()));
         assertEquals(new RestockTrip.Finish(false, false), t.step(f().arrived().build()));
+    }
+
+    @Test
+    void aContainerWithTheMaterialOnlyFilledAsksForAnotherSayingSo() {
+        // Deferred L86: restock never takes a filled shulker box as a block (ruling R34); the player is told that, not
+        // that the container does not have the material any more.
+        RestockTrip t = taking();
+        assertEquals(new RestockTrip.Close(), t.step(f().ourScreen().seen().take(new TakePlan.Done(false, true)).build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, FILLED_ONLY), t.step(f().build()));
+        t.retarget(OTHER, Optional.of(OTHER_STAND));
+        assertEquals(new RestockTrip.GoTo(OTHER_STAND), t.step(f().build()));
     }
 
     @Test
@@ -190,7 +204,7 @@ class RestockTripTest {
         // sent: the source is unusable, as when the aim finds none — not CONTAINER_REFUSED, whose text names Easy Place.
         RestockTrip t = atChest();
         assertEquals(new RestockTrip.ClickContainer(CHEST), t.step(f().aiming(HELD).build()));
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().click(WITHHELD).build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().click(WITHHELD).build()));
         assertEquals(RestockTrip.Phase.CHOOSING, t.phase());
     }
 
@@ -200,7 +214,7 @@ class RestockTripTest {
         t.step(f().aiming(HELD).build());
         assertEquals(new RestockTrip.Wait(), t.step(f().click(SENT).build()));
         for (int i = 2; i <= 100; i++) assertEquals(new RestockTrip.Wait(), t.step(f().build()), "tick " + i);
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().build()));
     }
 
     @Test
@@ -241,7 +255,7 @@ class RestockTripTest {
 
     @Test
     void noAimFromTheSpotAsksForAnother() {
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), atChest().step(f().build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), atChest().step(f().build()));
     }
 
     @Test
@@ -311,7 +325,7 @@ class RestockTripTest {
     void anOpenThatCannotClickForTheLimitAsksForAnother() {
         RestockTrip t = atChest();
         for (int i = 1; i <= 100; i++) assertEquals(new RestockTrip.Wait(), t.step(f().aiming(HELD).screenOpen().build()), "tick " + i);
-        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().aiming(HELD).screenOpen().build()));
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), t.step(f().aiming(HELD).screenOpen().build()));
         RestockTrip u = atChest();
         for (int i = 1; i <= 150; i++) assertEquals(new RestockTrip.Wait(), u.step(f().aiming(HELD).screenOpen().paused().build()));
         assertEquals(new RestockTrip.Wait(), u.step(f().aiming(HELD).screenOpen().build()));

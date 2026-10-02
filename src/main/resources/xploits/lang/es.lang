@@ -799,6 +799,7 @@ restock.kind-mark=contenedor marcado
 restock.kind-stash=contenedor que recuerda stash-keeper
 restock.trip-done=De vuelta con {taken}.
 restock.trip-stale=Ese contenedor ya no tiene {material}: prueba con el siguiente.
+restock.trip-filled-only=Ese contenedor solo tiene {material} con objetos guardados dentro, y restock nunca coge algo así como bloque: prueba con el siguiente.
 restock.trip-unusable=No se pudo llegar a ese contenedor ni abrirlo: prueba con el siguiente.
 restock.nowhere={material}: aún hacen falta {count}, y ningún contenedor a menos de {distance} bloques lo tiene (max-distance). La impresora sigue con el resto.
 restock.nowhere-after-trip=Ningún otro contenedor tiene {material}: vuelve a la construcción sin él.

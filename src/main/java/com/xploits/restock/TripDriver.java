@@ -351,7 +351,7 @@ final class TripDriver {
             case RestockTrip.NeedSource n -> {
                 mover.cancel();
                 syncId = -1;
-                Optional<Source> next = session.next(n.material(), n.failed(), n.stale(), trip.resume());
+                Optional<Source> next = session.next(n.material(), n.failed(), n.failure(), trip.resume());
                 if (next.isPresent()) trip.retarget(next.get().container(), next.get().stand());
                 else trip.giveUp();
             }
