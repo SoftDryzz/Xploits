@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.SharedConstants;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 import net.minecraft.client.gui.screen.world.WorldCreator;
@@ -120,6 +121,12 @@ public class BenchTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext ctx) {
         // 0.8.0: before any world, so every crystal the bench's scripts spawn is known not to be ours.
         ScriptCrystals.register();
+        // Spike S1: malilib's test mixin turns SharedConstants.isDevelopment on in every Loom development run, where a
+        // real instance keeps it off; with it on, vanilla throws for a positional environment attribute read without a
+        // position (Meteor's AutoTotem crashed the client in the spike). Before any world.
+        if (FabricLoader.getInstance().isModLoaded("malilib")) {
+            ctx.runOnClient(client -> SharedConstants.isDevelopment = false);
+        }
         if (System.getProperty(Shots.FOLDER_PROPERTY) != null) {
             takeShots(ctx);
             return;
@@ -131,7 +138,10 @@ public class BenchTest implements FabricClientGameTest {
         }
         Config config = Config.fromSystemProperties();
         Profile profile = config.profile();
-        List<Scenario> canonical = select(Scenarios.all(), config.only());
+        // The Litematica profile (-Pbench.litematica) plays its own CHECKs only: Litematica's integrated-server mixin
+        // turns vanilla's hit-vector check off, which the default bench must never run with (restock spec §6).
+        List<Scenario> all = FabricLoader.getInstance().isModLoaded("litematica") ? LitematicaScenarios.all() : Scenarios.all();
+        List<Scenario> canonical = select(all, config.only());
         List<Scenario> selected = canonical;
         // Task A5: -Pbench.shard=k/n cuts the canonical (unsharded) selection down to this client's own
         // slice, never splitting a compare group (ShardPlan); the report keeps the full canonical order too,

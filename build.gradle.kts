@@ -77,6 +77,19 @@ fabricApi {
 
 dependencies {
     "modGametestImplementation"("net.fabricmc.fabric-api:fabric-api:0.141.4+1.21.11")
+    // The bench's Litematica CHECK compiles against Litematica in every profile (its classes load only in the
+    // Litematica profile; spike S1), keeping the gametest's classpath independent of how Loom hands main's
+    // compile-only jars to other source sets.
+    "modGametestCompileOnly"("maven.modrinth:litematica:0.26.14")
+    "modGametestCompileOnly"("maven.modrinth:malilib:0.27.19")
+    // The Litematica profile (restock spec §6): -Pbench.litematica only. Litematica's integrated-server mixin turns
+    // vanilla's hit-vector check off, which is why it never joins the default bench.
+    if (project.hasProperty("bench.litematica")) {
+        "modGametestImplementation"("maven.modrinth:litematica:0.26.14")
+        "modGametestImplementation"("maven.modrinth:malilib:0.27.19")
+        // Nested in both jars; Loom strips nested jars from development mods (spike S1).
+        "modGametestRuntimeOnly"("me.fallenbreath:conditional-mixin-fabric:0.6.4")
+    }
 }
 
 // The addon as one mod in development runs, its classes and its resources together (fabric.classPathGroups), as in

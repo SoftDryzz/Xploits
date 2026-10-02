@@ -136,6 +136,27 @@ class BoundaryTest {
         assertEquals(List.of(), bad, "the bench core must stay pure");
     }
 
+    /**
+     * The bench names Litematica only in its Litematica profile's two files, and the mods Xploits reaches by reflection
+     * nowhere (restock spec §6; the printer's P13): the default bench never loads a class that names a mod it lacks.
+     */
+    @Test
+    void theBenchNamesLitematicaOnlyInItsProfile() throws IOException {
+        Set<String> profile = Set.of("com/xploits/bench/BenchLitematica.java", "com/xploits/bench/RestockLitematica.java");
+        List<String> bad = new ArrayList<>();
+        sourcesUnder(GAMETEST_SOURCES).forEach((path, text) -> {
+            for (String l : text.split("\n")) {
+                if (!l.startsWith("import ")) continue;
+                String imported = l.replace("import static ", "").replace("import ", "").replace(";", "").trim();
+                if (imported.startsWith("fi.dy.masa.") && !profile.contains(path)) bad.add(path + " imports " + imported);
+                for (String prefix : REFLECTION_ONLY) {
+                    if (imported.startsWith(prefix)) bad.add(path + " imports " + imported);
+                }
+            }
+        });
+        assertEquals(List.of(), bad, "a default bench run would load a class naming a mod it does not have");
+    }
+
     /** Packages whose player text is fully in the catalogs (language spec §6): all of them. */
     private static final List<String> MIGRATED = List.of("com/xploits/");
     // Note: adapted from the brief's version, which also matched the quoted argument *names* of
