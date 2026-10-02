@@ -67,6 +67,19 @@ class TakePlanTest {
     }
 
     @Test
+    void aShulkerBoxThatHoldsAnythingIsNeverTakenAsABlock() {
+        // Ruling R34: the build places red shulker boxes, and a marked chest keeps a stash in a red shulker box. Taken,
+        // the printer would place it, contents and all, into a public build. It is not there for the trip at all.
+        String box = "minecraft:red_shulker_box";
+        assertEquals(new TakePlan.Done(false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)), box,
+            need(box, 2L)), "not taken, and not 'nothing fits' either: for the trip the container does not have it");
+        assertEquals(new TakePlan.Click(4), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true),
+            new TakePlan.Slot(4, box, 1, 64, false)), box, need(box, 2L)), "an empty one is a block like any other");
+        assertEquals(new TakePlan.Done(false), TakePlan.next(List.of(new TakePlan.Slot(0, box, 1, 64, true)), STONE,
+            need(STONE, 10L, box, 2L)), "nor as another material the build still needs");
+    }
+
+    @Test
     void aTieGoesToTheLowerSlot() {
         assertEquals(new TakePlan.Click(2), TakePlan.next(List.of(new TakePlan.Slot(5, STONE, 64, 128),
             new TakePlan.Slot(2, STONE, 64, 128)), STONE, need(STONE, 10L)));

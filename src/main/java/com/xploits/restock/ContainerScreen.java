@@ -42,7 +42,11 @@ final class ContainerScreen {
         return false;
     }
 
-    /** The container's non-empty slots, each with the room the player's 36 slots have for exactly that stack. */
+    /**
+     * The container's non-empty slots, each with the room the player's 36 slots have for exactly that stack, and whether
+     * it holds items of its own (Meteor's {@code Utils.hasItems}: a shulker box, or any block item, with contents), which
+     * {@link TakePlan} never takes (ruling R34).
+     */
     static List<TakePlan.Slot> slots(ClientPlayerEntity p) {
         ScreenHandler h = p.currentScreenHandler;
         int n = containerSlots(h);
@@ -50,7 +54,8 @@ final class ContainerScreen {
         for (int i = 0; i < n; i++) {
             ItemStack stack = h.slots.get(i).getStack();
             if (stack.isEmpty()) continue;
-            out.add(new TakePlan.Slot(i, StateFacts.itemId(stack), stack.getCount(), room(p.getInventory(), stack)));
+            out.add(new TakePlan.Slot(i, StateFacts.itemId(stack), stack.getCount(), room(p.getInventory(), stack),
+                Utils.hasItems(stack)));
         }
         return out;
     }
@@ -66,13 +71,13 @@ final class ContainerScreen {
         return room;
     }
 
-    /** The loose stacks, by item id. */
+    /** The loose stacks restock could take, by item id: an empty shulker box is one, a filled one is not (ruling R34). */
     static Map<String, Integer> loose(ScreenHandler h) {
         Map<String, Integer> m = new TreeMap<>();
         int n = containerSlots(h);
         for (int i = 0; i < n; i++) {
             ItemStack stack = h.slots.get(i).getStack();
-            if (stack.isEmpty() || Utils.isShulker(stack.getItem())) continue;
+            if (stack.isEmpty() || Utils.hasItems(stack)) continue;
             m.merge(StateFacts.itemId(stack), stack.getCount(), Integer::sum);
         }
         return m;
