@@ -347,8 +347,9 @@ public final class RestockTrip {
 
     private Action open(Facts f) {
         if (hurry) {
+            // Wait one tick: the next one is measured as RETURN, so a walk that starts where it ends arrives with no goal.
             enter(Phase.RETURN);
-            return back(f);
+            return WAIT;
         }
         if (f.paused()) return WAIT;
         if (!f.still() || !f.screenFree()) {

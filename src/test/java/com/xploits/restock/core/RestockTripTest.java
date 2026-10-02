@@ -396,8 +396,21 @@ class RestockTripTest {
     void aHurriedOpenNeverClicks() {
         RestockTrip t = atChest();
         t.hurry();
-        assertEquals(new RestockTrip.GoTo(HOME), t.step(f().aiming(HELD).build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().aiming(HELD).build()), "no click, no goal");
         assertEquals(RestockTrip.Phase.RETURN, t.phase());
+        assertEquals(new RestockTrip.Finish(false, false), t.step(f().arrived().build()),
+            "the walk back starts where it ends: no GoTo, no cancel to follow");
+    }
+
+    @Test
+    void aStashSourceAlreadyInRangeIsNotApproached() {
+        // Phase B's first-tick arrival also reaches the approach: within range already, no GoToward.
+        RestockTrip t = trip(false, Optional.empty());
+        assertEquals(new RestockTrip.StopWalking(), t.step(f().arrived().spot(SPOT).build()));
+        assertEquals(Optional.of(SPOT), t.stand());
+        assertEquals(new RestockTrip.GoTo(SPOT), t.step(f().build()));
+        RestockTrip u = trip(false, Optional.empty());
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, UNUSABLE), u.step(f().arrived().build()), "no spot");
     }
 
     @Test

@@ -14,6 +14,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -47,6 +48,16 @@ class ShulkerSpotTest {
             @Override
             public boolean safe(Pos block) {
                 return !hazards.contains(block);
+            }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return blocked.contains(cell);
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return block.y() == 63 && !hazards.contains(block);
             }
         };
     }
@@ -134,9 +145,106 @@ class ShulkerSpotTest {
             public boolean safe(Pos block) {
                 return true;
             }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return false;
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return true;
+            }
         };
         assertEquals(new Pos(-2, 65, 0),
             ShulkerSpot.choose(BUILD, FEET, eye, 0f, Set.of(), 4.5, 0.0, two, SEES_ALL).orElseThrow().cell());
+    }
+
+    /** The world of {@link #floor}, with the ground and the walls changed for one test of the landing rules. */
+    private static ShulkerSpot.World landing(Set<Pos> walls, Set<Pos> noFloor, Set<Pos> hazards) {
+        return landing(walls, noFloor, hazards, Set.of());
+    }
+
+    /** {@code partial}: a block in the way (not empty) that does not fill the cell's height, such as a slab. */
+    private static ShulkerSpot.World landing(Set<Pos> walls, Set<Pos> noFloor, Set<Pos> hazards, Set<Pos> partial) {
+        return new ShulkerSpot.World() {
+            @Override
+            public boolean empty(Pos cell) {
+                return cell.y() >= 64 && !walls.contains(cell) && !partial.contains(cell);
+            }
+
+            @Override
+            public boolean support(Pos block) {
+                return block.y() == 63;
+            }
+
+            @Override
+            public boolean safe(Pos block) {
+                return !hazards.contains(block);
+            }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return walls.contains(cell);
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return block.y() == 63 && !noFloor.contains(block);
+            }
+        };
+    }
+
+    private static final Pos NEAREST = new Pos(-1, 64, 0);
+    private static final Pos NEXT = new Pos(0, 64, -1);
+
+    private static Pos cellFor(ShulkerSpot.World world) {
+        return choose(BUILD, Set.of(), 4.5, world, SEES_ALL).orElseThrow().cell();
+    }
+
+    @Test
+    void aNeighbourColumnWithNoFloorIsAnEdgeAndRefusesTheCell() {
+        // Ruling R51: the drop drifts sideways; over a column with nothing under it, it falls.
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(new Pos(-2, 63, 0)), Set.of())), "orthogonal edge");
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(new Pos(-2, 63, 1)), Set.of())), "diagonal edge");
+    }
+
+    @Test
+    void aNeighbourWithABlockThatDoesNotFillTheCellIsNotFreeAirEither() {
+        // Neither a wall nor empty (a slab, a layer of snow): the drop could land on or in it, so the cell is refused.
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(), Set.of(new Pos(-2, 64, 0)))));
+    }
+
+    @Test
+    void aNeighbourThatStopsTheDriftNeedsNoFloor() {
+        // A wall at the cell's level stops the drop; what lies under it does not matter.
+        assertEquals(NEAREST, cellFor(landing(Set.of(new Pos(-2, 64, 0)), Set.of(new Pos(-2, 63, 0)), Set.of())));
+    }
+
+    @Test
+    void lavaLevelWithTheSupportOnTheShoreRefusesTheCell() {
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 63, 0)))), "beside the support");
+        assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 63, -1)))), "diagonal to the support");
+    }
+
+    @Test
+    void aHazardOnADiagonalRefusesTheCell() {
+        for (int y = 64; y <= 65; y++) {
+            assertEquals(NEXT, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, y, 1)))), "diagonal at y " + y);
+        }
+    }
+
+    @Test
+    void aHazardInTheLidCellOrOnAnySideRefusesTheCell() {
+        for (Pos hazard : new Pos[]{new Pos(-1, 65, 0), new Pos(-1, 63, 0), new Pos(-2, 64, 0), new Pos(0, 64, 0),
+            new Pos(-1, 64, 1), new Pos(-1, 64, -1)}) {
+            assertNotEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(hazard))), "hazard in " + hazard.y());
+        }
+    }
+
+    @Test
+    void aHazardAboveTheLidIsOutOfRange() {
+        assertEquals(NEAREST, cellFor(landing(Set.of(), Set.of(), Set.of(new Pos(-2, 66, 0)))));
     }
 
     @Test
@@ -156,6 +264,16 @@ class ShulkerSpotTest {
             public boolean safe(Pos block) {
                 return true;
             }
+
+            @Override
+            public boolean stopsDrop(Pos cell) {
+                return false;
+            }
+
+            @Override
+            public boolean floor(Pos block) {
+                return true;
+            }
         };
         assertTrue(choose(BUILD, Set.of(), 4.5, none, SEES_ALL).isEmpty());
     }
@@ -164,9 +282,9 @@ class ShulkerSpotTest {
     void aCellNextToAHazardOrHoldingOneIsNeverUsed() {
         assertEquals(new Pos(0, 64, -1), choose(BUILD, Set.of(), 4.5,
             floor(Set.of(), Set.of(new Pos(-2, 64, 0))), SEES_ALL).orElseThrow().cell(), "lava west of the nearest cell");
-        assertEquals(new Pos(0, 64, -1), choose(BUILD, Set.of(), 4.5,
-            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(), "fire in it");
-        assertEquals(new Pos(0, 64, -1), choose(BUILD, Set.of(), 4.5,
+        assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
+            floor(Set.of(), Set.of(new Pos(-1, 64, 0))), SEES_ALL).orElseThrow().cell(), "fire in it, which is in the 3x3 of the cells next to it too");
+        assertEquals(new Pos(1, 64, 0), choose(BUILD, Set.of(), 4.5,
             floor(Set.of(), Set.of(new Pos(-1, 63, 0))), SEES_ALL).orElseThrow().cell(), "an unsafe block under it");
     }
 
@@ -194,6 +312,13 @@ class ShulkerSpotTest {
         assertFalse(ShulkerSpot.safe(block("minecraft:fire", false, true, false)));
         assertFalse(ShulkerSpot.safe(block("minecraft:soul_fire", false, true, false)));
         assertFalse(ShulkerSpot.safe(block("minecraft:cactus", false, false, false)));
+        assertFalse(ShulkerSpot.safe(block("minecraft:lava_cauldron", false, false, false)));
+        assertFalse(ShulkerSpot.safe(block("minecraft:hopper", true, false, false)));
+        assertFalse(ShulkerSpot.safe(block("minecraft:nether_portal", false, false, false)));
+        assertFalse(ShulkerSpot.safe(block("minecraft:end_portal", true, false, false)));
+        assertFalse(ShulkerSpot.safe(block("minecraft:end_gateway", true, false, false)));
+        assertTrue(ShulkerSpot.safe(block("minecraft:magma_block", false, false, false)), "hurts only living entities");
+        assertTrue(ShulkerSpot.safe(block("minecraft:campfire", true, false, false)), "hurts only living entities");
     }
 
     @Test
