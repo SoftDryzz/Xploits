@@ -10,19 +10,29 @@ import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.network.packet.c2s.play.BundleItemSelectedC2SPacket;
+import net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket;
 import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.ClientTickEndC2SPacket;
 import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
+import net.minecraft.network.packet.c2s.play.CraftRequestC2SPacket;
+import net.minecraft.network.packet.c2s.play.CreativeInventoryActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
+import net.minecraft.network.packet.c2s.play.PickItemFromBlockC2SPacket;
+import net.minecraft.network.packet.c2s.play.PickItemFromEntityC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket;
+import net.minecraft.network.packet.c2s.play.SlotChangedStateC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.util.PlayerInput;
+
+import java.util.Set;
 
 /**
  * Every packet that really leaves the client, judged by the printer's {@link PaceRules} (restock spec §3 "Take": stand
@@ -34,6 +44,16 @@ import net.minecraft.util.PlayerInput;
  */
 public final class PacketWatch {
     private static final PacketWatch INSTANCE = new PacketWatch();
+    /**
+     * Deferred L36 (Task 9 review M5): what the player does to an inventory, a screen or a trade — pick-block (from a
+     * block or an entity), the bundle scroll, the creative inventory, a screen button, a recipe-book craft, a villager
+     * trade, a crafter slot toggle. PaceRules counts inventory actions as acting, conservative on purpose, so each is a
+     * foreign action unless restock sent it. Class literals, so naming them initialises none of them.
+     */
+    static final Set<Class<?>> PLAYER_ACTIONS = Set.of(PickItemFromBlockC2SPacket.class,
+        PickItemFromEntityC2SPacket.class, BundleItemSelectedC2SPacket.class, CreativeInventoryActionC2SPacket.class,
+        ButtonClickC2SPacket.class, CraftRequestC2SPacket.class, SelectMerchantTradeC2SPacket.class,
+        SlotChangedStateC2SPacket.class);
     private static boolean started;
 
     private final PaceRules rules = new PaceRules(PrinterLimits.DEFAULTS, false);
@@ -144,6 +164,9 @@ public final class PacketWatch {
         if (packet instanceof ClientCommandC2SPacket command) {
             if (command.getMode() == ClientCommandC2SPacket.Mode.START_SPRINTING) return PaceRules.Packet.sprint(true);
             if (command.getMode() == ClientCommandC2SPacket.Mode.STOP_SPRINTING) return PaceRules.Packet.sprint(false);
+        }
+        for (Class<?> action : PLAYER_ACTIONS) {
+            if (action.isInstance(packet)) return PaceRules.Packet.of(PaceRules.Kind.ACTION_OTHER, ours);
         }
         return PaceRules.Packet.of(PaceRules.Kind.OTHER, ours);
     }
