@@ -236,6 +236,10 @@ final class RestockSession {
         Guards.Verdict verdict = guards.tick(guardInputs(in, s, p));
         if (verdict instanceof Guards.Stop stop) return new Stopped(RestockReason.of(stop.reason()), stop.detail());
         boolean paused = verdict instanceof Guards.Pause;
+        // Deferred L55: Guards' Run.yielding — another module rotated or acted — blocks the trip's container actions as a
+        // pause does (no click, take or close; no tick counted towards a wait), so a QUICK_MOVE never shares a tick
+        // with someone else's action. It is only ever true while the trip clicks (see guardInputs' acting).
+        boolean yielding = verdict instanceof Guards.Run run && run.yielding();
         mover.tick();
         watchSources();
         if (index != null) {
@@ -253,7 +257,7 @@ final class RestockSession {
         }
         boolean ready = leave.tick(mayLeave(p));
         if (trip != null) {
-            TripDriver.Result r = trip.tick(paused);
+            TripDriver.Result r = trip.tick(paused || yielding);
             if (r instanceof TripDriver.Ended end) return new Stopped(end.reason(), end.detail());
         } else if (!paused) {
             Optional<Stopped> stopped = startTripIfDue(s, p, ready);
