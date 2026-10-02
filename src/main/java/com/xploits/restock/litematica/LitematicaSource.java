@@ -29,18 +29,24 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Supplier;
 
 /**
  * Litematica's selected placement as what restock counts (restock spec §3). A position is known only while main rendering
  * is on and its schematic chunk is at least {@code FILLED}; the state is read from that same chunk object, so a rebuild
  * that swaps the chunk in between cannot hand out its empty placeholder as air (spike S2). The whole build's counts come
- * from the regions' own block counts, so they never wait for a chunk to load.
+ * from the regions' own block counts, so they never wait for a chunk to load. A {@link LinkageError} or
+ * {@link RuntimeException} from a Litematica call (an API that differs from the one built against) never reaches the game:
+ * the source turns broken, refuses from then on and reports {@link #changed()}, so the session opens a new one and gets
+ * the refusal; {@link #target} is unknown meanwhile.
  */
 final class LitematicaSource implements TargetSource {
     private final List<GridBox> boxes;
     private final PlacementWatch watch;
     private final Guards.Refusal refusal;
     private final Map<BlockState, Long> wholeBuild;
+    /** Set when a Litematica call failed after construction; client thread only. */
+    private Guards.Refusal broken;
 
     LitematicaSource(long maxVolume) {
         SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
@@ -57,14 +63,27 @@ final class LitematicaSource implements TargetSource {
 
     @Override
     public Optional<Guards.Refusal> refusal() {
-        return Optional.ofNullable(refusal);
+        return Optional.ofNullable(broken != null ? broken : refusal);
+    }
+
+    /** Runs a Litematica call; a failure marks this source broken and yields {@code fallback}. */
+    private <T> T guard(Supplier<T> call, T fallback) {
+        try {
+            return call.get();
+        } catch (LinkageError | RuntimeException e) {
+            broken = new Guards.Refusal(Guards.Reason.LITEMATICA_API, "Litematica call failed: " + e.getClass().getSimpleName());
+            return fallback;
+        }
     }
 
     @Override
     public boolean changed() {
+        if (broken != null) return true;
         if (watch == null) return false;
-        SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
-        return watch.changed(view(manager, manager.getSelectedSchematicPlacement()));
+        return guard(() -> {
+            SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
+            return watch.changed(view(manager, manager.getSelectedSchematicPlacement()));
+        }, true);
     }
 
     @Override
@@ -74,12 +93,15 @@ final class LitematicaSource implements TargetSource {
 
     @Override
     public BlockState target(BlockPos pos) {
-        if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return null;
-        WorldSchematic world = SchematicWorldHandler.getSchematicWorld();
-        if (world == null) return null;
-        ChunkSchematic chunk = world.getChunkSource().getChunkIfExists(pos.getX() >> 4, pos.getZ() >> 4);
-        if (chunk == null || !chunk.getState().atLeast(ChunkSchematicState.FILLED)) return null;
-        return chunk.getBlockState(pos);
+        if (broken != null) return null;
+        return guard(() -> {
+            if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return null;
+            WorldSchematic world = SchematicWorldHandler.getSchematicWorld();
+            if (world == null) return null;
+            ChunkSchematic chunk = world.getChunkSource().getChunkIfExists(pos.getX() >> 4, pos.getZ() >> 4);
+            if (chunk == null || !chunk.getState().atLeast(ChunkSchematicState.FILLED)) return null;
+            return chunk.getBlockState(pos);
+        }, null);
     }
 
     @Override
@@ -98,8 +120,11 @@ final class LitematicaSource implements TargetSource {
         List<PlacementWatch.Other> others = new ArrayList<>();
         for (SchematicPlacement p : manager.getAllSchematicsPlacements()) {
             if (p == selected) continue;
-            GridBox enclosing = grid(p.getEclosingBox());
-            if (enclosing != null) others.add(new PlacementWatch.Other(System.identityHashCode(p), p.isEnabled(), enclosing));
+            // getEclosingBox() is null unless the player toggled "render enclosing box": use the enabled sub-region boxes
+            for (Box box : p.getSubRegionBoxes(SubRegionPlacement.RequiredEnabled.PLACEMENT_ENABLED).values()) {
+                GridBox other = grid(box);
+                if (other != null) others.add(new PlacementWatch.Other(System.identityHashCode(p), p.isEnabled(), other));
+            }
         }
         BlockPos origin = selected.getOrigin();
         return new PlacementWatch.View(System.identityHashCode(selected), selected.isEnabled(),

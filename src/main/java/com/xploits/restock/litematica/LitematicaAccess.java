@@ -26,7 +26,6 @@ public final class LitematicaAccess {
         {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getOrigin"},
         {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getRotation"},
         {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getMirror"},
-        {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getEclosingBox"},
         {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getSchematic"},
         {"fi.dy.masa.litematica.schematic.placement.SchematicPlacement", "getSubRegionBoxes",
             "fi.dy.masa.litematica.schematic.placement.SubRegionPlacement$RequiredEnabled"},
@@ -68,7 +67,12 @@ public final class LitematicaAccess {
         if (!missing.isEmpty()) {
             return TargetSource.refusing(new Guards.Refusal(Guards.Reason.LITEMATICA_API, String.join(", ", missing)));
         }
-        return new LitematicaSource(maxVolume);
+        try {
+            return new LitematicaSource(maxVolume);
+        } catch (LinkageError | RuntimeException e) {
+            return TargetSource.refusing(new Guards.Refusal(Guards.Reason.LITEMATICA_API,
+                "Litematica call failed: " + e.getClass().getSimpleName()));
+        }
     }
 
     /** The members of the signature that this Litematica lacks, as {@code Class.member}. */
