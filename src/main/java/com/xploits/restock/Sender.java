@@ -57,7 +57,11 @@ final class Sender {
         PacketWatch.get().asOurs(() -> mc.player.swingHand(Hand.MAIN_HAND));
     }
 
-    /** ABORT with sequence 0 (the 3-argument constructor), as vanilla's {@code cancelBlockBreaking}. Tick path only. */
+    /**
+     * ABORT with sequence 0 (the 3-argument constructor), as vanilla sends it, with the dig's face: vanilla's
+     * {@code cancelBlockBreaking} sends {@code DOWN} and its switch to another block in {@code attackBlock} the clicked
+     * face, and the server's {@code processBlockBreakingAction} reads no face. Tick path only.
+     */
     void digAbort(BlockPos pos, Direction side) {
         PacketWatch.get().asOurs(() -> mc.getNetworkHandler().sendPacket(
             new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.ABORT_DESTROY_BLOCK, pos, side)));
