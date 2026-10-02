@@ -252,6 +252,64 @@ class RestockTripTest {
         assertFalse(back.clicking());
     }
 
+    @Test
+    void anItemOnTheCursorBlocksEveryTakeAndClose() {
+        RestockTrip t = taking();
+        assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().seen().cursor().take(new TakePlan.Click(0)).build()));
+        assertEquals(new RestockTrip.Wait(),
+            t.step(f().ourScreen().seen().cursor().take(new TakePlan.Done(true)).carried(64).build()));
+        assertEquals(new RestockTrip.Close(),
+            t.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64).build()));
+    }
+
+    @Test
+    void aStopNeverClosesOverAHeldItemOrDuringAPause() {
+        assertEquals(new RestockTrip.Stopped(RestockReason.PLAYER_MOVED, false),
+            taking().step(f().keys().ourScreen().seen().cursor().build()));
+        assertEquals(new RestockTrip.Stopped(RestockReason.PLAYER_MOVED, false),
+            taking().step(f().keys().ourScreen().seen().paused().build()));
+    }
+
+    @Test
+    void pausedTicksDoNotCountTowardsTheContentWait() {
+        RestockTrip t = taking();
+        for (int i = 1; i <= 25; i++) assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().paused().build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().ourScreen().take(new TakePlan.Done(false)).build()));
+    }
+
+    @Test
+    void pausedTicksDoNotCountTowardsTheOpenTimeout() {
+        RestockTrip t = atChest();
+        t.step(f().aiming(HELD).build());
+        for (int i = 1; i <= 150; i++) assertEquals(new RestockTrip.Wait(), t.step(f().paused().build()));
+        assertEquals(new RestockTrip.Wait(), t.step(f().build()));
+    }
+
+    @Test
+    void anOpenThatCannotClickForTheLimitAsksForAnother() {
+        RestockTrip t = atChest();
+        for (int i = 1; i <= 100; i++) assertEquals(new RestockTrip.Wait(), t.step(f().aiming(HELD).screenOpen().build()), "tick " + i);
+        assertEquals(new RestockTrip.NeedSource(STONE, CHEST, false), t.step(f().aiming(HELD).screenOpen().build()));
+        RestockTrip u = atChest();
+        for (int i = 1; i <= 150; i++) assertEquals(new RestockTrip.Wait(), u.step(f().aiming(HELD).screenOpen().paused().build()));
+        assertEquals(new RestockTrip.Wait(), u.step(f().aiming(HELD).screenOpen().build()));
+    }
+
+    @Test
+    void pausedStallsNeverStopApproachOrReturn() {
+        RestockTrip a = trip(false, Optional.empty());
+        a.step(f().build());
+        for (int i = 1; i <= 250; i++) assertEquals(new RestockTrip.Wait(), a.step(f().at(5).paused().build()));
+        for (int i = 1; i <= 200; i++) a.step(f().at(5).build());
+        assertEquals(new RestockTrip.Stopped(RestockReason.NO_PATH, false), a.step(f().at(5).build()));
+        RestockTrip b = taking();
+        b.step(f().ourScreen().seen().take(new TakePlan.Done(true)).carried(64).build());
+        b.step(f().carried(64).build());
+        for (int i = 1; i <= 250; i++) assertEquals(new RestockTrip.Wait(), b.step(f().at(5).carried(64).paused().build()));
+        for (int i = 1; i <= 200; i++) b.step(f().at(5).carried(64).build());
+        assertEquals(new RestockTrip.Stopped(RestockReason.NO_PATH_BACK, false), b.step(f().at(5).carried(64).build()));
+    }
+
     private static F f() {
         return new F();
     }
@@ -271,6 +329,12 @@ class RestockTripTest {
         private boolean contentSeen;
         private TakePlan.Step take = new TakePlan.Done(false);
         private int carried;
+        private boolean cursorEmpty = true;
+
+        F cursor() {
+            cursorEmpty = false;
+            return this;
+        }
 
         F keys() {
             keys = true;
@@ -339,7 +403,7 @@ class RestockTripTest {
 
         RestockTrip.Facts build() {
             return new RestockTrip.Facts(keys, paused, still, screenFree, distance, arrived, spot, aiming, click,
-                ourScreen, contentSeen, take, carried);
+                ourScreen, contentSeen, take, carried, cursorEmpty);
         }
     }
 }

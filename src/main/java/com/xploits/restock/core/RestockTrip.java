@@ -5,6 +5,7 @@ import com.xploits.travel.core.StallWatch;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * One restock trip (restock spec §3 "The trip"), from the first walking command to the moment the player stands again
@@ -53,10 +54,11 @@ public final class RestockTrip {
      * @param contentSeen  that screen shows at least one item
      * @param take         TAKE: what {@link TakePlan#next} says now
      * @param carried      how many of the trip's material the player carries now
+     * @param cursorEmpty  the cursor holds nothing; an item on it would be dropped by a close
      */
     public record Facts(boolean movementKeys, boolean paused, boolean still, boolean screenFree, double distance,
                         boolean arrived, Optional<Pos> spot, Aiming aiming, Click click, boolean ourScreen,
-                        boolean contentSeen, TakePlan.Step take, int carried) {
+                        boolean contentSeen, TakePlan.Step take, int carried, boolean cursorEmpty) {
         public Facts {
             Objects.requireNonNull(spot, "spot");
             Objects.requireNonNull(aiming, "aiming");
@@ -130,6 +132,7 @@ public final class RestockTrip {
     private Phase phase;
     private boolean entered;
     private int phaseTicks;
+    private int liveTicks;
     private int goal;
     private int clicks;
     private After after;
@@ -225,39 +228,46 @@ public final class RestockTrip {
     }
 
     private Action approach(Facts f) {
-        if (!entered) {
-            entered = true;
-            goal++;
-            stall.reset();
-            return new GoToward(container.x(), container.z());
-        }
-        if (f.arrived()) {
+        return walk(f, RestockReason.NO_PATH, () -> new GoToward(container.x(), container.z()), () -> {
             if (f.spot().isEmpty()) return needSource(After.UNUSABLE);
             stand = f.spot();
             enter(Phase.TRAVEL);
             return new StopWalking();
-        }
-        if (!f.paused() && stall.tick(goal, f.distance())) return stop(RestockReason.NO_PATH, f);
-        return WAIT;
+        });
     }
 
     private Action travel(Facts f) {
+        return walk(f, RestockReason.NO_PATH, () -> new GoTo(stand.orElseThrow()), () -> {
+            enter(Phase.OPEN);
+            return new StopWalking();
+        });
+    }
+
+    private Action back(Facts f) {
+        return walk(f, RestockReason.NO_PATH_BACK, () -> new GoTo(resume), () -> {
+            enter(Phase.DONE);
+            return new Finish(printerPaused, f.carried() > 0);
+        });
+    }
+
+    /** A walking phase: the command on its first tick, then arrival, then the stall rule (a paused tick never counts). */
+    private Action walk(Facts f, RestockReason stalled, Supplier<Action> command, Supplier<Action> arrival) {
         if (!entered) {
             entered = true;
             goal++;
             stall.reset();
-            return new GoTo(stand.orElseThrow());
+            return command.get();
         }
-        if (f.arrived()) {
-            enter(Phase.OPEN);
-            return new StopWalking();
-        }
-        if (!f.paused() && stall.tick(goal, f.distance())) return stop(RestockReason.NO_PATH, f);
+        if (f.arrived()) return arrival.get();
+        if (!f.paused() && stall.tick(goal, f.distance())) return stop(stalled, f);
         return WAIT;
     }
 
     private Action open(Facts f) {
-        if (f.paused() || !f.still() || !f.screenFree()) return WAIT;
+        if (f.paused()) return WAIT;
+        if (!f.still() || !f.screenFree()) {
+            return ++liveTicks > limits.openTimeoutTicks() ? needSource(After.UNUSABLE) : WAIT;
+        }
         return switch (f.aiming()) {
             case NONE -> needSource(After.UNUSABLE);
             case WANTED -> new Aim(container);
@@ -274,14 +284,14 @@ public final class RestockTrip {
             enter(Phase.TAKE);
             return WAIT;
         }
-        if (phaseTicks > limits.openTimeoutTicks()) return needSource(After.UNUSABLE);
+        if (!f.paused() && ++liveTicks > limits.openTimeoutTicks()) return needSource(After.UNUSABLE);
         return WAIT;
     }
 
     private Action take(Facts f) {
         if (!f.ourScreen()) return stop(RestockReason.CONTAINER_CLOSED, f);
-        if (f.paused() || !f.still()) return WAIT;
-        if (!f.contentSeen() && phaseTicks <= limits.contentWaitTicks()) return WAIT;
+        if (f.paused() || !f.still() || !f.cursorEmpty()) return WAIT;
+        if (!f.contentSeen() && ++liveTicks <= limits.contentWaitTicks()) return WAIT;
         TakePlan.Step s = clicks >= limits.maxTakeClicks() ? new TakePlan.NothingFits() : f.take();
         if (s instanceof TakePlan.Click c) {
             clicks++;
@@ -298,21 +308,6 @@ public final class RestockTrip {
         return new Close();
     }
 
-    private Action back(Facts f) {
-        if (!entered) {
-            entered = true;
-            goal++;
-            stall.reset();
-            return new GoTo(resume);
-        }
-        if (f.arrived()) {
-            enter(Phase.DONE);
-            return new Finish(printerPaused, f.carried() > 0);
-        }
-        if (!f.paused() && stall.tick(goal, f.distance())) return stop(RestockReason.NO_PATH_BACK, f);
-        return WAIT;
-    }
-
     private Action needSource(After a) {
         after = a;
         enter(Phase.CHOOSING);
@@ -321,12 +316,13 @@ public final class RestockTrip {
 
     private Action stop(RestockReason reason, Facts f) {
         enter(Phase.STOPPED);
-        return new Stopped(reason, f.ourScreen() && f.still());
+        return new Stopped(reason, f.ourScreen() && f.still() && f.cursorEmpty() && !f.paused());
     }
 
     private void enter(Phase p) {
         phase = p;
         entered = false;
         phaseTicks = 0;
+        liveTicks = 0;
     }
 }
