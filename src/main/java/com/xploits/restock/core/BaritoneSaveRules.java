@@ -25,7 +25,8 @@ public final class BaritoneSaveRules {
      * @param pending       whether a saved session file exists
      * @param unrestored    that file as read (empty when it cannot be read)
      * @param settingsLines {@code baritone/settings.txt}'s lines: an empty list when the file is missing (Baritone's
-     *                      defaults), an empty Optional when it cannot be read
+     *                      defaults), an empty Optional when it cannot be read (refused as not read: there is no line
+     *                      to fix)
      */
     public static Values playerValues(boolean pending, Optional<BaritoneSession.Saved> unrestored,
                                       Optional<List<String>> settingsLines) {
@@ -34,7 +35,7 @@ public final class BaritoneSaveRules {
             if (usable.isEmpty()) return refused(RestockReason.BARITONE_SAVED_UNREADABLE, "");
             return new Values(usable.get().player(), Optional.empty());
         }
-        if (settingsLines.isEmpty()) return refused(RestockReason.BARITONE_SETTINGS_UNREADABLE, "");
+        if (settingsLines.isEmpty()) return refused(RestockReason.BARITONE_SETTINGS_NOT_READ, "");
         Map<String, String> file = BaritoneSession.parse(settingsLines.get());
         Optional<String> bad = BaritoneValues.unreadable(file);
         if (bad.isPresent()) return refused(RestockReason.BARITONE_SETTINGS_UNREADABLE, bad.get());

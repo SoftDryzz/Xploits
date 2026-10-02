@@ -39,7 +39,8 @@ class RestockReasonTest {
     @Test
     void theReasonsOnlyRestockSaysAreWhatTheySpecSays() {
         // Not in the printer's guards: pinned one by one (spec §3 "Guards" and "The trip").
-        for (RestockReason r : List.of(RestockReason.NO_BARITONE, RestockReason.BARITONE_SAVED_UNREADABLE)) {
+        for (RestockReason r : List.of(RestockReason.NO_BARITONE, RestockReason.BARITONE_SAVED_UNREADABLE,
+            RestockReason.BARITONE_SETTINGS_NOT_READ)) {
             assertEquals(RestockReason.Effect.REFUSE, r.effect(), r.name());
         }
         for (RestockReason r : List.of(RestockReason.NO_PATH, RestockReason.NO_PATH_BACK, RestockReason.CONTAINER_REFUSED,

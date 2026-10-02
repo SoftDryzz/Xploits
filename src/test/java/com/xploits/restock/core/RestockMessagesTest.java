@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Restock spec §5 "Messages": every reason says what happened, what to do and which setting, in both languages. */
@@ -51,6 +52,17 @@ class RestockMessagesTest {
                 + "reads anything but a bare true as false, trailing spaces included)"));
         assertTrue(EN.render(RestockMessages.reason(RestockReason.BARITONE_SETTINGS_UNREADABLE, "", FACTS))
             .startsWith("baritone/settings.txt has a value for one of them that"));
+    }
+
+    @Test
+    void aSettingsFileThatCouldNotBeReadIsNotCalledABadValue() {
+        // A1 review m1: the player is told the file could not be read, not to fix a line that may not exist.
+        String en = EN.render(RestockMessages.reason(RestockReason.BARITONE_SETTINGS_NOT_READ, "", FACTS));
+        assertTrue(en.startsWith("baritone/settings.txt could not be read ("), en);
+        assertFalse(en.contains("true or false"), en);
+        String es = ES.render(RestockMessages.reason(RestockReason.BARITONE_SETTINGS_NOT_READ, "", FACTS));
+        assertTrue(es.startsWith("no se pudo leer baritone/settings.txt ("), es);
+        assertFalse(es.contains("true ni false"), es);
     }
 
     @Test

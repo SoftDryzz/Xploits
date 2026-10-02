@@ -69,9 +69,10 @@ class BaritoneSaveRulesTest {
     }
 
     @Test
-    void anUnreadableSettingsFileRefuses() {
+    void anUnreadableSettingsFileRefusesAsNotRead() {
+        // A1 review m1: an I/O error, or a file whose existence cannot be told, is not a line to fix.
         BaritoneSaveRules.Values v = BaritoneSaveRules.playerValues(false, Optional.empty(), Optional.empty());
-        assertEquals(Optional.of(new RestockReason.Refusal(RestockReason.BARITONE_SETTINGS_UNREADABLE, "")), v.refusal());
+        assertEquals(Optional.of(new RestockReason.Refusal(RestockReason.BARITONE_SETTINGS_NOT_READ, "")), v.refusal());
     }
 
     @Test
