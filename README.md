@@ -5,9 +5,9 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Twelve modules, each switched on separately.
+other anarchy servers. Eleven modules in the latest release, each switched on separately; `restock`, the twelfth, is not released yet.
 
-> **New, experimental: `restock`.** Build with Litematica and `litematica-printer` as you do today: when a block
+> **New, experimental, not in a release yet: `restock`.** It comes in the next one. Build with Litematica and `litematica-printer` as you do today: when a block
 > the build still needs runs out, `restock` pauses the printer, walks to the nearest chest you marked (or that
 > `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. See
 > [`restock`](#restock--fetch-blocks-for-your-litematica-build).
@@ -77,7 +77,7 @@ it uses that instead of reimplementing it worse. The price is that you need to h
 | Mod | Required for | If missing |
 |---|---|---|
 | **Meteor Client 1.21.11** | Everything | The addon does not load |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` **refuses to start**, and each says so. The other nine modules work the same |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` (not released yet) **refuses to start**, and each says so. The other modules work the same |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, with its library **malilib** | `restock` | `restock` **refuses to start** and says so. The other modules work the same; Xploits loads without it |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
@@ -461,7 +461,7 @@ It needs Windows Terminal, which is the default console in Windows 11.
 `litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
 
 - **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped chest, barrel
-  or placed shulker box and press it: "marked (N in total)"; press again to unmark (it works even if the container
+  or placed shulker box and press it: "Marked (N in total)."; press again to unmark (it works even if the container
   is gone). It works with `restock` on or off, and remembers the spot you stood on, per world.
   `.xploits restock chests` lists them by dimension and distance, never by position. With `use-stash-keeper` on
   (the default) it also uses the containers `stash-keeper` remembers.
@@ -478,7 +478,7 @@ It needs Windows Terminal, which is the default console in Windows 11.
 - **Nowhere to fetch from:** it says which block and how many are missing, goes nowhere, and the printer keeps
   printing everything else.
 - **It stops and says why** when a player who is not your Meteor friend comes within `player-distance` (48; switch
-  `stop-near-players` off to fetch with players around), a player attacks you, your health falls below `min-health`
+  `stop-near-players` off to fetch with players around), a player who is not your friend attacks you, your health falls below `min-health`
   (10), the server pulls you back, `auto-pvp` engages, you die or change dimension, **you press a movement key during a
   trip**, Baritone finds no path, nothing fits in your inventory, you turn on a module it cannot run beside, or
   something unexpected fails inside it (it stops with a message; it never crashes the game). After a stop during a
@@ -613,7 +613,8 @@ up on disk. The `xploits` module's `hide-coordinates-in-log` setting masks them 
 copy (on screen you still see them): `Off`, `Baritone` (only its lines), `All` (the default) or
 `All but Baritone`. It also masks the `Saving region x,z` lines Baritone writes on its own.
 `auto-travel` and `nether-sweep` also turn on Baritone's censoring (`censorCoordinates`,
-`censorRanCommands`) before the first goal, and leave it on. `restock` turns it on while it is on and gives you back your own values when it stops.
+`censorRanCommands`) before the first goal, and leave it on. `restock` turns it on while it is on and gives
+you back your own values when it stops.
 
 The console hides coordinates by default. With its `hide-coordinates` setting off it shows the same
 as the chat and saves them to disk (up to 30 days of history).

@@ -245,10 +245,14 @@ a change in `crystal-aura++`'s safety check with its own bench.
 It counts what the whole selected placement still needs, whatever layer range Litematica shows: on a build printed
 layer by layer, it may fetch blocks for layers you have not reached yet (it fetches more, never less).
 
-### `restock` does not fetch from shulkers yet
+### `restock` does not handle shulker boxes yet
 
-Phase A takes loose items from chests, trapped chests, barrels and placed shulker boxes. Shulkers inside containers,
-and shulkers you carry, come in phase B.
+**Symptom:** `restock` says a block is missing although it is inside a shulker box.
+
+**What happens.** It takes loose items from chests, trapped chests, barrels and placed shulker boxes. A shulker box
+inside a container, or one you carry, is not opened or counted yet.
+
+**What to do.** Put the blocks loose in a marked chest, or place the shulker box and mark it.
 
 ### `restock` cannot see a player beyond the server's tracking range
 

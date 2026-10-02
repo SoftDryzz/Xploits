@@ -5,9 +5,9 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Doce módulos que se encienden por separado.
+otros servidores anarchy. Once módulos en la última versión, que se encienden por separado; `restock`, el duodécimo, aún no está publicado.
 
-> **Nuevo, experimental: `restock`.** Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
+> **Nuevo, experimental, aún no está en ninguna versión publicada: `restock`.** Llega en la siguiente. Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
 > bloque que la construcción aún necesita, `restock` pausa el printer, va al cofre más cercano que marcaste (o que
 > recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. Mira
 > [`restock`](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica).
@@ -80,7 +80,7 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | Mod | Obligatorio para | Si falta |
 |---|---|---|
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` **se niega a arrancar**, y cada uno lo dice. Los otros nueve módulos funcionan igual |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` (aún sin publicar) **se niega a arrancar**, y cada uno lo dice. Los demás módulos funcionan igual |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, con su librería **malilib** | `restock` | `restock` **se niega a arrancar** y lo dice. Los demás módulos funcionan igual; Xploits carga sin ella |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
@@ -469,7 +469,7 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
 
 - **Marca los contenedores que puede usar.** Asigna `mark-key`, ponte de pie en el suelo, mira un cofre, cofre
-  trampa, barril o caja de shulker colocada y púlsala: «marcado (N en total)»; púlsala otra vez para desmarcarlo
+  trampa, barril o caja de shulker colocada y púlsala: «Marcado (N en total).»; púlsala otra vez para desmarcarlo
   (funciona aunque el contenedor ya no esté). Funciona con `restock` encendido o apagado, y recuerda el sitio donde
   estabas, por mundo. `.xploits restock chests` los lista por dimensión y distancia, nunca por posición. Con
   `use-stash-keeper` encendido (de fábrica) usa también los contenedores que recuerda `stash-keeper`.
@@ -486,7 +486,7 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
 - **Sin sitio de donde sacarlo:** dice qué bloque y cuántos faltan, no va a ningún sitio, y el printer sigue
   imprimiendo todo lo demás.
 - **Se para y dice por qué** cuando un jugador que no es amigo tuyo en Meteor se acerca a menos de `player-distance`
-  (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador, tu vida baja de `min-health`
+  (48; apaga `stop-near-players` para ir a buscar con gente cerca), te ataca un jugador que no es amigo tuyo, tu vida baja de `min-health`
   (10), el servidor te hace retroceder, `auto-pvp` entra en combate, mueres o cambias de dimensión, **pulsas una tecla
   de movimiento durante un viaje**, Baritone no encuentra camino, no cabe nada en tu inventario, enciendes un módulo
   junto al que no puede funcionar, o falla algo inesperado dentro de él (se para con un mensaje; nunca cierra el
@@ -625,7 +625,8 @@ chat acaba en disco. El ajuste `hide-coordinates-in-log` del módulo `xploits` l
 esa copia (en pantalla se siguen viendo): `Off`, `Baritone` (solo sus líneas), `All` (por defecto) o
 `All but Baritone`. También tapa los `Saving region x,z` que Baritone escribe por su cuenta.
 `auto-travel` y `nether-sweep` además activan la censura de Baritone (`censorCoordinates`,
-`censorRanCommands`) antes del primer objetivo, y la dejan puesta. `restock` la activa mientras está encendido y te devuelve tus propios valores al pararse.
+`censorRanCommands`) antes del primer objetivo, y la dejan puesta. `restock` la activa mientras está encendido y te devuelve tus propios
+valores al pararse.
 
 La consola oculta las coordenadas por defecto. Con su ajuste `hide-coordinates` apagado muestra lo
 mismo que el chat y las guarda en disco (hasta 30 días de historial).

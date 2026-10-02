@@ -1,6 +1,6 @@
 # `restock` real-game checklist
 
-What the in-game bench cannot prove (restock spec §6), done by hand on real servers before a `restock` release. Tick
+What the in-game bench cannot prove, done by hand on real servers before a `restock` release. Tick
 each line, note the date and the version, and keep the notes in the release's pull request: counts, reasons and
 distances only, never a coordinate, a server address or a player name.
 
@@ -48,7 +48,7 @@ On each server, 6b6t first:
 ## 5. Large builds, overlaps and vanished chests
 
 - [ ] A large placement (tens of thousands of blocks): note the frame rate while `restock` counts, with it on and off.
-- [ ] Two overlapping placements, with the enclosing box left off: `restock` refuses to start and says why.
+- [ ] Two enabled placements that overlap: `restock` refuses to start and says why.
 - [ ] A marked chest broken and replaced by another block: the trip skips it and never clicks the new block.
 - [ ] Marking while flying is refused; unmarking a chest that has vanished works.
 
