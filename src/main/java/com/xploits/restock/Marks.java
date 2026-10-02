@@ -3,6 +3,7 @@ package com.xploits.restock;
 import com.xploits.XploitsAddon;
 import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.RestockSetting;
+import com.xploits.restock.core.RestockSettings;
 import com.xploits.restock.core.RestockText;
 import com.xploits.shared.XploitsModule;
 import com.xploits.printer.core.Pos;
@@ -36,7 +37,7 @@ import java.util.function.Predicate;
 /**
  * The mark key and the outline (restock spec §4), always on, whether restock is on or off: Meteor's own keybind action
  * would fire only while restock is active. A press with no screen open, on the block the crosshair is on, marks or
- * unmarks a chest, trapped chest, barrel or shulker box (a double chest by its lesser half, as stash-keeper keys it) with
+ * unmarks a chest, trapped or copper chest, barrel or shulker box (a double chest by its lesser half, as stash-keeper keys it) with
  * the block the player stands on as its stand spot. The outline shows this dimension's marks for a few seconds after a
  * change and all the time while restock is on, a double chest as both its halves. Subscribed once at start-up. Client
  * thread.
@@ -44,11 +45,12 @@ import java.util.function.Predicate;
 public final class Marks {
     private static final Marks INSTANCE = new Marks();
     private static final long FLASH_MS = 3_000;
-    /** Only marks this close are outlined. */
-    private static final double OUTLINE_DISTANCE = 64;
     private static final Color SIDE = new Color(255, 170, 0, 40);
     private static final Color LINE = new Color(255, 170, 0, 255);
     private static boolean started;
+    /** The restock module, found once: a lookup by name scans every module and the outline asks every frame. */
+    private static Module restockModule;
+    private static Setting<?> maxDistance;
 
     private long flashUntil;
 
@@ -97,7 +99,16 @@ public final class Marks {
     }
 
     private static Module restock() {
-        return Modules.get().get("restock");
+        if (restockModule == null) {
+            restockModule = Modules.get().get("restock");
+            maxDistance = restockModule == null ? null : restockModule.settings.get(RestockSetting.MAX_DISTANCE.id());
+        }
+        return restockModule;
+    }
+
+    /** Only marks this close are outlined: restock's own {@code max-distance}, the farthest it would go for one. */
+    private static double outlineDistance() {
+        return maxDistance != null && maxDistance.get() instanceof Integer d ? d : RestockSettings.MAX_DISTANCE;
     }
 
     private static boolean pressed(Predicate<Keybind> matches) {
@@ -160,9 +171,13 @@ public final class Marks {
         return null;
     }
 
-    /** Chest, trapped chest, barrel or shulker box (stash-keeper's list without the ender chest, which has no position). */
+    /**
+     * Chest, trapped chest, any copper chest (all are {@link ChestBlock}s, with a chest's block entity and screen),
+     * barrel or shulker box. The ender chest is no {@code ChestBlock} and stays out: it has no position of its own.
+     * Stash-keeper keeps its own, shorter list.
+     */
     static boolean container(Block block) {
-        return block == Blocks.CHEST || block == Blocks.TRAPPED_CHEST || block == Blocks.BARREL
+        return block instanceof ChestBlock || block == Blocks.BARREL
             || (block.asItem() != null && Utils.isShulker(block.asItem()));
     }
 
@@ -193,9 +208,10 @@ public final class Marks {
         MarkBook book = MarkStore.book();
         if (book == null) return;
         String dimension = mc.world.getRegistryKey().getValue().toString();
+        double reach = outlineDistance();
         for (MarkBook.Mark m : book.in(dimension)) {
             BlockPos p = new BlockPos(m.container().x(), m.container().y(), m.container().z());
-            if (p.getSquaredDistance(mc.player.getEntityPos()) > OUTLINE_DISTANCE * OUTLINE_DISTANCE) continue;
+            if (p.getSquaredDistance(mc.player.getEntityPos()) > reach * reach) continue;
             // Deferred L25: a double chest is outlined whole, whichever half the mark keeps.
             BlockPos other = otherHalf(p, mc.world.getBlockState(p));
             if (other == null) {
