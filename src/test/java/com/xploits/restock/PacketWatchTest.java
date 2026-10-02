@@ -143,6 +143,17 @@ class PacketWatchTest {
     }
 
     @Test
+    void onlyRestocksOwnSlotClicksCountAsItsClicksThatLeft() {
+        // Ruling R70: PaceRules counts restock's places and digs as sent (oursSent), never a slot click, so the take's
+        // box click checks a count of its own.
+        ClickSlotC2SPacket click = new ClickSlotC2SPacket(1, 0, (short) 0, (byte) 0, SlotActionType.QUICK_MOVE,
+            Int2ObjectMaps.emptyMap(), ItemStackHash.EMPTY);
+        assertTrue(PacketWatch.ourSlotClick(click, true));
+        assertFalse(PacketWatch.ourSlotClick(click, false), "the player's own click");
+        assertFalse(PacketWatch.ourSlotClick(new CloseHandledScreenC2SPacket(1), true), "a close is no click");
+    }
+
+    @Test
     void aBlockInteractionIsAPlaceAndKeepsRestocksMark() {
         PlayerInteractBlockC2SPacket click = new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND,
             new BlockHitResult(new Vec3d(1.5, 2.5, 3.5), Direction.UP, AT, false), 1);

@@ -458,10 +458,10 @@ final class TripDriver {
                 // and goes in the ledger only once the click's packet left.
                 Optional<RestockSession.BoxMove> box = inner ? Optional.empty()
                     : session.boxMove(p, t.slot(), trip.container());
-                long sent = PacketWatch.get().oursSent();
+                long sent = PacketWatch.get().slotClicksSent();
                 ContainerScreen.quickMove(mc, syncId, t.slot());
                 if (box.isPresent()) {
-                    if (PacketWatch.get().oursSent() != sent + 1) {
+                    if (PacketWatch.get().slotClicksSent() != sent + 1) {
                         // Cancelled on its way out: the client already shows the box moved, the server never saw it,
                         // so the screen no longer shows the truth. Nothing is noted, and the trip ends saying so.
                         mover.cancel();

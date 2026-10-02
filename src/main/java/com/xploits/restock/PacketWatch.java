@@ -61,6 +61,8 @@ public final class PacketWatch {
     private int ours;
     /** Restock is sending a dig START that breaks its block at once: no STOP follows (the rules' instant flag). */
     private boolean instantDig;
+    /** Restock's own slot clicks that left ({@link #ourSlotClick}); {@code oursSent} counts places and digs only. */
+    private long slotClicksSent;
 
     private PacketWatch() {
     }
@@ -128,8 +130,19 @@ public final class PacketWatch {
         return rules.stillAsServerKnows();
     }
 
+    /** Restock's own block interactions, dig STARTs and STOPs that left ({@link PaceRules#oursSent}). */
     synchronized long oursSent() {
         return rules.oursSent();
+    }
+
+    /** Restock's own slot clicks that left (ruling R70: a take's box click is noted only once its packet left). */
+    synchronized long slotClicksSent() {
+        return slotClicksSent;
+    }
+
+    /** One of restock's own slot clicks: what {@link #slotClicksSent} counts. */
+    static boolean ourSlotClick(Packet<?> packet, boolean ours) {
+        return ours && packet instanceof ClickSlotC2SPacket;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -137,6 +150,7 @@ public final class PacketWatch {
         Packet<?> packet = event.packet;
         synchronized (this) {
             rules.accept(classify(packet, ours > 0, instantDig));
+            if (ourSlotClick(packet, ours > 0)) slotClicksSent++;
         }
     }
 
