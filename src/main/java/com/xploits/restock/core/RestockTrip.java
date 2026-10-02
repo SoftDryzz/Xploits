@@ -184,6 +184,19 @@ public final class RestockTrip {
         return Optional.empty();
     }
 
+    /**
+     * Whether a due trip may leave now (spec §3 "Before leaving: no screen open, cursor empty"; ruling R32): also no
+     * movement key held, not sneaking and on the ground. Otherwise it waits, with no stop: the player who walks along
+     * the build, sneaks at an edge or jumps would stop the trip at its first step ({@code PLAYER_MOVED}) with the
+     * printer already switched off, and a trip started in the air would take an air block as the way back.
+     *
+     * @param screenFree   no screen open and nothing on the cursor
+     * @param movementKeys the player holds forward, back, left, right, jump or sneak
+     */
+    public static boolean mayLeave(boolean screenFree, boolean movementKeys, boolean sneaking, boolean onGround) {
+        return screenFree && !movementKeys && !sneaking && onGround;
+    }
+
     public Action step(Facts f) {
         if (phase == Phase.DONE || phase == Phase.STOPPED) throw new IllegalStateException("the trip is over");
         phaseTicks++;

@@ -373,10 +373,15 @@ final class RestockSession {
         if (index == null) return Optional.empty();
         Map<String, Integer> carried = StateFacts.carried(p.getInventory());
         Map<String, Long> need = RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
-        List<String> due = runOut.due(tick, need, carried, index.passes());
+        // Ruling R31: only a material the index knows a missing position of is due; the need (how much to take) is whole.
+        List<String> due = runOut.due(tick, need, carried, index.passes(), index.remaining(false).keySet());
         lastDue = due;
         if (due.isEmpty()) return Optional.empty();
-        if (mc.currentScreen != null || !p.currentScreenHandler.getCursorStack().isEmpty()) return Optional.empty();
+        boolean screenFree = mc.currentScreen == null && p.currentScreenHandler.getCursorStack().isEmpty();
+        // Ruling R32: it waits while the player walks, sneaks or is in the air, and leaves once they stand.
+        if (!RestockTrip.mayLeave(screenFree, TripDriver.movementKeys(mc.options), p.isSneaking(), p.isOnGround())) {
+            return Optional.empty();
+        }
         String dim = dimensionId();
         List<Source> list = sources.list(dim, marks(), stash(s));
         Point from = new Point(p.getX(), p.getY(), p.getZ());

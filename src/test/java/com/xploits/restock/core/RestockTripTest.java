@@ -149,6 +149,17 @@ class RestockTripTest {
     }
 
     @Test
+    void aTripLeavesOnlyWithTheScreenFreeAndThePlayerStandingOnTheGround() {
+        // Ruling R32: a due trip waits (no stop) while the player walks along the build, sneaks at an edge or jumps;
+        // starting then would switch the printer off only for the first step to stop on the player's own keys.
+        assertTrue(RestockTrip.mayLeave(true, false, false, true));
+        assertFalse(RestockTrip.mayLeave(false, false, false, true), "a screen open or an item on the cursor");
+        assertFalse(RestockTrip.mayLeave(true, true, false, true), "a movement key held");
+        assertFalse(RestockTrip.mayLeave(true, false, true, true), "sneaking");
+        assertFalse(RestockTrip.mayLeave(true, false, false, false), "in the air: the way back would be an air block");
+    }
+
+    @Test
     void noProgressForTheStallLimitStops() {
         RestockTrip t = walking();
         // The first distance is the reference; 199 more without progress are not yet the 200 of the limit.

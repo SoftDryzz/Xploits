@@ -77,6 +77,21 @@ class RestockNeedsTest {
     }
 
     @Test
+    void onlyAKnownMissingPositionMakesAMaterialDueButTheUnknownOnesAreStillTaken() {
+        // Ruling R31: one stone placed, one known missing, two unknown (Litematica's rendering off for that part). The
+        // index's missing positions, which decide whether stone is due, list only the known one; the need, which is
+        // how much a trip takes, still counts the unknown ones too: fetch more, never less.
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(3, 0, 0))));
+        set(index, new Pos(0, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, STONE, 1));
+        set(index, new Pos(1, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR, 0));
+        set(index, new Pos(2, 0, 0), RestockNeeds.classify(Target.UNKNOWN, 0, BlockFacts.AIR, 0));
+        set(index, new Pos(3, 0, 0), RestockNeeds.classify(Target.UNKNOWN, 0, STONE, 1));
+        assertEquals(Map.of("minecraft:stone", 1), index.remaining(false));
+        assertEquals(Map.of("minecraft:stone", 3L),
+            RestockNeeds.need(Map.of("minecraft:stone", 4L), index.placed(), Map.of(), Map.of()));
+    }
+
+    @Test
     void aFinishedDoubleSlabOrCountedStateNeedsNothingMore() {
         String slab = "minecraft:oak_slab";
         String candle = "minecraft:candle";

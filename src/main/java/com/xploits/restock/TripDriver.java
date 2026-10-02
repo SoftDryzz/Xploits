@@ -214,8 +214,8 @@ final class TripDriver {
             ? TakePlan.next(ContainerScreen.slots(p), trip.material(), session.orderedNeed())
             : new TakePlan.Done(false);
         int carried = StateFacts.carried(p.getInventory()).getOrDefault(trip.material(), 0);
-        return new RestockTrip.Facts(movementKeys(), paused, still, screenFree, distance, arrived, spot, aiming, click,
-            ours, seen, take, carried, cursorEmpty);
+        return new RestockTrip.Facts(movementKeys(mc.options), paused, still, screenFree, distance, arrived, spot, aiming,
+            click, ours, seen, take, carried, cursorEmpty);
     }
 
     /**
@@ -263,9 +263,11 @@ final class TripDriver {
         return syncId >= 0 && h.syncId == syncId && ContainerScreen.containerSlots(h) > 0;
     }
 
-    /** The player's own movement keys (Baritone 1.17.0 standalone drives {@code player.input}, not the key bindings). */
-    private boolean movementKeys() {
-        GameOptions o = mc.options;
+    /**
+     * The player's own movement keys (Baritone 1.17.0 standalone drives {@code player.input}, not the key bindings): they
+     * stop a trip under way, and a due trip waits while one is held (ruling R32).
+     */
+    static boolean movementKeys(GameOptions o) {
         return o.forwardKey.isPressed() || o.backKey.isPressed() || o.leftKey.isPressed() || o.rightKey.isPressed()
             || o.jumpKey.isPressed() || o.sneakKey.isPressed();
     }
