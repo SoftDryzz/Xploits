@@ -24,6 +24,14 @@ import java.util.Optional;
  * player's values for a new session (ruling P26).
  */
 final class BaritoneRepair {
+    /**
+     * One link for every join repair (deferred L34): arming subscribes its net to Meteor's bus, and Orbit never evicts a
+     * subscribed object from its listener cache, so a link per repair would leave one behind at each join. The net
+     * catches nothing to say here: a command it cancels is counted as not delivered.
+     */
+    private static final BaritoneLink LINK = new BaritoneLink(text -> {
+    });
+
     private BaritoneRepair() {
     }
 
@@ -61,19 +69,17 @@ final class BaritoneRepair {
             if (say != null) say.warning(RestockText.SAVED_UNREADABLE);
             return;
         }
-        BaritoneLink link = new BaritoneLink(text -> {
-        });
         List<String> commands = new ArrayList<>();
         commands.add(BaritoneScript.cancel(saved.get().prefix()));
         commands.addAll(BaritoneSession.restoration(saved.get()));
         int delivered = 0;
         try {
-            link.arm(saved.get().prefix());
+            LINK.arm(saved.get().prefix());
             for (String command : commands) {
-                if (link.send(command)) delivered++;
+                if (LINK.send(command)) delivered++;
             }
         } finally {
-            link.disarm();
+            LINK.disarm();
         }
         if (BaritoneSaveRules.deleteAfterRestoration(delivered, commands.size())) {
             delete();
