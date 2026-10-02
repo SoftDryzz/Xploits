@@ -67,6 +67,8 @@ public final class PlaceJudge {
 
     private static final List<Verdict> VERDICTS = new ArrayList<>();
     private static final List<ContainerVerdict> CONTAINER = new ArrayList<>();
+    /** The block each judged interaction clicked, in order; compared, never printed. */
+    private static final List<BlockPos> CLICKED = new ArrayList<>();
     private static String judged;
     /** The syncId of the container screen the server last dropped on its own, until the next close comes; 0: none. */
     private static int dropped;
@@ -78,6 +80,7 @@ public final class PlaceJudge {
     static synchronized void start(String playerName) {
         VERDICTS.clear();
         CONTAINER.clear();
+        CLICKED.clear();
         dropped = 0;
         judged = playerName;
     }
@@ -92,6 +95,11 @@ public final class PlaceJudge {
 
     static synchronized List<ContainerVerdict> containerVerdicts() {
         return List.copyOf(CONTAINER);
+    }
+
+    /** The block each judged interaction clicked, in order. Positions: compare them, never print them. */
+    static synchronized List<BlockPos> clicked() {
+        return List.copyOf(CLICKED);
     }
 
     /** Block interactions judged (the container clicks; phase B's placements). */
@@ -154,6 +162,7 @@ public final class PlaceJudge {
         boolean rayMisses = ray.getType() != HitResult.Type.BLOCK || !ray.getBlockPos().equals(hit.getBlockPos())
             || ray.getSide() != hit.getSide();
         add(new Verdict(Kind.PLACE, airplace, tooFar, faceAway, rayMisses));
+        addClicked(hit.getBlockPos().toImmutable());
     }
 
     /** Server thread, from the mixin: a player action about to be handled; only a dig START is judged. */
@@ -222,6 +231,10 @@ public final class PlaceJudge {
 
     private static synchronized void add(Verdict v) {
         VERDICTS.add(v);
+    }
+
+    private static synchronized void addClicked(BlockPos block) {
+        CLICKED.add(block);
     }
 
     /** The vanilla crosshair ray: outline shapes, fluids ignored, from the eye along the rotation the server holds. */

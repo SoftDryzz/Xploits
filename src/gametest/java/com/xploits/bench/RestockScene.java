@@ -11,6 +11,7 @@ import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.RestockReason;
 import com.xploits.restock.core.RestockTrip;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.client.MinecraftClient;
@@ -60,9 +61,15 @@ final class RestockScene {
     record Stack(int slot, Item item, int count) {
     }
 
-    record Chest(Vec3i at, List<Stack> contents) {
+    /** A chest of the scene: where, what it holds, and its state (one half of a double chest names its type and facing). */
+    record Chest(Vec3i at, List<Stack> contents, BlockState state) {
         Chest {
             contents = List.copyOf(contents);
+        }
+
+        /** A single chest. */
+        Chest(Vec3i at, List<Stack> contents) {
+            this(at, contents, Blocks.CHEST.getDefaultState());
         }
     }
 
@@ -119,7 +126,7 @@ final class RestockScene {
             ServerWorld w = srv.getOverworld();
             for (Chest c : chests) {
                 BlockPos pos = origin.add(c.at());
-                w.setBlockState(pos, Blocks.CHEST.getDefaultState());
+                w.setBlockState(pos, c.state());
                 if (w.getBlockEntity(pos) instanceof ChestBlockEntity be) {
                     for (Stack s : c.contents()) be.setStack(s.slot(), new ItemStack(s.item(), s.count()));
                     be.markDirty();
@@ -128,7 +135,7 @@ final class RestockScene {
         });
         Map<String, Long> expected = bench.fromServer(srv -> carried(Arena.player(srv, name)));
         awaitClient(bench, client -> carried(client.player).equals(expected) && chests.stream()
-            .allMatch(c -> client.world.getBlockState(origin.add(c.at())).isOf(Blocks.CHEST)), "the restock scene");
+            .allMatch(c -> client.world.getBlockState(origin.add(c.at())).equals(c.state())), "the restock scene");
     }
 
     // --- T0 and the run -------------------------------------------------------------------------------------------
