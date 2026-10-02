@@ -32,7 +32,10 @@ class ConsoleFolderTest {
         Files.writeString(old.resolve("historial").resolve("2026-09-20.log"), "x");
         Files.writeString(old.resolve("vivo.log"), "stream");
         Files.writeString(old.resolve("vivo.1.log"), "stream");
-        Files.writeString(old.resolve("consola.lock"), "");
+        // Not empty on purpose: on some Windows machines something (a real-time scanner, most likely) drops a
+        // transient NAME.tmp (CONSOLA.LOCK.tmp here) next to an empty file that was just deleted, and that
+        // temp file races the removal of the emptied folder.
+        Files.writeString(old.resolve("consola.lock"), "lock");
         Files.writeString(old.resolve("consola.pid"), "1");
         Files.writeString(old.resolve("consola.salida"), "usuario");
         Files.writeString(old.resolve("consola-errores.log"), "e");
