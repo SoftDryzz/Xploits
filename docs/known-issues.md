@@ -249,8 +249,8 @@ layer by layer, it may fetch blocks for layers you have not reached yet (it fetc
 
 **Symptom:** `restock` says a block is missing although it is inside a shulker box.
 
-**What happens.** It takes loose items from chests, trapped chests, barrels and placed shulker boxes. A shulker box
-inside a container, or one you carry, is not opened or counted yet.
+**What happens.** It takes loose items from chests, trapped chests, copper chests, barrels and placed shulker boxes. A
+shulker box inside a container, or one you carry, is not opened or counted yet.
 
 **What to do.** Put the blocks loose in a marked chest, or place the shulker box and mark it.
 

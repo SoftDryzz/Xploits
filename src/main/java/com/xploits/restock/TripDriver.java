@@ -194,8 +194,9 @@ final class TripDriver {
 
     /**
      * Ruling R27: the block at {@code block} is still one restock marks ({@link Marks#container}: chest, trapped chest,
-     * barrel, shulker box). A mark or a stash-keeper entry can outlive its container, and a right-click on whatever
-     * replaced it would use the held item (place a block, flip a lever) or set off a bed or a respawn anchor.
+     * copper chest, barrel, shulker box). A mark or a stash-keeper entry can outlive its container, and a right-click
+     * on whatever replaced it would use the held item (place a block, flip a lever) or set off a bed or a respawn
+     * anchor.
      */
     private boolean containerAt(Pos block) {
         ClientWorld w = mc.world;

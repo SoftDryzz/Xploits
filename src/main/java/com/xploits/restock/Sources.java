@@ -18,10 +18,11 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The containers restock may fetch from in one dimension (restock spec §3 "Sources and choice"): the marks, with the
- * contents restock saw when it opened them this session, else stash-keeper's snapshot of them, else unknown; then every
- * container stash-keeper remembers that is not marked — chests, trapped chests, barrels and placed shulker boxes, never
- * the ender chest, which has no position. Client thread.
+ * The containers restock may fetch from in one dimension (restock spec §3 "Sources and choice"): the marks (chests,
+ * trapped chests, copper chests, barrels and placed shulker boxes), with the contents restock saw when it opened them
+ * this session, else stash-keeper's snapshot of them, else unknown; then every container stash-keeper remembers that is
+ * not marked — chests, trapped chests, barrels and placed shulker boxes (it does not index copper chests), never the
+ * ender chest, which has no position. Client thread.
  */
 final class Sources {
     private record Contents(Map<String, Integer> loose, Map<String, Integer> nested) {
