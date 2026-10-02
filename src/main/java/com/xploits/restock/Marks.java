@@ -37,7 +37,8 @@ import java.util.function.Predicate;
  * would fire only while restock is active. A press with no screen open, on the block the crosshair is on, marks or
  * unmarks a chest, trapped chest, barrel or shulker box (a double chest by its lesser half, as stash-keeper keys it) with
  * the block the player stands on as its stand spot. The outline shows this dimension's marks for a few seconds after a
- * change and all the time while restock is on. Subscribed once at start-up. Client thread.
+ * change and all the time while restock is on, a double chest as both its halves. Subscribed once at start-up. Client
+ * thread.
  */
 public final class Marks {
     private static final Marks INSTANCE = new Marks();
@@ -147,13 +148,19 @@ public final class Marks {
 
     /** A double chest by its lesser half ({@link ContainerKey#doubleChest}); anything else by its own position. */
     static Pos key(String dimension, BlockPos pos, BlockState state) {
-        if (state.getBlock() instanceof ChestBlock && state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
-            BlockPos other = pos.offset(ChestBlock.getFacing(state));
+        BlockPos other = otherHalf(pos, state);
+        if (other != null) {
             ContainerKey k = ContainerKey.doubleChest(dimension, pos.getX(), pos.getY(), pos.getZ(), other.getX(),
                 other.getY(), other.getZ());
             return new Pos(k.x(), k.y(), k.z());
         }
         return new Pos(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    /** The other half of the double chest whose one half is {@code state} at {@code pos}; null for anything else. */
+    static BlockPos otherHalf(BlockPos pos, BlockState state) {
+        if (!(state.getBlock() instanceof ChestBlock) || state.get(ChestBlock.CHEST_TYPE) == ChestType.SINGLE) return null;
+        return pos.offset(ChestBlock.getFacing(state));
     }
 
     @EventHandler
@@ -169,7 +176,16 @@ public final class Marks {
         for (MarkBook.Mark m : book.in(dimension)) {
             BlockPos p = new BlockPos(m.container().x(), m.container().y(), m.container().z());
             if (p.getSquaredDistance(mc.player.getEntityPos()) > OUTLINE_DISTANCE * OUTLINE_DISTANCE) continue;
-            event.renderer.box(p, SIDE, LINE, ShapeMode.Lines, 0);
+            // Deferred L25: a double chest is outlined whole, whichever half the mark keeps.
+            BlockPos other = otherHalf(p, mc.world.getBlockState(p));
+            if (other == null) {
+                event.renderer.box(p, SIDE, LINE, ShapeMode.Lines, 0);
+            } else {
+                event.renderer.box(Math.min(p.getX(), other.getX()), Math.min(p.getY(), other.getY()),
+                    Math.min(p.getZ(), other.getZ()), Math.max(p.getX(), other.getX()) + 1,
+                    Math.max(p.getY(), other.getY()) + 1, Math.max(p.getZ(), other.getZ()) + 1, SIDE, LINE,
+                    ShapeMode.Lines, 0);
+            }
         }
     }
 }

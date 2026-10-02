@@ -6,6 +6,7 @@ import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,6 +50,27 @@ class ContainerAimTest {
     void theYawStaysContinuousWithAWoundUpCamera() {
         // 7200.5 + wrap(90 − 7200.5) = 7200.5 + 89.5: twenty turns plus a quarter, never a 7000° snap.
         assertEquals(7290.0f, ContainerAim.choose(CHEST, EYE, 7200.5f, 4.5, 0.1, ALL).orElseThrow().rotation().yaw());
+    }
+
+    @Test
+    void aDoubleChestIsAimedAtItsOtherHalfWhenTheStoredOneIsOutOfReach() {
+        // Deferred L25: a mark keeps a double chest's lesser half, but the player may have marked it from the far side
+        // of the greater one. From EYE the stored half (−2, 64, 0) is out of reach; its other half, CHEST, is not.
+        Pos stored = new Pos(-2, 64, 0);
+        ContainerAim.Pick pick = ContainerAim.firstOf(List.of(stored, CHEST), EYE, 0f, 4.5, 0.1, ALL).orElseThrow();
+        assertEquals(CHEST, pick.block());
+        assertEquals(Face.EAST, pick.aiming().side());
+    }
+
+    @Test
+    void theStoredHalfComesFirstWhenBothCanBeAimedAt() {
+        Pos other = new Pos(0, 64, 1);
+        assertEquals(CHEST, ContainerAim.firstOf(List.of(CHEST, other), EYE, 0f, 4.5, 0.1, ALL).orElseThrow().block());
+        assertEquals(other, ContainerAim.firstOf(List.of(other, CHEST), EYE, 0f, 4.5, 0.1, ALL).orElseThrow().block(),
+            "the order given, not the nearest");
+        assertEquals(Optional.empty(), ContainerAim.firstOf(List.of(new Pos(-2, 64, 0), new Pos(-3, 64, 0)), EYE, 0f,
+            4.5, 0.1, ALL), "neither half within reach");
+        assertEquals(Optional.empty(), ContainerAim.firstOf(List.of(), EYE, 0f, 4.5, 0.1, ALL));
     }
 
     @Test

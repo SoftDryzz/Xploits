@@ -62,6 +62,8 @@ final class TripDriver {
     private final RestockLimits limits;
     private final Map<String, Integer> carriedAtStart;
     private Aim.Rotation wanted;
+    /** The block that rotation looks at: the container, or the other half of a double chest (deferred L25). */
+    private Pos aimed;
     private BlockHitResult hit;
     private RestockTrip.Click click = RestockTrip.Click.NONE;
     private int syncId = -1;
@@ -193,13 +195,26 @@ final class TripDriver {
     }
 
     /**
-     * Ruling R27: the block at the trip's container is still one restock marks ({@link Marks#container}: chest, trapped
-     * chest, barrel, shulker box). A mark or a stash-keeper entry can outlive its container, and a right-click on whatever
+     * Ruling R27: the block at {@code block} is still one restock marks ({@link Marks#container}: chest, trapped chest,
+     * barrel, shulker box). A mark or a stash-keeper entry can outlive its container, and a right-click on whatever
      * replaced it would use the held item (place a block, flip a lever) or set off a bed or a respawn anchor.
      */
-    private boolean containerThere() {
+    private boolean containerAt(Pos block) {
         ClientWorld w = mc.world;
-        return w != null && Marks.container(w.getBlockState(WorldRay.block(trip.container())).getBlock());
+        return w != null && Marks.container(w.getBlockState(WorldRay.block(block)).getBlock());
+    }
+
+    /**
+     * The blocks a click may go to, in order (deferred L25): the trip's container, and for a double chest its other half
+     * too — a mark keeps the lesser half, and the player may have marked it from beside the greater one. None when the
+     * trip's container is no longer a container (ruling R27).
+     */
+    private List<Pos> clickable() {
+        Pos c = trip.container();
+        if (!containerAt(c)) return List.of();
+        BlockPos b = WorldRay.block(c);
+        BlockPos other = Marks.otherHalf(b, mc.world.getBlockState(b));
+        return other == null ? List.of(c) : List.of(c, WorldRay.pos(other));
     }
 
     private RestockTrip.Facts facts(ClientPlayerEntity p, boolean paused) {
@@ -251,19 +266,19 @@ final class TripDriver {
     private RestockTrip.Aiming aim(ClientPlayerEntity p, boolean live) {
         Vec3d e = p.getEyePos();
         Point eye = new Point(e.x, e.y, e.z);
-        Optional<ContainerAim.Aiming> a = containerThere()
-            ? ContainerAim.choose(trip.container(), eye, p.getYaw(), limits.reach(), limits.hitMargin(),
-                (block, side, r) -> WorldRay.ray(mc, block, side, r, limits.reach()) != null)
-            : Optional.empty();
+        Optional<ContainerAim.Pick> a = ContainerAim.firstOf(clickable(), eye, p.getYaw(), limits.reach(),
+            limits.hitMargin(), (block, side, r) -> WorldRay.ray(mc, block, side, r, limits.reach()) != null);
         if (a.isEmpty()) {
             wanted = null;
+            aimed = null;
             hit = null;
             return RestockTrip.Aiming.NONE;
         }
-        Aim.Rotation r = a.get().rotation();
+        Aim.Rotation r = a.get().aiming().rotation();
         boolean held = r.equals(wanted) && PacketWatch.get().aimHeld(r);
         wanted = r;
-        hit = held ? WorldRay.ray(mc, trip.container(), a.get().side(), r, limits.reach()) : null;
+        aimed = a.get().block();
+        hit = held ? WorldRay.ray(mc, aimed, a.get().aiming().side(), r, limits.reach()) : null;
         if (hit != null) return RestockTrip.Aiming.HELD;
         if (live && ++wantedTicks > limits.openTimeoutTicks()) {
             wanted = null;
@@ -379,7 +394,7 @@ final class TripDriver {
         hit = null;
         // Ruling R27, checked again right before the packet: never a right-click on anything but a container. Nothing
         // is sent, and the container is unusable as when the aim finds none (deferred L80), never CONTAINER_REFUSED.
-        if (h == null || !containerThere()) {
+        if (h == null || !containerAt(WorldRay.pos(h.getBlockPos()))) {
             click = RestockTrip.Click.WITHHELD;
             return;
         }
@@ -391,7 +406,7 @@ final class TripDriver {
         // Only a click that left can be answered with a screen (ruling R12).
         if (click == RestockTrip.Click.SENT) {
             late.clicked();
-            clicked = trip.container();
+            clicked = WorldRay.pos(h.getBlockPos());
         }
         // As vanilla's right click (MinecraftClient.doItemUse): a success the client swings for swings the hand, in the
         // same tick as the click — a click without its swing is what PaceRules' NO_SWING rule (and an anticheat) flags.
