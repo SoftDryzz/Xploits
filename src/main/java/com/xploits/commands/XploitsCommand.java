@@ -6,6 +6,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.xploits.XploitsAddon;
 import com.xploits.console.core.Level;
 import com.xploits.kitrequester.KitRequester;
 import com.xploits.printer.core.Point;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public class XploitsCommand extends XploitsCommandBase {
     private static final int MAX_HITS = 10;
@@ -152,20 +154,20 @@ public class XploitsCommand extends XploitsCommandBase {
             })));
         builder.then(literal("restock")
             .executes(context -> {
-                restock().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
+                restockSafely(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             })
             .then(literal("status").executes(context -> {
-                restock().ifPresent(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
+                restockSafely(module -> reply(Level.INFO, module.name, PositionedMsg.same(module.status())));
                 return SINGLE_SUCCESS;
             }))
             .then(literal("chests")
                 .executes(context -> {
-                    restock().ifPresent(this::restockChests);
+                    restockSafely(this::restockChests);
                     return SINGLE_SUCCESS;
                 })
                 .then(literal("clear").executes(context -> {
-                    restock().ifPresent(this::restockChestsClear);
+                    restockSafely(this::restockChestsClear);
                     return SINGLE_SUCCESS;
                 }))));
         builder.then(literal("language")
@@ -226,6 +228,19 @@ public class XploitsCommand extends XploitsCommandBase {
         boolean sweeping = sweep.isSweeping();
         Msg message = sweep.stop();
         reply(sweeping ? Level.INFO : Level.WARNING, sweep.name, PositionedMsg.same(message));
+    }
+
+    /**
+     * Deferred L83 (as ruling R33 does for the module): a fault in a restock command — an exception, or a
+     * {@code LinkageError} from a Meteor build that changed — never reaches the game, whose crash report would list every
+     * loaded player's name and position. Only its class is logged: its message could carry a position.
+     */
+    private void restockSafely(Consumer<Restock> command) {
+        try {
+            restock().ifPresent(command);
+        } catch (RuntimeException | LinkageError e) {
+            XploitsAddon.LOG.error("restock: the command failed ({})", e.getClass().getName());
+        }
     }
 
     /**

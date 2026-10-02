@@ -1,5 +1,6 @@
 package com.xploits.restock;
 
+import com.xploits.XploitsAddon;
 import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.RestockSetting;
 import com.xploits.restock.core.RestockText;
@@ -68,12 +69,31 @@ public final class Marks {
 
     @EventHandler
     private void onKey(KeyEvent event) {
-        if (event.action == KeyAction.Press && pressed(k -> k.matches(event.input))) mark();
+        if (event.action != KeyAction.Press) return;
+        guarded(() -> {
+            if (pressed(k -> k.matches(event.input))) mark();
+        });
     }
 
     @EventHandler
     private void onMouse(MouseClickEvent event) {
-        if (event.action == KeyAction.Press && pressed(k -> k.matches(event.input))) mark();
+        if (event.action != KeyAction.Press) return;
+        guarded(() -> {
+            if (pressed(k -> k.matches(event.input))) mark();
+        });
+    }
+
+    /**
+     * Deferred L83 (as ruling R33 does for the module): a fault behind the mark key — an exception, or a
+     * {@code LinkageError} from a Meteor build that changed — never reaches the game, whose crash report would list every
+     * loaded player's name and position. Only its class is logged: its message could carry a position.
+     */
+    private static void guarded(Runnable press) {
+        try {
+            press.run();
+        } catch (RuntimeException | LinkageError e) {
+            XploitsAddon.LOG.error("restock: the mark key failed ({})", e.getClass().getName());
+        }
     }
 
     private static Module restock() {
