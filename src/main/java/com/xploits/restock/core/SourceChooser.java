@@ -4,6 +4,7 @@ import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -46,6 +47,20 @@ public final class SourceChooser {
             }
         }
         return Optional.ofNullable(best);
+    }
+
+    /**
+     * Ruling R54 (and R60): a container restock just opened that held {@code material} only inside its shulker boxes
+     * ({@code loose}, {@code nested}: what that visit saw) and was found stale while no box can be carried
+     * ({@code carry} false: no free hotbar slot and one more) is passed over, not marked stale — {@link #nearest} with
+     * {@code nested} false skips it, and chooses it again once a box can be carried. With carry room it is stale like
+     * any other (a box restock may not carry, pre-flight 17-3: no loop either), and a source that failed for another
+     * reason is noted as before.
+     */
+    public static boolean passedOver(RestockTrip.Failure failure, boolean carry, Map<String, Integer> loose,
+                                     Map<String, Integer> nested, String material) {
+        return failure == RestockTrip.Failure.STALE && !carry && loose.getOrDefault(material, 0) <= 0
+            && nested.getOrDefault(material, 0) > 0;
     }
 
     private static boolean before(Pos a, Pos b) {

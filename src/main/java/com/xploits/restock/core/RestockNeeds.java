@@ -75,6 +75,20 @@ public final class RestockNeeds {
     }
 
     /**
+     * Items of the build still to place (pre-flight 19-11, ruling R6): per material its total less the matching
+     * positions and the items beyond one they already hold ({@link PlacedExtra#byMaterial()}), never below 0 — a double
+     * slab or four candles finish their material, a material placed beyond its total never makes up for another, and an
+     * unknown position counts as not placed. The status line's count; 0 is a finished build.
+     */
+    public static long remaining(Map<String, Long> totals, Map<String, Integer> placed, Map<String, Integer> extra) {
+        long remaining = 0;
+        for (Map.Entry<String, Long> e : totals.entrySet()) {
+            remaining += Math.max(0, e.getValue() - placed.getOrDefault(e.getKey(), 0) - extra.getOrDefault(e.getKey(), 0));
+        }
+        return remaining;
+    }
+
+    /**
      * {@code total − placed − extra − carried}: {@code placed} counts one item per matching position, {@code extra} the
      * items beyond one those positions already hold ({@link PlacedExtra#byMaterial()}).
      */

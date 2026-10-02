@@ -10,7 +10,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Restock spec §3 "Sources and choice": the nearest container that has the material, same dimension, within reach. */
 class SourceChooserTest {
@@ -97,6 +99,36 @@ class SourceChooserTest {
         Source boxes = Source.stash(OVERWORLD, new Pos(5, 64, 0), Map.of(), Map.of(STONE, 27));
         assertEquals(Optional.of(boxes), SourceChooser.nearest(List.of(UNKNOWN, boxes), STONE, OVERWORLD, FROM, 64,
             Set.of(), Set.of(), true));
+    }
+
+    @Test
+    void aContainerSeenWithTheBlockOnlyInBoxesIsPassedOverWhileNoBoxCanBeCarried() {
+        // Ruling R54 (R60): no stale mark. R40's nested rank then skips it while no box can be carried, and chooses it
+        // again once one can.
+        Map<String, Integer> boxes = Map.of(STONE, 64);
+        assertTrue(SourceChooser.passedOver(RestockTrip.Failure.STALE, false, Map.of(), boxes, STONE));
+        Source seen = Source.mark(OVERWORLD, new Pos(1, 64, 0), new Pos(1, 64, 1), Map.of(), boxes);
+        assertEquals(Optional.empty(), nearest(List.of(seen), STONE), "skipped while no box can be carried: no loop");
+        assertEquals(Optional.of(seen), SourceChooser.nearest(List.of(seen), STONE, OVERWORLD, FROM, 64, Set.of(),
+            Set.of(), true), "chosen again once a box can be carried");
+    }
+
+    @Test
+    void withCarryRoomOrForAnyOtherFailureTheContainerIsNotedAsBefore() {
+        Map<String, Integer> boxes = Map.of(STONE, 64);
+        // With carry room, a box restock may not carry (its own item the build places, pre-flight 17-3) leaves the
+        // container stale, so the next choice cannot come back to it.
+        assertFalse(SourceChooser.passedOver(RestockTrip.Failure.STALE, true, Map.of(), boxes, STONE));
+        assertFalse(SourceChooser.passedOver(RestockTrip.Failure.FILLED_ONLY, false, Map.of(), boxes, STONE));
+        assertFalse(SourceChooser.passedOver(RestockTrip.Failure.UNUSABLE, false, Map.of(), boxes, STONE));
+    }
+
+    @Test
+    void onlyTheBlockItselfInsideBoxesAndNoneLooseIsPassedOver() {
+        RestockTrip.Failure stale = RestockTrip.Failure.STALE;
+        assertFalse(SourceChooser.passedOver(stale, false, Map.of(), Map.of(), STONE), "a container without it");
+        assertFalse(SourceChooser.passedOver(stale, false, Map.of(), Map.of(GLASS, 64), STONE), "boxes of glass only");
+        assertFalse(SourceChooser.passedOver(stale, false, Map.of(STONE, 1), Map.of(STONE, 64), STONE), "loose too");
     }
 
     @Test
