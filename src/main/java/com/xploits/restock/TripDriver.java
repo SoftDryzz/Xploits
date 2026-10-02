@@ -6,6 +6,7 @@ import com.xploits.printer.core.Pos;
 import com.xploits.printer.core.PrinterLimits;
 import com.xploits.restock.core.ContainerAim;
 import com.xploits.restock.core.ContainerSpot;
+import com.xploits.restock.core.LateScreen;
 import com.xploits.restock.core.RestockLimits;
 import com.xploits.restock.core.RestockMessages;
 import com.xploits.restock.core.RestockReason;
@@ -36,7 +37,8 @@ import java.util.Optional;
  * rotation queue is empty (spike S6), so it rides the tick's own movement packet; the click comes the next tick, only if
  * the server holds that exact rotation and the raycast with it still sees the container. The container screen is adopted
  * by its {@code syncId} after restock's click and is the only one clicked or closed; a container screen that answers
- * restock's click only after the trip stopped waiting for it is closed before anything else (ruling R12). Client thread.
+ * restock's click only after the trip stopped waiting for it is closed, by its own {@code syncId}, before anything else
+ * ({@link LateScreen}: rulings R12, R28, deferred L79). Client thread.
  */
 final class TripDriver {
     sealed interface Result permits Running, Finished, Ended {
@@ -69,12 +71,10 @@ final class TripDriver {
      */
     private static final double SCREEN_KEPT_RANGE = 4.0;
 
-    /** Restock's click on a container left and no screen has answered it yet (ruling R12; expires, ruling R28). */
-    private boolean clickUnanswered;
-    /** The container that unanswered click went to. */
+    /** The answer to restock's click that comes after the open gave up waiting for it (rulings R12, R28; L79). */
+    private final LateScreen late;
+    /** The container block restock's last click that left went to. */
     private Pos clicked;
-    /** Live ticks since the open stopped waiting for that answer (ruling R28). */
-    private int lateTicks;
     /** OPEN: live ticks the aim was only wanted, never held (bounded in {@link #aim}). */
     private int wantedTicks;
     /** A container click, take or close went out in this session tick: its one container action is spent. */
@@ -91,6 +91,7 @@ final class TripDriver {
         this.trip = trip;
         this.limits = limits;
         this.carriedAtStart = Map.copyOf(carriedAtStart);
+        this.late = new LateScreen(limits.openTimeoutTicks());
     }
 
     RestockTrip.Phase phase() {
@@ -159,26 +160,23 @@ final class TripDriver {
 
     /**
      * Ruling R12: once restock's click is sent, a container screen that opens after the trip stopped waiting for it (its
-     * open timed out and the trip moved on) is the late answer to that click. It is adopted and closed as soon as the
-     * player stands still ({@link #still}), the cursor is empty and no guard pauses; nothing else happens in that tick.
-     * Ruling R28: the wait for that answer expires after {@code openTimeoutTicks} live ticks since the open gave up, or as
-     * soon as the player is out of the range at which the server keeps that container's screen open (the server closes
-     * such a screen itself) — so a screen the player opens later is never taken for it. A screen with no click of
-     * restock's pending is never closed. True when it was closed now.
+     * open timed out and the trip moved on) is the late answer to that click; it is closed as soon as the player stands
+     * still ({@link #still}), the cursor is empty and no guard pauses, and nothing else happens in that tick. Ruling R28:
+     * only a screen that opens within {@code openTimeoutTicks} live ticks since the open gave up, while the player is in
+     * the range at which the server keeps that container's screen open, is taken for it. Deferred L79: such a screen is
+     * remembered by its {@code syncId} and closed once a close is allowed even after that window ran out (the player was
+     * walking to the next source); a screen with another {@code syncId} is never closed ({@link LateScreen}). True when
+     * it was closed now.
      */
     private boolean closeLateScreen(ClientPlayerEntity p, boolean paused) {
-        if (!clickUnanswered || trip.phase() == RestockTrip.Phase.WAIT_SCREEN) return false;
-        if (!paused) lateTicks++;
-        boolean screenGone = !p.canInteractWithBlockAt(WorldRay.block(clicked), SCREEN_KEPT_RANGE);
-        if (lateTicks > limits.openTimeoutTicks() || screenGone) {
-            clickUnanswered = false;
-            return false;
-        }
+        if (trip.phase() == RestockTrip.Phase.WAIT_SCREEN) return false;
         ScreenHandler h = p.currentScreenHandler;
-        if (h == p.playerScreenHandler || ContainerScreen.containerSlots(h) <= 0) return false;
-        if (paused || !still(p) || !h.getCursorStack().isEmpty()) return false;
-        ContainerScreen.close(p, h.syncId);
-        clickUnanswered = false;
+        boolean container = h != p.playerScreenHandler && ContainerScreen.containerSlots(h) > 0 && h.syncId != syncId;
+        boolean inRange = clicked != null && p.canInteractWithBlockAt(WorldRay.block(clicked), SCREEN_KEPT_RANGE);
+        boolean mayClose = !paused && h.getCursorStack().isEmpty() && still(p);
+        int close = late.tick(container ? h.syncId : LateScreen.NONE, inRange, paused, mayClose);
+        if (close == LateScreen.NONE) return false;
+        ContainerScreen.close(p, close);
         actedThisTick = true;
         return true;
     }
@@ -279,7 +277,7 @@ final class TripDriver {
         ScreenHandler h = p.currentScreenHandler;
         if (syncId < 0 && h != p.playerScreenHandler && ContainerScreen.containerSlots(h) > 0) {
             syncId = h.syncId;
-            clickUnanswered = false;
+            late.adopted(syncId);
         }
     }
 
@@ -392,9 +390,8 @@ final class TripDriver {
         click = PacketWatch.get().oursSent() == before + 1 ? RestockTrip.Click.SENT : RestockTrip.Click.REFUSED;
         // Only a click that left can be answered with a screen (ruling R12).
         if (click == RestockTrip.Click.SENT) {
-            clickUnanswered = true;
+            late.clicked();
             clicked = trip.container();
-            lateTicks = 0;
         }
         // As vanilla's right click (MinecraftClient.doItemUse): a success the client swings for swings the hand, in the
         // same tick as the click — a click without its swing is what PaceRules' NO_SWING rule (and an anticheat) flags.
