@@ -61,8 +61,12 @@ public final class LitematicaAccess {
         return FabricLoader.getInstance().isModLoaded("litematica") && FabricLoader.getInstance().isModLoaded("malilib");
     }
 
-    /** The selected placement as a target source. Call only when {@link #installed()}. Client thread. */
+    /**
+     * The selected placement as a target source. Client thread. Without Litematica it is the refusal that says so
+     * (deferred L18), not the list of every member a signature check could not find.
+     */
     public static TargetSource open(long maxVolume) {
+        if (!installed()) return TargetSource.refusing(new Guards.Refusal(Guards.Reason.NO_LITEMATICA, ""));
         List<String> missing = missing();
         if (!missing.isEmpty()) {
             return TargetSource.refusing(new Guards.Refusal(Guards.Reason.LITEMATICA_API, String.join(", ", missing)));
