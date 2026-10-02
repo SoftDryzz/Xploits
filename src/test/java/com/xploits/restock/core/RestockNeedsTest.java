@@ -9,8 +9,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Restock spec §3 "Counting": need = schematic total − placed − carried; unknown parts count as not built. */
 class RestockNeedsTest {
@@ -128,6 +131,62 @@ class RestockNeedsTest {
         BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
             false, false, false, false, false);
         assertEquals(0, RestockNeeds.classify(Target.of(slab), 1, slab, 2).extra());
+    }
+
+    @Test
+    void aMatchingPositionWithFewerItemsThanTheBuildWantsIsPartial() {
+        BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
+            false, false, false, false, false);
+        BlockFacts candle = new BlockFacts("minecraft:candle", "minecraft:candle", false, false, true, false, false,
+            false, false, false, false, false);
+        assertTrue(RestockNeeds.classify(Target.of(slab), 2, slab, 1).partial(), "one slab where a double goes");
+        assertTrue(RestockNeeds.classify(Target.of(candle), 4, candle, 2).partial(), "two of four candles");
+        assertFalse(RestockNeeds.classify(Target.of(slab), 2, slab, 2).partial(), "a finished double slab");
+        assertFalse(RestockNeeds.classify(Target.of(slab), 1, slab, 2).partial(), "more than the build wants");
+        assertFalse(RestockNeeds.classify(Target.of(STONE), 1, STONE, 1).partial());
+        assertFalse(RestockNeeds.classify(Target.of(slab), 2, BlockFacts.AIR, 0).partial(), "missing, not partial");
+        assertFalse(RestockNeeds.classify(Target.UNKNOWN, 0, slab, 1).partial());
+    }
+
+    @Test
+    void aMaterialShortOnlyInPartlyFilledPositionsIsKnownMissing() {
+        // Deferred m1 (after ruling R31): every slab position holds at least one slab, so the index lists no missing
+        // slab, yet the need sits in the position that holds one where a double goes. It must still make slabs due.
+        BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
+            false, false, false, false, false);
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(2, 0, 0))));
+        PlacedExtra extra = new PlacedExtra();
+        PartlyPlaced partly = new PartlyPlaced();
+        classify(index, extra, partly, new Pos(0, 0, 0), RestockNeeds.classify(Target.of(slab), 2, slab, 2));
+        classify(index, extra, partly, new Pos(1, 0, 0), RestockNeeds.classify(Target.of(slab), 2, slab, 1));
+        classify(index, extra, partly, new Pos(2, 0, 0), RestockNeeds.classify(Target.of(STONE), 1, BlockFacts.AIR, 0));
+        assertEquals(Map.of("minecraft:stone", 1), index.remaining(false), "the index sees no missing slab");
+        Map<String, Long> need = RestockNeeds.need(Map.of("minecraft:oak_slab", 4L, "minecraft:stone", 1L),
+            index.placed(), extra.byMaterial(), Map.of());
+        assertEquals(Map.of("minecraft:oak_slab", 1L, "minecraft:stone", 1L), need);
+        assertEquals(Set.of("minecraft:oak_slab", "minecraft:stone"), RestockNeeds.knownMissing(index, partly));
+        RunOut r = new RunOut(2);
+        r.due(0, need, Map.of(), 0, RestockNeeds.knownMissing(index, partly));
+        assertEquals(List.of("minecraft:oak_slab", "minecraft:stone"),
+            r.due(1, need, Map.of(), 2, RestockNeeds.knownMissing(index, partly)));
+    }
+
+    @Test
+    void aFinishedBuildKnowsNothingMissing() {
+        BlockFacts slab = new BlockFacts("minecraft:oak_slab", "minecraft:oak_slab", false, false, true, false, false,
+            false, false, false, false, false);
+        BuildIndex index = new BuildIndex(List.of(GridBox.of(new Pos(0, 0, 0), new Pos(0, 0, 0))));
+        PartlyPlaced partly = new PartlyPlaced();
+        classify(index, new PlacedExtra(), partly, new Pos(0, 0, 0), RestockNeeds.classify(Target.of(slab), 2, slab, 2));
+        assertEquals(Set.of(), RestockNeeds.knownMissing(index, partly));
+    }
+
+    /** As the session does: the index, the items beyond one, and the short positions, from one classification. */
+    private static void classify(BuildIndex index, PlacedExtra extra, PartlyPlaced partly, Pos pos,
+                                 RestockNeeds.Classified c) {
+        set(index, pos, c);
+        extra.set(pos, c.material(), c.extra());
+        partly.set(pos, c.partial() ? c.material() : null);
     }
 
     private static void set(BuildIndex index, Pos pos, RestockNeeds.Classified c) {

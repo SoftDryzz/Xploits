@@ -7,7 +7,9 @@ import com.xploits.printer.core.Target;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * What the build still needs (restock spec §3 "Counting"): the selected placement indexed position by position with
@@ -24,9 +26,15 @@ public final class RestockNeeds {
     /**
      * A position as restock's index holds it; {@code material} only for {@code MATCHES} and {@code MISSING}.
      * {@code extra}: items beyond one that a {@code MATCHES} position already holds (a double slab, four candles), 0 for
-     * every other status; {@link BuildIndex#placed()} counts positions, the totals count items.
+     * every other status; {@link BuildIndex#placed()} counts positions, the totals count items. {@code partial}: a
+     * {@code MATCHES} position that holds fewer items than the build wants there (one slab where a double goes), which
+     * the index counts placed although part of its need is still missing ({@link PartlyPlaced}).
      */
-    public record Classified(BuildIndex.Status status, String material, int extra) {
+    public record Classified(BuildIndex.Status status, String material, int extra, boolean partial) {
+        /** A position that is not partly filled. */
+        public Classified(BuildIndex.Status status, String material, int extra) {
+            this(status, material, extra, false);
+        }
     }
 
     private RestockNeeds() {
@@ -40,10 +48,21 @@ public final class RestockNeeds {
                 if (perBlock <= 0) yield new Classified(BuildIndex.Status.AIR_TARGET, null, 0);
                 String item = target.block().item();
                 yield target.block().id().equals(world.id())
-                    ? new Classified(BuildIndex.Status.MATCHES, item, Math.max(0, Math.min(perBlock, worldPerBlock) - 1))
+                    ? new Classified(BuildIndex.Status.MATCHES, item, Math.max(0, Math.min(perBlock, worldPerBlock) - 1),
+                        worldPerBlock < perBlock)
                     : new Classified(BuildIndex.Status.MISSING, item, 0);
             }
         };
+    }
+
+    /**
+     * The materials the index knows to be short somewhere, which alone may make a material due (ruling R31): those with
+     * a missing position, and those whose need sits in partly filled positions only (deferred m1).
+     */
+    public static Set<String> knownMissing(BuildIndex index, PartlyPlaced partly) {
+        Set<String> known = new TreeSet<>(index.remaining(false).keySet());
+        known.addAll(partly.materials());
+        return Set.copyOf(known);
     }
 
     public static Map<String, Long> totals(List<Counted> wholeBuild) {

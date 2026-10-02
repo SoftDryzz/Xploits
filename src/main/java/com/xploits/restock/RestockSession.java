@@ -10,6 +10,7 @@ import com.xploits.printer.core.Target;
 import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.core.CombatState;
 import com.xploits.restock.core.MarkBook;
+import com.xploits.restock.core.PartlyPlaced;
 import com.xploits.restock.core.PlacedExtra;
 import com.xploits.restock.core.PrintPause;
 import com.xploits.restock.core.RestockLimits;
@@ -109,6 +110,8 @@ final class RestockSession {
     private RunOut runOut = new RunOut(limits.duePasses());
     /** Items beyond one that matching positions already hold (ruling R6): kept beside {@link #index}, cleared with it. */
     private final PlacedExtra extra = new PlacedExtra();
+    /** Positions holding fewer items than the build wants there (deferred m1): kept beside {@link #index}, cleared with it. */
+    private final PartlyPlaced partly = new PartlyPlaced();
     private final RegistryKey<World> dimension;
     private final Map<String, Set<Pos>> stale = new HashMap<>();
     private final Set<Pos> unusable = new HashSet<>();
@@ -383,6 +386,7 @@ final class RestockSession {
             }
             index = null;
             extra.clear();
+            partly.clear();
             runOut = new RunOut(limits.duePasses());
             totals = Map.of();
             notCounted = why;
@@ -391,6 +395,7 @@ final class RestockSession {
         }
         index = new BuildIndex(s.boxes());
         extra.clear();
+        partly.clear();
         runOut = new RunOut(limits.duePasses());
         totals = RestockNeeds.totals(facts.counted(s.wholeBuild()));
         notCounted = null;
@@ -403,6 +408,7 @@ final class RestockSession {
         if (!mc.world.isChunkLoaded(b.getX() >> 4, b.getZ() >> 4)) {
             index.set(pos, BuildIndex.Status.UNKNOWN, null);
             extra.set(pos, null, 0);
+            partly.set(pos, null);
             return;
         }
         BlockState t = source.target(b);
@@ -412,6 +418,7 @@ final class RestockSession {
         RestockNeeds.Classified c = RestockNeeds.classify(target, perBlock, facts.of(w), facts.perBlock(w));
         index.set(pos, c.status(), c.material());
         extra.set(pos, c.material(), c.extra());
+        partly.set(pos, c.partial() ? c.material() : null);
     }
 
     // --- choosing and starting a trip -----------------------------------------------------------------------------
@@ -420,8 +427,9 @@ final class RestockSession {
         if (index == null) return Optional.empty();
         Map<String, Integer> carried = StateFacts.carried(p.getInventory());
         Map<String, Long> need = RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
-        // Ruling R31: only a material the index knows a missing position of is due; the need (how much to take) is whole.
-        List<String> due = runOut.due(tick, need, carried, index.passes(), index.remaining(false).keySet());
+        // Ruling R31: only a material the index knows a missing position of is due — or a partly filled one, one slab
+        // where a double goes (deferred m1); the need (how much to take) is whole.
+        List<String> due = runOut.due(tick, need, carried, index.passes(), RestockNeeds.knownMissing(index, partly));
         lastDue = due;
         if (due.isEmpty()) return Optional.empty();
         boolean screenFree = mc.currentScreen == null && p.currentScreenHandler.getCursorStack().isEmpty();
