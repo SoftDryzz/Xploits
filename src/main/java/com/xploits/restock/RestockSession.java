@@ -155,6 +155,8 @@ final class RestockSession {
     private Map<String, Integer> lastSeenNested = Map.of();
     /** Ruling R70: the shulker box moves of the container visit under way, settled at its close. */
     private BorrowedShulkers.Visit visit;
+    /** Ruling R71: what the last visit's settle kept of its carries, checked again at the next screen's sync. */
+    private BorrowedShulkers.Kept lastKept;
     /** The trip under way passed over a container that held its material only inside boxes (ruling R54). */
     private boolean passedOverBoxes;
     private RestockSettings settings = RestockSettings.DEFAULTS;
@@ -591,7 +593,17 @@ final class RestockSession {
         BorrowedShulkers.Visit v = visit;
         visit = null;
         ClientPlayerEntity p = mc.player;
-        if (v != null && p != null) borrowed.settle(v, ShulkerInventory.held(p.getInventory()));
+        if (v != null && p != null) lastKept = borrowed.settle(v, ShulkerInventory.held(p.getInventory()));
+    }
+
+    /**
+     * Ruling R71 (R70's residual): every tick restock's container screen is open, until that visit moves a box, the
+     * last visit's kept carries are checked against the inventory the screen brought from the server — a box the
+     * server answered after the answer wait vanishes there, and its carry is forgotten.
+     */
+    void recheckLastVisit(ClientPlayerEntity p) {
+        BorrowedShulkers.Kept k = lastKept;
+        if (k != null && visit == null) borrowed.recheck(k, ShulkerInventory.held(p.getInventory()));
     }
 
     /** A box this visit carried came back (its click refused): the visit carries nothing more (ruling R70). */
@@ -600,13 +612,16 @@ final class RestockSession {
         return v != null && v.cameBack(ShulkerInventory.held(p.getInventory()));
     }
 
-    /** The empty borrowed boxes in the player's part of restock's open screen that go back into {@code container}. */
+    /**
+     * The empty borrowed boxes in the player's part of restock's open screen that go back into {@code container}; none
+     * of a kind whose carry came back in this visit (ruling R71).
+     */
     List<TakePlan.Slot> returning(ClientPlayerEntity p, Pos container) {
         ScreenHandler h = p.currentScreenHandler;
         int n = ContainerScreen.containerSlots(h);
         if (n <= 0 || borrowed.isEmpty()) return List.of();
         return borrowed.toReturn(dimensionId(), container, ShulkerInventory.heldInScreen(h, n),
-            ContainerScreen.freeSlots(h));
+            ContainerScreen.freeSlots(h), visit);
     }
 
     /**

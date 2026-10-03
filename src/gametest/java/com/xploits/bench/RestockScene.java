@@ -334,6 +334,36 @@ final class RestockScene {
         });
     }
 
+    /**
+     * Server thread (rulings R70, R71, trigger (b)): the first shulker box holding items in the player's slots 0–35
+     * goes back into the first free slot of the chest at {@code chest}, as a player putting a just-carried box back
+     * would, or a server refusing the carry. The open chest screen sends both changes to the client. False when there
+     * is no such box, no chest there or no free slot (nothing moved).
+     */
+    boolean putCarriedBoxBack(Bench bench, Vec3i chest) {
+        return bench.fromServer(srv -> {
+            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) return false;
+            PlayerInventory inventory = Arena.player(srv, name).getInventory();
+            int box = -1;
+            for (int slot = 0; slot < PlayerInventory.MAIN_SIZE && box < 0; slot++) {
+                ItemStack stack = inventory.getStack(slot);
+                ContainerComponent inside = stack.get(DataComponentTypes.CONTAINER);
+                if (Block.getBlockFromItem(stack.getItem()) instanceof ShulkerBoxBlock && inside != null
+                    && inside.iterateNonEmpty().iterator().hasNext()) {
+                    box = slot;
+                }
+            }
+            int free = -1;
+            for (int slot = 0; slot < be.size() && free < 0; slot++) {
+                if (be.getStack(slot).isEmpty()) free = slot;
+            }
+            if (box < 0 || free < 0) return false;
+            be.setStack(free, inventory.removeStack(box));
+            be.markDirty();
+            return true;
+        });
+    }
+
     /** Server thread read: what the chest at {@code at} holds, by id, what its shulker boxes hold included. */
     Map<String, Long> chest(Bench bench, Vec3i at) {
         return bench.fromServer(srv -> {
