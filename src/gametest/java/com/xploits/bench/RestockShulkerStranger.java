@@ -67,6 +67,8 @@ final class RestockShulkerStranger implements Scenario {
         Bench.check(o.printer().equals(List.of(false)), "the print mode was switched " + o.printer()
             + ", off and left off expected");
         Bench.check(o.interacts() == 2, "block interactions sent: " + o.interacts() + ", two expected");
+        Bench.check(o.clicks() == 1 && o.closes() == 1, "slot clicks " + o.clicks() + " and closes " + o.closes()
+            + ", one each expected (the take from the box and its close)");
         Bench.check(o.judge().startsWith("2 interaction(s) and 1 dig start(s) judged"),
             "the server judged " + o.judge());
         Bench.check(o.container().contains("already closed by the server 0,"),

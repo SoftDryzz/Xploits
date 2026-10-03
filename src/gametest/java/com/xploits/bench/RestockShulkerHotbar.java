@@ -54,6 +54,7 @@ final class RestockShulkerHotbar implements Scenario {
         int standing = scene.standingShulkers(bench);
         Map<String, Long> slot9 = scene.slotHolds(bench, 9);
         Map<String, Long> loose = scene.loose(bench);
+        int borrowed = scene.borrowed(bench);
         RestockScene.Outcome o = scene.finish(bench);
         // The judge first: this CHECK exists for the one click it lets through (owner ruling R43).
         RestockScene.checkClean(o, 1);
@@ -81,6 +82,8 @@ final class RestockShulkerHotbar implements Scenario {
             "slot 9 holds " + slot9 + ": the other box, untouched, with its 64 dirt expected (owner ruling R43: only"
                 + " the box being unpacked moves)");
         Bench.check(standing == 0, standing + " shulker box(es) left standing");
+        Bench.check(borrowed == 0, "borrowed boxes: " + borrowed + ", none expected (owner ruling R44: the player's own"
+            + " boxes are never noted)");
         Bench.check(o.home(), "the player is not back where the unpacking began");
         return Metrics.none();
     }

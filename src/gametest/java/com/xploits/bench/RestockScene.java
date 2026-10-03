@@ -1,6 +1,7 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.InventoryLedger;
+import com.xploits.bench.mixin.ServerMiningAccessor;
 import com.xploits.printer.core.Pos;
 import com.xploits.restock.MarkStore;
 import com.xploits.restock.Mover;
@@ -341,9 +342,25 @@ final class RestockScene {
      * is no such box, no chest there or no free slot (nothing moved).
      */
     boolean putCarriedBoxBack(Bench bench, Vec3i chest) {
+        return putCarriedBoxBackSeen(bench, chest).moved();
+    }
+
+    /**
+     * What {@link #putCarriedBoxBackSeen} did: whether the box moved, and whether the server had a container screen
+     * open for the player at that moment (restock's chest screen of the visit).
+     */
+    record PutBack(boolean moved, boolean screenOpen) {
+    }
+
+    /** {@link #putCarriedBoxBack}, in the same server call reading whether a container screen was open then. */
+    PutBack putCarriedBoxBackSeen(Bench bench, Vec3i chest) {
         return bench.fromServer(srv -> {
-            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) return false;
-            PlayerInventory inventory = Arena.player(srv, name).getInventory();
+            ServerPlayerEntity player = Arena.player(srv, name);
+            boolean screenOpen = player.currentScreenHandler != player.playerScreenHandler;
+            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) {
+                return new PutBack(false, screenOpen);
+            }
+            PlayerInventory inventory = player.getInventory();
             int box = -1;
             for (int slot = 0; slot < PlayerInventory.MAIN_SIZE && box < 0; slot++) {
                 ItemStack stack = inventory.getStack(slot);
@@ -357,11 +374,30 @@ final class RestockScene {
             for (int slot = 0; slot < be.size() && free < 0; slot++) {
                 if (be.getStack(slot).isEmpty()) free = slot;
             }
-            if (box < 0 || free < 0) return false;
+            if (box < 0 || free < 0) return new PutBack(false, screenOpen);
             be.setStack(free, inventory.removeStack(box));
             be.markDirty();
-            return true;
+            return new PutBack(true, screenOpen);
         });
+    }
+
+    /**
+     * Up to {@code maxTicks} ticks until restock turns itself off; how many ticks that took ({@code maxTicks} when it
+     * did not).
+     */
+    int ticksUntilOff(Bench bench, int maxTicks) {
+        int ticks = 0;
+        while (ticks < maxTicks && on(bench)) {
+            tick(bench);
+            ticks++;
+        }
+        return ticks;
+    }
+
+    /** Server thread read: the server holds a dig of the player under way ({@code ServerMiningAccessor}). */
+    boolean serverMining(Bench bench) {
+        return bench.fromServer(srv -> ((ServerMiningAccessor) Arena.player(srv, name).interactionManager)
+            .xploits$mining());
     }
 
     /** Server thread read: what the chest at {@code at} holds, by id, what its shulker boxes hold included. */

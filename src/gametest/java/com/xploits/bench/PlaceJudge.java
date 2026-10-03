@@ -231,8 +231,12 @@ public final class PlaceJudge {
      * one first; verified with {@code javap -c}) and nowhere else; no dig under way as the server holds it
      * ({@link ServerMiningAccessor}); and the player standing still as the server knows it — the last movement packet
      * did not move them, the last input packet held no movement, jump, sneak or sprint, on the ground, not sprinting,
-     * sneaking or using an item. Which box restock was about to unpack the server cannot know: each CHECK proves that
-     * with the slots it reads (M13).
+     * sneaking or using an item. That stillness is stricter than restock's own ({@code TripDriver.still}, ruling R25:
+     * input, ground, no walking goal): a client still in place stops sending positions but for a heartbeat every 20
+     * ticks, so for up to about 20 ticks after a walk ends the last position packet still moved the player, and a click
+     * then is refused. Restock never makes this click right after a walk (a carried box lands in the hotbar; the unpack
+     * of a carried box starts after the leave gate), so this only fails on the safe side. Which box restock was about
+     * to unpack the server cannot know: each CHECK proves that with the slots it reads (M13).
      */
     static boolean ownInventoryMove(ServerPlayerEntity player, ClickSlotC2SPacket packet) {
         if (packet.syncId() != 0 || packet.actionType() != SlotActionType.QUICK_MOVE || packet.button() != 0) {

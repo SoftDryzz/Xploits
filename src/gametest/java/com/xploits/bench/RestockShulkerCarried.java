@@ -56,6 +56,7 @@ final class RestockShulkerCarried implements Scenario {
         int standing = scene.standingShulkers(bench);
         Map<String, Long> loose = scene.loose(bench);
         Map<String, Long> inBoxes = scene.inBoxes(bench);
+        int borrowed = scene.borrowed(bench);
         RestockScene.Outcome o = scene.finish(bench);
         Bench.check(o.on() && o.reason().isEmpty(), "restock ended with " + RestockScene.words(o.reason()));
         Bench.check(o.trips() == 0, "trips: " + o.trips() + ", none expected (the box was carried)");
@@ -82,6 +83,8 @@ final class RestockShulkerCarried implements Scenario {
         Bench.check(inBoxes.isEmpty(), "the carried box still holds " + InventoryLedger.words(inBoxes)
             + ", nothing expected");
         Bench.check(standing == 0, standing + " shulker box(es) left standing");
+        Bench.check(borrowed == 0, "borrowed boxes: " + borrowed + ", none expected (owner ruling R44: the player's own"
+            + " boxes are never noted)");
         Bench.check(o.home(), "the player is not back where the unpacking began");
         RestockScene.checkClean(o);
         return Metrics.none();

@@ -1,11 +1,14 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.InventoryLedger;
+import com.xploits.restock.core.RestockTrip;
 import net.minecraft.item.Items;
 import net.minecraft.util.math.Vec3i;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * CHECK {@code restock-shulker-trigger-b} (rulings R70, R71, trigger (b); owner ruling R44: the player's own box is
@@ -15,7 +18,8 @@ import java.util.Map;
  * that visit nothing of that kind goes back: the own empty box stays with the player (with the carry's entry still in
  * the ledger until the visit's close, R50's count alone would take it for the borrowed one). The visit makes exactly
  * one slot click (the carry) and one close; at its close the ledger forgets the carry; the trip goes home with nothing;
- * the chest ends holding its box of stone, and nothing is borrowed.
+ * the chest ends holding its box of stone, and nothing is borrowed. The CHECK first proves its own precondition: the
+ * box went back while the visit was open (the server's chest screen open, the trip in TAKE).
  */
 final class RestockShulkerTriggerB implements Scenario {
     private static final Vec3i CHEST = RestockShulkerBorrowed.CHEST;
@@ -60,10 +64,22 @@ final class RestockShulkerTriggerB implements Scenario {
         Map<String, Long> ownAtT0 = scene.slotHolds(bench, OWN_BOX);
         scene.start(bench, true, false);
         // Every tick: once the carry has reached the server (a box holding items in the player's slots), it goes back
-        // into the chest at once, inside the carry's answer wait.
-        boolean[] putBack = new boolean[1];
-        scene.run(bench, TO_CARRY_TICKS, () -> putBack[0] = scene.putCarriedBoxBack(bench, CHEST));
-        Bench.check(putBack[0], "restock never carried the box out of the chest");
+        // into the chest at once, inside the carry's answer wait. The client and the server stand still between two
+        // bench ticks, so the trip's phase read just before is the phase at that moment.
+        RestockScene.PutBack[] putBack = {new RestockScene.PutBack(false, false)};
+        List<Optional<RestockTrip.Phase>> phaseAtPutBack = new ArrayList<>();
+        scene.run(bench, TO_CARRY_TICKS, () -> {
+            Optional<RestockTrip.Phase> phase = scene.phase(bench);
+            putBack[0] = scene.putCarriedBoxBackSeen(bench, CHEST);
+            if (putBack[0].moved()) phaseAtPutBack.add(phase);
+            return putBack[0].moved();
+        });
+        Bench.check(putBack[0].moved(), "restock never carried the box out of the chest");
+        // The precondition of everything below: the box came back while the visit was open (rulings R70, R71).
+        Bench.check(putBack[0].screenOpen() && phaseAtPutBack.equals(List.of(Optional.of(RestockTrip.Phase.TAKE))),
+            "the carried box went back with the server's container screen "
+                + (putBack[0].screenOpen() ? "open" : "closed") + " and the trip in " + phaseAtPutBack
+                + "; inside the visit (open, TAKE) expected");
         scene.run(bench, BACK_TICKS, () -> scene.trips(bench) >= 1 && scene.phase(bench).isEmpty());
         int borrowed = scene.borrowed(bench);
         Map<String, Long> own = scene.slotHolds(bench, OWN_BOX);

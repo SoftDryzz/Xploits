@@ -37,8 +37,16 @@ final class RestockShulkerNoRoom implements Scenario {
     private static final String STONE = "minecraft:stone";
     private static final String BOX = "minecraft:shulker_box";
     private static final int FIRST_TICKS = 600;
-    /** The minute restock waits before it looks for a material found nowhere again, a trip and the unpack. */
-    private static final int AGAIN_TICKS = 1300;
+    /**
+     * The session tick at which restock looks again for a material found nowhere: {@code RestockSession.watchSources}
+     * retries at {@code tick % NOWHERE_RETRY_TICKS == 0} (1200), counted from the session's start (T0), not from the
+     * "nowhere" line. Restock's own constant is private; this mirrors it.
+     */
+    private static final int RETRY_TICK = 1200;
+    /** After the retry: the second trip, the carry's answer wait and the unpack take about 180 ticks; room to spare. */
+    private static final int AFTER_RETRY_TICKS = 400;
+    /** Left of the budget for the end readings and the sync watch's last comparison (20 ticks). */
+    private static final int END_TICKS = 100;
 
     private RestockScene scene;
 
@@ -84,7 +92,10 @@ final class RestockShulkerNoRoom implements Scenario {
         List<Integer> staleAfterFirst = chat.at(RestockText.TRIP_STALE, "material", "stone");
         List<Integer> boxesLine = chat.at(RestockText.NOWHERE_AFTER_TRIP_BOXES, "material", "stone");
         boolean putAway = scene.putAway(bench, STORAGE, HOTBAR_FREED, MAIN_FREED);
-        scene.run(bench, AGAIN_TICKS, () -> scene.trips(bench) >= 2 && scene.unpackPhase(bench).isEmpty()
+        // Bounded by the retry itself (it ends early once the unpack is done), within the run's budget.
+        int again = Math.min(Math.max(0, RETRY_TICK - bench.sinceT0()) + AFTER_RETRY_TICKS,
+            budgetTicks() - bench.ticksUsed() - END_TICKS);
+        scene.run(bench, again, () -> scene.trips(bench) >= 2 && scene.unpackPhase(bench).isEmpty()
             && bench.fromClient(client -> scene.printer().history()).size() >= 4);
         Optional<UnpackPlan.Phase> unpacking = scene.unpackPhase(bench);
         int standing = scene.standingShulkers(bench);
