@@ -34,7 +34,9 @@ class ScenarioSelectionTest {
         "autopvp-anti-resources", "panel", "exposure-cover-probe", "baritone-net", "restock-no-litematica", "restock-trip",
         "restock-excludes-travel",
         "restock-stale-chest", "restock-player-near", "restock-moved", "restock-mark-key", "restock-nowhere",
-        "restock-replaced-chest", "restock-double-chest", "restock-shulker-carried", "restock-shulker-borrowed");
+        "restock-replaced-chest", "restock-double-chest", "restock-shulker-carried", "restock-shulker-borrowed",
+        "restock-shulker-hotbar", "restock-shulker-attacked", "restock-shulker-stranger", "restock-shulker-setback",
+        "restock-shulker-trigger-b", "restock-shulker-no-room");
     private static final List<String> FIGHTS = List.of("above", "below", "approach", "strafe");
     /** R3-14: the fight situations where OUR player moves too, after {@link #FIGHTS}. */
     private static final List<String> SELF_FIGHTS = List.of("self-circle", "self-strafe");
@@ -113,9 +115,9 @@ class ScenarioSelectionTest {
     }
 
     @Test
-    void theBenchHas94Scenarios() {
-        assertEquals(94, scenarios().size());
-        assertEquals(94, names(scenarios()).stream().distinct().count());
+    void theBenchHas100Scenarios() {
+        assertEquals(100, scenarios().size());
+        assertEquals(100, names(scenarios()).stream().distinct().count());
     }
 
     @Test
@@ -134,7 +136,7 @@ class ScenarioSelectionTest {
             "ca-city", "capp-balanced-city", "ca-near-death", "ca-near-death-totem",
             "capp-balanced-near-death", "capp-balanced-near-death-totem"));
         assertEquals(expected, names(played));
-        assertEquals(59, played.size());
+        assertEquals(65, played.size());
     }
 
     @Test
@@ -154,7 +156,7 @@ class ScenarioSelectionTest {
 
     @Test
     void theFullRunPlaysEveryScenario() {
-        assertEquals(94, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
+        assertEquals(100, scenarios().stream().filter(s -> Profile.FULL.plays(s.measure(), s.risk())).count());
     }
 
     @Test
@@ -172,9 +174,9 @@ class ScenarioSelectionTest {
     /**
      * SHA-256 of {@code Scenarios.java}, line endings normalized, when this mirror was last checked against the
      * real {@code Scenarios.all()} (task A3: the real fights added, last, city between the two
-     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; 0.7.2: the roof-jump pair right after cover; every earlier scenario's name, kind, level and twin unchanged; printer phase 1 Task 11: the baritone-net CHECK after the exposure probe; restock Task 11: the restock-no-litematica CHECK after baritone-net; restock Task 12: restock-trip; restock Task 13: restock-excludes-travel; restock Task 14: five CHECKs; restock final fix wave: restock-replaced-chest; restock polish wave C: restock-double-chest; restock phase B Task B6: restock-shulker-carried; restock phase B Task B7: restock-shulker-borrowed).
+     * {@code addRealFights} groups; task B2 fix round 1: the exposure probe CHECK and the cover pair, before the real fights; 0.7.2: the roof-jump pair right after cover; every earlier scenario's name, kind, level and twin unchanged; printer phase 1 Task 11: the baritone-net CHECK after the exposure probe; restock Task 11: the restock-no-litematica CHECK after baritone-net; restock Task 12: restock-trip; restock Task 13: restock-excludes-travel; restock Task 14: five CHECKs; restock final fix wave: restock-replaced-chest; restock polish wave C: restock-double-chest; restock phase B Task B6: restock-shulker-carried; restock phase B Task B7: restock-shulker-borrowed; restock phase B Task B8: six shulker CHECKs).
      */
-    private static final String SCENARIOS_FINGERPRINT = "891e1b2aeae450650be237b2c475614e1d10cbd814c0f2daf41fcc0498a3e39a";
+    private static final String SCENARIOS_FINGERPRINT = "0de69755466e0366f776b0d192c05b4fac1ba4e9ed41829dedb5772cae93643a";
 
     /**
      * SHA-256 of {@code CrystalAuraMeasure.java}, same normalization (R3-17). Its factories ({@code meteor},

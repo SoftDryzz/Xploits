@@ -102,7 +102,7 @@ class ShardPlanTest {
         List<Item> items = realScenarios();
         // The proven property of "always add to the least loaded shard" (see ShardPlan's own javadoc): once
         // every group is assigned, the busiest shard's total minus the least busy shard's is at most the
-        // duration of the single biggest compare group. Checked here against the bench's real 94 scenarios
+        // duration of the single biggest compare group. Checked here against the bench's real 100 scenarios
         // rather than a made-up list, so the bound is the one the owner's actual runs get.
         long biggestGroup = biggestGroupSeconds(items);
         for (int n = 1; n <= ShardPlan.MAX_SHARDS; n++) {
@@ -244,6 +244,12 @@ class ShardPlanTest {
         all.add(new Item("restock-double-chest", 1, 30, null));
         all.add(new Item("restock-shulker-carried", 1, 20, null));
         all.add(new Item("restock-shulker-borrowed", 1, 60, null));
+        all.add(new Item("restock-shulker-hotbar", 1, 20, null));
+        all.add(new Item("restock-shulker-attacked", 1, 25, null));
+        all.add(new Item("restock-shulker-stranger", 1, 30, null));
+        all.add(new Item("restock-shulker-setback", 1, 25, null));
+        all.add(new Item("restock-shulker-trigger-b", 1, 45, null));
+        all.add(new Item("restock-shulker-no-room", 1, 110, null));
         for (String s : List.of("still", "circler", "defender", "still-regen", "circler-regen")) {
             all.add(meteor("ca-" + s));
         }
@@ -297,9 +303,9 @@ class ShardPlanTest {
     }
 
     @Test
-    void theRealListMirrorHas94Scenarios() {
-        assertEquals(94, realScenarios().size());
-        assertEquals(94, realScenarios().stream().map(Item::name).distinct().count());
+    void theRealListMirrorHas100Scenarios() {
+        assertEquals(100, realScenarios().size());
+        assertEquals(100, realScenarios().stream().map(Item::name).distinct().count());
     }
 
     @Test

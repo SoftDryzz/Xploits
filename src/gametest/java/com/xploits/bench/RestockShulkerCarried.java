@@ -69,7 +69,7 @@ final class RestockShulkerCarried implements Scenario {
         Bench.check(o.clicks() == 1 && o.closes() == 1,
             "slot clicks " + o.clicks() + " and closes " + o.closes() + ", one each expected (the take from the box)");
         // Ruling R37's excuse is for a screen the server closed by itself; nothing in an unpack should ever be.
-        Bench.check(o.container().endsWith("already closed by the server 0"),
+        Bench.check(o.container().contains("already closed by the server 0,"),
             "the server closed a container screen by itself (a box broken with its screen open?): " + o.container());
         Bench.check(o.player().getOrDefault("minecraft:shulker_box", 0L) == 1, "the player carries "
             + o.player().getOrDefault("minecraft:shulker_box", 0L) + " shulker box(es), one expected");

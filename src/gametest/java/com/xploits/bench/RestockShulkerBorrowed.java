@@ -102,7 +102,7 @@ final class RestockShulkerBorrowed implements Scenario {
         Bench.check(o.clicks() == 3 && o.closes() == 3, "slot clicks " + o.clicks() + " and closes " + o.closes()
             + ", three each expected (the carry, the take, the give-back)");
         // Ruling R37's excuse is for a screen the server closed by itself; nothing here should ever be.
-        Bench.check(o.container().endsWith("already closed by the server 0"),
+        Bench.check(o.container().contains("already closed by the server 0,"),
             "the server closed a container screen by itself: " + o.container());
         Bench.check(o.home(), "the player is not back where the trips started");
         RestockScene.checkClean(o);

@@ -1,18 +1,26 @@
 package com.xploits.bench;
 
+import com.xploits.bench.mixin.ServerMiningAccessor;
 import com.xploits.printer.core.Aim;
 import com.xploits.printer.core.Face;
 import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
 import com.xploits.printer.core.PrinterLimits;
 import net.minecraft.block.BlockState;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ContainerComponent;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
 import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.registry.tag.ItemTags;
+import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.PlayerInput;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
@@ -30,12 +38,15 @@ import java.util.List;
  * rotation it last received. An interaction is judged on four counts: what it clicks is a real block (no airplace), the
  * hit point is within 4.5 blocks of the eye, the face looks at the eye, and the vanilla raycast from the eye along the
  * server's rotation returns that block and face — which also proves the rotation arrived before the click. A dig START
- * is judged on reach, face and ray. Only the bench's own player, between {@link #start} and {@link #stop}. Never prints a
- * position.
+ * is judged on reach, face and ray. Container clicks and closes are judged too ({@link ContainerVerdict}), owner ruling
+ * R43's one click in the player's own inventory with a verdict of its own ({@link #ownInventoryMove}). Only the bench's
+ * own player, between {@link #start} and {@link #stop}. Never prints a position.
  */
 public final class PlaceJudge {
     /** Far enough past the reach for the ray to show what really lies on the line of sight. */
     private static final double RAY = 6.0;
+    /** Below this, a movement packet did not move the player (as the bench's rules recorder reads one). */
+    private static final double MOVED = 1.0E-4;
 
     enum Kind { PLACE, DIG }
 
@@ -52,12 +63,22 @@ public final class PlaceJudge {
      * dropped a container screen on its own (it moved the player back to their own screen, as when the chest went out of
      * range or was broken), carrying exactly that screen's syncId: the client's close crossed the server's, which is
      * neither a wrong screen nor a failure. Any other close while the server is on the player's own screen (another
-     * syncId, the same one a second time, or one the server never dropped) is a wrong screen.
+     * syncId, the same one a second time, or one the server never dropped) is a wrong screen. {@code ownMove}: owner
+     * ruling R43's one click in the player's own inventory, judged as narrowly as the server can see it
+     * ({@link #ownInventoryMove}: syncId 0, QUICK_MOVE, button 0, the server on the player's own screen, nothing on the
+     * cursor, a main-inventory slot holding a shulker box with items in it, a free hotbar slot for it to go to, no dig
+     * under way, the player standing still); that one is not a wrong screen, and every CHECK says how many it expects.
+     * Any other syncId-0 click stays a wrong screen.
      */
     record ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull,
-                            boolean closedByServer) {
+                            boolean closedByServer, boolean ownMove) {
         ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull) {
-            this(close, notQuickMove, wrongScreen, cursorFull, false);
+            this(close, notQuickMove, wrongScreen, cursorFull, false, false);
+        }
+
+        ContainerVerdict(boolean close, boolean notQuickMove, boolean wrongScreen, boolean cursorFull,
+                         boolean closedByServer) {
+            this(close, notQuickMove, wrongScreen, cursorFull, closedByServer, false);
         }
 
         boolean ok() {
@@ -72,6 +93,8 @@ public final class PlaceJudge {
     private static String judged;
     /** The syncId of the container screen the server last dropped on its own, until the next close comes; 0: none. */
     private static int dropped;
+    /** The last movement packet the server got from the judged player moved them (owner ruling R43: still only). */
+    private static boolean moved;
 
     private PlaceJudge() {
     }
@@ -82,6 +105,7 @@ public final class PlaceJudge {
         CONTAINER.clear();
         CLICKED.clear();
         dropped = 0;
+        moved = false;
         judged = playerName;
     }
 
@@ -107,7 +131,15 @@ public final class PlaceJudge {
         return (int) VERDICTS.stream().filter(v -> v.kind() == Kind.PLACE).count();
     }
 
-    /** "2 slot click(s) and 1 close(s) seen by the server: not a quick move 0, not the open screen 0, cursor not empty 0, already closed by the server 0". */
+    /** Owner ruling R43's clicks the server saw ({@link #ownInventoryMove}). */
+    static synchronized int ownMoves() {
+        return (int) CONTAINER.stream().filter(ContainerVerdict::ownMove).count();
+    }
+
+    /**
+     * "2 slot click(s) and 1 close(s) seen by the server: not a quick move 0, not the open screen 0, cursor not empty
+     * 0, already closed by the server 0, own-inventory moves 0".
+     */
     static synchronized String containerWords() {
         int clicks = 0;
         int closes = 0;
@@ -115,6 +147,7 @@ public final class PlaceJudge {
         int screen = 0;
         int cursor = 0;
         int already = 0;
+        int own = 0;
         for (ContainerVerdict v : CONTAINER) {
             if (v.close()) closes++;
             else clicks++;
@@ -122,10 +155,11 @@ public final class PlaceJudge {
             if (v.wrongScreen()) screen++;
             if (v.cursorFull()) cursor++;
             if (v.closedByServer()) already++;
+            if (v.ownMove()) own++;
         }
         return clicks + " slot click(s) and " + closes + " close(s) seen by the server: not a quick move " + move
             + ", not the open screen " + screen + ", cursor not empty " + cursor
-            + ", already closed by the server " + already;
+            + ", already closed by the server " + already + ", own-inventory moves " + own;
     }
 
     /** "1 interaction(s) and 0 dig start(s) judged: airplace 0, beyond reach 0, …" (words between every count). */
@@ -182,9 +216,66 @@ public final class PlaceJudge {
     /** Server thread, from the mixin: a slot click about to be handled. */
     public static void click(ServerPlayerEntity player, ClickSlotC2SPacket packet) {
         if (!judging(player)) return;
+        boolean ownMove = ownInventoryMove(player, packet);
         addContainer(new ContainerVerdict(false, packet.actionType() != SlotActionType.QUICK_MOVE,
-            packet.syncId() == 0 || packet.syncId() != player.currentScreenHandler.syncId,
-            !player.currentScreenHandler.getCursorStack().isEmpty()));
+            !ownMove && (packet.syncId() == 0 || packet.syncId() != player.currentScreenHandler.syncId),
+            !player.currentScreenHandler.getCursorStack().isEmpty(), false, ownMove));
+    }
+
+    /**
+     * Owner ruling R43, judged before the server handles the click (the slot still holds what was clicked), as narrowly
+     * as the server can see it: syncId 0, QUICK_MOVE, button 0; the server on the player's own screen (no container
+     * open) with nothing on the cursor; a main-inventory slot (9–35) holding a shulker box that holds items (the box
+     * about to be unpacked holds the material; an empty one is never unpacked); a free hotbar slot, so vanilla's
+     * {@code PlayerScreenHandler.quickMove} moves it main inventory → hotbar (slots 9–35 go to 36–44, the first empty
+     * one first; verified with {@code javap -c}) and nowhere else; no dig under way as the server holds it
+     * ({@link ServerMiningAccessor}); and the player standing still as the server knows it — the last movement packet
+     * did not move them, the last input packet held no movement, jump, sneak or sprint, on the ground, not sprinting,
+     * sneaking or using an item. Which box restock was about to unpack the server cannot know: each CHECK proves that
+     * with the slots it reads (M13).
+     */
+    static boolean ownInventoryMove(ServerPlayerEntity player, ClickSlotC2SPacket packet) {
+        if (packet.syncId() != 0 || packet.actionType() != SlotActionType.QUICK_MOVE || packet.button() != 0) {
+            return false;
+        }
+        PlayerScreenHandler own = player.playerScreenHandler;
+        if (player.currentScreenHandler != own || own.syncId != 0) return false;
+        if (!own.getCursorStack().isEmpty()) return false;
+        int slot = packet.slot();
+        if (slot < PlayerScreenHandler.INVENTORY_START || slot >= PlayerScreenHandler.INVENTORY_END) return false;
+        ItemStack box = own.getSlot(slot).getStack();
+        ContainerComponent inside = box.get(DataComponentTypes.CONTAINER);
+        if (!box.isIn(ItemTags.SHULKER_BOXES) || inside == null || !inside.iterateNonEmpty().iterator().hasNext()) {
+            return false;
+        }
+        boolean hotbarRoom = false;
+        for (int i = PlayerScreenHandler.HOTBAR_START; i < PlayerScreenHandler.HOTBAR_END; i++) {
+            if (own.getSlot(i).getStack().isEmpty()) hotbarRoom = true;
+        }
+        if (!hotbarRoom) return false;
+        if (((ServerMiningAccessor) player.interactionManager).xploits$mining()) return false;
+        return !lastMoveMoved() && PlayerInput.DEFAULT.equals(player.getPlayerInput()) && player.isOnGround()
+            && !player.isSprinting() && !player.isSneaking() && !player.isUsingItem();
+    }
+
+    /**
+     * Server thread, from the mixin: a movement packet about to be handled — whether it moves the player from where
+     * the server has them (owner ruling R43's click is judged only while still).
+     */
+    public static void move(ServerPlayerEntity player, PlayerMoveC2SPacket packet) {
+        if (!judging(player)) return;
+        boolean moves = packet.changesPosition() && (Math.abs(packet.getX(player.getX()) - player.getX()) > MOVED
+            || Math.abs(packet.getY(player.getY()) - player.getY()) > MOVED
+            || Math.abs(packet.getZ(player.getZ()) - player.getZ()) > MOVED);
+        setMoved(moves);
+    }
+
+    private static synchronized void setMoved(boolean moves) {
+        moved = moves;
+    }
+
+    private static synchronized boolean lastMoveMoved() {
+        return moved;
     }
 
     /**

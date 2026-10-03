@@ -107,14 +107,14 @@ final class RestockScene {
      * player and the chests without being found again (a shulker box standing around F, with its contents, and items on
      * the ground count as found: {@code drops} and {@link #standingShulkers} say where they are), what the player
      * carries at the end, items on the ground, whether the player is back at F, the rules check, the walking clicks,
-     * the interactions, the server's re-check, the sync watch, every print-mode switch, and whether the printer marker
-     * is still on disk.
+     * the interactions, the server's re-check, the sync watch, every print-mode switch, whether the printer marker
+     * is still on disk, and owner ruling R43's clicks in the player's own inventory the server's judge let through.
      */
     record Outcome(boolean on, Optional<RestockReason> reason, int trips, Map<String, Long> lost,
                    Map<String, Long> player, int drops, boolean home, boolean rulesClean, String rules,
                    int walkingClicks, int interacts, boolean judgeClean, String judge, SyncWatch.Result sync,
                    List<Boolean> printer, boolean markerLeft, int judgedPlaces, int clicks, int closes,
-                   boolean containerClean, String container, boolean serverHome, boolean screenClear) {
+                   boolean containerClean, String container, boolean serverHome, boolean screenClear, int ownMoves) {
     }
 
     private final BenchSchematic schematic;
@@ -375,6 +375,39 @@ final class RestockScene {
         });
     }
 
+    /** Server thread read: what the player's slot {@code slot} holds, by id, a box's contents included. */
+    Map<String, Long> slotHolds(Bench bench, int slot) {
+        return bench.fromServer(srv -> {
+            Map<String, Long> counts = new TreeMap<>();
+            add(counts, Arena.player(srv, name).getInventory().getStack(slot));
+            return counts;
+        });
+    }
+
+    /**
+     * Server thread (ruling R54): the stacks in the player's {@code slots} go into the first free slots of the chest at
+     * {@code chest}, as a player putting them away by hand would (nothing is lost: the chest is the scene's, and every
+     * item of it is counted). With no screen open the player's own screen sends the emptied slots to the client. False
+     * when there is no chest there, a slot is empty or the chest has no room for them all (nothing moved).
+     */
+    boolean putAway(Bench bench, Vec3i chest, int... slots) {
+        return bench.fromServer(srv -> {
+            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) return false;
+            PlayerInventory inventory = Arena.player(srv, name).getInventory();
+            List<Integer> free = new ArrayList<>();
+            for (int slot = 0; slot < be.size(); slot++) {
+                if (be.getStack(slot).isEmpty()) free.add(slot);
+            }
+            if (free.size() < slots.length) return false;
+            for (int slot : slots) {
+                if (inventory.getStack(slot).isEmpty()) return false;
+            }
+            for (int i = 0; i < slots.length; i++) be.setStack(free.get(i), inventory.removeStack(slots[i]));
+            be.markDirty();
+            return true;
+        });
+    }
+
     Restock restock() {
         return restock;
     }
@@ -423,16 +456,25 @@ final class RestockScene {
         int seenCloses = seen.size() - seenClicks;
         boolean containerClean = seenClicks == recorder.clicks() && seenCloses == recorder.closes()
             && seen.stream().allMatch(PlaceJudge.ContainerVerdict::ok);
+        int ownMoves = PlaceJudge.ownMoves();
         Outcome outcome = new Outcome(on, reason, trips, InventoryLedger.lost(atT0, atEnd, Map.of()), player, drops, home,
             recorder.violations().isEmpty(), recorder.violationWords(), recorder.walkingClicks(), recorder.interacts(),
             judged, PlaceJudge.words(), sync.result(), switched, markerLeft, judgedPlaces, recorder.clicks(),
-            recorder.closes(), containerClean, PlaceJudge.containerWords(), serverHome, screenClear);
+            recorder.closes(), containerClean, PlaceJudge.containerWords(), serverHome, screenClear, ownMoves);
         bench.finish();
         return outcome;
     }
 
-    /** What every restock run must satisfy, whatever it fetched (restock spec §6). */
+    /** What every restock run must satisfy (restock spec §6), with no click in the player's own inventory. */
     static void checkClean(Outcome o) {
+        checkClean(o, 0);
+    }
+
+    /**
+     * What every restock run must satisfy, whatever it fetched (restock spec §6); {@code ownMoves}: owner ruling R43's
+     * clicks in the player's own inventory the run makes, as the server's judge let them through (0 but in one CHECK).
+     */
+    static void checkClean(Outcome o, int ownMoves) {
         Bench.check(o.rulesClean(), "restock broke an anticheat rule: " + o.rules());
         Bench.check(o.walkingClicks() == 0, "container clicks while walking, in " + o.walkingClicks() + " tick(s)");
         Bench.check(o.judgeClean(), "the server judged " + o.judgedPlaces() + " of " + o.interacts()
@@ -445,6 +487,8 @@ final class RestockScene {
         Bench.check(o.drops() == 0, "items on the ground: " + o.drops());
         Bench.check(o.sync().clean(), "the client and the server disagree: " + o.sync().words());
         Bench.check(!o.markerLeft(), "the printer marker was left on disk");
+        Bench.check(o.ownMoves() == ownMoves, "clicks in the player's own inventory seen by the server: " + o.ownMoves()
+            + ", " + ownMoves + " expected");
     }
 
     static String words(Optional<RestockReason> reason) {
