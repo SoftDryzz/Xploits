@@ -393,6 +393,87 @@ class BorrowedShulkersTest {
             l.toReturn(OVERWORLD, A, List.of(held(54, PLAIN, true)), 27), "the earlier borrowed box still goes back");
     }
 
+    // --- ruling R72 -------------------------------------------------------------------------------------------------
+
+    @Test
+    void theRecheckSaysHowManyEntriesItForgot() {
+        // m1: a last trip's "returned" count must not take a forgotten entry for a box that went back.
+        BorrowedShulkers l = new BorrowedShulkers();
+        List<BorrowedShulkers.Held> own = List.of(held(3, PLAIN, true));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(own);
+        carried(l, v, PLAIN);
+        BorrowedShulkers.Kept kept = l.settle(v, List.of(held(3, PLAIN, true), held(8, PLAIN, false)));
+        assertEquals(1, l.recheck(kept, own));
+        assertEquals(0, l.recheck(kept, own), "once");
+    }
+
+    @Test
+    void anEntryTheTrimForgotFirstIsNotForgottenAgain() {
+        // The idle trim may forget the ghost's entry before the next screen (no box of that kind carried): the recheck
+        // then forgets nothing, and says so, so a last trip's count is not lowered twice.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(new BorrowedShulkers.Borrowed(NAMED, OVERWORLD, B));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of());
+        carried(l, v, PLAIN);
+        BorrowedShulkers.Kept kept = l.settle(v, List.of(held(8, PLAIN, false), held(9, NAMED, true)));
+        l.trim(Map.of(NAMED, 1));
+        assertEquals(1, l.count(), "the trim forgot the ghost's entry");
+        assertEquals(0, l.recheck(kept, List.of(held(9, NAMED, true))));
+        assertEquals(1, l.count());
+    }
+
+    @Test
+    void atRestocksNextScreenTheRecheckComesBeforeTheGiveBacks() {
+        // The re-review's replay J2: a ghost kept at the last close; the next screen brings the inventory without it.
+        // Listed before the recheck, the own empty box would go back in its place.
+        BorrowedShulkers l = new BorrowedShulkers();
+        List<BorrowedShulkers.Held> own = List.of(held(3, PLAIN, true));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(own);
+        carried(l, v, PLAIN);
+        BorrowedShulkers.Kept kept = l.settle(v, List.of(held(3, PLAIN, true), held(8, PLAIN, false)));
+        List<BorrowedShulkers.Held> screen = List.of(held(57, PLAIN, true));
+        assertEquals(new BorrowedShulkers.AtScreen(List.of(), 1), l.atScreen(kept, null, OVERWORLD, A, screen, 25));
+        assertTrue(l.isEmpty());
+        assertEquals(new BorrowedShulkers.AtScreen(List.of(), 0), l.atScreen(kept, null, OVERWORLD, A, screen, 25));
+    }
+
+    @Test
+    void onceTheVisitMovedABoxTheScreenNoLongerRechecks() {
+        // The last visit's baseline holds only until this visit's first box move; its own moves are the visit's.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(fromA(PLAIN));
+        BorrowedShulkers.Visit last = new BorrowedShulkers.Visit(List.of());
+        carried(l, last, PLAIN);
+        BorrowedShulkers.Kept kept = l.settle(last, List.of(held(0, PLAIN, true), held(8, PLAIN, false)));
+        BorrowedShulkers.Visit now = new BorrowedShulkers.Visit(List.of(held(0, PLAIN, true), held(8, PLAIN, false)));
+        gaveBack(l, now, PLAIN);
+        assertEquals(new BorrowedShulkers.AtScreen(List.of(), 0),
+            l.atScreen(kept, now, OVERWORLD, A, List.of(held(62, PLAIN, false)), 25));
+        assertEquals(1, l.count(), "the give-back took one entry, the recheck none");
+    }
+
+    @Test
+    void aKeptCountNeverExceedsTheCarriesWhenMoreBoxesArrive() {
+        // m3: one carry noted while two filled boxes arrived (one picked up): one carry is kept, not two, so the
+        // recheck never takes the earlier borrow from the same container with it.
+        BorrowedShulkers l = new BorrowedShulkers();
+        l.borrow(fromA(PLAIN));
+        BorrowedShulkers.Visit v = new BorrowedShulkers.Visit(List.of(held(0, PLAIN, true)));
+        carried(l, v, PLAIN);
+        BorrowedShulkers.Kept kept = l.settle(v, List.of(held(0, PLAIN, true), held(8, PLAIN, false),
+            held(9, PLAIN, false)));
+        assertEquals(2, l.count());
+        assertEquals(1, l.recheck(kept, List.of(held(0, PLAIN, true))));
+        assertEquals(1, l.count(), "the earlier borrow stays");
+    }
+
+    @Test
+    void withNoVisitTheFiveArgumentGiveBackIsTheFourArgumentOne() {
+        List<BorrowedShulkers.Held> carried = List.of(held(60, PLAIN, true), held(61, PLAIN, true));
+        assertEquals(List.of(new TakePlan.Slot(60, BOX, 1, 5), new TakePlan.Slot(61, BOX, 1, 5)),
+            ledger().toReturn(OVERWORLD, A, carried, 5, null));
+    }
+
     @Test
     void anEntryNeverPrintsItsOrigin() {
         String printed = new BorrowedShulkers.Borrowed(PLAIN, OVERWORLD, new Pos(12345, 67, -6789)).toString();

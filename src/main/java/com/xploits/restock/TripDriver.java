@@ -340,9 +340,6 @@ final class TripDriver {
         }
         boolean ours = ours(p);
         boolean seen = ours && ContainerScreen.contentSeen(p.currentScreenHandler);
-        // Ruling R71: restock's screen brought the inventory from the server; the last visit's kept carries are
-        // checked against it before anything is taken or given back here.
-        if (ours && !inner) session.recheckLastVisit(p);
         // Ruling R54: a container trip carries a box only while one can be carried (a free hotbar slot and one more).
         // Otherwise its slots are phase A's — a block only inside boxes is not "there" — so the trip tries the next
         // source (Task B7's session) instead of stopping the session with NOTHING_FITS. The inner take never carries.

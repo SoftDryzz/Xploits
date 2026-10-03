@@ -194,18 +194,46 @@ public final class BorrowedShulkers {
      * the server ({@code now}), before that visit moves a box, the boxes of each kind a kept carry is of are counted
      * again — holding items or not, so an unpack in between changes nothing — and for each that vanished since the
      * settle one of those carries is forgotten, never more than were kept, each only once (it may run every tick). It
-     * only ever forgets.
+     * only ever forgets, and says how many entries it forgot now (ruling R72: a last trip counts only boxes that went
+     * back).
      */
-    public void recheck(Kept kept, List<Held> now) {
+    public int recheck(Kept kept, List<Held> now) {
         Map<Kind, Integer> boxesNow = new HashMap<>();
         tally(now, boxesNow, boxesNow);
+        int[] forgot = new int[1];
         kept.count.forEach((kind, n) -> {
             int vanished = Math.max(0, kept.boxesAtSettle.getOrDefault(kind, 0) - boxesNow.getOrDefault(kind, 0));
             int target = Math.min(n, vanished);
             int done = kept.forgotten.getOrDefault(kind, 0);
-            for (int i = done; i < target; i++) list.remove(kept.entry.get(kind));
+            for (int i = done; i < target; i++) {
+                if (list.remove(kept.entry.get(kind))) forgot[0]++;
+            }
             if (target > done) kept.forgotten.put(kind, target);
         });
+        return forgot[0];
+    }
+
+    /**
+     * What restock's container screen gives back now ({@link #atScreen}), and how many entries the recheck before it
+     * forgot.
+     */
+    public record AtScreen(List<TakePlan.Slot> giveBacks, int forgotten) {
+        public AtScreen {
+            giveBacks = List.copyOf(giveBacks);
+        }
+    }
+
+    /**
+     * Rulings R71, R72: what goes back at restock's container screen ({@code held}: the player's part of it), in this
+     * order. Until this visit moves a box ({@code visit} null), the last visit's kept carries ({@code lastKept}, null
+     * when none) are first checked against the inventory the screen brings from the server ({@link #recheck}): listed
+     * first, an own empty box could go back in place of a ghost's entry. Then {@link #toReturn(String, Pos, List, int,
+     * Visit)}.
+     */
+    public AtScreen atScreen(Kept lastKept, Visit visit, String dimension, Pos origin, List<Held> held,
+                             int freeSlots) {
+        int forgot = lastKept != null && visit == null ? recheck(lastKept, held) : 0;
+        return new AtScreen(toReturn(dimension, origin, held, freeSlots, visit), forgot);
     }
 
     /** The boxes in {@code held} by kind, holding items or empty. */
