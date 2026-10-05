@@ -13,8 +13,7 @@ class RestockReasonTest {
     /** Guards reasons that only the own printer can produce: unreachable with restock's inputs. */
     private static final Set<Guards.Reason> PRINTER_ONLY = Set.of(Guards.Reason.LITEMATICA_PRINTER_ON,
         Guards.Reason.PLACEMENT_CHANGED, Guards.Reason.LAYER_RANGE_CHANGED, Guards.Reason.OTHER_PLACEMENT_OVERLAPS,
-        Guards.Reason.BREAK_SPEED_MISMATCH, Guards.Reason.LOOP, Guards.Reason.NO_HOTBAR_ROOM,
-        Guards.Reason.CURSOR_NOT_EMPTY, Guards.Reason.FINISHED, Guards.Reason.LEFTOVERS,
+        Guards.Reason.LOOP, Guards.Reason.CURSOR_NOT_EMPTY, Guards.Reason.FINISHED, Guards.Reason.LEFTOVERS,
         Guards.Reason.MATERIAL_MISSING, Guards.Reason.NOTHING_REACHABLE, Guards.Reason.NOTHING_KNOWN);
 
     @Test
@@ -65,5 +64,17 @@ class RestockReasonTest {
     void aRefusalKeepsItsDetail() {
         assertEquals(new RestockReason.Refusal(RestockReason.CONFLICTING_MODULE, "scaffold"),
             RestockReason.of(new Guards.Refusal(Guards.Reason.CONFLICTING_MODULE, "scaffold")));
+    }
+
+    @Test
+    void theShulkerReasonsAreStops() {
+        // Phase B: every failure of an unpack ends the session (spec section 3 "any failure stops with its reason").
+        for (RestockReason r : List.of(RestockReason.NO_HOTBAR_ROOM, RestockReason.BREAK_SPEED_MISMATCH,
+            RestockReason.SHULKER_NOT_CARRIED, RestockReason.SHULKER_NO_SPOT, RestockReason.SHULKER_NOT_PLACED,
+            RestockReason.SHULKER_NOT_BROKEN, RestockReason.SHULKER_NOT_PICKED_UP, RestockReason.UNPACK_BLOCKED)) {
+            assertEquals(RestockReason.Effect.STOP, r.effect(), r.name());
+        }
+        assertEquals(RestockReason.BREAK_SPEED_MISMATCH, RestockReason.of(Guards.Reason.BREAK_SPEED_MISMATCH));
+        assertEquals(RestockReason.NO_HOTBAR_ROOM, RestockReason.of(Guards.Reason.NO_HOTBAR_ROOM));
     }
 }

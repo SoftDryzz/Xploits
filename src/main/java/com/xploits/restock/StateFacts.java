@@ -86,4 +86,16 @@ final class StateFacts {
         }
         return m;
     }
+
+    /**
+     * What the player has, loose plus inside the shulker boxes carried in slots 0–35: a trip measures both its ends
+     * this way (pre-flight 19-21), so a box it carried counts as taken and one carried before it does not.
+     */
+    static Map<String, Integer> withShulkers(PlayerInventory inventory) {
+        Map<String, Integer> m = new TreeMap<>(carried(inventory));
+        for (int i = 0; i < PlayerInventory.MAIN_SIZE; i++) {
+            ShulkerInventory.contents(inventory.getStack(i)).forEach((item, n) -> m.merge(item, n, Integer::sum));
+        }
+        return m;
+    }
 }

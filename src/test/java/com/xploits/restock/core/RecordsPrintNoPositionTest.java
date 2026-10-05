@@ -1,8 +1,10 @@
 package com.xploits.restock.core;
 
 import com.xploits.printer.core.Aim;
+import com.xploits.printer.core.BreakPlan;
 import com.xploits.printer.core.Face;
 import com.xploits.printer.core.GridBox;
+import com.xploits.printer.core.HotbarPlan;
 import com.xploits.printer.core.Point;
 import com.xploits.printer.core.Pos;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,7 +45,22 @@ class RecordsPrintNoPositionTest {
             new RestockTrip.ClickContainer(AT),
             new RestockTrip.NeedSource("minecraft:stone", AT, RestockTrip.Failure.STALE),
             new RestockTrip.Facts(false, false, true, true, 3.5, false, Optional.of(STAND), RestockTrip.Aiming.HELD,
-                RestockTrip.Click.NONE, true, true, new TakePlan.Done(true), 64, true));
+                RestockTrip.Click.NONE, true, true, new TakePlan.Done(true), 64, true),
+            new BorrowedShulkers.Borrowed(new BorrowedShulkers.Kind("minecraft:shulker_box", ""), "minecraft:overworld", AT),
+            new ShulkerSpot.Choice(AT, STAND, HIT, new Aim.Rotation(90f, 10f)),
+            new UnpackPlan.Plan("minecraft:stone", "minecraft:shulker_box", 1, AT, 0, true),
+            new UnpackPlan.Place(new ShulkerSpot.Choice(AT, STAND, HIT, new Aim.Rotation(90f, 10f))),
+            new UnpackPlan.OpenContents(AT),
+            new UnpackPlan.DigStart(AT, Face.UP, false),
+            new UnpackPlan.DigStop(AT, Face.UP),
+            new UnpackPlan.DigAbort(AT, Face.UP),
+            new UnpackPlan.GoTo(AT),
+            new UnpackPlan.Stopped(RestockReason.PLAYER_MOVED, Optional.of(new UnpackPlan.DigAbort(AT, Face.UP)),
+                OptionalInt.empty()),
+            new UnpackPlan.Facts(false, false, true, true, true, new HotbarPlan.Ready(0), 0,
+                Optional.of(new ShulkerSpot.Choice(AT, STAND, HIT, new Aim.Rotation(90f, 10f))), true,
+                UnpackPlan.Click.SENT, Optional.of(AT), UnpackPlan.Contents.RUNNING, Optional.empty(),
+                Optional.of(new BreakPlan.Choice(1, 0.25f, 4)), Optional.empty(), 0.25f, 1, Optional.of(STAND), false, 3.5));
         for (Object r : records) {
             String printed = r.toString();
             String name = r.getClass().getSimpleName();

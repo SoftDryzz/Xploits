@@ -8,6 +8,7 @@ import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.network.packet.c2s.play.TeleportConfirmC2SPacket;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -20,8 +21,10 @@ import java.util.Map;
  * the client ticks in which a container click, close or interact went out while the player's position changed: the
  * scripted walker moves the player with no movement input, which {@code PaceRules}' own input rule cannot see. It listens
  * at {@code LOWEST}: Orbit stops a cancellable post at the first listener that cancels (spike S8), so a cancelled packet
- * never arrives here. Packets are classified with restock's own table ({@link PacketWatch#classify}). Sends come from the
- * client thread and Netty's, so every method is synchronized. Never prints a position.
+ * never arrives here. Packets are classified with restock's own table ({@link PacketWatch#classify}), with one
+ * exception Grim makes too: the movement packet that answers a server teleport is not the tick's movement
+ * packet ({@link #teleportAnswerNext}). Sends come from the client thread and Netty's, so every method is
+ * synchronized. Never prints a position.
  */
 final class PacketRecorder {
     /** Below this, a movement packet did not move the player. */
@@ -37,6 +40,19 @@ final class PacketRecorder {
     private double lastX = Double.NaN;
     private double lastY = Double.NaN;
     private double lastZ = Double.NaN;
+    /**
+     * A {@code TeleportConfirmC2SPacket} just left, and no tick has ended since: a {@code PlayerMoveC2SPacket.Full}
+     * that follows it answers the server's teleport. Vanilla 1.21.11 sends both together from
+     * {@code ClientPlayNetworkHandler.onPlayerPositionLook}, on the client thread outside the tick (javap -c: the
+     * confirm, then a {@code PlayerMoveC2SPacket.Full}). Grim (GrimAnticheat/Grim 2.0) does not count that answer as
+     * the tick's movement: {@code GrimProcessor.isTickPacket} (GrimProcessor.java:74-82) takes a flying packet only
+     * while the last packet was not a teleport, and the checks that read the tick's packets key on it
+     * ({@code Post.java:77-81}, {@code PacketOrderO.java:36}, {@code TickTimer.java:31},
+     * {@code CheckManagerListener.java:422-423}). The recorder reads it the same way: that one packet is no movement
+     * packet ({@code OTHER}), its position still tracked for the walking clicks. Any tick-ending packet clears the
+     * flag.
+     */
+    private boolean teleportAnswerNext;
 
     private PacketRecorder() {
     }
@@ -52,8 +68,15 @@ final class PacketRecorder {
     @EventHandler(priority = EventPriority.LOWEST)
     private void onSend(PacketEvent.Send event) {
         if (event.isCancelled()) return;
-        PaceRules.Packet p = PacketWatch.classify(event.packet, false);
+        PaceRules.Packet classified = PacketWatch.classify(event.packet, false, PacketWatch.get().sendingInstantDig());
         synchronized (this) {
+            PaceRules.Packet p = classified;
+            if (event.packet instanceof TeleportConfirmC2SPacket) {
+                teleportAnswerNext = true;
+            } else if (teleportAnswerNext && event.packet instanceof PlayerMoveC2SPacket.Full) {
+                teleportAnswerNext = false;
+                p = PaceRules.Packet.of(PaceRules.Kind.OTHER, false);
+            }
             if (event.packet instanceof PlayerMoveC2SPacket move && move.changesPosition()) {
                 double x = move.getX(0);
                 double y = move.getY(0);
@@ -80,6 +103,7 @@ final class PacketRecorder {
                     containerActions++;
                 }
                 case TICK_END -> {
+                    teleportAnswerNext = false;
                     if (moved && containerActions > 0) walkingClicks++;
                     moved = false;
                     containerActions = 0;

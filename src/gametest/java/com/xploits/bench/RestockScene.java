@@ -1,6 +1,7 @@
 package com.xploits.bench;
 
 import com.xploits.bench.core.InventoryLedger;
+import com.xploits.bench.mixin.ServerMiningAccessor;
 import com.xploits.printer.core.Pos;
 import com.xploits.restock.MarkStore;
 import com.xploits.restock.Mover;
@@ -10,14 +11,19 @@ import com.xploits.restock.TargetSource;
 import com.xploits.restock.core.MarkBook;
 import com.xploits.restock.core.RestockReason;
 import com.xploits.restock.core.RestockTrip;
+import com.xploits.restock.core.ShulkersLeft;
+import com.xploits.restock.core.UnpackPlan;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.ShulkerBoxBlock;
 import net.minecraft.block.entity.ChestBlockEntity;
+import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ContainerComponent;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
@@ -27,6 +33,7 @@ import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3i;
@@ -34,9 +41,11 @@ import net.minecraft.util.math.Vec3i;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -45,20 +54,37 @@ import java.util.function.Predicate;
 
 /**
  * One restock run on the bench (restock spec §6), shared by every restock CHECK. Arrange: the bare loadout, a kit, the
- * scene's chests with their contents, all confirmed on the client. T0: the rules recorder and the server's judge on, the
- * bench seams handed to restock, the marks seeded, stash-keeper's index out of the way, every item of the player and the
- * chests counted on the server, restock on, the sync watch over the build, the chests and a margin. Offsets from F only;
- * nothing here prints a position.
+ * scene's chests with their contents (shulker boxes with theirs), all confirmed on the client. T0: the rules recorder
+ * and the server's judge on, the bench seams handed to restock, the marks seeded, stash-keeper's index out of the way,
+ * every item of the player and the chests counted on the server, restock on, the sync watch over the build, the
+ * chests, F's neighbourhood (where a shulker box is set down) and a margin. Offsets from F only; nothing here prints a
+ * position.
  */
 final class RestockScene {
     /** Blocks around the build and the chests, each way, that the sync watch also covers. */
     private static final int MARGIN = 2;
+    /**
+     * Blocks around F, each way, where a shulker box restock set down is looked for: the cells a box can be set on are
+     * at most three blocks from the player, who is at most a few blocks from F.
+     */
+    private static final int SHULKER_AREA = 8;
     /** Ticks the client gets to show what the server was given. */
     private static final int CLIENT_TICKS = 40;
     private static final String DIMENSION = "minecraft:overworld";
 
-    /** One stack: a slot (of the player's 36, or of a chest's 27), the item, the count. */
-    record Stack(int slot, Item item, int count) {
+    /**
+     * One stack: a slot (of the player's 36, or of a chest's 27), the item, the count; a box may hold stacks (each at
+     * its own slot of the box) and carry a name ("" for none).
+     */
+    record Stack(int slot, Item item, int count, List<Stack> inside, String name) {
+        Stack {
+            inside = List.copyOf(inside);
+            Objects.requireNonNull(name, "name");
+        }
+
+        Stack(int slot, Item item, int count) {
+            this(slot, item, count, List.of(), "");
+        }
     }
 
     /** A chest of the scene: where, what it holds, and its state (one half of a double chest names its type and facing). */
@@ -79,15 +105,17 @@ final class RestockScene {
 
     /**
      * What a run left, never a position: whether restock is still on and its last reason, the trips done, what left the
-     * player and the chests without being found again, what the player carries at the end, items on the ground, whether
-     * the player is back at F, the rules check, the walking clicks, the interactions, the server's re-check, the sync
-     * watch, every print-mode switch, and whether the printer marker is still on disk.
+     * player and the chests without being found again (a shulker box standing around F, with its contents, and items on
+     * the ground count as found: {@code drops} and {@link #standingShulkers} say where they are), what the player
+     * carries at the end, items on the ground, whether the player is back at F, the rules check, the walking clicks,
+     * the interactions, the server's re-check, the sync watch, every print-mode switch, whether the printer marker
+     * is still on disk, and owner ruling R43's clicks in the player's own inventory the server's judge let through.
      */
     record Outcome(boolean on, Optional<RestockReason> reason, int trips, Map<String, Long> lost,
                    Map<String, Long> player, int drops, boolean home, boolean rulesClean, String rules,
                    int walkingClicks, int interacts, boolean judgeClean, String judge, SyncWatch.Result sync,
                    List<Boolean> printer, boolean markerLeft, int judgedPlaces, int clicks, int closes,
-                   boolean containerClean, String container, boolean serverHome, boolean screenClear) {
+                   boolean containerClean, String container, boolean serverHome, boolean screenClear, int ownMoves) {
     }
 
     private final BenchSchematic schematic;
@@ -114,6 +142,27 @@ final class RestockScene {
         return new Stack(slot, item, count);
     }
 
+    /** A plain shulker box in {@code slot} holding {@code inside} (each at its slot of the box), named unless "". */
+    static Stack shulker(int slot, String name, List<Stack> inside) {
+        return new Stack(slot, Items.SHULKER_BOX, 1, inside, name);
+    }
+
+    /**
+     * The stack as an item: a box with its contents in their slots ({@code DataComponentTypes.CONTAINER}) and its
+     * name.
+     */
+    static ItemStack itemOf(Stack s) {
+        ItemStack stack = new ItemStack(s.item(), s.count());
+        if (!s.inside().isEmpty()) {
+            int size = s.inside().stream().mapToInt(Stack::slot).max().orElse(0) + 1;
+            List<ItemStack> slots = new ArrayList<>(Collections.nCopies(size, ItemStack.EMPTY));
+            for (Stack in : s.inside()) slots.set(in.slot(), itemOf(in));
+            stack.set(DataComponentTypes.CONTAINER, ContainerComponent.fromStacks(slots));
+        }
+        if (!s.name().isEmpty()) stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(s.name()));
+        return stack;
+    }
+
     // --- arrange --------------------------------------------------------------------------------------------------
 
     void arrange(Bench bench) {
@@ -122,13 +171,13 @@ final class RestockScene {
         name = bench.player();
         bench.onServer(srv -> {
             PlayerInventory inventory = Arena.player(srv, name).getInventory();
-            for (Stack s : kit) inventory.setStack(s.slot(), new ItemStack(s.item(), s.count()));
+            for (Stack s : kit) inventory.setStack(s.slot(), itemOf(s));
             ServerWorld w = srv.getOverworld();
             for (Chest c : chests) {
                 BlockPos pos = origin.add(c.at());
                 w.setBlockState(pos, c.state());
                 if (w.getBlockEntity(pos) instanceof ChestBlockEntity be) {
-                    for (Stack s : c.contents()) be.setStack(s.slot(), new ItemStack(s.item(), s.count()));
+                    for (Stack s : c.contents()) be.setStack(s.slot(), itemOf(s));
                     be.markDirty();
                 }
             }
@@ -138,12 +187,25 @@ final class RestockScene {
             .allMatch(c -> client.world.getBlockState(origin.add(c.at())).equals(c.state())), "the restock scene");
     }
 
+    /** Arrange: the hotbar slot the run starts with, selected on the client and synced by vanilla's own tick. */
+    void selectSlot(Bench bench, int slot) {
+        bench.onClient(client -> client.player.getInventory().setSelectedSlot(slot));
+        awaitClient(bench, client -> client.player.getInventory().getSelectedSlot() == slot, "the selected slot");
+        bench.ticks(2);
+    }
+
     // --- T0 and the run -------------------------------------------------------------------------------------------
 
     /** T0. {@code printing}: the fake print mode at the start. {@code litematica}: restock reads Litematica, not the bench. */
     void start(Bench bench, boolean printing, boolean litematica) {
+        start(bench, printing, litematica, true);
+    }
+
+    /** T0, with {@code use-carried-shulkers} as given (on by default; the negative variants turn it off). */
+    void start(Bench bench, boolean printing, boolean litematica, boolean useCarriedShulkers) {
         restock = bench.meteor(Restock.class);
         bench.setting(restock, "Material", "use-stash-keeper", false);
+        bench.setting(restock, "Material", "use-carried-shulkers", useCarriedShulkers);
         recorder = PacketRecorder.start(bench);
         PlaceJudge.start(name);
         bench.atDespawn(PlaceJudge::stop);
@@ -201,6 +263,183 @@ final class RestockScene {
         return bench.fromClient(client -> restock.tripPhase());
     }
 
+    /** Shulker boxes standing as blocks around F, read on the server. */
+    int standingShulkers(Bench bench) {
+        return bench.fromServer(srv -> {
+            ServerWorld w = srv.getOverworld();
+            int n = 0;
+            for (BlockPos b : BlockPos.iterate(origin.add(-SHULKER_AREA, -1, -SHULKER_AREA),
+                origin.add(SHULKER_AREA, 4, SHULKER_AREA))) {
+                if (w.getBlockState(b).getBlock() instanceof ShulkerBoxBlock) n++;
+            }
+            return n;
+        });
+    }
+
+    /**
+     * Server thread read: what the player carries loose — every slot and the cursor, a shulker box counted as one item
+     * and never what it holds. The deep count ({@link #carried}) stays the nothing-lost check; this one tells a take
+     * out of a box from a box that came back as it went.
+     */
+    Map<String, Long> loose(Bench bench) {
+        return bench.fromServer(srv -> {
+            ServerPlayerEntity player = Arena.player(srv, name);
+            Map<String, Long> counts = new TreeMap<>();
+            PlayerInventory inventory = player.getInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) addLoose(counts, inventory.getStack(slot));
+            addLoose(counts, player.currentScreenHandler.getCursorStack());
+            return counts;
+        });
+    }
+
+    /** Server thread read: what the shulker boxes the player carries hold, by id; empty when every box is empty. */
+    Map<String, Long> inBoxes(Bench bench) {
+        return bench.fromServer(srv -> {
+            ServerPlayerEntity player = Arena.player(srv, name);
+            Map<String, Long> counts = new TreeMap<>();
+            PlayerInventory inventory = player.getInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) addInside(counts, inventory.getStack(slot));
+            addInside(counts, player.currentScreenHandler.getCursorStack());
+            return counts;
+        });
+    }
+
+    Optional<UnpackPlan.Phase> unpackPhase(Bench bench) {
+        return bench.fromClient(client -> restock.unpackPhase());
+    }
+
+    boolean unpackDigging(Bench bench) {
+        return bench.fromClient(client -> restock.unpackDigging());
+    }
+
+    ShulkersLeft lastShulkersLeft(Bench bench) {
+        return bench.fromClient(client -> restock.lastShulkersLeft());
+    }
+
+    Optional<RestockReason> lastDrained(Bench bench) {
+        return bench.fromClient(client -> restock.lastDrained());
+    }
+
+    /** The borrowed shulker boxes the player still carries, as restock counts them. */
+    int borrowed(Bench bench) {
+        return bench.fromClient(client -> restock.borrowedCount());
+    }
+
+    /**
+     * The bench builds the whole schematic itself, on the server: the build is done (the fake printer places nothing).
+     */
+    void fillBuild(Bench bench) {
+        bench.onServer(srv -> {
+            ServerWorld w = srv.getOverworld();
+            schematic.blocks().forEach((cell, block) -> w.setBlockState(origin.add(cell), block.getDefaultState()));
+        });
+    }
+
+    /**
+     * What {@link #putCarriedBoxBackSeen} did: whether the box moved (false when there is no such box, no chest there
+     * or no free slot: nothing moved), and whether the server had a container screen open for the player at that
+     * moment (restock's chest screen of the visit).
+     */
+    record PutBack(boolean moved, boolean screenOpen) {
+    }
+
+    /**
+     * Server thread (rulings R70, R71, trigger (b)): the first shulker box holding items in the player's slots 0–35
+     * goes back into the first free slot of the chest at {@code chest}, as a player putting a just-carried box back
+     * would, or a server refusing the carry. The open chest screen sends both changes to the client. The same server
+     * call reads whether a container screen was open then.
+     */
+    PutBack putCarriedBoxBackSeen(Bench bench, Vec3i chest) {
+        return bench.fromServer(srv -> {
+            ServerPlayerEntity player = Arena.player(srv, name);
+            boolean screenOpen = player.currentScreenHandler != player.playerScreenHandler;
+            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) {
+                return new PutBack(false, screenOpen);
+            }
+            PlayerInventory inventory = player.getInventory();
+            int box = -1;
+            for (int slot = 0; slot < PlayerInventory.MAIN_SIZE && box < 0; slot++) {
+                ItemStack stack = inventory.getStack(slot);
+                ContainerComponent inside = stack.get(DataComponentTypes.CONTAINER);
+                if (Block.getBlockFromItem(stack.getItem()) instanceof ShulkerBoxBlock && inside != null
+                    && inside.iterateNonEmpty().iterator().hasNext()) {
+                    box = slot;
+                }
+            }
+            int free = -1;
+            for (int slot = 0; slot < be.size() && free < 0; slot++) {
+                if (be.getStack(slot).isEmpty()) free = slot;
+            }
+            if (box < 0 || free < 0) return new PutBack(false, screenOpen);
+            be.setStack(free, inventory.removeStack(box));
+            be.markDirty();
+            return new PutBack(true, screenOpen);
+        });
+    }
+
+    /**
+     * Up to {@code maxTicks} ticks until restock turns itself off; how many ticks that took ({@code maxTicks} when it
+     * did not).
+     */
+    int ticksUntilOff(Bench bench, int maxTicks) {
+        int ticks = 0;
+        while (ticks < maxTicks && on(bench)) {
+            tick(bench);
+            ticks++;
+        }
+        return ticks;
+    }
+
+    /** Server thread read: the server holds a dig of the player under way ({@code ServerMiningAccessor}). */
+    boolean serverMining(Bench bench) {
+        return bench.fromServer(srv -> ((ServerMiningAccessor) Arena.player(srv, name).interactionManager)
+            .xploits$mining());
+    }
+
+    /** Server thread read: what the chest at {@code at} holds, by id, what its shulker boxes hold included. */
+    Map<String, Long> chest(Bench bench, Vec3i at) {
+        return bench.fromServer(srv -> {
+            Map<String, Long> counts = new TreeMap<>();
+            if (srv.getOverworld().getBlockEntity(origin.add(at)) instanceof ChestBlockEntity be) {
+                for (int i = 0; i < be.size(); i++) add(counts, be.getStack(i));
+            }
+            return counts;
+        });
+    }
+
+    /** Server thread read: what the player's slot {@code slot} holds, by id, a box's contents included. */
+    Map<String, Long> slotHolds(Bench bench, int slot) {
+        return bench.fromServer(srv -> {
+            Map<String, Long> counts = new TreeMap<>();
+            add(counts, Arena.player(srv, name).getInventory().getStack(slot));
+            return counts;
+        });
+    }
+
+    /**
+     * Server thread (ruling R54): the stacks in the player's {@code slots} go into the first free slots of the chest at
+     * {@code chest}, as a player putting them away by hand would (nothing is lost: the chest is the scene's, and every
+     * item of it is counted). With no screen open the player's own screen sends the emptied slots to the client. False
+     * when there is no chest there, a slot is empty or the chest has no room for them all (nothing moved).
+     */
+    boolean putAway(Bench bench, Vec3i chest, int... slots) {
+        return bench.fromServer(srv -> {
+            if (!(srv.getOverworld().getBlockEntity(origin.add(chest)) instanceof ChestBlockEntity be)) return false;
+            PlayerInventory inventory = Arena.player(srv, name).getInventory();
+            List<Integer> free = new ArrayList<>();
+            for (int slot = 0; slot < be.size(); slot++) {
+                if (be.getStack(slot).isEmpty()) free.add(slot);
+            }
+            if (free.size() < slots.length) return false;
+            for (int slot : slots) {
+                if (inventory.getStack(slot).isEmpty()) return false;
+            }
+            for (int i = 0; i < slots.length; i++) be.setStack(free.get(i), inventory.removeStack(slots[i]));
+            be.markDirty();
+            return true;
+        });
+    }
+
     Restock restock() {
         return restock;
     }
@@ -249,16 +488,25 @@ final class RestockScene {
         int seenCloses = seen.size() - seenClicks;
         boolean containerClean = seenClicks == recorder.clicks() && seenCloses == recorder.closes()
             && seen.stream().allMatch(PlaceJudge.ContainerVerdict::ok);
+        int ownMoves = PlaceJudge.ownMoves();
         Outcome outcome = new Outcome(on, reason, trips, InventoryLedger.lost(atT0, atEnd, Map.of()), player, drops, home,
             recorder.violations().isEmpty(), recorder.violationWords(), recorder.walkingClicks(), recorder.interacts(),
             judged, PlaceJudge.words(), sync.result(), switched, markerLeft, judgedPlaces, recorder.clicks(),
-            recorder.closes(), containerClean, PlaceJudge.containerWords(), serverHome, screenClear);
+            recorder.closes(), containerClean, PlaceJudge.containerWords(), serverHome, screenClear, ownMoves);
         bench.finish();
         return outcome;
     }
 
-    /** What every restock run must satisfy, whatever it fetched (restock spec §6). */
+    /** What every restock run must satisfy (restock spec §6), with no click in the player's own inventory. */
     static void checkClean(Outcome o) {
+        checkClean(o, 0);
+    }
+
+    /**
+     * What every restock run must satisfy, whatever it fetched (restock spec §6); {@code ownMoves}: owner ruling R43's
+     * clicks in the player's own inventory the run makes, as the server's judge let them through (0 but in one CHECK).
+     */
+    static void checkClean(Outcome o, int ownMoves) {
         Bench.check(o.rulesClean(), "restock broke an anticheat rule: " + o.rules());
         Bench.check(o.walkingClicks() == 0, "container clicks while walking, in " + o.walkingClicks() + " tick(s)");
         Bench.check(o.judgeClean(), "the server judged " + o.judgedPlaces() + " of " + o.interacts()
@@ -271,6 +519,8 @@ final class RestockScene {
         Bench.check(o.drops() == 0, "items on the ground: " + o.drops());
         Bench.check(o.sync().clean(), "the client and the server disagree: " + o.sync().words());
         Bench.check(!o.markerLeft(), "the printer marker was left on disk");
+        Bench.check(o.ownMoves() == ownMoves, "clicks in the player's own inventory seen by the server: " + o.ownMoves()
+            + ", " + ownMoves + " expected");
     }
 
     static String words(Optional<RestockReason> reason) {
@@ -279,7 +529,10 @@ final class RestockScene {
 
     // --- helpers (server or client thread as named) ---------------------------------------------------------------
 
-    /** Server thread: every item of the player and of the scene's chests, by id, shulker contents included. */
+    /**
+     * Server thread: every item of the player and of the scene's chests, by id, shulker contents included; and (phase
+     * B) a shulker box standing around F with its contents, and anything lying on the ground — found, not lost.
+     */
     private Map<String, Long> everything(MinecraftServer srv) {
         Map<String, Long> counts = new TreeMap<>(carried(Arena.player(srv, name)));
         ServerWorld w = srv.getOverworld();
@@ -287,6 +540,17 @@ final class RestockScene {
             if (w.getBlockEntity(origin.add(c.at())) instanceof ChestBlockEntity be) {
                 for (int i = 0; i < be.size(); i++) add(counts, be.getStack(i));
             }
+        }
+        // Phase B: a box restock set down and left standing, with its contents, and anything lying on the ground.
+        for (BlockPos b : BlockPos.iterate(origin.add(-SHULKER_AREA, -1, -SHULKER_AREA),
+            origin.add(SHULKER_AREA, 4, SHULKER_AREA))) {
+            if (w.getBlockEntity(b) instanceof ShulkerBoxBlockEntity box) {
+                counts.merge(Registries.ITEM.getId(w.getBlockState(b).getBlock().asItem()).toString(), 1L, Long::sum);
+                for (int i = 0; i < box.size(); i++) add(counts, box.getStack(i));
+            }
+        }
+        for (ItemEntity e : w.getEntitiesByType(EntityType.ITEM, new Box(origin).expand(24), x -> true)) {
+            add(counts, e.getStack());
         }
         return counts;
     }
@@ -303,11 +567,25 @@ final class RestockScene {
     private static void add(Map<String, Long> counts, ItemStack stack) {
         if (stack.isEmpty()) return;
         counts.merge(Registries.ITEM.getId(stack.getItem()).toString(), (long) stack.getCount(), Long::sum);
+        addInside(counts, stack);
+    }
+
+    /** The stack itself only, never what it holds. */
+    private static void addLoose(Map<String, Long> counts, ItemStack stack) {
+        if (stack.isEmpty()) return;
+        counts.merge(Registries.ITEM.getId(stack.getItem()).toString(), (long) stack.getCount(), Long::sum);
+    }
+
+    /** What the stack holds ({@code DataComponentTypes.CONTAINER}), recursively, never the stack itself. */
+    private static void addInside(Map<String, Long> counts, ItemStack stack) {
         ContainerComponent contents = stack.get(DataComponentTypes.CONTAINER);
         if (contents != null) for (ItemStack inner : contents.iterateNonEmpty()) add(counts, inner);
     }
 
-    /** The build's box and the chests, plus {@value #MARGIN} blocks each way, from the floor up; fixed for the run. */
+    /**
+     * The build's box, the chests and F ± 1, plus {@value #MARGIN} blocks each way, from the floor up; fixed for the
+     * run. With the margin, F ± 3 is where a shulker box restock sets down can stand.
+     */
     private List<BlockPos> watched() {
         int minX = schematic.min().getX();
         int maxX = schematic.max().getX();
@@ -321,6 +599,11 @@ final class RestockScene {
             minZ = Math.min(minZ, c.at().getZ());
             maxZ = Math.max(maxZ, c.at().getZ());
         }
+        // Phase B: every restock CHECK watches a little more; the sync watch only gets stricter.
+        minX = Math.min(minX, -1);
+        maxX = Math.max(maxX, 1);
+        minZ = Math.min(minZ, -1);
+        maxZ = Math.max(maxZ, 1);
         List<BlockPos> cells = new ArrayList<>();
         for (int y = -1; y <= maxY + MARGIN; y++) {
             for (int x = minX - MARGIN; x <= maxX + MARGIN; x++) {
@@ -330,13 +613,19 @@ final class RestockScene {
         return List.copyOf(cells);
     }
 
-    /** The kit's and the chests' items in order, stone always among them, for the sync watch. */
+    /** The kit's and the chests' items in order, what their boxes hold included, stone always among them (sync). */
     private List<Item> items() {
         Set<Item> items = new LinkedHashSet<>();
-        for (Stack s : kit) items.add(s.item());
-        for (Chest c : chests) for (Stack s : c.contents()) items.add(s.item());
+        for (Stack s : kit) addItems(items, s);
+        for (Chest c : chests) for (Stack s : c.contents()) addItems(items, s);
         items.add(Items.STONE);
         return List.copyOf(items);
+    }
+
+    /** A stack's item and, for a shulker box, the items it holds, recursively. */
+    private static void addItems(Set<Item> items, Stack s) {
+        items.add(s.item());
+        for (Stack in : s.inside()) addItems(items, in);
     }
 
     private List<String> itemNames() {

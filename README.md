@@ -9,7 +9,8 @@ other anarchy servers. Eleven modules in the latest release, each switched on se
 
 > **New, experimental, not in a release yet: `restock`.** It comes in the next one. Build with Litematica and `litematica-printer` as you do today: when a block
 > the build still needs runs out, `restock` pauses the printer, walks to the nearest chest you marked (or that
-> `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. See
+> `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. It works with shulker
+> boxes too: the ones you carry and the ones in your containers. See
 > [`restock`](#restock--fetch-blocks-for-your-litematica-build).
 
 ## Why Xploits
@@ -100,8 +101,8 @@ Worth knowing, because these are **your** modules that the addon turns on, turns
 | `auto-travel`, `nether-sweep` | `elytra-fly`, `elytra-replace` | Borrows them during the flight and gives them back **in the state they were in** |
 | `auto-travel`, `nether-sweep` | Five **Baritone** settings | Changes them on take-off and restores them on landing. ⚠️ Baritone saves them to disk — as it does `elytraTermsAccepted`, `elytraPredictTerrain`, `elytraNetherSeed` (if set) and its own censoring, which stay changed for good |
 | `restock` | Five **Baritone** settings | While it is on: `allowBreak`, `allowPlace` and `allowWaterBucketFall` off, so Baritone breaks and places nothing on the way, `censorCoordinates` and `censorRanCommands` on. When it stops, all five go back to your own values (`baritone-settings`: `MINE`, the default), or the first three to Baritone's defaults (`DEFAULTS`). ⚠️ Baritone saves them to disk; if the game closes while it is on, `restock` puts them back the next time you join a world |
-| `restock` | `litematica-printer`'s print mode | Switches it off before a trip and back on at the return, **only if it was printing and is still off** (if you turned it on or off yourself meanwhile, yours wins). If the game closes mid-trip, it is switched back on at the next world join |
-| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer` | It only **reads** them: it will not start while one is on, and stops, naming it, if you turn one on while it is on |
+| `restock` | `litematica-printer`'s print mode | Switches it off before a trip or an unpack and back on afterwards, **only if it was printing and is still off** (if you turned it on or off yourself meanwhile, yours wins). If the game closes mid-trip or mid-unpack, it is switched back on at the next world join |
+| `restock` | `anti-afk`, `auto-walk`, `auto-replenish`, `inventory-tweaks`, `scaffold`, `air-place`, `nuker`, `highway-builder`, `liquid-filler`, `excavator`, `infinity-miner`, `echest-farmer`, `spawn-proofer`, `timer`, `speed-mine` | It only **reads** them: it will not start while one is on, and stops, naming it, if you turn one on while it is on |
 
 All of this, with the detail of what persists and what can go wrong, in [Security](docs/security.md).
 
@@ -466,26 +467,64 @@ It needs Windows Terminal, which is the default console in Windows 11.
   `.xploits restock chests` lists them by dimension and distance, never by position. With `use-stash-keeper` on
   (the default) it also uses the containers `stash-keeper` remembers.
 - **When it goes.** When a block the rest of the build still needs reaches 0 in your inventory, it waits two full
-  passes over the build (so the block `litematica-printer` placed a moment ago is counted), then picks the nearest
-  container that has it, in the same dimension and within `max-distance` (64). A source that is no longer a
-  container (the chest was replaced) is skipped, never clicked. It goes only for a block Litematica shows missing
-  somewhere in the build (with Litematica's rendering off, or that part of the build not loaded, it waits), and only
-  once you stand on the ground: it never leaves while you walk, sneak or jump.
+  passes over the build (so the block `litematica-printer` placed a moment ago is counted), then unpacks a shulker
+  box you carry that holds it (below) or picks the nearest container that has it, in the same dimension and within
+  `max-distance` (64). A source that is no longer a container (the chest was replaced) is skipped, never clicked. It
+  goes only for a block Litematica shows missing somewhere in the build (with Litematica's rendering off, or that part
+  of the build not loaded, it waits), and only once you stand on the ground: it never leaves while you walk, sneak or
+  jump.
 - **The trip.** It switches `litematica-printer`'s print mode off, walks there with
   [Baritone](https://github.com/cabaletta/baritone) (Baritone breaks and places nothing on the way), stands still,
   looks at the container and opens it, takes whole stacks of what the rest of the build needs — as much as fits,
-  never a shulker box with something in it — closes it, walks back to where you were and switches the print mode back
-  on. A container whose contents changed is noted and the next nearest is tried in the same trip. It never takes or
-  closes with an item on your mouse cursor: it waits until you put it down.
+  never a shulker box with something in it as a building block (one that holds a block the build needs is carried back
+  whole and unpacked, below) — closes it, walks back to where you were and switches the print mode back on. A
+  container whose contents changed is noted and the next nearest is tried in the same trip. It never takes or closes
+  with an item on your mouse cursor: it waits until you put it down.
 - **Nowhere to fetch from:** it says which block and how many are missing, goes nowhere, and the printer keeps
   printing everything else.
+- **Shulker boxes you carry** (`use-carried-shulkers`, on). When the block that ran out is inside a box you carry,
+  `restock` unpacks that box at the build before it goes to any container, once you stand on the ground as for a
+  trip: it switches the printer off, sets the box down next to you, opens it, takes what the build needs while keeping
+  one slot free for the box, breaks it at normal speed with your best hotbar tool (never a sword, axe, spear, mace or
+  trident, nor a tool with fewer than 10 uses left), picks it up, selects your hotbar slot again and switches the
+  printer back on. A box in your hotbar goes first. One in your main inventory is used only while a hotbar slot is
+  free, and `restock` moves it there with one Shift-click: the only click it ever makes in your own inventory. With no
+  hotbar slot free it says so once and fetches from the containers instead. Your own boxes are always picked up again
+  and stay with you; with `use-carried-shulkers` off, only the boxes `restock` took from your containers are
+  unpacked. The box is the only block `restock` ever places or breaks.
+- **Shulker boxes in your containers.** A container that has the block only inside shulker boxes works too: the trip
+  carries the whole box back, the one holding most of it, and `restock` unpacks it as above, with the printer still
+  off. A container that has the block loose is chosen first, even if it is farther. A box is carried only while a
+  hotbar slot and one more slot are free; with less room `restock` passes that container over, tries it again once
+  there is, and says so only if no other container has the block. A box it took from a container goes back there once
+  it is empty, on the next trip to that container or on one last trip when the build is done, and never more boxes
+  than it took from it. Until then the box stays with you, and every stop says how many you carry (save in the rare
+  cases of "`restock` can lose count of a borrowed shulker box" in [known issues](docs/known-issues.md)).
+- **Where it sets a box down.** Within your reach and outside the build: on a solid block that does nothing when
+  clicked (not a chest, furnace, crafting table, door, lever, bed…), on an empty spot with room above it for the lid,
+  never where you stand. It also checks where the broken box will land, because the drop can drift a block or more,
+  and refuses a spot with water, lava, fire, a cactus, a hopper or a portal next to it, on ice or slime (the drop
+  would slide away), with an edge or a hole beside it, or with a block beside it that is neither a full block nor open
+  space (a slab, stairs, a fence, a wall, a pane, a door, scaffolding…). If no spot passes it stops and says so. If
+  the server does not accept the box (spawn protection, a claim plugin) it tries two more spots and then stops, with
+  the box still in your inventory.
+- **If something stops it while a box is out**, `restock` first finishes breaking the box and picking it up (up to
+  10 s) and then stops: a stranger coming near, a module it cannot run beside, another module that keeps turning your
+  head. Some stops cannot wait and happen at once: you are attacked, your health falls below `min-health`, the server
+  sets you back, `auto-pvp` engages, you press a movement key, you die, change dimension, leave the server or turn
+  `restock` off. If one of those comes while it is finishing, it stops at once and says both (turning it off or
+  leaving says only what is left out). Every stop says how many
+  boxes it set down still stand and how far away the nearest is, how far away the dropped box lies or that it is gone,
+  when it could not check, and how many boxes it took from your containers you still carry: distances only, never a
+  position.
 - **It stops and says why** when a player who is not your Meteor friend comes within `player-distance` (48; switch
-  `stop-near-players` off to fetch with players around), a player who is not your friend attacks you, your health falls below `min-health`
-  (10), the server pulls you back, `auto-pvp` engages, you die or change dimension, **you press a movement key during a
-  trip**, Baritone finds no path, nothing fits in your inventory, you turn on a module it cannot run beside, or
+  `stop-near-players` off to fetch with players around), a player who is not your friend attacks you, your health falls
+  below `min-health` (10), the server pulls you back, `auto-pvp` engages, you die or change dimension, **you press a
+  movement key during a trip or an unpack**, Baritone finds no path, nothing fits in your inventory, a shulker box
+  cannot be moved into your hotbar, set down, broken or picked up, you turn on a module it cannot run beside, or
   something unexpected fails inside it (it stops with a message instead of crashing the game). After a stop during a
-  trip the printer stays off, and it says so. It **pauses** by itself, and carries on, while a combat module rotates,
-  while you eat and while the server lags.
+  trip or an unpack the printer stays off, and it says so. It **pauses** by itself, and carries on, while a combat
+  module rotates, while you eat and while the server lags.
 - **It refuses to start** if two Litematica placements overlap (the selected one and any other enabled one) or if
   the installed Litematica has an API it does not recognise; it says so instead of guessing.
 - **It never starts by itself.** If it was on when you left, it stays off when you join again.
@@ -642,8 +681,7 @@ The most common:
 
 ## Coming soon
 
-- **Building, next, before 1.0.0:** `restock` fetches shulkers too — carries one back, places it beside the build,
-  takes what it needs, breaks it and picks it up — then map art, tunnels and highways, and bases.
+- **Building, next, before 1.0.0:** map art, tunnels and highways, and bases.
 - **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
   that keeps a health reserve; `surround++` — a computed defensive shell, from `auto-pvp`'s
   `shell-module`.

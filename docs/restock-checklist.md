@@ -63,4 +63,42 @@ On each server, 6b6t first:
 - [ ] Marking while flying is refused; unmarking a chest that has vanished works.
 - [ ] Mark a copper chest (single and double): `restock` opens it and takes.
 
+## 6. Shulker boxes
+
+Extra setup: a pickaxe in the hotbar, a hotbar slot and two more slots free, `use-carried-shulkers` on. For the first
+items, a shulker box holding about two stacks of the build's main block, in your hotbar; for the trip items, a marked
+chest that holds the main block only inside one shulker box (no loose stack of it) and none of it in your inventory.
+On each server, 6b6t first.
+
+- [ ] A real Baritone walk with a box: let the main block run out with the box in your hotbar. `restock` says it is
+      unpacking, sets the box down next to you, opens it, takes, breaks it and picks it up; if the drop does not come
+      to you by itself it walks onto it, then walks back to where it began; Baritone breaks and places nothing on the
+      way. Count the main block before and after (inventory + box + build): nothing lost.
+- [ ] A trip that carries a box: let the main block run out with only that chest as a source. The trip walks there,
+      takes the whole box, walks back with the printer still off, and the unpack starts once you stand still; the box
+      ends empty in your inventory.
+- [ ] A borrowed box going back: on the next trip to that chest the empty box is put back into it; or, with the build
+      done, `restock` says it is taking the empty box back and that it came back. Count the boxes in the chest before
+      and after. An empty box of your own with the same colour and a name is never put into the chest.
+- [ ] The place, the dig and the pick-up on a server with a real anticheat: no kick and no setback (a setback would
+      stop it, saying the server pulled you back). Note any message the server or a plugin sends about the box, and
+      whether the dig takes about as long as your tool should.
+- [ ] The one inventory move: with the box in your main inventory and a free hotbar slot, exactly one Shift-click
+      moves it into the hotbar, nothing else in your inventory changes, and the server does not flag it. With the
+      hotbar full, `restock` says once that a free hotbar slot is needed and fetches from the containers instead.
+- [ ] The box landing on real terrain: set it down on open ground (the drop comes back within a second or after a
+      short walk); then beside a ledge, a hole, ice or packed ice, water or lava, a fence, a wall and a slab: those
+      spots are refused (`restock` uses another one, or stops saying there is no free spot), and the drop never ends in
+      water or lava, off an edge or on ice.
+- [ ] A stop mid-unpack: get hit by a player during the dig, and it stops at once saying how many boxes stand and how
+      far away the nearest is; let a stranger come within `player-distance`, and it finishes the break and the pick-up
+      first, then stops; press a movement key, and it stops at once; turn `speed-mine` on, and it finishes the box,
+      then stops naming it. Each time the printer stays off, and says so; break and pick up what it reported by hand:
+      nothing lost.
+- [ ] Close the game while a box stands, start again and join any world: the print mode is on again; the box is still
+      where it was.
+- [ ] Fill your hotbar with other items: a chest with the block only inside boxes is passed over, and `restock` says
+      to free a hotbar slot and one more only when no other container has the block; free them, and it carries the box
+      on its next try, within a minute.
+
 Anything that fails stops the release: note what happened (counts and reasons only) and open an issue.

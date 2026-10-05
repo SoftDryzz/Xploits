@@ -31,11 +31,14 @@ public record RestockLimits(int printerSettleTicks, int openTimeoutTicks, int co
     /**
      * Modules restock will not start beside, and stops for when one is turned on while it runs (spec §3 "Guards"): they
      * move, place, break or click by themselves while restock walks or opens a container. Names from the printer's
-     * verified list ({@code Guards.CONFLICTING_MODULES}); the dig-only ones are left out, they never touch restock.
+     * verified list ({@code Guards.CONFLICTING_MODULES}); the dig-only ones are left out — restock's dig posts no
+     * {@code StartBreakingBlockEvent}, so they never touch its packet path — except {@code speed-mine} (ruling R39): its
+     * Haste mode fakes Haste on the client, so restock's dig of a shulker box would stop early, and its grim bypass sends
+     * an ABORT after every STOP.
      */
     public static final List<String> CONFLICTING_MODULES = List.of("anti-afk", "auto-walk", "auto-replenish",
         "inventory-tweaks", "scaffold", "air-place", "nuker", "highway-builder", "liquid-filler", "excavator",
-        "infinity-miner", "echest-farmer", "spawn-proofer", "timer");
+        "infinity-miner", "echest-farmer", "spawn-proofer", "timer", "speed-mine");
 
     public RestockLimits {
         if (printerSettleTicks < 0) throw new IllegalArgumentException("printerSettleTicks " + printerSettleTicks);

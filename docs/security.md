@@ -91,10 +91,11 @@ before it could, that file is how the next world join puts them back, whichever 
 never given back is never overwritten by a new one. A value it cannot read in your `settings.txt` makes it refuse to
 start; it never guesses what to give back.
 
-`restock` also switches `litematica-printer`'s print mode off for a trip. Before switching it, it writes
-`meteor-client/xploits/restock/printer-paused.txt`; at the return it switches it back on only if it is still off, and
-deletes the file. If the game closes mid-trip, the next world join finds the file and switches the print mode back on
-— `litematica-printer` saves its own config, so without this it would stay off.
+`restock` also switches `litematica-printer`'s print mode off for a trip or an unpack. Before switching it, it writes
+`meteor-client/xploits/restock/printer-paused.txt`; at the return, or once the box is back, it switches it back on
+only if it is still off, and deletes the file. If the game closes mid-trip or mid-unpack, the next world join finds
+the file and switches the print mode back on — `litematica-printer` saves its own config, so without this it would
+stay off.
 
 **Known limit:** if you disconnect with the player already null, the restore commands are not sent and
 those settings keep their flight values.
@@ -132,6 +133,30 @@ inactive there and its event bus does not deduplicate, so turning one on would l
 **twice** for the rest of the session, with all its handlers running twice. The give-back is applied
 on the first tick after joining again.
 
+### Your inventory and one block in the world — `restock`
+
+`restock` clicks in inventory windows in two ways only, and it places and breaks one block. Exactly:
+
+- **In a container's window, only the one it opened itself.** Shift-clicks (quick moves) and the close of that window,
+  addressed to that window and to no other. It never clicks or closes with an item on your cursor. A shulker box with
+  something in it is taken only to be unpacked at the build, never as a building block.
+- **In your own inventory, one click and nothing else.** A shift-click of the shulker box it is about to unpack, from
+  your main inventory into a free hotbar slot (window 0, button 0). Right before sending it, it checks that you stand
+  still, with no screen open and nothing on your cursor, that the slot still holds that box, of the same kind and
+  still holding the block it needs, and that a hotbar slot is free. It never sends it during a dig and at most once
+  per unpack. It never picks up, throws or swaps an item, never touches the offhand or the armour, and sends no other
+  click in your inventory.
+- **In the world, one box.** It sets a shulker box down by right-clicking the top of a block that does nothing when
+  clicked, opens it by right-clicking it, digs it at normal speed only while it stands on the spot `restock` set it
+  on, and picks up what it drops. It places and breaks nothing else: Baritone's own breaking and placing stay off.
+  Every right-click goes to a container you marked or `stash-keeper` remembers, to that box, or to the block it stands
+  on.
+- **Your hotbar selection** changes as pressing a number key does, never during a dig: to the box, to the digging
+  tool, and back to the slot you had at the end of the unpack (or at a stop, when nothing else goes out in that tick).
+
+The list of boxes it borrowed from your containers, and which container each came from, stays in memory: nothing about
+it is written to disk or to the logs, and a crash forgets it.
+
 ---
 
 ## 4. What the module never does on your behalf
@@ -140,6 +165,9 @@ on the first tick after joining again.
 - **`auto-tpy` never accepts `/tpahere`.** It only brings people to you; it never moves you.
 - **`stash-keeper` moves nothing.** It only looks.
 - **`nether-sweep` detects nothing.** It only makes the terrain pass in front of the client.
+- **`restock` never throws an item away, swaps one or picks one up with the mouse.** Its clicks are shift-clicks in the
+  container window it opened itself, plus the one in your own inventory for the shulker box it is about to unpack
+  (section 3). The one deliberate drop is that box, set down and broken on purpose, and picked up again.
 - **No module flees, or stops flying because someone is nearby.** A sweep is an hour away from home
   with all your gear on, and the module does not manage that risk. Sweeping is something you do with
   what you are willing to lose.

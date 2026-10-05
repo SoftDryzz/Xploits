@@ -5,6 +5,7 @@ public enum RestockSetting {
     MARK_KEY("mark-key"),
     MAX_DISTANCE("max-distance"),
     USE_STASH_KEEPER("use-stash-keeper"),
+    USE_CARRIED_SHULKERS("use-carried-shulkers"),
     BARITONE_SETTINGS("baritone-settings"),
     BARITONE_PREFIX("baritone-prefix"),
     STOP_NEAR_PLAYERS("stop-near-players"),

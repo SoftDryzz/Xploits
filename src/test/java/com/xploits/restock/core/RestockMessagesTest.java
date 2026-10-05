@@ -95,7 +95,8 @@ class RestockMessagesTest {
     void everyActivityFitsTheConsoleHeader() {
         for (RestockText t : List.of(RestockText.ACTIVITY_SCANNING, RestockText.ACTIVITY_WATCHING,
             RestockText.ACTIVITY_PAUSING, RestockText.ACTIVITY_WALKING, RestockText.ACTIVITY_OPENING,
-            RestockText.ACTIVITY_TAKING, RestockText.ACTIVITY_RETURNING, RestockText.ACTIVITY_PAUSED)) {
+            RestockText.ACTIVITY_TAKING, RestockText.ACTIVITY_RETURNING, RestockText.ACTIVITY_PAUSED,
+            RestockText.ACTIVITY_UNPACKING)) {
             assertTrue(ES.render(Msg.of(t)).length() <= 30, t.name());
             assertTrue(EN.render(Msg.of(t)).length() <= 30, t.name());
         }
@@ -103,14 +104,42 @@ class RestockMessagesTest {
 
     @Test
     void aRepeatedCombatStopWithoutANameSaysAnotherModuleNotACombatModuleInBrackets() {
-        assertEquals("another module kept rotating while restock opened a container: it paused three times and stops. "
-                + "Turn it on again when the fight is over.",
+        assertEquals("another module kept rotating while restock opened a container or unpacked a shulker box: "
+                + "it paused three times and stops. Turn it on again when the fight is over.",
             EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
-        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor: se pausó tres veces y se para. "
-                + "Vuelve a encenderlo cuando acabe la pelea.",
+        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor o vaciaba una caja de shulker: "
+                + "se pausó tres veces y se para. Vuelve a encenderlo cuando acabe la pelea.",
             ES.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "", FACTS)));
         assertTrue(EN.render(RestockMessages.reason(RestockReason.COMBAT_REPEATED, "surround++", FACTS))
             .startsWith("surround++ kept rotating"));
+    }
+
+    @Test
+    void aStopThatCameWithAnotherSaysItAsOneMoreLine() {
+        // Ruling R65: a setback in the tick a stranger came near halts an unpack and names the stop; the stranger is
+        // said after it, with this neutral line.
+        assertEquals("restock was also stopping because a player who is not your Meteor friend came within 48 blocks. "
+                + "Turn restock on again when it is safe, or switch stop-near-players off (or lower player-distance) "
+                + "to keep fetching with players around.",
+            EN.render(Msg.of(RestockText.STOPPED_ALSO, "reason",
+                RestockMessages.reason(RestockReason.PLAYER_NEAR, "", FACTS))));
+        assertEquals("restock también se estaba parando porque un jugador que no es amigo tuyo en Meteor se acercó a "
+                + "menos de 48 bloques. Vuelve a encender restock cuando sea seguro, o apaga stop-near-players (o baja "
+                + "player-distance) para seguir con jugadores cerca.",
+            ES.render(Msg.of(RestockText.STOPPED_ALSO, "reason",
+                RestockMessages.reason(RestockReason.PLAYER_NEAR, "", FACTS))));
+    }
+
+    @Test
+    void aRepeatedRotationStopSaysAnUnpackToo() {
+        // Phase B: the guards' acting is the unpack's too (its slot changes, the place and the dig aim), not only a
+        // container's open.
+        assertEquals("another module kept rotating while restock opened a container or unpacked a shulker box: "
+                + "it paused three times and stops. Turn that module off, then restock on again.",
+            EN.render(RestockMessages.reason(RestockReason.OTHER_ROTATION_REPEATED, "", FACTS)));
+        assertEquals("otro módulo siguió rotando mientras restock abría un contenedor o vaciaba una caja de shulker: "
+                + "se pausó tres veces y se para. Apaga ese módulo y vuelve a encender restock.",
+            ES.render(RestockMessages.reason(RestockReason.OTHER_ROTATION_REPEATED, "", FACTS)));
     }
 
     @Test
@@ -147,5 +176,42 @@ class RestockMessagesTest {
         assertEquals("Every shulker_box in that container has items stored inside it, and restock never takes such a stack "
                 + "as a building block: trying the next container.",
             EN.render(Msg.of(RestockText.TRIP_FILLED_ONLY, "material", "shulker_box")));
+    }
+
+    @Test
+    void everyStopSaysWhatIsLeftOfTheShulkerBoxesByDistanceOnly() {
+        assertEquals(List.of(), RestockMessages.shulkersLeft(ShulkersLeft.NONE));
+        assertEquals(List.of(
+            "2 shulker box(es) restock set down still stand(s) beside the build, the nearest 3 blocks from you: break and"
+                + " pick up each one by hand.",
+            "The shulker box restock broke lies on the ground 4 blocks from you: pick it up.",
+            "You still carry 1 shulker box(es) restock took from your containers: put them back by hand."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).stream().map(EN::render).toList());
+        assertEquals(List.of(
+            "The shulker box restock broke did not come back to your inventory and is no longer on the ground near you:"
+                + " something or someone took it.",
+            "restock could not check whether a shulker box it set down is still standing or on the ground: look around"
+                + " the build."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).stream().map(EN::render).toList());
+        assertEquals(List.of(
+            "1 shulker box(es) restock set down still stand(s) beside the build, the nearest 2 blocks from you,"
+                + " unless the one restock was digging broke just now: then that one lies on the ground near there."
+                + " Break and pick up by hand whatever is still there."),
+            RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).stream().map(EN::render)
+                .toList(), "M17: right after the dig's STOP");
+        RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).forEach(ES::render);
+        RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).forEach(ES::render);
+        RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).forEach(ES::render);
+    }
+
+    @Test
+    void aLastTripSaysHowManyOfTheAnnouncedBoxesWentBack() {
+        assertEquals("Back: 2 shulker box(es) returned.", EN.render(RestockMessages.lastTripEnd(2, 2)));
+        assertEquals("Back: 1 of 3 shulker box(es) returned; the rest stay with you (the container was full, or could"
+                + " not be reached or opened): put them back by hand.",
+            EN.render(RestockMessages.lastTripEnd(1, 3)));
+        assertEquals(RestockText.LAST_TRIP_SHORT, RestockMessages.lastTripEnd(0, 1).key());
+        assertEquals(RestockText.LAST_TRIP_DONE, RestockMessages.lastTripEnd(1, 1).key());
+        ES.render(RestockMessages.lastTripEnd(1, 3));
     }
 }

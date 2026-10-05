@@ -4,13 +4,14 @@ import com.xploits.printer.core.BaritoneSession;
 
 /** restock's settings as the cores read them each tick, with their bounds (spec §5). {@code mark-key} is the adapter's. */
 public record RestockSettings(int maxDistance, boolean useStashKeeper, BaritoneSession.Mode baritoneSettings,
-                              String baritonePrefix, boolean stopNearPlayers, int playerDistance, double minHealth) {
+                              String baritonePrefix, boolean stopNearPlayers, int playerDistance, double minHealth,
+                              boolean useCarriedShulkers) {
     public static final int MIN_DISTANCE = 8;
     public static final int MAX_DISTANCE = 256;
     public static final double MIN_HEALTH = 1;
     public static final double MAX_HEALTH = 36;
     public static final RestockSettings DEFAULTS = new RestockSettings(64, true, BaritoneSession.Mode.MINE, "#", true,
-        48, 10);
+        48, 10, true);
 
     public RestockSettings {
         if (maxDistance < MIN_DISTANCE || maxDistance > MAX_DISTANCE) {
@@ -21,5 +22,12 @@ public record RestockSettings(int maxDistance, boolean useStashKeeper, BaritoneS
         }
         if (!(minHealth >= MIN_HEALTH && minHealth <= MAX_HEALTH)) throw new IllegalArgumentException("min-health " + minHealth);
         if (baritonePrefix == null || baritoneSettings == null) throw new IllegalArgumentException("a setting is missing");
+    }
+
+    /** The settings without {@code use-carried-shulkers}, which is then on (owner ruling R44). */
+    public RestockSettings(int maxDistance, boolean useStashKeeper, BaritoneSession.Mode baritoneSettings,
+                           String baritonePrefix, boolean stopNearPlayers, int playerDistance, double minHealth) {
+        this(maxDistance, useStashKeeper, baritoneSettings, baritonePrefix, stopNearPlayers, playerDistance, minHealth,
+            true);
     }
 }

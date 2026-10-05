@@ -6,7 +6,8 @@
   "client": [
     "SimulatedPingMixin",
     "PlaceJudgeMixin",
-    "ServerCloseMixin"
+    "ServerCloseMixin",
+    "ServerMiningAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
