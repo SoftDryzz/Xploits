@@ -12,6 +12,7 @@ import com.xploits.pvp.AutoPvp;
 import com.xploits.pvp.core.CombatState;
 import com.xploits.restock.core.BorrowedShulkers;
 import com.xploits.restock.core.MarkBook;
+import com.xploits.restock.core.NowhereNotes;
 import com.xploits.restock.core.PartlyPlaced;
 import com.xploits.restock.core.PlacedExtra;
 import com.xploits.restock.core.PrintPause;
@@ -137,7 +138,7 @@ final class RestockSession {
     private final RegistryKey<World> dimension;
     private final Map<String, Set<Pos>> stale = new HashMap<>();
     private final Set<Pos> unusable = new HashSet<>();
-    private final Set<String> saidNowhere = new HashSet<>();
+    private final NowhereNotes saidNowhere = new NowhereNotes();
     /** The boxes restock carried away from a container this session (owner ruling R44). */
     private final BorrowedShulkers borrowed = new BorrowedShulkers();
     /** The trip under way carried a box: its later takes keep a slot free for the unpack (pre-flight 19-6). */
@@ -147,6 +148,8 @@ final class RestockSession {
     /** The trip under way only gives borrowed boxes back (the build is done); the ledger's size when it left. */
     private boolean lastTrip;
     private int ledgerAtTripStart;
+    /** How many boxes the last trip announced (final review m6): what it says it returned is measured against it. */
+    private int lastTripBoxes;
     /** Containers a last trip already went to this session: one each, so a full one is never a loop. */
     private final Set<Pos> lastTripTried = new HashSet<>();
     /** What restock's last container visit saw (ruling R54 reads it when that container fails). */
@@ -251,7 +254,7 @@ final class RestockSession {
 
     /** The materials said to be nowhere in this session (the bench reads it). */
     Set<String> nowhere() {
-        return Set.copyOf(saidNowhere);
+        return saidNowhere.materials();
     }
 
     /** How many containers were found unusable in this session (the bench reads it; never which ones). */
@@ -286,8 +289,7 @@ final class RestockSession {
                 module.reasonText(notCounted == null ? RestockReason.NO_PLACEMENT : notCounted, notCountedDetail));
         }
         if (unpack != null || pendingUnpack != null) {
-            return Msg.of(RestockText.STATUS_TRIP, "activity", Msg.of(RestockText.ACTIVITY_UNPACKING),
-                "material", RestockMessages.itemName(unpack != null ? unpack.material() : pendingUnpack));
+            return Msg.of(RestockText.STATUS_UNPACKING, "material", RestockMessages.itemName(unpack != null ? unpack.material() : pendingUnpack));
         }
         if (trip != null) {
             return Msg.of(RestockText.STATUS_TRIP, "activity", Msg.of(activity(false)),
@@ -295,7 +297,8 @@ final class RestockSession {
         }
         if (index.passes() < 1) return Msg.of(RestockText.STATUS_SCANNING);
         ClientPlayerEntity p = mc.player;
-        Map<String, Integer> carried = p == null ? Map.of() : StateFacts.carried(p.getInventory());
+        // Final review m11: what the trip's need counts as carried, so a material a carried box holds is not "short".
+        Map<String, Integer> carried = p == null ? Map.of() : available(p);
         return Msg.of(RestockText.STATUS_IDLE, "remaining", remaining(), "short", RestockMessages.orNone(
             RestockMessages.materials(RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried))));
     }
@@ -476,8 +479,7 @@ final class RestockSession {
      */
     Map<String, Long> orderedNeed() {
         ClientPlayerEntity p = mc.player;
-        Map<String, Integer> carried = p == null ? Map.of() : UnpackChoice.available(
-            ShulkerInventory.choiceInventory(p.getInventory(), borrowed), settings.useCarriedShulkers(), gaveUp);
+        Map<String, Integer> carried = p == null ? Map.of() : available(p);
         Map<String, Long> need = index == null ? Map.of()
             : RestockNeeds.need(totals, index.placed(), extra.byMaterial(), carried);
         Map<String, Long> ordered = new LinkedHashMap<>();
@@ -486,6 +488,12 @@ final class RestockSession {
         }
         need.forEach(ordered::putIfAbsent);
         return ordered;
+    }
+
+    /** What the player has for a need: the loose items plus what the boxes restock would unpack first hold. */
+    private Map<String, Integer> available(ClientPlayerEntity p) {
+        return UnpackChoice.available(ShulkerInventory.choiceInventory(p.getInventory(), borrowed),
+            settings.useCarriedShulkers(), gaveUp);
     }
 
     void saw(Pos container, Map<String, Integer> loose, Map<String, Integer> nested) {
@@ -655,10 +663,9 @@ final class RestockSession {
         Optional<Source> next = SourceChooser.nearest(sources.list(dim, marks(), stash(settings)), material, dim,
             new Point(resume.x() + 0.5, resume.y(), resume.z() + 0.5), settings.maxDistance(), unusable,
             stale.getOrDefault(material, Set.of()), carry);
-        if (next.isEmpty()) {
-            module.info(passedOverBoxes ? RestockText.NOWHERE_AFTER_TRIP_BOXES : RestockText.NOWHERE_AFTER_TRIP,
-                "material", RestockMessages.itemName(material));
-        }
+        // Final review m1: what it says it notes, so the retry a minute later stays silent.
+        saidNowhere.afterTrip(material, next.isPresent(), passedOverBoxes)
+            .ifPresent(text -> module.info(Msg.of(text, "material", RestockMessages.itemName(material))));
         return next;
     }
 
@@ -676,7 +683,7 @@ final class RestockSession {
         if (lastTrip) {
             lastTrip = false;
             givePrinterBack();
-            module.info(RestockText.LAST_TRIP_DONE, "count", Math.max(0, ledgerAtTripStart - borrowed.count()));
+            module.info(RestockMessages.lastTripEnd(Math.max(0, ledgerAtTripStart - borrowed.count()), lastTripBoxes));
             if (recountPending) recount();
             return;
         }
@@ -802,7 +809,7 @@ final class RestockSession {
                 stale.getOrDefault(material, Set.of()), carry);
             if (chosen.isPresent()) return startTrip(material, chosen.get(), p, from);
             runOut.nowhere(material);
-            if (saidNowhere.add(material)) {
+            if (saidNowhere.firstTime(material)) {
                 // Ruling R54: "free a hotbar slot and one more" only when no other source is left.
                 boolean onlyInBoxes = !carry && SourceChooser.nearest(list, material, dim, from, s.maxDistance(),
                     unusable, stale.getOrDefault(material, Set.of()), true).isPresent();
@@ -863,6 +870,7 @@ final class RestockSession {
         if (stopped.isPresent()) {
             lastTrip = false;
         } else {
+            lastTripBoxes = back.size();
             module.info(RestockText.LAST_TRIP, "count", back.size());
         }
         return stopped;
@@ -956,7 +964,9 @@ final class RestockSession {
         UnpackPlan core = new UnpackPlan(new UnpackPlan.Plan(u.material(), u.kind().item(), carried,
             WorldRay.pos(p.getBlockPos()), inv.getSelectedSlot(), printerJustPaused), UnpackLimits.DEFAULTS, limits);
         unpack = new UnpackDriver(this, mc, mover, core, u.kind(), facts);
-        module.info(RestockText.UNPACK_STARTED, "material", RestockMessages.itemName(u.material()));
+        // Final review m3: it says the printer stays off only when restock holds it off.
+        module.info(printerHeld ? RestockText.UNPACK_STARTED_PRINTER : RestockText.UNPACK_STARTED, "material",
+            RestockMessages.itemName(u.material()));
     }
 
     /**

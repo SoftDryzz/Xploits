@@ -52,6 +52,16 @@ public final class RestockMessages {
     }
 
     /**
+     * What a last trip says when it is back: every box it announced went back, or only {@code returned} of the
+     * {@code announced} (the container full, unreachable or not opened), the rest staying with the player.
+     */
+    public static Msg lastTripEnd(int returned, int announced) {
+        return returned < announced
+            ? Msg.of(RestockText.LAST_TRIP_SHORT, "count", returned, "total", announced)
+            : Msg.of(RestockText.LAST_TRIP_DONE, "count", returned);
+    }
+
+    /**
      * What a stop says about the shulker boxes, in this order: standing (or just broken, M17), on the ground, gone, not
      * checked, borrowed.
      */

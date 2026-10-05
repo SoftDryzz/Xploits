@@ -195,12 +195,23 @@ class RestockMessagesTest {
             RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).stream().map(EN::render).toList());
         assertEquals(List.of(
             "1 shulker box(es) restock set down still stand(s) beside the build, the nearest 2 blocks from you,"
-                + " unless it broke just now as restock's dig ended: then it lies on the ground near there. Break it,"
-                + " or pick it up, by hand."),
+                + " unless the one restock was digging broke just now: then that one lies on the ground near there."
+                + " Break and pick up by hand whatever is still there."),
             RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).stream().map(EN::render)
                 .toList(), "M17: right after the dig's STOP");
         RestockMessages.shulkersLeft(new ShulkersLeft(2, 3, 4, false, false, 1)).forEach(ES::render);
         RestockMessages.shulkersLeft(new ShulkersLeft(0, -1, -1, true, true, 0)).forEach(ES::render);
         RestockMessages.shulkersLeft(new ShulkersLeft(1, 2, -1, false, false, 0, true)).forEach(ES::render);
+    }
+
+    @Test
+    void aLastTripSaysHowManyOfTheAnnouncedBoxesWentBack() {
+        assertEquals("Back: 2 shulker box(es) returned.", EN.render(RestockMessages.lastTripEnd(2, 2)));
+        assertEquals("Back: 1 of 3 shulker box(es) returned; the rest stay with you (the container was full, or could"
+                + " not be reached or opened): put them back by hand.",
+            EN.render(RestockMessages.lastTripEnd(1, 3)));
+        assertEquals(RestockText.LAST_TRIP_SHORT, RestockMessages.lastTripEnd(0, 1).key());
+        assertEquals(RestockText.LAST_TRIP_DONE, RestockMessages.lastTripEnd(1, 1).key());
+        ES.render(RestockMessages.lastTripEnd(1, 3));
     }
 }

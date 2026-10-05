@@ -13,6 +13,7 @@ import com.xploits.restock.core.RestockSettings;
 import com.xploits.restock.core.RestockText;
 import com.xploits.restock.core.RestockTrip;
 import com.xploits.restock.core.ShulkersLeft;
+import com.xploits.restock.core.StopLines;
 import com.xploits.restock.core.UnpackPlan;
 import com.xploits.restock.litematica.LitematicaAccess;
 import com.xploits.shared.Texts;
@@ -492,20 +493,20 @@ public class Restock extends XploitsModule {
         try {
             // M7 (owner ruling R42): an unpack that ended otherwise while it finished for a guard's stop — its own
             // failure, or an at-once stop that came meanwhile — says that stop too, so a stranger near is never hidden.
+            // Final review m2: the stop is said first, so the lines that follow have their antecedent.
             RestockReason drained = lastDrained;
-            if (drained != null && drained != why) {
-                warning(Msg.of(RestockText.UNPACK_DRAINED, "reason", reasonText(drained, lastDrainedDetail, prefix)));
-            }
+            Msg drainedLine = drained != null && drained != why
+                ? Msg.of(RestockText.UNPACK_DRAINED, "reason", reasonText(drained, lastDrainedDetail, prefix)) : null;
             Msg text = Msg.of(RestockText.STOPPED, "reason", reasonText(why, detail, prefix));
-            warning(text);
-            toast(text);
             // Ruling R65: an at-once reason that came in the tick of a stop that finishes first halted the unpack and
             // names the stop; the guards' own stop (a stranger near) is said too, so neither is hidden.
             RestockReason also = alsoStopping;
-            if (also != null) {
-                warning(Msg.of(RestockText.STOPPED_ALSO, "reason", reasonText(also, alsoStoppingDetail, prefix)));
-            }
-            say(after);
+            Msg alsoLine = also != null
+                ? Msg.of(RestockText.STOPPED_ALSO, "reason", reasonText(also, alsoStoppingDetail, prefix)) : null;
+            List<Msg> lines = StopLines.order(text, drainedLine, alsoLine, after);
+            warning(lines.get(0));
+            toast(text);
+            say(lines.subList(1, lines.size()));
         } finally {
             if (isActive()) toggle();
         }
