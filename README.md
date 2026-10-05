@@ -478,6 +478,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
 > Try it first in a safe place, with materials you can afford to lose, and follow the
 > [in-game checklist](docs/restock-checklist.md). Every case, with what to do: [known issues](docs/known-issues.md).
 
+![restock's settings in Meteor's ClickGUI](docs/images/restock.jpg)
+
 Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
 `litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
 

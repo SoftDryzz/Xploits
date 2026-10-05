@@ -489,6 +489,8 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 > [lista de prueba en el juego](docs/restock-checklist.md). Todos los casos, con qué hacer:
 > [problemas conocidos](docs/known-issues.md).
 
+![Los ajustes de restock en la ClickGUI de Meteor](docs/images/restock.jpg)
+
 Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y `litematica-printer`, o
 a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
 
