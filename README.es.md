@@ -10,8 +10,9 @@ otros servidores anarchy. Doce módulos, que se encienden por separado.
 > **Nuevo en la 0.9.0, experimental: `restock`.** Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
 > bloque que la construcción aún necesita, `restock` pausa el printer, va al cofre más cercano que marcaste (o que
 > recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. También funciona con
-> cajas de shulker: las que llevas encima y las que hay en tus contenedores. Mira
-> [`restock`](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica).
+> cajas de shulker: las que llevas encima y las que hay en tus contenedores. Es
+> experimental y todavía no se ha comprobado en un servidor real: lee lo que puede fallar en
+> [`restock`](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica) antes de fiarte de él.
 
 ## Por qué Xploits
 
@@ -466,7 +467,29 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 
 ### `restock` — ir a buscar bloques para tu construcción de Litematica
 
-**Experimental.** Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y `litematica-printer`, o
+> ⚠️ **Experimental: úsalo bajo tu responsabilidad.** Pasó todas las pruebas del banco, en un mundo de prueba local
+> con sustitutos para la forma de andar de Baritone y para el modo de impresión de `litematica-printer`, pero todavía
+> no se ha comprobado en un servidor real. Lo que puede fallar:
+>
+> - un anticheat (el de 6b6t u otro) puede marcar sus clics en contenedores, la caja de shulker que coloca y rompe, o
+>   el único Shift-clic con el que pasa una caja a tu barra;
+> - una parada mientras vacía una caja de shulker (un ataque, poca vida, un retroceso del servidor, tus teclas de
+>   movimiento, apagarlo) puede dejar la caja junto a la construcción o en el suelo, para que la recojas tú; el printer
+>   sigue apagado;
+> - lo que suelta una caja rota se lo puede llevar otro jugador, una vagoneta con tolva, un mob o un plugin que limpia
+>   objetos del suelo;
+> - con cajas del mismo color y nombre puede confundir las tuyas con las que cogió prestadas, o perder la cuenta de una
+>   prestada: ponles nombre a las tuyas y revisa tus contenedores después de construir;
+> - un servidor que contesta tarde puede dejar en tu inventario una caja que en realidad no está ahí, hasta que abras
+>   un contenedor;
+> - en un servidor que no envía lo que llevan las cajas de shulker de dentro de los cofres, solo va a por bloques
+>   sueltos.
+>
+> Pruébalo primero en un sitio seguro, con materiales que no te importe perder, y sigue la
+> [lista de prueba en el juego](docs/restock-checklist.md). Todos los casos, con qué hacer:
+> [problemas conocidos](docs/known-issues.md).
+
+Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y `litematica-printer`, o
 a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
 
 - **Marca los contenedores que puede usar.** Asigna `mark-key`, ponte de pie en el suelo, mira un cofre, cofre

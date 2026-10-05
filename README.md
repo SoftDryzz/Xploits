@@ -10,8 +10,9 @@ other anarchy servers. Twelve modules, each switched on separately.
 > **New in 0.9.0, experimental: `restock`.** Build with Litematica and `litematica-printer` as you do today: when a block
 > the build still needs runs out, `restock` pauses the printer, walks to the nearest chest you marked (or that
 > `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. It works with shulker
-> boxes too: the ones you carry and the ones in your containers. See
-> [`restock`](#restock--fetch-blocks-for-your-litematica-build).
+> boxes too: the ones you carry and the ones in your containers. It is
+> experimental and has not been checked on a real server yet: read what can go wrong in
+> [`restock`](#restock--fetch-blocks-for-your-litematica-build) before you rely on it.
 
 ## Why Xploits
 
@@ -460,7 +461,24 @@ It needs Windows Terminal, which is the default console in Windows 11.
 
 ### `restock` — fetch blocks for your Litematica build
 
-**Experimental.** Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
+> ⚠️ **Experimental: use it at your own risk.** It passed every check of the test bench, on a local test world
+> with stand-ins for Baritone's walking and for `litematica-printer`'s print mode, but it has not been checked on a
+> real server yet. What can go wrong:
+>
+> - an anticheat (6b6t's or another server's) may flag its container clicks, the shulker box it sets down and breaks,
+>   or the one Shift-click that moves a box into your hotbar;
+> - a stop while it unpacks a shulker box (an attack, low health, a setback, your movement keys, turning it off) can
+>   leave the box standing beside the build or lying on the ground, for you to pick up; the printer stays off;
+> - a broken box's drop can be taken by another player, a hopper minecart, a mob or a clear-lag plugin;
+> - with boxes of the same colour and name it can mix up yours and the ones it borrowed, or lose count of a borrowed
+>   one: name your own boxes, and check your containers after a build;
+> - a server that answers late can leave a box in your inventory that is not really there, until you open a container;
+> - on a server that does not send what the shulker boxes inside chests hold, it fetches loose blocks only.
+>
+> Try it first in a safe place, with materials you can afford to lose, and follow the
+> [in-game checklist](docs/restock-checklist.md). Every case, with what to do: [known issues](docs/known-issues.md).
+
+Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
 `litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
 
 - **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped or copper chest,
