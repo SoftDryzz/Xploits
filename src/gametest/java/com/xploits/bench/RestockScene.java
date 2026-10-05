@@ -336,23 +336,19 @@ final class RestockScene {
     }
 
     /**
-     * Server thread (rulings R70, R71, trigger (b)): the first shulker box holding items in the player's slots 0–35
-     * goes back into the first free slot of the chest at {@code chest}, as a player putting a just-carried box back
-     * would, or a server refusing the carry. The open chest screen sends both changes to the client. False when there
-     * is no such box, no chest there or no free slot (nothing moved).
-     */
-    boolean putCarriedBoxBack(Bench bench, Vec3i chest) {
-        return putCarriedBoxBackSeen(bench, chest).moved();
-    }
-
-    /**
-     * What {@link #putCarriedBoxBackSeen} did: whether the box moved, and whether the server had a container screen
-     * open for the player at that moment (restock's chest screen of the visit).
+     * What {@link #putCarriedBoxBackSeen} did: whether the box moved (false when there is no such box, no chest there
+     * or no free slot: nothing moved), and whether the server had a container screen open for the player at that
+     * moment (restock's chest screen of the visit).
      */
     record PutBack(boolean moved, boolean screenOpen) {
     }
 
-    /** {@link #putCarriedBoxBack}, in the same server call reading whether a container screen was open then. */
+    /**
+     * Server thread (rulings R70, R71, trigger (b)): the first shulker box holding items in the player's slots 0–35
+     * goes back into the first free slot of the chest at {@code chest}, as a player putting a just-carried box back
+     * would, or a server refusing the carry. The open chest screen sends both changes to the client. The same server
+     * call reads whether a container screen was open then.
+     */
     PutBack putCarriedBoxBackSeen(Bench bench, Vec3i chest) {
         return bench.fromServer(srv -> {
             ServerPlayerEntity player = Arena.player(srv, name);

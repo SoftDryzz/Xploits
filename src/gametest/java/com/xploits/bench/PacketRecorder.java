@@ -41,13 +41,16 @@ final class PacketRecorder {
     private double lastY = Double.NaN;
     private double lastZ = Double.NaN;
     /**
-     * A {@code TeleportConfirmC2SPacket} just left: the next movement packet answers the server's teleport. Vanilla
-     * sends both together from {@code ClientPlayNetworkHandler.onPlayerPositionLook}, on the client thread between two
-     * ticks (javap -c: the confirm, then a {@code PlayerMoveC2SPacket.Full}). Grim does not count that answer as the
-     * tick's movement — {@code GrimProcessor.isTickPacket} takes a flying packet only while
-     * {@code !packetStateData.lastPacketWasTeleport} (Grim 2.0, commit abb95b6), and its {@code Post} check opens its
-     * window only at a tick packet — so an action after it is no action after the movement. The rules check reads it
-     * the same way: as no movement packet ({@code OTHER}), its position still tracked for the walking clicks.
+     * A {@code TeleportConfirmC2SPacket} just left, and no tick has ended since: a {@code PlayerMoveC2SPacket.Full}
+     * that follows it answers the server's teleport. Vanilla 1.21.11 sends both together from
+     * {@code ClientPlayNetworkHandler.onPlayerPositionLook}, on the client thread outside the tick (javap -c: the
+     * confirm, then a {@code PlayerMoveC2SPacket.Full}). Grim (GrimAnticheat/Grim 2.0) does not count that answer as
+     * the tick's movement: {@code GrimProcessor.isTickPacket} (GrimProcessor.java:74-82) takes a flying packet only
+     * while the last packet was not a teleport, and the checks that read the tick's packets key on it
+     * ({@code Post.java:77-81}, {@code PacketOrderO.java:36}, {@code TickTimer.java:31},
+     * {@code CheckManagerListener.java:422-423}). The recorder reads it the same way: that one packet is no movement
+     * packet ({@code OTHER}), its position still tracked for the walking clicks. Any tick-ending packet clears the
+     * flag.
      */
     private boolean teleportAnswerNext;
 
@@ -70,7 +73,7 @@ final class PacketRecorder {
             PaceRules.Packet p = classified;
             if (event.packet instanceof TeleportConfirmC2SPacket) {
                 teleportAnswerNext = true;
-            } else if (teleportAnswerNext && event.packet instanceof PlayerMoveC2SPacket) {
+            } else if (teleportAnswerNext && event.packet instanceof PlayerMoveC2SPacket.Full) {
                 teleportAnswerNext = false;
                 p = PaceRules.Packet.of(PaceRules.Kind.OTHER, false);
             }
@@ -100,6 +103,7 @@ final class PacketRecorder {
                     containerActions++;
                 }
                 case TICK_END -> {
+                    teleportAnswerNext = false;
                     if (moved && containerActions > 0) walkingClicks++;
                     moved = false;
                     containerActions = 0;
