@@ -89,6 +89,7 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
 | **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` **se niega a arrancar**, y cada uno lo dice. Los demás módulos funcionan igual |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, con su librería **malilib** | `restock` | `restock` **se niega a arrancar** y lo dice. Los demás módulos funcionan igual; Xploits carga sin ella |
+| **[litematica-printer](https://modrinth.com/mod/litematica-printer)** 3.2.1B para 1.21.11, **opcional** | `restock` | No deja de funcionar nada: `restock` va a buscar bloques igual mientras los colocas a mano. Con él, `restock` apaga su impresión en cada viaje o caja que vacía y la vuelve a encender después. Es el único printer que `restock` pausa: otro (por ejemplo el de un addon de Meteor) sigue colocando mientras `restock` anda, así que no uses otro con él |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |
 | **`stash-finder`** (viene con Meteor) | `nether-sweep` | El barrido vuela y no registra contenedores. Avisa antes de despegar |
@@ -496,8 +497,9 @@ Necesita Windows Terminal, que es la consola por defecto de Windows 11.
 
 ![Los ajustes de restock en la ClickGUI de Meteor](docs/images/restock.jpg)
 
-Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y `litematica-printer`, o
-a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
+Construye como hoy, con [Litematica](https://modrinth.com/mod/litematica) y
+[`litematica-printer`](https://modrinth.com/mod/litematica-printer) (opcional, 3.2.1B para 1.21.11: el único printer
+que `restock` pausa), o a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `restock`:
 
 - **Marca los contenedores que puede usar.** Asigna `mark-key`, ponte de pie en el suelo, mira un cofre, cofre
   trampa o de cobre, barril o caja de shulker colocada y púlsala: «Marcado (N en total).»; púlsala otra vez para desmarcarlo

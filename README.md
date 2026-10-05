@@ -87,6 +87,7 @@ it uses that instead of reimplementing it worse. The price is that you need to h
 | **Meteor Client 1.21.11** | Everything | The addon does not load |
 | **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` **refuses to start**, and each says so. The other modules work the same |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, with its library **malilib** | `restock` | `restock` **refuses to start** and says so. The other modules work the same; Xploits loads without it |
+| **[litematica-printer](https://modrinth.com/mod/litematica-printer)** 3.2.1B for 1.21.11, **optional** | `restock` | Nothing stops working: `restock` fetches blocks the same while you place them by hand. With it, `restock` switches its printing off for each trip or unpack and back on afterwards. It is the only printer `restock` pauses: another one (for example a Meteor addon's) keeps placing while `restock` walks, so do not use one with it |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
 | **`stash-finder`** (comes with Meteor) | `nether-sweep` | The sweep flies and records no containers. It warns you before take-off |
@@ -485,7 +486,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
 ![restock's settings in Meteor's ClickGUI](docs/images/restock.jpg)
 
 Build as you do today, with [Litematica](https://modrinth.com/mod/litematica) and
-`litematica-printer`, or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
+[`litematica-printer`](https://modrinth.com/mod/litematica-printer) (optional, 3.2.1B for 1.21.11: the only printer
+`restock` pauses), or by hand. Select the placement in Litematica, mark your chests and turn `restock` on:
 
 - **Mark the containers it may use.** Bind `mark-key`, stand on the ground, look at a chest, trapped or copper chest,
   barrel or placed shulker box and press it: "Marked (N in total)."; press again to unmark (it works even if the container
