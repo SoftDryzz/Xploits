@@ -6,6 +6,8 @@ All notable changes to Xploits. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-05
+
 ### Added
 
 - **`restock`** (experimental): when a block your Litematica build still needs runs out, it pauses

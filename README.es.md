@@ -5,9 +5,9 @@
 # Xploits
 
 Addon de [Meteor Client](https://meteorclient.com/) para Minecraft **1.21.11**, pensado para 6b6t y
-otros servidores anarchy. Once módulos en la última versión, que se encienden por separado; `restock`, el duodécimo, aún no está publicado.
+otros servidores anarchy. Doce módulos, que se encienden por separado.
 
-> **Nuevo, experimental, aún no está en ninguna versión publicada: `restock`.** Llega en la siguiente. Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
+> **Nuevo en la 0.9.0, experimental: `restock`.** Construye con Litematica y `litematica-printer` como hoy: cuando se acaba un
 > bloque que la construcción aún necesita, `restock` pausa el printer, va al cofre más cercano que marcaste (o que
 > recuerda `stash-keeper`), coge lo que necesita el resto de la construcción, vuelve y lo reanuda. También funciona con
 > cajas de shulker: las que llevas encima y las que hay en tus contenedores. Mira
@@ -81,7 +81,7 @@ usa en vez de reimplementarlo peor. El precio es que hay que tenerlos.
 | Mod | Obligatorio para | Si falta |
 |---|---|---|
 | **Meteor Client 1.21.11** | Todo | El addon no carga |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` (aún sin publicar) **se niega a arrancar**, y cada uno lo dice. Los demás módulos funcionan igual |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` y `nether-sweep` **se niegan a lanzar**, `restock` **se niega a arrancar**, y cada uno lo dice. Los demás módulos funcionan igual |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, con su librería **malilib** | `restock` | `restock` **se niega a arrancar** y lo dice. Los demás módulos funcionan igual; Xploits carga sin ella |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | El barrido vuela, pero **replanifica terreno que ya habías cubierto** y no deja rastro para la próxima vez. Avisa antes de despegar |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | El barrido vuela y **no encuentra nada**: es quien detecta portales, skybuilds y construcciones en el techo. Avisa antes de despegar |

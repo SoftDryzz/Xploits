@@ -5,9 +5,9 @@
 # Xploits
 
 A [Meteor Client](https://meteorclient.com/) addon for Minecraft **1.21.11**, built for 6b6t and
-other anarchy servers. Eleven modules in the latest release, each switched on separately; `restock`, the twelfth, is not released yet.
+other anarchy servers. Twelve modules, each switched on separately.
 
-> **New, experimental, not in a release yet: `restock`.** It comes in the next one. Build with Litematica and `litematica-printer` as you do today: when a block
+> **New in 0.9.0, experimental: `restock`.** Build with Litematica and `litematica-printer` as you do today: when a block
 > the build still needs runs out, `restock` pauses the printer, walks to the nearest chest you marked (or that
 > `stash-keeper` remembers), takes what the rest of the build needs, walks back and resumes it. It works with shulker
 > boxes too: the ones you carry and the ones in your containers. See
@@ -78,7 +78,7 @@ it uses that instead of reimplementing it worse. The price is that you need to h
 | Mod | Required for | If missing |
 |---|---|---|
 | **Meteor Client 1.21.11** | Everything | The addon does not load |
-| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` (not released yet) **refuses to start**, and each says so. The other modules work the same |
+| **[Baritone](https://github.com/cabaletta/baritone)** | `auto-travel`, `nether-sweep`, `restock` | `auto-travel` and `nether-sweep` **refuse to launch**, `restock` **refuses to start**, and each says so. The other modules work the same |
 | **[Litematica](https://modrinth.com/mod/litematica)** 0.26.14, with its library **malilib** | `restock` | `restock` **refuses to start** and says so. The other modules work the same; Xploits loads without it |
 | **[Trouser Streak](https://github.com/etianl/Trouser-Streak)** → `NewerNewChunks` | `nether-sweep` | The sweep flies, but **replans ground you had already covered** and leaves no trace for next time. It warns you before take-off |
 | **Trouser Streak** → `BaseFinder` | `nether-sweep` | The sweep flies and **finds nothing**: this is what detects portals, skybuilds and builds on the roof. It warns you before take-off |
