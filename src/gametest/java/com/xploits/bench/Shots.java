@@ -7,6 +7,7 @@ import com.xploits.pvp.crystal.CrystalAuraPlusPlus;
 import com.xploits.pvp.crystal.core.CrystalSetting;
 import com.xploits.pvp.hud.AutoPvpHud;
 import com.xploits.pvp.recorder.FightRecorder;
+import com.xploits.restock.Restock;
 import meteordevelopment.meteorclient.gui.GuiThemes;
 import meteordevelopment.meteorclient.gui.tabs.Tabs;
 import meteordevelopment.meteorclient.gui.tabs.builtin.ModulesTab;
@@ -39,7 +40,8 @@ import java.util.function.Consumer;
  *
  * <p>In a bench world, in a {@value #WIDTH}x{@value #HEIGHT} window with the GUI at scale {@value #GUI_SCALE}, it
  * saves in {@code build/shots}: {@code clickgui.png} (Meteor's ClickGUI), {@code crystal-aura-pp.png}
- * (crystal-aura++'s settings) and {@code fight-1.png} to {@code fight-}{@value #FIGHT_SHOTS}{@code .png} (auto-pvp
+ * (crystal-aura++'s settings), {@code restock.png} (restock's settings) and
+ * {@code fight-1.png} to {@code fight-}{@value #FIGHT_SHOTS}{@code .png} (auto-pvp
  * driving crystal-aura++ against the sparring, with the auto-pvp panel as the only HUD element and chat hidden).
  * During the fight it turns the console on, writes {@code console.ready} and waits, at most
  * {@value #CONSOLE_WAIT_TICKS} ticks, for {@code console.done}: {@code tools/shots.ps1} captures the console
@@ -160,6 +162,7 @@ final class Shots implements Scenario {
         bench.onClient(client -> client.options.hudHidden = true);
         screen(bench, "clickgui", client -> Tabs.get(ModulesTab.class).openScreen(GuiThemes.get()));
         plusPlusSettings(bench);
+        screen(bench, "restock", client -> client.setScreen(GuiThemes.get().moduleScreen(Modules.get().get(Restock.class))));
         bench.onClient(client -> client.options.hudHidden = false);
 
         scene.start(bench, true);

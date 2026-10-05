@@ -93,7 +93,7 @@ function Save-Jpeg([string]$from, [string]$to) {
 }
 
 New-Item -ItemType Directory -Force $images | Out-Null
-$copies = [ordered]@{ 'clickgui.png' = 'clickgui.jpg'; 'crystal-aura-pp.png' = 'crystal-aura-pp.jpg'; "fight-$Fight.png" = 'fight.jpg'; 'console.png' = 'console.png' }
+$copies = [ordered]@{ 'clickgui.png' = 'clickgui.jpg'; 'crystal-aura-pp.png' = 'crystal-aura-pp.jpg'; 'restock.png' = 'restock.jpg'; "fight-$Fight.png" = 'fight.jpg'; 'console.png' = 'console.png' }
 foreach ($from in $copies.Keys) {
     $source = Join-Path $shots $from
     $target = Join-Path $images $copies[$from]
