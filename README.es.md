@@ -508,7 +508,8 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
   nuevo cuando lo haya y solo lo dice si ningún otro contenedor tiene el bloque. Una caja que cogió de un contenedor
   vuelve a él cuando está vacía, en el siguiente viaje a ese contenedor o en un último viaje cuando la construcción
   está terminada, y nunca más cajas de las que cogió de él. Hasta entonces la caja se queda contigo, y cada parada
-  dice cuántas llevas.
+  dice cuántas llevas (salvo en los raros casos de la entrada «`restock` can lose count of a borrowed shulker box» de
+  los [problemas conocidos](docs/known-issues.md), que está en inglés).
 - **Dónde coloca una caja.** A tu alcance y fuera de la construcción: sobre un bloque sólido que no hace nada al
   pulsarlo (no un cofre, horno, mesa de trabajo, puerta, palanca, cama…), en un hueco vacío con sitio encima para la
   tapa, nunca donde estás tú. También mira dónde caerá la caja rota: como objeto suelto puede desplazarse un bloque o
@@ -521,7 +522,8 @@ a mano. Selecciona la colocación en Litematica, marca tus cofres y enciende `re
   se para: un desconocido que se acerca, un módulo junto al que no puede funcionar, otro módulo que sigue girándote la
   cabeza. Algunas paradas no pueden esperar y son inmediatas: te atacan, tu vida baja de `min-health`, el servidor te
   hace retroceder, `auto-pvp` entra en combate, pulsas una tecla de movimiento, mueres, cambias de dimensión, sales del
-  servidor o apagas `restock`. Si una de ellas llega mientras termina, se para enseguida y dice las dos. Toda parada
+  servidor o apagas `restock`. Si una de ellas llega mientras termina, se para enseguida y dice las dos (al apagarlo o
+  salir solo dice lo que se queda fuera). Toda parada
   dice cuántas cajas de las que colocó siguen en pie y a cuántos bloques está la más cercana, a cuántos bloques está la
   caja rota que quedó en el suelo (o que ya no está), cuándo no pudo comprobarlo y cuántas cajas que cogió de tus
   contenedores aún llevas: solo distancias, nunca una posición.

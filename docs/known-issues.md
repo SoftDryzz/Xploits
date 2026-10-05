@@ -252,7 +252,7 @@ layer by layer, it may fetch blocks for layers you have not reached yet (it fetc
 **What happens.** `restock` gives a box back to the container it came from only once the box is empty: on the next
 trip to that container, or on one last trip when the build is done. A box that still holds blocks the build did not
 need stays with you, and every stop says how many you carry. It never gives a container more boxes than it took from
-it.
+it. The rare exceptions are in "`restock` can lose count of a borrowed shulker box".
 
 **What to do.** Put it back by hand.
 
@@ -263,12 +263,29 @@ the borrowed one is still with you; or, with `use-carried-shulkers` off, `restoc
 
 **What happens.** It tells boxes apart only by colour and name, and keeps a count, not a memory of each box. Of two
 unnamed boxes of one colour it counts the empty ones as yours first, so it never hands a container an empty box of
-yours in place of a borrowed one that still holds blocks, and never more boxes than it took. The price is that a
-borrowed empty box can stay with you. With `use-carried-shulkers` off, a full box of yours can be taken for the one it
+yours in place of a borrowed one that still holds blocks, and never more boxes than it took (save in the rare cases in
+"`restock` can lose count of a borrowed shulker box"). The price is that a borrowed empty box can stay with you. With `use-carried-shulkers` off, a full box of yours can be taken for the one it
 borrowed and unpacked.
 
 **What to do.** Name the boxes you keep for yourself (rename them in an anvil): a named box is a different kind from an
 unnamed one of the same colour.
+
+### `restock` can lose count of a borrowed shulker box
+
+**Symptom:** after a build you carry a box from one of your containers that `restock` no longer mentions at a stop and
+never takes back; or, rarely, an empty box of your own ends up in that container, or a full one of yours is unpacked
+with `use-carried-shulkers` off.
+
+**What happens.** `restock` counts borrowed boxes per colour and name; it cannot follow each box. It forgets a borrowed
+box when a box of that kind leaves your inventory between two of its container visits (dropped, placed, put in an
+ender chest or your offhand), or when the server refuses a give-back later than the second it waits; the box then
+counts as yours. The other way round, a box of that kind that reaches your inventory while a container is open (picked
+up, or swapped from your offhand), or after a server's late answer and before `restock` opens another container, can
+be taken for a borrowed one. A stop in the second it waits for the server can also count a borrowed box you do not
+have.
+
+**What to do.** Name the boxes you keep for yourself (a named box is a different kind), leave boxes of the same colour
+alone while `restock` has a container open, and check your containers after a build.
 
 ### A stop while `restock` unpacks can leave the shulker box beside the build
 
@@ -338,7 +355,10 @@ the server answers only if it refuses the click (an anticheat or a plugin can). 
 about a second for that answer: if the box comes back, it is not counted as borrowed. If the server answers later,
 your game has already closed the container and ignores the answer: it keeps showing a box the server never gave you
 until the next screen you open updates your inventory. `restock` then tries three times to set down a box you do not
-have, and stops. Nothing is lost: the box is still in the container.
+have, and stops. Nothing is lost: the box is still in the container. If a box of that kind arrives in your inventory
+before you open another container, an empty box of your own can be taken for the borrowed one and go into the
+container, and a stop during that second can count a borrowed box you do not have (see "`restock` can lose count of a
+borrowed shulker box").
 
 **What to do.** Open a container to update your inventory, check the box is still in the container it came from, and
 turn `restock` on again.

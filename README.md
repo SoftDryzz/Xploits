@@ -498,7 +498,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
   hotbar slot and one more slot are free; with less room `restock` passes that container over, tries it again once
   there is, and says so only if no other container has the block. A box it took from a container goes back there once
   it is empty, on the next trip to that container or on one last trip when the build is done, and never more boxes
-  than it took from it. Until then the box stays with you, and every stop says how many you carry.
+  than it took from it. Until then the box stays with you, and every stop says how many you carry (save in the rare
+  cases of "`restock` can lose count of a borrowed shulker box" in [known issues](docs/known-issues.md)).
 - **Where it sets a box down.** Within your reach and outside the build: on a solid block that does nothing when
   clicked (not a chest, furnace, crafting table, door, lever, bed…), on an empty spot with room above it for the lid,
   never where you stand. It also checks where the broken box will land, because the drop can drift a block or more,
@@ -511,7 +512,8 @@ It needs Windows Terminal, which is the default console in Windows 11.
   10 s) and then stops: a stranger coming near, a module it cannot run beside, another module that keeps turning your
   head. Some stops cannot wait and happen at once: you are attacked, your health falls below `min-health`, the server
   sets you back, `auto-pvp` engages, you press a movement key, you die, change dimension, leave the server or turn
-  `restock` off. If one of those comes while it is finishing, it stops at once and says both. Every stop says how many
+  `restock` off. If one of those comes while it is finishing, it stops at once and says both (turning it off or
+  leaving says only what is left out). Every stop says how many
   boxes it set down still stand and how far away the nearest is, how far away the dropped box lies or that it is gone,
   when it could not check, and how many boxes it took from your containers you still carry: distances only, never a
   position.
