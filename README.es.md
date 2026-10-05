@@ -25,10 +25,10 @@ otros servidores anarchy. Doce módulos, que se encienden por separado.
   cobertura, 500 frente a 490. Donde va por detrás (mientras te mueves, y el intercambio a campo
   abierto) lo dice: mira los
   [problemas conocidos](docs/known-issues.md).
-- **Tus propios cristales nunca te dejaron por debajo de tu reserva en ninguna tanda del banco de la
-  0.8.0**: 81 escenarios, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
+- **Tus propios cristales nunca te dejaron por debajo de tu reserva en ninguna tanda de los bancos de
+  publicación de la 0.8.0 y la 0.9.0**: 81 escenarios de combate, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
   contra rivales que atacan, rompen tus cristales y te bloquean los sitios. El `crystal-aura` de Meteor
-  bajó hasta 0,1 de vida en el mismo banco.
+  bajó hasta 0,2 de vida o menos en los mismos bancos.
 - **`auto-pvp` enciende los módulos de combate adecuados en el momento adecuado** — cristales, trampas,
   telarañas, surround, rellenar agujeros y el resto — y solo apaga los que encendió él.
 - **`fight-recorder` te dice por qué moriste**: un fichero JSON por pelea con el reparto de daño, tus
@@ -259,7 +259,7 @@ excepción es `finishing-blow`, más abajo. Suma todos los cristales que todaví
 puestos o de camino a explotar, y calcula el daño exacto de un golpe (Meteor lo redondea hacia
 abajo).
 
-> **Experimental en la 0.8.0.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
+> **Experimental.** Mantuvo tu vida por encima de la reserva en todas las tandas medidas,
 > pero todavía se está afinando: en algunas situaciones hace menos daño que el `crystal-aura` de Meteor
 > (mira la tabla y los problemas conocidos más abajo). Las próximas versiones siguen mejorando su ataque.
 
@@ -695,7 +695,8 @@ Lo más habitual:
 
 ## Próximamente
 
-- **Construcción, lo siguiente, antes de la 1.0.0:** map art, túneles y autopistas, y bases.
+- **Construcción, lo siguiente, antes de la 1.0.0:** map art, túneles y autopistas, y bases. Disponible
+  ya, experimental: `restock`, que va a buscar los bloques que se le acaban a tu construcción de Litematica.
 - **Disponible ya, experimental:** `crystal-aura++` — el crystal-aura de Meteor con un presupuesto de
   daño propio que guarda una reserva de vida; `surround++` — un escudo defensivo calculado, desde el
   ajuste `shell-module` de `auto-pvp`.

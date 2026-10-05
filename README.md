@@ -24,9 +24,11 @@ other anarchy servers. Twelve modules, each switched on separately.
   38 damage against 31; with him above you, 297 against 287; below you, 309 against 303; behind cover,
   500 against 490. Where it is behind (while you move, and the open-ground exchange) it says so: see the
   [known issues](docs/known-issues.md).
-- **Your own crystals never took you below your reserve in any run of the 0.8.0 bench**: 81 scenarios,
+- **Your own crystals never took you below your reserve in any run of the 0.8.0 and 0.9.0 release
+  benches**: 81 combat scenarios,
   three runs of each measured one, at every risk level, against opponents that attack, break your
-  crystals and block your spots. Meteor's `crystal-aura` went down to 0.1 health in the same bench.
+  crystals and block your spots. Meteor's `crystal-aura` went down to 0.2 health or less in the same
+  benches.
 - **`auto-pvp` switches the right combat modules on at the right moment** — crystals, traps, webs,
   surround, hole-filling and the rest — and only turns off the ones it turned on.
 - **`fight-recorder` tells you why you died**: a JSON file per fight with the damage split, your totems
@@ -255,7 +257,7 @@ your own crystals only if that leaves you at least 2. The one exception is `fini
 counts every crystal that can still hurt you, already placed or on its way to exploding, and works out
 the exact damage a hit would deal (Meteor rounds it down).
 
-> **Experimental in 0.8.0.** It kept your health above the reserve in every measured run, but it is still
+> **Experimental.** It kept your health above the reserve in every measured run, but it is still
 > being tuned: in some situations it deals less damage than Meteor's `crystal-aura` (see the table and the
 > known issues below). The next releases keep improving its attack.
 
@@ -681,7 +683,8 @@ The most common:
 
 ## Coming soon
 
-- **Building, next, before 1.0.0:** map art, tunnels and highways, and bases.
+- **Building, next, before 1.0.0:** map art, tunnels and highways, and bases. Available now,
+  experimental: `restock`, which fetches the blocks your Litematica build runs out of.
 - **Available now, experimental:** `crystal-aura++` — Meteor's crystal-aura with a self-damage budget
   that keeps a health reserve; `surround++` — a computed defensive shell, from `auto-pvp`'s
   `shell-module`.
