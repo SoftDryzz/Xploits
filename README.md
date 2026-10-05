@@ -26,16 +26,20 @@ other anarchy servers. Twelve modules, each switched on separately.
   500 against 490. Where it is behind (while you move, and the open-ground exchange) it says so: see the
   [known issues](docs/known-issues.md).
 - **Your own crystals never took you below your reserve in any run of the 0.8.0 and 0.9.0 release
-  benches**: 81 combat scenarios,
-  three runs of each measured one, at every risk level, against opponents that attack, break your
-  crystals and block your spots. Meteor's `crystal-aura` went down to 0.2 health or less in the same
-  benches.
+  benches**: 81 combat scenarios, three runs of each measured one, at every risk level, against
+  opponents that attack, break your crystals and block your spots. Meteor's `crystal-aura` went down to
+  0.2 health or less in the same benches.
 - **`auto-pvp` switches the right combat modules on at the right moment** — crystals, traps, webs,
   surround, hole-filling and the rest — and only turns off the ones it turned on.
 - **`fight-recorder` tells you why you died**: a JSON file per fight with the damage split, your totems
   and crystals, and its best guess at the cause. No positions are stored.
 - **`auto-travel` flies you somewhere without leaving an arrow pointing at your base** (a decoy pattern
   breaks up your trail), and **`nether-sweep`** combs the Nether to find other people's bases.
+- **`restock` keeps your Litematica build going** (new in 0.9.0, experimental): when a block runs out it
+  pauses `litematica-printer`, unpacks a shulker box you carry or fetches the block from your chests with
+  Baritone, and comes back to carry on. It stops the moment you are attacked, and every stop says why.
+  Not checked on a real server yet: read
+  [what can go wrong](#restock--fetch-blocks-for-your-litematica-build).
 - **No module does half a job silently.** If it cannot deliver what it promises, it refuses and tells you
   which setting to change, instead of doing something similar and keeping quiet.
 

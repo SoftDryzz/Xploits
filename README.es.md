@@ -27,15 +27,20 @@ otros servidores anarchy. Doce módulos, que se encienden por separado.
   abierto) lo dice: mira los
   [problemas conocidos](docs/known-issues.md).
 - **Tus propios cristales nunca te dejaron por debajo de tu reserva en ninguna tanda de los bancos de
-  publicación de la 0.8.0 y la 0.9.0**: 81 escenarios de combate, tres tandas de cada uno de los medidos, en todos los niveles de riesgo,
-  contra rivales que atacan, rompen tus cristales y te bloquean los sitios. El `crystal-aura` de Meteor
-  bajó hasta 0,2 de vida o menos en los mismos bancos.
+  publicación de la 0.8.0 y la 0.9.0**: 81 escenarios de combate, tres tandas de cada uno de los
+  medidos, en todos los niveles de riesgo, contra rivales que atacan, rompen tus cristales y te
+  bloquean los sitios. El `crystal-aura` de Meteor bajó hasta 0,2 de vida o menos en los mismos bancos.
 - **`auto-pvp` enciende los módulos de combate adecuados en el momento adecuado** — cristales, trampas,
   telarañas, surround, rellenar agujeros y el resto — y solo apaga los que encendió él.
 - **`fight-recorder` te dice por qué moriste**: un fichero JSON por pelea con el reparto de daño, tus
   tótems y cristales, y su mejor suposición de la causa. No guarda posiciones.
 - **`auto-travel` te lleva volando a algún sitio sin dejar una flecha hacia tu base** (un patrón de
   señuelo rompe tu rastro), y **`nether-sweep`** peina el Nether para encontrar bases ajenas.
+- **`restock` mantiene en marcha tu construcción de Litematica** (nuevo en la 0.9.0, experimental):
+  cuando se acaba un bloque, pausa `litematica-printer`, vacía una caja de shulker que llevas encima o va
+  a por el bloque a tus cofres con Baritone, y vuelve para seguir. Se para en cuanto te atacan, y
+  siempre dice por qué se para. Todavía no se ha comprobado en un servidor real: lee
+  [lo que puede fallar](#restock--ir-a-buscar-bloques-para-tu-construcción-de-litematica).
 - **Ningún módulo hace algo a medias sin decirlo.** Si no puede cumplir lo que promete, se niega y
   explica qué ajuste tocar, en vez de hacer algo parecido y callar.
 
