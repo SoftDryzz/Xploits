@@ -107,7 +107,9 @@ final class RestockShulkerNoRoom implements Scenario {
         List<Integer> boxesLines = chat.at(RestockText.NOWHERE_AFTER_TRIP_BOXES, "material", "stone");
         List<Integer> hotbarFull = chat.at(RestockText.NOWHERE_HOTBAR_FULL, "material", "stone");
         List<Integer> nowhereAfter = chat.at(RestockText.NOWHERE_AFTER_TRIP, "material", "stone");
-        List<Integer> unpacked = chat.at(RestockText.UNPACK_STARTED, "material", "stone");
+        // Which of the two start lines it is depends on whether restock holds the printer off (final review m3).
+        List<Integer> unpacked = new ArrayList<>(chat.at(RestockText.UNPACK_STARTED, "material", "stone"));
+        unpacked.addAll(chat.at(RestockText.UNPACK_STARTED_PRINTER, "material", "stone"));
         RestockScene.Outcome o = scene.finish(bench);
         // The first trip, with no room to carry a box (ruling R54).
         Bench.check(onAfterFirst && tripsAfterFirst == 1, "after the first trip restock is "
